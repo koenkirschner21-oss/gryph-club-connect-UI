@@ -8,8 +8,9 @@ interface ClubCardProps {
 }
 
 export default function ClubCard({ club }: ClubCardProps) {
-  const { isSaved, toggleSaveClub } = useClubContext();
+  const { isSaved, toggleSaveClub, isJoined } = useClubContext();
   const saved = isSaved(club.id);
+  const joined = isJoined(club.id);
 
   return (
     <Link to={`/explore/${club.id}`} className="block">
@@ -50,6 +51,11 @@ export default function ClubCard({ club }: ClubCardProps) {
             <span className="inline-block rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
               {club.category}
             </span>
+            {joined && (
+              <span className="inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                Joined
+              </span>
+            )}
             <span className="text-xs text-muted">
               {club.memberCount} members
             </span>

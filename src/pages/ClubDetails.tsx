@@ -1,17 +1,32 @@
 import { useParams, Link } from "react-router-dom";
-import { getClubById } from "../data/clubs";
 import { useClubContext } from "../context/useClubContext";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import Spinner from "../components/ui/Spinner";
 
 export default function ClubDetails() {
   const { clubId } = useParams<{ clubId: string }>();
-  const club = getClubById(clubId ?? "");
-  const { isJoined, joinClub, leaveClub, isSaved, toggleSaveClub } =
-    useClubContext();
+  const {
+    getClubById,
+    loading,
+    isJoined,
+    joinClub,
+    leaveClub,
+    isSaved,
+    toggleSaveClub,
+  } = useClubContext();
 
+  const club = getClubById(clubId ?? "");
   const joined = club ? isJoined(club.id) : false;
   const saved = club ? isSaved(club.id) : false;
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Spinner label="Loading club details…" />
+      </div>
+    );
+  }
 
   if (!club) {
     return (

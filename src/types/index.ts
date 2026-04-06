@@ -25,3 +25,12 @@ export interface ClubEvent {
   location: string;
   description: string;
 }
+
+/** Row shape returned by `supabase.from("user_clubs")`. */
+export interface UserClubRow {
+  id: string;
+  user_id: string;
+  club_id: string;
+  type: "joined" | "saved";
+  created_at: string;
+}

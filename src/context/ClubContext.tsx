@@ -8,20 +8,81 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
+import { mockClubs, categories as fallbackCategories } from "../data/clubs";
+import type { Club } from "../types";
 
 export function ClubProvider({ children }: { children: ReactNode }) {
   const { user } = useAuthContext();
-
   const userId = user?.id;
 
+  // ---- Clubs data ----
+  const [clubs, setClubs] = useState<Club[]>(mockClubs);
+  const [clubsLoading, setClubsLoading] = useState(true);
+  const [clubsError, setClubsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    supabase
+      .from("clubs")
+      .select("*")
+      .order("name")
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load clubs:", error.message);
+          // Fall back to mock data so the app remains usable
+          setClubs(mockClubs);
+          setClubsError(error.message);
+        } else if (data && data.length > 0) {
+          // Map DB rows → Club shape. Fields not in DB get safe defaults.
+          const mapped: Club[] = data.map((row) => ({
+            id: row.id,
+            name: row.name ?? "",
+            description: row.description ?? "",
+            category: row.category ?? "",
+            memberCount: row.member_count ?? 0,
+            meetingSchedule: row.meeting_schedule ?? "",
+            location: row.location ?? "",
+            imageUrl:
+              row.image_url ?? "/assets/placeholders/placeholder-rect.svg",
+            tags: row.tags ?? [],
+            contactEmail: row.contact_email ?? "",
+            socialLinks: row.social_links ?? undefined,
+            events: row.events ?? [],
+          }));
+          setClubs(mapped);
+        } else {
+          // Empty table – use mock data as seed display
+          setClubs(mockClubs);
+        }
+        setClubsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Derive categories from current clubs list
+  const categories = useMemo(() => {
+    if (clubs === mockClubs) return fallbackCategories;
+    const cats = new Set(clubs.map((c) => c.category).filter(Boolean));
+    return ["All", ...Array.from(cats).sort()];
+  }, [clubs]);
+
+  const getClubById = useCallback(
+    (clubId: string): Club | undefined => clubs.find((c) => c.id === clubId),
+    [clubs],
+  );
+
+  // ---- User club state (join/save) ----
   const [joinedClubs, setJoinedClubs] = useState<string[]>([]);
   const [savedClubs, setSavedClubs] = useState<string[]>([]);
   const [fetchedForUser, setFetchedForUser] = useState<string | null>(null);
 
-  // Derived: loading while we have a user but haven't fetched their data yet
-  const loading = !!userId && fetchedForUser !== userId;
+  const userClubsLoading = !!userId && fetchedForUser !== userId;
 
-  // Fetch user clubs from Supabase when user changes
   useEffect(() => {
     if (!userId) return;
 
@@ -60,11 +121,9 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const joinClub = useCallback(
     (clubId: string) => {
       if (!user) return;
-      // Optimistic update
       setJoinedClubs((prev) =>
         prev.includes(clubId) ? prev : [...prev, clubId],
       );
-      // Persist to Supabase
       supabase
         .from("user_clubs")
         .upsert(
@@ -74,7 +133,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         .then(({ error }) => {
           if (error) {
             console.error("Failed to join club:", error.message);
-            // Rollback on error
             setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
           }
         });
@@ -85,9 +143,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const leaveClub = useCallback(
     (clubId: string) => {
       if (!user) return;
-      // Optimistic update
       setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
-      // Delete from Supabase
       supabase
         .from("user_clubs")
         .delete()
@@ -97,7 +153,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         .then(({ error }) => {
           if (error) {
             console.error("Failed to leave club:", error.message);
-            // Rollback on error
             setJoinedClubs((prev) =>
               prev.includes(clubId) ? prev : [...prev, clubId],
             );
@@ -114,7 +169,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       setSavedClubs((prev) => {
         const alreadySaved = prev.includes(clubId);
         if (alreadySaved) {
-          // Optimistic remove
           supabase
             .from("user_clubs")
             .delete()
@@ -124,7 +178,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             .then(({ error }) => {
               if (error) {
                 console.error("Failed to unsave club:", error.message);
-                // Rollback
                 setSavedClubs((p) =>
                   p.includes(clubId) ? p : [...p, clubId],
                 );
@@ -132,7 +185,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             });
           return prev.filter((id) => id !== clubId);
         } else {
-          // Optimistic add
           supabase
             .from("user_clubs")
             .upsert(
@@ -142,7 +194,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             .then(({ error }) => {
               if (error) {
                 console.error("Failed to save club:", error.message);
-                // Rollback
                 setSavedClubs((p) => p.filter((id) => id !== clubId));
               }
             });
@@ -163,11 +214,17 @@ export function ClubProvider({ children }: { children: ReactNode }) {
     [savedClubs],
   );
 
+  const loading = clubsLoading || userClubsLoading;
+
   const value = useMemo<ClubContextValue>(
     () => ({
+      clubs,
+      loading,
+      error: clubsError,
+      categories,
+      getClubById,
       joinedClubs,
       savedClubs,
-      loading,
       joinClub,
       leaveClub,
       toggleSaveClub,
@@ -175,9 +232,13 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       isSaved,
     }),
     [
+      clubs,
+      loading,
+      clubsError,
+      categories,
+      getClubById,
       joinedClubs,
       savedClubs,
-      loading,
       joinClub,
       leaveClub,
       toggleSaveClub,

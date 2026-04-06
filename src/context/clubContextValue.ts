@@ -1,9 +1,19 @@
 import { createContext } from "react";
+import type { Club } from "../types";
 
 export interface ClubContextValue {
+  /** All available clubs (fetched from Supabase or fallback data). */
+  clubs: Club[];
+  /** True while clubs list or user-club state is loading. */
+  loading: boolean;
+  /** Non-null when fetching clubs failed. */
+  error: string | null;
+  /** Category strings derived from current clubs (includes "All"). */
+  categories: string[];
+  /** Look up a single club by ID. */
+  getClubById: (clubId: string) => Club | undefined;
   joinedClubs: string[];
   savedClubs: string[];
-  loading: boolean;
   joinClub: (clubId: string) => void;
   leaveClub: (clubId: string) => void;
   toggleSaveClub: (clubId: string) => void;

@@ -1,9 +1,11 @@
 import { useState, useMemo, useCallback } from "react";
-import { mockClubs, categories } from "../data/clubs";
+import { useClubContext } from "../context/useClubContext";
 import SearchBar from "../components/ui/SearchBar";
 import ClubCard from "../components/ui/ClubCard";
+import Spinner from "../components/ui/Spinner";
 
 export default function Explore() {
+  const { clubs, categories, loading, error } = useClubContext();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
@@ -16,7 +18,7 @@ export default function Explore() {
 
   const filteredClubs = useMemo(() => {
     const query = search.toLowerCase();
-    return mockClubs.filter((club) => {
+    return clubs.filter((club) => {
       const matchesCategory =
         activeCategory === "All" || club.category === activeCategory;
 
@@ -28,7 +30,7 @@ export default function Explore() {
 
       return matchesCategory && matchesSearch;
     });
-  }, [search, activeCategory]);
+  }, [clubs, search, activeCategory]);
 
   /** Build a contextual message for the empty state. */
   const emptyStateMessage = useMemo(() => {
@@ -44,9 +46,15 @@ export default function Explore() {
         description: `No clubs match "${search}". Try a different search term.`,
       };
     }
+    if (activeCategory !== "All") {
+      return {
+        title: "No clubs in this category",
+        description: `There are no clubs in the ${activeCategory} category yet.`,
+      };
+    }
     return {
-      title: "No clubs in this category",
-      description: `There are no clubs in the ${activeCategory} category yet.`,
+      title: "No clubs available",
+      description: "There are no clubs to display right now.",
     };
   }, [search, activeCategory]);
 
@@ -81,8 +89,23 @@ export default function Explore() {
         </div>
       </div>
 
-      {/* Results */}
-      {filteredClubs.length > 0 ? (
+      {/* Error banner */}
+      {error && (
+        <div
+          role="alert"
+          className="mb-6 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
+        >
+          Could not load clubs from the server. Showing sample data instead.
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading ? (
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <Spinner label="Loading clubs…" />
+        </div>
+      ) : filteredClubs.length > 0 ? (
+        /* Results */
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filteredClubs.map((club) => (
             <ClubCard key={club.id} club={club} />
@@ -123,20 +146,22 @@ export default function Explore() {
       )}
 
       {/* Result Count */}
-      <div className="mt-6 flex items-center justify-between">
-        <p className="text-sm text-muted">
-          Showing {filteredClubs.length} of {mockClubs.length} clubs
-        </p>
-        {hasActiveFilters && filteredClubs.length > 0 && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
+      {!loading && (
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-muted">
+            Showing {filteredClubs.length} of {clubs.length} clubs
+          </p>
+          {hasActiveFilters && filteredClubs.length > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,13 +1,13 @@
 import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
-import { mockClubs } from "../data/clubs";
 import { useClubContext } from "../context/useClubContext";
 import ClubCard from "../components/ui/ClubCard";
+import Spinner from "../components/ui/Spinner";
 
 export default function Home() {
-  const featuredClubs = mockClubs.slice(0, 3);
-  const { savedClubs } = useClubContext();
-  const savedClubList = mockClubs.filter((c) => savedClubs.includes(c.id));
+  const { clubs, savedClubs, loading } = useClubContext();
+  const featuredClubs = clubs.slice(0, 3);
+  const savedClubList = clubs.filter((c) => savedClubs.includes(c.id));
 
   return (
     <>
@@ -69,11 +69,17 @@ export default function Home() {
             Check out some of the most popular clubs on campus
           </p>
         </div>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {featuredClubs.map((club) => (
-            <ClubCard key={club.id} club={club} />
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Spinner label="Loading clubs…" />
+          </div>
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {featuredClubs.map((club) => (
+              <ClubCard key={club.id} club={club} />
+            ))}
+          </div>
+        )}
         <div className="mt-10 text-center">
           <Link to="/explore">
             <Button variant="outline">View All Clubs</Button>
