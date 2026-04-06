@@ -1,10 +1,13 @@
 import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
 import { mockClubs } from "../data/clubs";
+import { useClubContext } from "../context/useClubContext";
 import ClubCard from "../components/ui/ClubCard";
 
 export default function Home() {
   const featuredClubs = mockClubs.slice(0, 3);
+  const { savedClubs } = useClubContext();
+  const savedClubList = mockClubs.filter((c) => savedClubs.includes(c.id));
 
   return (
     <>
@@ -77,6 +80,23 @@ export default function Home() {
           </Link>
         </div>
       </section>
+
+      {/* Saved Clubs */}
+      {savedClubList.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8">
+          <div className="mb-10 text-center">
+            <h2 className="text-3xl font-bold text-accent">Your Saved Clubs</h2>
+            <p className="mt-3 text-muted">
+              Clubs you&apos;ve bookmarked for later
+            </p>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {savedClubList.map((club) => (
+              <ClubCard key={club.id} club={club} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* CTA Section */}
       <section className="bg-primary">

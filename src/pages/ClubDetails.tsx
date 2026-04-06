@@ -1,11 +1,17 @@
 import { useParams, Link } from "react-router-dom";
 import { getClubById } from "../data/clubs";
+import { useClubContext } from "../context/useClubContext";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 
 export default function ClubDetails() {
   const { clubId } = useParams<{ clubId: string }>();
   const club = getClubById(clubId ?? "");
+  const { isJoined, joinClub, leaveClub, isSaved, toggleSaveClub } =
+    useClubContext();
+
+  const joined = club ? isJoined(club.id) : false;
+  const saved = club ? isSaved(club.id) : false;
 
   if (!club) {
     return (
@@ -56,7 +62,37 @@ export default function ClubDetails() {
               </h1>
               <p className="mt-3 max-w-2xl text-muted">{club.description}</p>
             </div>
-            <Button size="lg">Join Club</Button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => toggleSaveClub(club.id)}
+                aria-label={saved ? "Unsave club" : "Save club"}
+                className="rounded-lg border border-border p-2.5 transition-colors hover:bg-surface-alt cursor-pointer"
+              >
+                <svg
+                  className={`h-5 w-5 transition-colors ${saved ? "fill-primary text-primary" : "fill-none text-muted"}`}
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                  />
+                </svg>
+              </button>
+              <Button
+                size="lg"
+                variant={joined ? "outline" : "primary"}
+                onClick={() =>
+                  joined ? leaveClub(club.id) : joinClub(club.id)
+                }
+              >
+                {joined ? "Leave Club" : "Join Club"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
