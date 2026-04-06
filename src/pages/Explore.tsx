@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { mockClubs, categories } from "../data/clubs";
 import SearchBar from "../components/ui/SearchBar";
 import ClubCard from "../components/ui/ClubCard";
@@ -7,20 +7,47 @@ export default function Explore() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
-  const filteredClubs = useMemo(() => {
-    return mockClubs.filter((club) => {
-      const matchesSearch =
-        club.name.toLowerCase().includes(search.toLowerCase()) ||
-        club.description.toLowerCase().includes(search.toLowerCase()) ||
-        club.tags.some((tag) =>
-          tag.toLowerCase().includes(search.toLowerCase())
-        );
+  const hasActiveFilters = search !== "" || activeCategory !== "All";
 
+  const clearFilters = useCallback(() => {
+    setSearch("");
+    setActiveCategory("All");
+  }, []);
+
+  const filteredClubs = useMemo(() => {
+    const query = search.toLowerCase();
+    return mockClubs.filter((club) => {
       const matchesCategory =
         activeCategory === "All" || club.category === activeCategory;
 
-      return matchesSearch && matchesCategory;
+      const matchesSearch =
+        query === "" ||
+        club.name.toLowerCase().includes(query) ||
+        club.description.toLowerCase().includes(query) ||
+        club.tags.some((tag) => tag.toLowerCase().includes(query));
+
+      return matchesCategory && matchesSearch;
     });
+  }, [search, activeCategory]);
+
+  /** Build a contextual message for the empty state. */
+  const emptyStateMessage = useMemo(() => {
+    if (search && activeCategory !== "All") {
+      return {
+        title: "No matching clubs",
+        description: `No clubs match "${search}" in the ${activeCategory} category.`,
+      };
+    }
+    if (search) {
+      return {
+        title: "No search results",
+        description: `No clubs match "${search}". Try a different search term.`,
+      };
+    }
+    return {
+      title: "No clubs in this category",
+      description: `There are no clubs in the ${activeCategory} category yet.`,
+    };
   }, [search, activeCategory]);
 
   return (
@@ -63,18 +90,53 @@ export default function Explore() {
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-surface py-16 text-center">
-          <p className="text-lg font-medium text-accent">No clubs found</p>
-          <p className="mt-2 text-sm text-muted">
-            Try adjusting your search or filter to find what you&apos;re looking
-            for.
+          <svg
+            className="mx-auto h-12 w-12 text-muted"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+          <p className="mt-4 text-lg font-medium text-accent">
+            {emptyStateMessage.title}
           </p>
+          <p className="mt-2 text-sm text-muted">
+            {emptyStateMessage.description}
+          </p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-4 inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-dark cursor-pointer"
+            >
+              Clear all filters
+            </button>
+          )}
         </div>
       )}
 
       {/* Result Count */}
-      <p className="mt-6 text-sm text-muted">
-        Showing {filteredClubs.length} of {mockClubs.length} clubs
-      </p>
+      <div className="mt-6 flex items-center justify-between">
+        <p className="text-sm text-muted">
+          Showing {filteredClubs.length} of {mockClubs.length} clubs
+        </p>
+        {hasActiveFilters && filteredClubs.length > 0 && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
     </div>
   );
 }
