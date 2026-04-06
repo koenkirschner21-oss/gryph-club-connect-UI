@@ -200,3 +200,8 @@ export const categories = [
   "Recreation",
   "Technology",
 ];
+
+/** Look up a single club by its ID. Returns `undefined` when not found. */
+export function getClubById(clubId: string): Club | undefined {
+  return mockClubs.find((c) => c.id === clubId);
+}

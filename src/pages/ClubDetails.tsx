@@ -1,11 +1,11 @@
 import { useParams, Link } from "react-router-dom";
-import { mockClubs } from "../data/mockClubs";
+import { getClubById } from "../data/clubs";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 
-export default function ClubProfilePage() {
+export default function ClubDetails() {
   const { clubId } = useParams<{ clubId: string }>();
-  const club = mockClubs.find((c) => c.id === clubId);
+  const club = getClubById(clubId ?? "");
 
   if (!club) {
     return (

@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
-import { mockClubs } from "../data/mockClubs";
+import { mockClubs } from "../data/clubs";
 import ClubCard from "../components/ui/ClubCard";
 
-export default function HomePage() {
+export default function Home() {
   const featuredClubs = mockClubs.slice(0, 3);
 
   return (

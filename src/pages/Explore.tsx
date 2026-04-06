@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
-import { mockClubs, categories } from "../data/mockClubs";
+import { mockClubs, categories } from "../data/clubs";
 import SearchBar from "../components/ui/SearchBar";
 import ClubCard from "../components/ui/ClubCard";
 
-export default function ExplorePage() {
+export default function Explore() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
