@@ -1,5 +1,6 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { useAuthContext } from "../../context/useAuthContext";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -8,7 +9,18 @@ const navLinks = [
 
 export default function Navbar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuthContext();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  async function handleLogout() {
+    try {
+      await signOut();
+      navigate("/login");
+    } catch {
+      /* signOut errors are non-critical */
+    }
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
@@ -40,6 +52,38 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+
+          {user ? (
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted">{user.email}</span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="text-sm font-medium text-muted transition-colors hover:text-primary"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <Link
+                to="/login"
+                className={`text-sm font-medium transition-colors hover:text-primary ${
+                  location.pathname === "/login"
+                    ? "text-primary"
+                    : "text-muted"
+                }`}
+              >
+                Login
+              </Link>
+              <Link
+                to="/signup"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-dark"
+              >
+                Sign Up
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Mobile Hamburger */}
@@ -92,6 +136,41 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+
+            {user ? (
+              <>
+                <span className="block px-3 py-2 text-sm text-muted">
+                  {user.email}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    handleLogout();
+                  }}
+                  className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-primary"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="block rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt"
+                >
+                  Login
+                </Link>
+                <Link
+                  to="/signup"
+                  onClick={() => setMobileOpen(false)}
+                  className="block rounded-md px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-surface-alt"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}
