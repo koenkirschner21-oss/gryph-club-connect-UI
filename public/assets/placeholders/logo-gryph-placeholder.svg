@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <rect width="120" height="120" rx="12" fill="#C8102E"/>
+  <text x="60" y="50" font-family="Inter, sans-serif" font-size="11" font-weight="700"
+        fill="#FFFFFF" text-anchor="middle" dominant-baseline="middle">GRYPH</text>
+  <text x="60" y="68" font-family="Inter, sans-serif" font-size="9" font-weight="400"
+        fill="#FFFFFF" text-anchor="middle" dominant-baseline="middle">CLUB CONNECT</text>
+  <text x="60" y="90" font-family="Inter, sans-serif" font-size="8" fill="#FFCCCC"
+        text-anchor="middle" dominant-baseline="middle">[logo placeholder]</text>
+</svg>
