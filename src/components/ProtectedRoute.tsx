@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
+import Spinner from "./ui/Spinner";
 
 export default function ProtectedRoute({
   children,
@@ -11,7 +12,7 @@ export default function ProtectedRoute({
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-muted">Loading…</p>
+        <Spinner label="Checking authentication…" />
       </div>
     );
   }

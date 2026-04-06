@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/ui/Button";
+import FormInput from "../components/ui/FormInput";
 import { useAuthContext } from "../context/useAuthContext";
 
 export default function Signup() {
@@ -41,65 +42,47 @@ export default function Signup() {
         </h1>
 
         {error && (
-          <div className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary">
+          <div
+            role="alert"
+            className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
+          >
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="mb-1 block text-sm font-medium text-accent"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              placeholder="you@example.com"
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <FormInput
+            id="email"
+            label="Email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
 
-          <div>
-            <label
-              htmlFor="password"
-              className="mb-1 block text-sm font-medium text-accent"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              placeholder="••••••••"
-            />
-          </div>
+          <FormInput
+            id="password"
+            label="Password"
+            type="password"
+            required
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
 
-          <div>
-            <label
-              htmlFor="confirmPassword"
-              className="mb-1 block text-sm font-medium text-accent"
-            >
-              Confirm Password
-            </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              placeholder="••••••••"
-            />
-          </div>
+          <FormInput
+            id="confirmPassword"
+            label="Confirm Password"
+            type="password"
+            required
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="••••••••"
+          />
 
           <Button
             type="submit"

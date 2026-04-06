@@ -24,13 +24,17 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <nav
+        className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
+        aria-label="Main navigation"
+      >
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <img
             src="/assets/placeholders/logo-gryph-placeholder.svg"
-            alt="Gryph Club Connect"
+            alt=""
             className="h-8 w-8"
+            aria-hidden="true"
           />
           <span className="text-lg font-bold text-accent">
             Gryph Club Connect
@@ -39,27 +43,31 @@ export default function Navbar() {
 
         {/* Desktop Nav */}
         <div className="hidden items-center gap-6 md:flex">
-          {navLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                location.pathname === link.to
-                  ? "text-primary"
-                  : "text-muted"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {navLinks.map((link) => {
+            const isActive = location.pathname === link.to;
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                aria-current={isActive ? "page" : undefined}
+                className={`text-sm font-medium transition-colors hover:text-primary ${
+                  isActive ? "text-primary" : "text-muted"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
 
           {user ? (
             <div className="flex items-center gap-4">
-              <span className="text-sm text-muted">{user.email}</span>
+              <span className="text-sm text-muted" aria-label="Logged in as">
+                {user.email}
+              </span>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="text-sm font-medium text-muted transition-colors hover:text-primary"
+                className="cursor-pointer text-sm font-medium text-muted transition-colors hover:text-primary"
               >
                 Logout
               </button>
@@ -89,15 +97,17 @@ export default function Navbar() {
         {/* Mobile Hamburger */}
         <button
           type="button"
-          className="inline-flex items-center justify-center rounded-md p-2 text-muted hover:text-accent md:hidden"
+          className="inline-flex cursor-pointer items-center justify-center rounded-md p-2 text-muted hover:text-accent md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle navigation menu"
+          aria-expanded={mobileOpen}
+          aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
         >
           <svg
             className="h-6 w-6"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
             {mobileOpen ? (
               <path
@@ -122,20 +132,22 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="border-t border-border md:hidden">
           <div className="space-y-1 px-4 py-3">
-            {navLinks.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                onClick={() => setMobileOpen(false)}
-                className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-alt ${
-                  location.pathname === link.to
-                    ? "text-primary"
-                    : "text-muted"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              const isActive = location.pathname === link.to;
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-alt ${
+                    isActive ? "text-primary" : "text-muted"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
 
             {user ? (
               <>
@@ -148,7 +160,7 @@ export default function Navbar() {
                     setMobileOpen(false);
                     handleLogout();
                   }}
-                  className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-primary"
+                  className="block w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-primary"
                 >
                   Logout
                 </button>
