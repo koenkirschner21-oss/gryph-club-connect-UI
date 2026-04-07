@@ -23,7 +23,7 @@ export default function DashboardPage() {
         .eq("id", user!.id)
         .single();
 
-      if (!data || !data.program || !data.avatar_url) {
+      if (!data || !data.program?.trim() || !data.avatar_url?.trim()) {
         setProfileIncomplete(true);
       }
     }
