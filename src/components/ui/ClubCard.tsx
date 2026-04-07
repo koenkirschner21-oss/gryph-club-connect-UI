@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Club } from "../../types";
+import { normalizeTags } from "../../lib/normalizeTags";
 import { useClubContext } from "../../context/useClubContext";
 
 interface ClubCardProps {
@@ -26,6 +27,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
 
   const accent = club.brandColor ?? "var(--color-primary)";
   const displayDescription = club.shortDescription || club.description;
+  const tags = normalizeTags(club.tags);
 
   return (
     <Link to={`/clubs/${club.slug}`} className="group block focus:outline-none">
@@ -135,9 +137,9 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
           </p>
 
           {/* Tags */}
-          {club.tags.length > 0 && (
+          {tags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {club.tags.slice(0, 3).map((tag) => (
+              {tags.slice(0, 3).map((tag) => (
                 <span
                   key={tag}
                   className="rounded-md border border-border bg-surface-alt px-2 py-0.5 text-xs font-medium text-muted"
@@ -145,9 +147,9 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
                   #{tag}
                 </span>
               ))}
-              {club.tags.length > 3 && (
+              {tags.length > 3 && (
                 <span className="rounded-md bg-surface-alt px-2 py-0.5 text-xs text-muted">
-                  +{club.tags.length - 3}
+                  +{tags.length - 3}
                 </span>
               )}
             </div>

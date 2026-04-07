@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useClubContext } from "../context/useClubContext";
+import { normalizeTags } from "../lib/normalizeTags";
 import SearchBar from "../components/ui/SearchBar";
 import ClubCard from "../components/ui/ClubCard";
 import Spinner from "../components/ui/Spinner";
@@ -131,7 +132,7 @@ export default function Explore() {
         club.name.toLowerCase().includes(query) ||
         club.description.toLowerCase().includes(query) ||
         (club.shortDescription ?? "").toLowerCase().includes(query) ||
-        club.tags.some((tag) => tag.toLowerCase().includes(query));
+        normalizeTags(club.tags).some((tag) => tag.toLowerCase().includes(query));
 
       return matchesCategory && matchesSearch;
     });

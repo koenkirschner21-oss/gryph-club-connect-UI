@@ -1,5 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../context/useClubContext";
+import { normalizeTags } from "../lib/normalizeTags";
 import { useAuthContext } from "../context/useAuthContext";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -466,13 +467,13 @@ export default function ClubDetails() {
             </Card>
 
             {/* Tags Card */}
-            {club.tags.length > 0 && (
+            {normalizeTags(club.tags).length > 0 && (
               <Card className="p-5">
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted">
                   Tags
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {club.tags.map((tag) => (
+                  {normalizeTags(club.tags).map((tag) => (
                     <span
                       key={tag}
                       className="rounded-md border border-border bg-surface-alt px-2.5 py-1 text-xs font-medium text-muted"

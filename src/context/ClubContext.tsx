@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { normalizeTags } from "../lib/normalizeTags";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club } from "../types";
@@ -52,7 +53,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             logoUrl: row.logo_url ?? undefined,
             bannerUrl: row.banner_url ?? undefined,
             brandColor: row.brand_color ?? undefined,
-            tags: row.tags ?? [],
+            tags: normalizeTags(row.tags),
             contactEmail: row.contact_email ?? "",
             isPublic: row.is_public ?? true,
             isFeatured: row.is_featured ?? false,
