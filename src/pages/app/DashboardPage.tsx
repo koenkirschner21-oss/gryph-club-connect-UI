@@ -1,6 +1,8 @@
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
@@ -8,6 +10,26 @@ import Spinner from "../../components/ui/Spinner";
 export default function DashboardPage() {
   const { user } = useAuthContext();
   const { clubs, joinedClubs, loading } = useClubContext();
+  const [profileIncomplete, setProfileIncomplete] = useState(false);
+
+  // Check whether the user's profile is missing program or avatar_url
+  useEffect(() => {
+    if (!user) return;
+
+    async function checkProfile() {
+      const { data } = await supabase
+        .from("profiles")
+        .select("program, avatar_url")
+        .eq("id", user!.id)
+        .single();
+
+      if (!data || !data.program || !data.avatar_url) {
+        setProfileIncomplete(true);
+      }
+    }
+
+    checkProfile();
+  }, [user]);
 
   const myClubs = clubs.filter((c) => joinedClubs.includes(c.id));
 
@@ -29,6 +51,22 @@ export default function DashboardPage() {
           Manage your clubs and stay connected with your communities.
         </p>
       </div>
+
+      {/* Gentle prompt to complete profile */}
+      {profileIncomplete && (
+        <div className="mb-8 rounded-xl border border-secondary/30 bg-secondary/5 px-5 py-4">
+          <p className="text-sm text-secondary">
+            👋 Your profile is almost ready! Add your program and a profile
+            picture to help others find and connect with you.
+          </p>
+          <Link
+            to="/app/profile"
+            className="mt-2 inline-block text-sm font-medium text-secondary hover:text-secondary-dark"
+          >
+            Complete your profile →
+          </Link>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="mb-10 flex flex-wrap gap-4">

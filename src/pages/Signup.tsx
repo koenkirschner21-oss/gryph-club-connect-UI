@@ -26,7 +26,7 @@ export default function Signup() {
     setLoading(true);
     try {
       await signUp(email, password);
-      navigate("/");
+      navigate("/app/profile");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {
