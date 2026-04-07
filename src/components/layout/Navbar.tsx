@@ -28,7 +28,7 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-surface/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface/90">
+    <header className="sticky top-0 z-50 border-b border-border bg-nav-bg shadow-lg">
       <nav
         className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
         aria-label="Main navigation"
@@ -43,7 +43,7 @@ export default function Navbar() {
               aria-hidden="true"
             />
           </div>
-          <span className="text-base font-extrabold tracking-tight text-accent">
+          <span className="text-base font-extrabold tracking-tight text-text-primary">
             Gryph<span className="text-primary">Club</span>Connect
           </span>
         </Link>
@@ -59,8 +59,8 @@ export default function Navbar() {
                 aria-current={isActive ? "page" : undefined}
                 className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
                   isActive
-                    ? "bg-primary/8 text-primary"
-                    : "text-muted hover:bg-surface-alt hover:text-accent"
+                    ? "bg-primary/15 text-primary-light"
+                    : "text-text-secondary hover:bg-surface-alt hover:text-text-primary"
                 }`}
               >
                 {link.label}
@@ -72,13 +72,13 @@ export default function Navbar() {
 
           {user ? (
             <div className="ml-2 flex items-center gap-3">
-              <span className="text-sm text-muted" aria-label="Logged in as">
+              <span className="text-sm text-text-secondary" aria-label="Logged in as">
                 {user.email}
               </span>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted transition-colors hover:border-primary hover:text-primary"
+                className="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm font-semibold text-text-secondary transition-colors hover:border-primary hover:text-primary"
               >
                 Logout
               </button>
@@ -89,8 +89,8 @@ export default function Navbar() {
                 to="/login"
                 className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
                   location.pathname === "/login"
-                    ? "text-primary"
-                    : "text-muted hover:text-accent"
+                    ? "text-primary-light"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Login
@@ -108,7 +108,7 @@ export default function Navbar() {
         {/* Mobile Hamburger */}
         <button
           type="button"
-          className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted hover:bg-surface-alt hover:text-accent md:hidden"
+          className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-text-secondary hover:bg-surface-alt hover:text-text-primary md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-expanded={mobileOpen}
           aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
@@ -141,7 +141,7 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {mobileOpen && (
-        <div className="border-t border-border bg-surface md:hidden">
+        <div className="border-t border-border bg-nav-bg md:hidden">
           <div className="space-y-1 px-4 py-3">
             {(user ? authNavLinks : navLinks).map((link) => {
               const isActive = location.pathname === link.to;
@@ -153,8 +153,8 @@ export default function Navbar() {
                   aria-current={isActive ? "page" : undefined}
                   className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
                     isActive
-                      ? "bg-primary/8 text-primary"
-                      : "text-muted hover:bg-surface-alt hover:text-accent"
+                      ? "bg-primary/15 text-primary-light"
+                      : "text-text-secondary hover:bg-surface-alt hover:text-text-primary"
                   }`}
                 >
                   {link.label}
@@ -166,7 +166,7 @@ export default function Navbar() {
 
             {user ? (
               <>
-                <span className="block px-3 py-2 text-sm text-muted">
+                <span className="block px-3 py-2 text-sm text-text-secondary">
                   {user.email}
                 </span>
                 <button
@@ -175,7 +175,7 @@ export default function Navbar() {
                     setMobileOpen(false);
                     handleLogout();
                   }}
-                  className="block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-muted transition-colors hover:bg-surface-alt hover:text-primary"
+                  className="block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-alt hover:text-primary"
                 >
                   Logout
                 </button>
@@ -185,7 +185,7 @@ export default function Navbar() {
                 <Link
                   to="/login"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-surface-alt hover:text-accent"
+                  className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-alt hover:text-text-primary"
                 >
                   Login
                 </Link>

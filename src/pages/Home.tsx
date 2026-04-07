@@ -12,7 +12,7 @@ export default function Home() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-accent">
+      <section className="relative overflow-hidden bg-nav-bg">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-20"
           style={{
@@ -35,7 +35,7 @@ export default function Home() {
                 <Button size="lg">Explore Clubs</Button>
               </Link>
               <Link to="/explore">
-                <Button variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-accent">
+                <Button variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-nav-bg">
                   Learn More
                 </Button>
               </Link>
@@ -45,7 +45,7 @@ export default function Home() {
       </section>
 
       {/* Stats Section */}
-      <section className="border-b border-border bg-surface">
+      <section className="border-b border-border bg-surface-alt">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-12 sm:px-6 lg:grid-cols-4 lg:px-8">
           {[
             { value: "200+", label: "Active Clubs" },
@@ -64,7 +64,7 @@ export default function Home() {
       {/* Featured Clubs */}
       <section className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8">
         <div className="mb-10 text-center">
-          <h2 className="text-3xl font-bold text-accent">Featured Clubs</h2>
+          <h2 className="text-3xl font-bold text-text-primary">Featured Clubs</h2>
           <p className="mt-3 text-muted">
             Check out some of the most popular clubs on campus
           </p>
@@ -91,7 +91,7 @@ export default function Home() {
       {savedClubList.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8">
           <div className="mb-10 text-center">
-            <h2 className="text-3xl font-bold text-accent">Your Saved Clubs</h2>
+            <h2 className="text-3xl font-bold text-text-primary">Your Saved Clubs</h2>
             <p className="mt-3 text-muted">
               Clubs you&apos;ve bookmarked for later
             </p>

@@ -68,14 +68,14 @@ export default function ClubDetails() {
   return (
     <>
       {/* Hero Banner */}
-      <div className="relative h-56 w-full overflow-hidden bg-accent sm:h-72 lg:h-80">
+      <div className="relative h-56 w-full overflow-hidden bg-nav-bg sm:h-72 lg:h-80">
         <img
           src={club.bannerUrl ?? club.imageUrl}
           alt=""
           aria-hidden="true"
           className="h-full w-full object-cover opacity-40"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-accent via-accent/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-nav-bg via-nav-bg/60 to-transparent" />
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

@@ -4,7 +4,7 @@ import Footer from "./Footer";
 
 export default function AppShell() {
   return (
-    <div className="flex min-h-screen flex-col bg-surface-alt font-sans text-accent">
+    <div className="flex min-h-screen flex-col bg-page-bg font-sans text-text-primary">
       <Navbar />
       <main id="main-content" className="flex-1">
         <Outlet />
