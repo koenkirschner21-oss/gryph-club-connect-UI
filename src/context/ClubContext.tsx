@@ -39,17 +39,27 @@ export function ClubProvider({ children }: { children: ReactNode }) {
           const mapped: Club[] = data.map((row) => ({
             id: row.id,
             name: row.name ?? "",
+            slug: row.slug ?? row.id,
             description: row.description ?? "",
+            shortDescription: row.short_description ?? undefined,
             category: row.category ?? "",
             memberCount: row.member_count ?? 0,
             meetingSchedule: row.meeting_schedule ?? "",
-            location: row.location ?? "",
+            meetingLocation: row.meeting_location ?? undefined,
+            location: row.location ?? row.meeting_location ?? "",
             imageUrl:
-              row.image_url ?? "/assets/placeholders/placeholder-rect.svg",
+              row.image_url ??
+              row.logo_url ??
+              "/assets/placeholders/placeholder-rect.svg",
+            bannerUrl: row.banner_url ?? undefined,
             tags: row.tags ?? [],
             contactEmail: row.contact_email ?? "",
+            isPublic: row.is_public ?? true,
+            joinCode: row.join_code ?? undefined,
             socialLinks: row.social_links ?? undefined,
             events: row.events ?? [],
+            createdBy: row.created_by ?? undefined,
+            createdAt: row.created_at ?? undefined,
           }));
           setClubs(mapped);
         } else {
@@ -73,6 +83,11 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
   const getClubById = useCallback(
     (clubId: string): Club | undefined => clubs.find((c) => c.id === clubId),
+    [clubs],
+  );
+
+  const getClubBySlug = useCallback(
+    (slug: string): Club | undefined => clubs.find((c) => c.slug === slug),
     [clubs],
   );
 
@@ -223,6 +238,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       error: clubsError,
       categories,
       getClubById,
+      getClubBySlug,
       joinedClubs,
       savedClubs,
       joinClub,
@@ -237,6 +253,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       clubsError,
       categories,
       getClubById,
+      getClubBySlug,
       joinedClubs,
       savedClubs,
       joinClub,

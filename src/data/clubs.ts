@@ -3,6 +3,7 @@ import type { Club } from "../types";
 export const mockClubs: Club[] = [
   {
     id: "gryphon-robotics",
+    slug: "gryphon-robotics",
     name: "Gryphon Robotics Club",
     description:
       "Build robots, compete in national competitions, and learn about mechanical and electrical engineering. We welcome all skill levels from beginners to advanced builders.",
@@ -13,6 +14,7 @@ export const mockClubs: Club[] = [
     imageUrl: "/assets/placeholders/placeholder-rect.svg",
     tags: ["Engineering", "Technology", "Competition"],
     contactEmail: "robotics@uoguelph.ca",
+    isPublic: true,
     socialLinks: {
       website: "https://example.com",
       instagram: "https://instagram.com",
@@ -41,6 +43,7 @@ export const mockClubs: Club[] = [
   },
   {
     id: "debate-society",
+    slug: "debate-society",
     name: "University of Guelph Debate Society",
     description:
       "Sharpen your public speaking and critical thinking skills through competitive and casual debate formats including British Parliamentary and Canadian National style.",
@@ -51,6 +54,7 @@ export const mockClubs: Club[] = [
     imageUrl: "/assets/placeholders/placeholder-rect.svg",
     tags: ["Academic", "Public Speaking", "Competition"],
     contactEmail: "debate@uoguelph.ca",
+    isPublic: true,
     socialLinks: {
       instagram: "https://instagram.com",
     },
@@ -68,6 +72,7 @@ export const mockClubs: Club[] = [
   },
   {
     id: "hiking-club",
+    slug: "hiking-club",
     name: "Guelph Hiking & Outdoors Club",
     description:
       "Explore the trails around Guelph and beyond. We organize weekly hikes, camping trips, and nature photography outings for all fitness levels.",
@@ -78,6 +83,7 @@ export const mockClubs: Club[] = [
     imageUrl: "/assets/placeholders/placeholder-rect.svg",
     tags: ["Outdoors", "Fitness", "Social"],
     contactEmail: "hiking@uoguelph.ca",
+    isPublic: true,
     socialLinks: {
       website: "https://example.com",
       instagram: "https://instagram.com",
@@ -105,6 +111,7 @@ export const mockClubs: Club[] = [
   },
   {
     id: "photography-club",
+    slug: "photography-club",
     name: "Gryphon Photography Society",
     description:
       "A community for photography enthusiasts of all levels. We host photo walks, workshops, and exhibitions throughout the academic year.",
@@ -115,6 +122,7 @@ export const mockClubs: Club[] = [
     imageUrl: "/assets/placeholders/placeholder-rect.svg",
     tags: ["Arts", "Creative", "Social"],
     contactEmail: "photo@uoguelph.ca",
+    isPublic: true,
     events: [
       {
         id: "e6",
@@ -129,6 +137,7 @@ export const mockClubs: Club[] = [
   },
   {
     id: "cs-club",
+    slug: "cs-club",
     name: "Computer Science Club",
     description:
       "The CS Club brings together students interested in programming, hackathons, tech talks, and collaborative coding projects.",
@@ -139,6 +148,7 @@ export const mockClubs: Club[] = [
     imageUrl: "/assets/placeholders/placeholder-rect.svg",
     tags: ["Technology", "Programming", "Hackathons"],
     contactEmail: "csclub@uoguelph.ca",
+    isPublic: true,
     socialLinks: {
       website: "https://example.com",
       discord: "https://discord.gg",
@@ -165,6 +175,7 @@ export const mockClubs: Club[] = [
   },
   {
     id: "dance-team",
+    slug: "dance-team",
     name: "Guelph Dance Team",
     description:
       "Express yourself through dance! We cover styles including hip hop, contemporary, jazz, and K-pop. No experience needed to join.",
@@ -175,6 +186,7 @@ export const mockClubs: Club[] = [
     imageUrl: "/assets/placeholders/placeholder-rect.svg",
     tags: ["Arts", "Fitness", "Performance"],
     contactEmail: "dance@uoguelph.ca",
+    isPublic: true,
     socialLinks: {
       instagram: "https://instagram.com",
     },
