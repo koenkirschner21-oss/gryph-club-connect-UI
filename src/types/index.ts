@@ -7,16 +7,22 @@ export interface Club {
   slug: string;
   description: string;
   shortDescription?: string;
+  longDescription?: string;
   category: string;
   memberCount: number;
   meetingSchedule: string;
   meetingLocation?: string;
   location: string;
   imageUrl: string;
+  logoUrl?: string;
   bannerUrl?: string;
+  brandColor?: string;
   tags: string[];
   contactEmail: string;
   isPublic: boolean;
+  isFeatured?: boolean;
+  isVerified?: boolean;
+  abbreviation?: string;
   joinCode?: string;
   socialLinks?: {
     website?: string;
