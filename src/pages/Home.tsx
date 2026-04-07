@@ -14,6 +14,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-page-bg">
         <div className="hero-overlay absolute inset-0" aria-hidden="true" />
+        <div className="hero-glow absolute inset-0" aria-hidden="true" />
         <div
           className="absolute inset-0 bg-cover bg-center opacity-8"
           style={{
@@ -21,29 +22,29 @@ export default function Home() {
               "url(/assets/placeholders/hero-placeholder.jpg)",
           }}
         />
-        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+        <div className="relative mx-auto max-w-7xl px-4 py-28 sm:px-6 sm:py-36 lg:px-8">
           <div className="max-w-3xl">
             {/* Brand lockup */}
-            <div className="mb-8 flex items-center gap-3">
+            <div className="mb-6 flex items-center gap-3">
               <img
                 src="/assets/gryphon-logo.svg"
                 alt=""
-                className="h-12 w-12"
+                className="h-14 w-14"
                 aria-hidden="true"
               />
               <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
                 University of Guelph
               </span>
             </div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl leading-[1.05]">
               Discover Your{" "}
               <span className="text-secondary">Community</span> at Guelph
             </h1>
-            <p className="mt-5 max-w-xl text-lg text-muted">
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
               Browse 200+ student clubs, find your passion, and connect with
               like-minded Gryphons. Your university experience starts here.
             </p>
-            <div className="mt-8 flex flex-wrap gap-4">
+            <div className="mt-10 flex flex-wrap gap-4">
               <Link to="/explore">
                 <Button size="lg">Explore Clubs</Button>
               </Link>
@@ -58,8 +59,8 @@ export default function Home() {
       </section>
 
       {/* Stats Section */}
-      <section className="border-t border-b border-border bg-card">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 py-12 sm:px-6 lg:grid-cols-4 lg:px-8">
+      <section className="border-t border-b border-border bg-card shadow-elevated">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 py-14 sm:px-6 lg:grid-cols-4 lg:px-8">
           {[
             { value: "200+", label: "Active Clubs" },
             { value: "5,000+", label: "Student Members" },
@@ -67,8 +68,8 @@ export default function Home() {
             { value: "100+", label: "Events Monthly" },
           ].map((stat) => (
             <div key={stat.label} className="text-center">
-              <p className="text-3xl font-extrabold text-primary">{stat.value}</p>
-              <p className="mt-1.5 text-sm font-medium text-muted">{stat.label}</p>
+              <p className="text-4xl font-extrabold text-primary">{stat.value}</p>
+              <p className="mt-2 text-sm font-medium text-muted">{stat.label}</p>
             </div>
           ))}
         </div>

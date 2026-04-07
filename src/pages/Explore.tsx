@@ -24,7 +24,7 @@ function SpotlightCard({ club }: { club: Club }) {
   return (
     <a
       href={`/clubs/${club.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-border-light hover:shadow-lg sm:flex-row"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card card-glow-hover hover:-translate-y-1 hover:border-border-light sm:flex-row"
     >
       {/* Left accent */}
       <div
@@ -158,34 +158,35 @@ export default function Explore() {
     <>
       {/* ──────────── Hero Section ──────────── */}
       <section className="relative overflow-hidden bg-page-bg">
-        {/* Subtle warm gradient */}
+        {/* Layered warm gradient */}
         <div className="hero-overlay absolute inset-0" aria-hidden="true" />
+        <div className="hero-glow absolute inset-0" aria-hidden="true" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8 lg:py-32">
+        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-36">
           <div className="max-w-3xl">
-            <div className="mb-6 flex items-center gap-3">
+            <div className="mb-5 flex items-center gap-3">
               <img
                 src="/assets/gryphon-logo.svg"
                 alt=""
-                className="h-10 w-10"
+                className="h-12 w-12"
                 aria-hidden="true"
               />
               <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
                 Gryph Club Connect
               </span>
             </div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl leading-[1.05]">
               Discover Your{" "}
               <span className="text-primary">Club</span>
             </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
               Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
               organizations — from academics and athletics to arts and culture.
               Find your people and get involved.
             </p>
           </div>
 
-          {/* Search bar */}
+          {/* Search bar — more prominent */}
           <div className="mt-10 max-w-2xl">
             <SearchBar
               value={search}
@@ -198,16 +199,16 @@ export default function Explore() {
           {clubs.length > 0 && (
             <div className="mt-8 flex flex-wrap gap-8 text-sm">
               <span className="text-muted">
-                <strong className="text-xl font-bold text-white">{clubs.length}</strong>{" "}
+                <strong className="text-2xl font-bold text-white">{clubs.length}</strong>{" "}
                 <span className="ml-1">clubs</span>
               </span>
               <span className="text-muted">
-                <strong className="text-xl font-bold text-white">{categories.length - 1}</strong>{" "}
+                <strong className="text-2xl font-bold text-white">{categories.length - 1}</strong>{" "}
                 <span className="ml-1">categories</span>
               </span>
               {featuredClubs.length > 0 && (
                 <span className="text-muted">
-                  <strong className="text-xl font-bold text-white">{featuredClubs.length}</strong>{" "}
+                  <strong className="text-2xl font-bold text-white">{featuredClubs.length}</strong>{" "}
                   <span className="ml-1">featured</span>
                 </span>
               )}

@@ -68,7 +68,7 @@ export default function ClubDetails() {
   return (
     <>
       {/* Hero Banner */}
-      <div className="relative h-56 w-full overflow-hidden bg-page-bg sm:h-72 lg:h-80">
+      <div className="relative h-60 w-full overflow-hidden bg-page-bg sm:h-80 lg:h-96">
         <img
           src={club.bannerUrl ?? club.imageUrl}
           alt=""
@@ -76,15 +76,16 @@ export default function ClubDetails() {
           className="h-full w-full object-cover opacity-40"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-page-bg via-page-bg/60 to-transparent" />
+        <div className="hero-glow absolute inset-0" aria-hidden="true" />
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Club identity row — overlaps hero */}
-        <div className="-mt-16 mb-8 flex flex-col gap-5 sm:-mt-20 sm:flex-row sm:items-end sm:gap-6">
+        <div className="-mt-20 mb-10 flex flex-col gap-6 sm:-mt-24 sm:flex-row sm:items-end sm:gap-7">
           {/* Club avatar / logo */}
           <div className="relative z-10 flex-shrink-0">
             <div
-              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-card shadow-lg sm:h-28 sm:w-28"
+              className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border-4 border-card shadow-elevated sm:h-32 sm:w-32"
               style={{ backgroundColor: club.brandColor ?? "var(--color-primary)" }}
             >
               {club.logoUrl ? (
@@ -121,7 +122,7 @@ export default function ClubDetails() {
                 </span>
               )}
             </div>
-            <h1 className="text-2xl font-extrabold text-white sm:text-3xl lg:text-4xl">
+            <h1 className="text-3xl font-extrabold text-white sm:text-4xl lg:text-5xl leading-tight">
               {club.name}
             </h1>
             {/* Quick meta */}
@@ -231,11 +232,12 @@ export default function ClubDetails() {
           {/* Main Content */}
           <div className="space-y-8 lg:col-span-2">
             {/* Description */}
-            <Card className="p-6">
-              <h2 className="mb-3 text-lg font-bold text-white">About</h2>
-              <p className="leading-relaxed text-muted">{club.longDescription ?? club.description}</p>
+            <Card className="p-7">
+              <h2 className="mb-4 text-xl font-bold text-white">About</h2>
+              <div className="divider-gold mb-5" aria-hidden="true" />
+              <p className="text-base leading-7 text-muted">{club.longDescription ?? club.description}</p>
               {club.shortDescription && club.longDescription && (
-                <p className="mt-3 text-sm font-medium text-white/70 italic">
+                <p className="mt-4 text-sm font-medium text-white/70 italic leading-relaxed">
                   {club.shortDescription}
                 </p>
               )}
@@ -341,10 +343,10 @@ export default function ClubDetails() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* Details Card */}
-            <Card className="overflow-hidden">
-              <div className="border-b border-border bg-surface-alt px-5 py-3">
+            <Card className="overflow-hidden shadow-elevated">
+              <div className="border-b border-border bg-surface-alt px-5 py-4">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-muted">
                   Club Details
                 </h3>

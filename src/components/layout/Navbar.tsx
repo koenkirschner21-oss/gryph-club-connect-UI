@@ -34,16 +34,16 @@ export default function Navbar() {
         aria-label="Main navigation"
       >
         {/* Logo — gryphon + wordmark matching brand identity */}
-        <Link to="/" className="flex items-center gap-3 group">
+        <Link to="/" className="flex items-center gap-2.5 group">
           <img
             src="/assets/gryphon-logo.svg"
             alt=""
-            className="h-9 w-9"
+            className="h-10 w-10"
             aria-hidden="true"
           />
-          <span className="text-base font-extrabold tracking-tight">
+          <span className="text-lg font-extrabold tracking-tight leading-none">
             <span className="text-primary">Club</span>
-            <span className="text-secondary">Connect</span>
+            <span className="text-secondary/90">Connect</span>
           </span>
         </Link>
 

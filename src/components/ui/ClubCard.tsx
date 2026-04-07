@@ -21,17 +21,17 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
 
   return (
     <Link to={`/clubs/${club.slug}`} className="group block focus:outline-none">
-      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-border-light group-hover:shadow-lg group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-page-bg">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card card-glow-hover group-hover:-translate-y-1 group-hover:border-border-light group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-page-bg">
         {/* Accent top bar */}
         <div className="h-1 w-full" style={{ backgroundColor: accent }} />
 
         {/* Card body */}
         <div className={`flex flex-1 flex-col ${variant === "compact" ? "p-5" : "p-6"}`}>
           {/* Top row: logo/initials + meta */}
-          <div className="mb-4 flex items-start gap-4">
+          <div className="mb-5 flex items-start gap-4">
             {/* Logo or initials */}
             <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-elevated"
               style={{ backgroundColor: accent }}
             >
               {club.logoUrl ? (
@@ -48,7 +48,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
             <div className="min-w-0 flex-1">
               {/* Name + verified */}
               <div className="flex items-center gap-1.5">
-                <h3 className="truncate text-base font-bold leading-tight text-white group-hover:text-primary-light transition-colors">
+                <h3 className="truncate text-lg font-bold leading-tight text-white group-hover:text-primary-light transition-colors">
                   {club.name}
                 </h3>
                 {club.isVerified && (
@@ -68,7 +68,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
               </div>
 
               {/* Category + member count */}
-              <div className="mt-1.5 flex items-center gap-2.5 text-xs">
+              <div className="mt-2 flex items-center gap-2.5 text-xs">
                 <span className="inline-block rounded-full bg-primary/15 px-2.5 py-0.5 font-semibold text-primary-light">
                   {club.category}
                 </span>
@@ -126,10 +126,10 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
             {displayDescription}
           </p>
 
-          {/* Tags */}
+          {/* Tags — limited to 2 visible + "+N" */}
           {tags.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
-              {tags.slice(0, 3).map((tag) => (
+              {tags.slice(0, 2).map((tag) => (
                 <span
                   key={tag}
                   className="rounded-md border border-border bg-surface-alt px-2 py-0.5 text-xs font-medium text-muted"
@@ -137,16 +137,16 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
                   #{tag}
                 </span>
               ))}
-              {tags.length > 3 && (
+              {tags.length > 2 && (
                 <span className="rounded-md bg-surface-alt px-2 py-0.5 text-xs text-muted">
-                  +{tags.length - 3}
+                  +{tags.length - 2}
                 </span>
               )}
             </div>
           )}
 
           {/* Bottom row: location + badges */}
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-5 flex items-center justify-between">
             {club.location ? (
               <div className="flex items-center gap-1.5 text-xs text-muted">
                 <svg

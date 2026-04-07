@@ -7,15 +7,15 @@ export default function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div>
-            <div className="mb-4 flex items-center gap-3">
+            <div className="mb-4 flex items-center gap-2.5">
               <img
                 src="/assets/gryphon-logo.svg"
                 alt="Gryph Club Connect"
-                className="h-8 w-8"
+                className="h-10 w-10"
               />
-              <span className="text-base font-bold">
+              <span className="text-lg font-bold">
                 <span className="text-primary">Club</span>
-                <span className="text-secondary">Connect</span>
+                <span className="text-secondary/90">Connect</span>
               </span>
             </div>
             <p className="text-sm text-white/70">
