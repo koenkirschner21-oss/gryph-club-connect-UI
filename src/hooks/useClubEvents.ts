@@ -117,6 +117,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
             type: "new_event",
             message: `New event: ${fields.title} on ${fields.date}`,
             club_id: clubId,
+            reference_id: data.id as string,
           }));
           supabase
             .from("notifications")

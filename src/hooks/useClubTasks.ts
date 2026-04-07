@@ -131,9 +131,10 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
           .from("notifications")
           .insert({
             user_id: fields.assignedTo,
-            type: "club_update",
+            type: "task_assigned",
             message: `You were assigned a task: ${fields.title}`,
             club_id: clubId,
+            reference_id: data.id as string,
           })
           .then(({ error: notifErr }) => {
             if (notifErr) {

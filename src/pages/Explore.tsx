@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useClubContext } from "../context/useClubContext";
+import { useAuthContext } from "../context/useAuthContext";
+import { useUserInterests } from "../hooks/useUserInterests";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
 import SearchBar from "../components/ui/SearchBar";
@@ -87,17 +89,38 @@ function SpotlightCard({ club }: { club: Club }) {
   );
 }
 
+// ─── Size filter options ─────────────────────────────────────────────────────
+type SizeFilter = "all" | "small" | "medium" | "large";
+const SIZE_LABELS: Record<SizeFilter, string> = {
+  all: "Any Size",
+  small: "Small (≤20)",
+  medium: "Medium (21–50)",
+  large: "Large (50+)",
+};
+
+function matchesSize(club: Club, filter: SizeFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "small") return club.memberCount <= 20;
+  if (filter === "medium") return club.memberCount > 20 && club.memberCount <= 50;
+  return club.memberCount > 50;
+}
+
 // ─── Main Explore page ──────────────────────────────────────────────────────
 export default function Explore() {
   const { clubs, categories, loading, error } = useClubContext();
+  const { user } = useAuthContext();
+  const { interests } = useUserInterests();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [sizeFilter, setSizeFilter] = useState<SizeFilter>("all");
 
-  const hasActiveFilters = search !== "" || activeCategory !== "All";
+  const hasActiveFilters =
+    search !== "" || activeCategory !== "All" || sizeFilter !== "all";
 
   const clearFilters = useCallback(() => {
     setSearch("");
     setActiveCategory("All");
+    setSizeFilter("all");
   }, []);
 
   // Derived lists
@@ -108,6 +131,36 @@ export default function Explore() {
 
   const spotlightClubs = useMemo(
     () => clubs.filter((c) => c.isVerified).slice(0, 3),
+    [clubs],
+  );
+
+  // Recommended clubs — match user interests (only when logged in with interests)
+  const recommendedClubs = useMemo(() => {
+    if (!user || interests.length === 0) return [];
+    return clubs
+      .filter((c) => interests.includes(c.category))
+      .slice(0, 6);
+  }, [clubs, user, interests]);
+
+  // Trending clubs — sorted by member count (proxy for popularity)
+  const trendingClubs = useMemo(
+    () =>
+      [...clubs]
+        .sort((a, b) => b.memberCount - a.memberCount)
+        .slice(0, 6),
+    [clubs],
+  );
+
+  // New clubs — sorted by creation date (most recent first)
+  const newClubs = useMemo(
+    () =>
+      [...clubs]
+        .filter((c) => c.createdAt)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime(),
+        )
+        .slice(0, 6),
     [clubs],
   );
 
@@ -124,9 +177,9 @@ export default function Explore() {
         (club.shortDescription ?? "").toLowerCase().includes(query) ||
         normalizeTags(club.tags).some((tag) => tag.toLowerCase().includes(query));
 
-      return matchesCategory && matchesSearch;
+      return matchesCategory && matchesSearch && matchesSize(club, sizeFilter);
     });
-  }, [clubs, search, activeCategory]);
+  }, [clubs, search, activeCategory, sizeFilter]);
 
   /** Build a contextual message for the empty state. */
   const emptyStateMessage = useMemo(() => {
@@ -313,36 +366,116 @@ export default function Explore() {
       {/* ──────────── Filter Bar ──────────── */}
       <section className="sticky top-16 z-30 border-t border-b border-border bg-page-bg/95 backdrop-blur supports-[backdrop-filter]:bg-page-bg/80">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-2">
-              {categories.map((cat) => (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActiveCategory(cat)}
+                    className={`filter-chip ${
+                      activeCategory === cat
+                        ? "filter-chip-active"
+                        : "filter-chip-inactive"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {hasActiveFilters && (
                 <button
-                  key={cat}
                   type="button"
-                  onClick={() => setActiveCategory(cat)}
-                  className={`filter-chip ${
-                    activeCategory === cat
-                      ? "filter-chip-active"
-                      : "filter-chip-inactive"
+                  onClick={clearFilters}
+                  className="self-start text-sm font-medium text-primary-light transition-colors hover:text-primary cursor-pointer sm:self-center"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+
+            {/* Size filter */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted">Size:</span>
+              {(Object.keys(SIZE_LABELS) as SizeFilter[]).map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => setSizeFilter(size)}
+                  className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    sizeFilter === size
+                      ? "bg-secondary/20 text-secondary"
+                      : "bg-surface text-muted hover:bg-surface-alt hover:text-white"
                   }`}
                 >
-                  {cat}
+                  {SIZE_LABELS[size]}
                 </button>
               ))}
             </div>
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="self-start text-sm font-medium text-primary-light transition-colors hover:text-primary cursor-pointer sm:self-center"
-              >
-                Clear filters
-              </button>
-            )}
           </div>
         </div>
       </section>
+
+      {/* ──────────── Discovery Sections ──────────── */}
+      {!loading && !hasActiveFilters && (
+        <div className="mx-auto max-w-7xl px-4 pt-10 sm:px-6 lg:px-8">
+          {/* Recommended for You */}
+          {recommendedClubs.length > 0 && (
+            <section className="mb-12">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="text-xl" aria-hidden="true">💡</span>
+                <h2 className="text-xl font-bold text-white">
+                  Recommended for You
+                </h2>
+                <div className="divider-gold ml-2" aria-hidden="true" />
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {recommendedClubs.map((club) => (
+                  <ClubCard key={club.id} club={club} variant="compact" />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Trending */}
+          {trendingClubs.length > 0 && (
+            <section className="mb-12">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="text-xl" aria-hidden="true">🔥</span>
+                <h2 className="text-xl font-bold text-white">
+                  Trending Clubs
+                </h2>
+                <div className="divider-gold ml-2" aria-hidden="true" />
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {trendingClubs.map((club) => (
+                  <ClubCard key={club.id} club={club} variant="compact" />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* New Clubs */}
+          {newClubs.length > 0 && (
+            <section className="mb-12">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="text-xl" aria-hidden="true">✨</span>
+                <h2 className="text-xl font-bold text-white">
+                  Newly Created
+                </h2>
+                <div className="divider-gold ml-2" aria-hidden="true" />
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {newClubs.map((club) => (
+                  <ClubCard key={club.id} club={club} variant="compact" />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
 
       {/* ──────────── Main Results ──────────── */}
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">

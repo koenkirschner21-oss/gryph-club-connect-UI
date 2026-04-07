@@ -21,6 +21,8 @@ import ClubEventsPage from "./pages/app/ClubEventsPage";
 import ClubMembersPage from "./pages/app/ClubMembersPage";
 import ManageClubPage from "./pages/app/ManageClubPage";
 import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
+import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
+import OnboardingPage from "./pages/app/OnboardingPage";
 import ProfilePage from "./pages/app/ProfilePage";
 
 export default function App() {
@@ -80,6 +82,14 @@ export default function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/app/onboarding"
+                  element={
+                    <ProtectedRoute>
+                      <OnboardingPage />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Club workspace with sidebar layout */}
                 <Route
@@ -96,6 +106,7 @@ export default function App() {
                   <Route path="tasks" element={<ClubTasksPage />} />
                   <Route path="events" element={<ClubEventsPage />} />
                   <Route path="members" element={<ClubMembersPage />} />
+                  <Route path="analytics" element={<ClubAnalyticsPage />} />
                   <Route path="settings" element={<ManageClubPage />} />
                 </Route>
 

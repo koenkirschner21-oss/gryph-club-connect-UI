@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotifications } from "../../hooks/useNotifications";
+import type { NotificationType } from "../../types";
+
+const NOTIFICATION_ICONS: Record<NotificationType, string> = {
+  task_assigned: "📋",
+  new_event: "📅",
+  announcement: "📢",
+  join_approved: "✅",
+  club_update: "🔔",
+};
 
 export default function NotificationBell() {
   const { notifications, unreadCount, markRead, markAllRead } =
@@ -108,7 +117,10 @@ export default function NotificationBell() {
                     aria-hidden="true"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white">{n.message}</p>
+                    <p className="text-sm text-white">
+                      <span className="mr-1.5">{NOTIFICATION_ICONS[n.type] ?? "🔔"}</span>
+                      {n.message}
+                    </p>
                     <p className="mt-0.5 text-xs text-muted">
                       {new Date(n.createdAt).toLocaleDateString("en-US", {
                         month: "short",

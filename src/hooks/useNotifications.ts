@@ -12,6 +12,7 @@ function mapRow(row: Record<string, unknown>): Notification {
     message: (row.message as string) ?? "",
     read: (row.read as boolean) ?? false,
     clubId: (row.club_id as string) ?? undefined,
+    referenceId: (row.reference_id as string) ?? undefined,
     createdAt: (row.created_at as string) ?? "",
   };
 }
