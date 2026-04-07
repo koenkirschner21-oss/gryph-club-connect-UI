@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
                 CHECK (priority IN ('low', 'medium', 'high')),
   assigned_to uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   due_date    date,
-  created_by  uuid NOT NULL REFERENCES auth.users(id),
+  created_by  uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
