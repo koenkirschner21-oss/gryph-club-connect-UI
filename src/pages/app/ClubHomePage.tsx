@@ -4,13 +4,14 @@ import { useClubEvents } from "../../hooks/useClubEvents";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
+import Spinner from "../../components/ui/Spinner";
 
 export default function ClubHomePage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { getClubById } = useClubContext();
   const club = getClubById(clubId ?? "");
   const { events, loading: eventsLoading } = useClubEvents(clubId);
-  const { posts } = useClubPosts(clubId);
+  const { posts, loading: postsLoading } = useClubPosts(clubId);
 
   if (!club) return null;
 
@@ -61,7 +62,11 @@ export default function ClubHomePage() {
       {/* Recent Activity — real data from announcements */}
       <div className="mt-8">
         <h2 className="mb-4 text-lg font-bold text-white">Recent Announcements</h2>
-        {posts.length === 0 ? (
+        {postsLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner label="Loading announcements…" />
+          </div>
+        ) : posts.length === 0 ? (
           <Card className="p-6 text-center">
             <p className="text-sm text-muted">
               No announcements yet. Check back soon!

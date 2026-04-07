@@ -47,7 +47,7 @@ export default function ClubMembersPage() {
     setActionLoading(memberId);
     setFeedback(null);
     await updateRole(memberId, "member");
-    setFeedback({ type: "success", text: "Member demoted to member." });
+    setFeedback({ type: "success", text: "Member demoted to regular member." });
     setActionLoading(null);
   }
 
@@ -98,7 +98,7 @@ export default function ClubMembersPage() {
     const busy = actionLoading === memberId;
 
     return (
-      <div className="flex flex-shrink-0 gap-2">
+      <div className="flex flex-shrink-0 flex-wrap gap-2">
         {memberRole === "member" ? (
           <Button
             variant="ghost"
@@ -106,7 +106,7 @@ export default function ClubMembersPage() {
             disabled={busy}
             onClick={() => handlePromote(memberId)}
           >
-            Promote
+            Promote to Exec
           </Button>
         ) : (
           <Button
@@ -115,7 +115,7 @@ export default function ClubMembersPage() {
             disabled={busy}
             onClick={() => handleDemote(memberId)}
           >
-            Demote
+            Demote to Member
           </Button>
         )}
         <Button
@@ -152,7 +152,7 @@ export default function ClubMembersPage() {
       {/* Join code section */}
       {club?.joinCode && (
         <Card className="mb-6 p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-sm font-semibold text-white">
                 Invite Code

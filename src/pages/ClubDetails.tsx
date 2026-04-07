@@ -142,7 +142,7 @@ export default function ClubDetails() {
               )}
               {pending && (
                 <span className="inline-block rounded-full bg-yellow-500 px-3 py-0.5 text-xs font-semibold text-white shadow">
-                  Requested
+                  Pending Approval
                 </span>
               )}
             </div>
@@ -258,7 +258,7 @@ export default function ClubDetails() {
 
         <div className="grid gap-8 pb-16 lg:grid-cols-3">
           {/* Main Content */}
-          <div className="space-y-8 lg:col-span-2">
+          <div className="space-y-8 col-span-full lg:col-span-2">
             {/* Description */}
             <Card className="p-7">
               <h2 className="mb-4 text-xl font-bold text-white">About</h2>
@@ -416,7 +416,7 @@ export default function ClubDetails() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className="col-span-full space-y-6 lg:col-span-1">
             {/* Details Card */}
             <Card className="overflow-hidden shadow-elevated">
               <div className="border-b border-border bg-surface-alt px-5 py-4">

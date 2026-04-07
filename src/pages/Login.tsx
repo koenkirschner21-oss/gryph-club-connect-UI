@@ -44,6 +44,7 @@ export default function Login() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <fieldset disabled={loading} className="space-y-4">
           <FormInput
             id="email"
             label="Email"
@@ -65,6 +66,7 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
           />
+          </fieldset>
 
           <Button
             type="submit"

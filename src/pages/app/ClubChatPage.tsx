@@ -52,14 +52,14 @@ export default function ClubChatPage() {
 
   if (loading) {
     return (
-      <div className="flex h-[calc(100vh-8rem)] items-center justify-center">
+      <div className="flex h-[60vh] items-center justify-center md:h-[calc(100vh-4rem)]">
         <Spinner label="Loading messages…" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] md:h-[calc(100vh-4rem)]">
+    <div className="flex h-[calc(100dvh-8rem)] md:h-[calc(100dvh-4rem)]">
       {/* Channel list */}
       <div className="hidden w-48 flex-shrink-0 border-r border-border bg-surface-alt md:block">
         <div className="p-3">
@@ -95,7 +95,7 @@ export default function ClubChatPage() {
 
           {/* Mobile channel picker */}
           <select
-            className="ml-auto rounded-md border border-border bg-surface px-2 py-1 text-xs text-white md:hidden"
+            className="ml-auto rounded-md border border-border bg-surface px-3 py-2 text-sm text-white md:hidden"
             value={activeChannel}
             onChange={(e) => setActiveChannel(e.target.value as ChannelName)}
           >
