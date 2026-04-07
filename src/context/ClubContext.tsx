@@ -8,7 +8,6 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
-import { mockClubs, categories as fallbackCategories } from "../data/clubs";
 import type { Club } from "../types";
 
 export function ClubProvider({ children }: { children: ReactNode }) {
@@ -16,7 +15,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const userId = user?.id;
 
   // ---- Clubs data ----
-  const [clubs, setClubs] = useState<Club[]>(mockClubs);
+  const [clubs, setClubs] = useState<Club[]>([]);
   const [clubsLoading, setClubsLoading] = useState(true);
   const [clubsError, setClubsError] = useState<string | null>(null);
 
@@ -31,8 +30,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (error) {
           console.error("Failed to load clubs:", error.message);
-          // Fall back to mock data so the app remains usable
-          setClubs(mockClubs);
           setClubsError(error.message);
         } else if (data && data.length > 0) {
           // Map DB rows → Club shape. Fields not in DB get safe defaults.
@@ -62,10 +59,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             createdAt: row.created_at ?? undefined,
           }));
           setClubs(mapped);
-        } else {
-          // Empty table – use mock data as seed display
-          setClubs(mockClubs);
         }
+        // If data is empty, clubs stays as [] — no mock fallback
         setClubsLoading(false);
       });
 
@@ -76,7 +71,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
   // Derive categories from current clubs list
   const categories = useMemo(() => {
-    if (clubs === mockClubs) return fallbackCategories;
     const cats = new Set(clubs.map((c) => c.category).filter(Boolean));
     return ["All", ...Array.from(cats).sort()];
   }, [clubs]);

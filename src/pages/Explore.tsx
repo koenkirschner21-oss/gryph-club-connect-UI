@@ -95,7 +95,8 @@ export default function Explore() {
           role="alert"
           className="mb-6 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
         >
-          Could not load clubs from the server. Showing sample data instead.
+          Could not load clubs from the server. Please check your connection and
+          try again.
         </div>
       )}
 
