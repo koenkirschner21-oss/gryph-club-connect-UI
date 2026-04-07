@@ -19,6 +19,7 @@ import ClubChatPage from "./pages/app/ClubChatPage";
 import ClubTasksPage from "./pages/app/ClubTasksPage";
 import ClubEventsPage from "./pages/app/ClubEventsPage";
 import ClubMembersPage from "./pages/app/ClubMembersPage";
+import ManageClubPage from "./pages/app/ManageClubPage";
 import ProfilePage from "./pages/app/ProfilePage";
 
 export default function App() {
@@ -93,6 +94,7 @@ export default function App() {
                   <Route path="tasks" element={<ClubTasksPage />} />
                   <Route path="events" element={<ClubEventsPage />} />
                   <Route path="members" element={<ClubMembersPage />} />
+                  <Route path="settings" element={<ManageClubPage />} />
                 </Route>
 
                 {/* Catch-all 404 */}

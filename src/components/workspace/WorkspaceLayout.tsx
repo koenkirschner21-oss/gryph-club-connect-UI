@@ -12,9 +12,11 @@ const workspaceLinks = [
 
 export default function WorkspaceLayout() {
   const { clubId } = useParams<{ clubId: string }>();
-  const { getClubById, loading } = useClubContext();
+  const { getClubById, loading, getUserRole } = useClubContext();
 
   const club = getClubById(clubId ?? "");
+  const role = getUserRole(clubId ?? "");
+  const isAdminOrExec = role === "admin" || role === "exec";
 
   if (loading) {
     return (
@@ -68,6 +70,20 @@ export default function WorkspaceLayout() {
                 {link.label}
               </NavLink>
             ))}
+            {isAdminOrExec && (
+              <NavLink
+                to="settings"
+                className={({ isActive }) =>
+                  `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted hover:bg-surface-alt hover:text-white"
+                  }`
+                }
+              >
+                Settings
+              </NavLink>
+            )}
           </nav>
 
           {/* Public profile link */}
@@ -115,6 +131,20 @@ export default function WorkspaceLayout() {
               {link.label}
             </NavLink>
           ))}
+          {isAdminOrExec && (
+            <NavLink
+              to="settings"
+              className={({ isActive }) =>
+                `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted hover:bg-surface-alt"
+                }`
+              }
+            >
+              Settings
+            </NavLink>
+          )}
         </nav>
 
         {/* Workspace content */}
