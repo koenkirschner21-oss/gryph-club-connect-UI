@@ -104,27 +104,34 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
-    supabase
-      .from("user_clubs")
-      .select("club_id, type")
-      .eq("user_id", userId)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to load user clubs:", error.message);
-          setFetchedForUser(userId);
-          return;
-        }
-        const joined: string[] = [];
-        const saved: string[] = [];
-        for (const row of data ?? []) {
-          if (row.type === "joined") joined.push(row.club_id);
-          else if (row.type === "saved") saved.push(row.club_id);
-        }
-        setJoinedClubs(joined);
-        setSavedClubs(saved);
-        setFetchedForUser(userId);
-      });
+    // Fetch memberships from club_members and saved clubs from user_clubs in parallel
+    Promise.all([
+      supabase
+        .from("club_members")
+        .select("club_id")
+        .eq("user_id", userId)
+        .eq("status", "active"),
+      supabase
+        .from("user_clubs")
+        .select("club_id")
+        .eq("user_id", userId)
+        .eq("type", "saved"),
+    ]).then(([membersRes, savedRes]) => {
+      if (cancelled) return;
+      if (membersRes.error) {
+        console.error("Failed to load club memberships:", membersRes.error.message);
+      }
+      if (savedRes.error) {
+        console.error("Failed to load saved clubs:", savedRes.error.message);
+      }
+      setJoinedClubs(
+        (membersRes.data ?? []).map((row) => row.club_id),
+      );
+      setSavedClubs(
+        (savedRes.data ?? []).map((row) => row.club_id),
+      );
+      setFetchedForUser(userId);
+    });
 
     return () => {
       cancelled = true;
@@ -137,18 +144,25 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const joinClub = useCallback(
     (clubId: string) => {
       if (!user) return;
+      // Prevent duplicate — optimistic update
       setJoinedClubs((prev) =>
         prev.includes(clubId) ? prev : [...prev, clubId],
       );
       supabase
-        .from("user_clubs")
+        .from("club_members")
         .upsert(
-          { user_id: user.id, club_id: clubId, type: "joined" },
-          { onConflict: "user_id,club_id,type" },
+          {
+            club_id: clubId,
+            user_id: user.id,
+            role: "member",
+            status: "active",
+          },
+          { onConflict: "club_id,user_id" },
         )
         .then(({ error }) => {
           if (error) {
             console.error("Failed to join club:", error.message);
+            // Rollback optimistic update
             setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
           }
         });
@@ -161,14 +175,14 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (!user) return;
       setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
       supabase
-        .from("user_clubs")
+        .from("club_members")
         .delete()
-        .eq("user_id", user.id)
         .eq("club_id", clubId)
-        .eq("type", "joined")
+        .eq("user_id", user.id)
         .then(({ error }) => {
           if (error) {
             console.error("Failed to leave club:", error.message);
+            // Rollback optimistic update
             setJoinedClubs((prev) =>
               prev.includes(clubId) ? prev : [...prev, clubId],
             );
