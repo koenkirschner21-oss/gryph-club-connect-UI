@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
+import { useActivityFeed, type ActivityItem } from "../../hooks/useActivityFeed";
 
 export default function DashboardPage() {
   const { user } = useAuthContext();
@@ -32,6 +33,8 @@ export default function DashboardPage() {
   }, [user]);
 
   const myClubs = clubs.filter((c) => joinedClubs.includes(c.id));
+  const { items: activityItems, loading: activityLoading } =
+    useActivityFeed(joinedClubs);
 
   if (loading) {
     return (
@@ -151,6 +154,89 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      {/* Recent Activity */}
+      {joinedClubs.length > 0 && (
+        <div className="mt-12">
+          <h2 className="mb-4 text-xl font-bold text-white">
+            Recent Activity
+          </h2>
+
+          {activityLoading ? (
+            <div className="flex justify-center py-8">
+              <Spinner label="Loading activity…" />
+            </div>
+          ) : activityItems.length === 0 ? (
+            <Card className="p-6 text-center">
+              <p className="text-sm text-muted">
+                No recent activity from your clubs yet.
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {activityItems.map((item) => (
+                <ActivityRow key={`${item.type}-${item.id}`} item={item} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Activity Row
+// ---------------------------------------------------------------------------
+
+const ACTIVITY_ICONS: Record<string, string> = {
+  post: "📢",
+  event: "📅",
+};
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  post: "Announcement",
+  event: "Event",
+};
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function ActivityRow({ item }: { item: ActivityItem }) {
+  return (
+    <Link to={`/app/clubs/${item.clubId}`}>
+      <Card className="flex items-start gap-3 p-4 transition-shadow hover:shadow-md">
+        <span className="mt-0.5 text-lg leading-none">
+          {ACTIVITY_ICONS[item.type] ?? "🔔"}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span className="font-medium text-white">{item.clubName}</span>
+            <span>·</span>
+            <span>{ACTIVITY_LABELS[item.type] ?? item.type}</span>
+            <span>·</span>
+            <span>{timeAgo(item.createdAt)}</span>
+          </div>
+          <p className="mt-0.5 text-sm font-medium text-white">{item.title}</p>
+          {item.preview && (
+            <p className="mt-0.5 line-clamp-1 text-xs text-muted">
+              {item.preview}
+            </p>
+          )}
+        </div>
+      </Card>
+    </Link>
   );
 }
