@@ -16,8 +16,9 @@ export default function ClubMembersPage() {
 
   const role = getUserRole(clubId ?? "");
   const isAdmin = role === "admin";
+  const isAdminOrExec = role === "admin" || role === "exec";
 
-  const { members, loading, updateRole, removeMember } = useClubMembers(clubId);
+  const { members, pendingMembers, loading, updateRole, removeMember, approveRequest, rejectRequest } = useClubMembers(clubId);
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -47,6 +48,18 @@ export default function ClubMembersPage() {
   async function handleRemove(memberId: string) {
     setActionLoading(memberId);
     await removeMember(memberId);
+    setActionLoading(null);
+  }
+
+  async function handleApprove(memberId: string) {
+    setActionLoading(memberId);
+    await approveRequest(memberId);
+    setActionLoading(null);
+  }
+
+  async function handleReject(memberId: string) {
+    setActionLoading(memberId);
+    await rejectRequest(memberId);
     setActionLoading(null);
   }
 
@@ -131,6 +144,62 @@ export default function ClubMembersPage() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Pending requests section — admin/exec only */}
+      {isAdminOrExec && pendingMembers.length > 0 && (
+        <div className="mb-6">
+          <h2 className="mb-3 text-lg font-semibold text-white">
+            Pending Requests ({pendingMembers.length})
+          </h2>
+          <div className="space-y-2">
+            {pendingMembers.map((member) => (
+              <Card key={member.id} className="p-4">
+                <div className="flex items-center gap-3">
+                  {member.avatarUrl ? (
+                    <img
+                      src={member.avatarUrl}
+                      alt=""
+                      className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-yellow-500/10 text-sm font-bold text-yellow-400">
+                      {(member.fullName ?? member.email ?? "U")[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <span className="truncate font-medium text-white">
+                      {member.fullName ?? "Unknown"}
+                    </span>
+                    {member.program && (
+                      <p className="truncate text-xs text-muted">
+                        {member.program}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-shrink-0 gap-2">
+                    <Button
+                      size="sm"
+                      disabled={actionLoading === member.id}
+                      onClick={() => handleApprove(member.id)}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={actionLoading === member.id}
+                      className="text-red-400 hover:text-red-300"
+                      onClick={() => handleReject(member.id)}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Members list */}

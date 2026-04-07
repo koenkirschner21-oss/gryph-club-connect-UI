@@ -26,6 +26,9 @@ export default function ManageClubPage() {
     club?.abbreviation ?? "",
   );
   const [brandColor, setBrandColor] = useState(club?.brandColor ?? "#C20430");
+  const [requiresApproval, setRequiresApproval] = useState(
+    club?.requiresApproval ?? false,
+  );
 
   const [logoUrl, setLogoUrl] = useState(club?.logoUrl ?? "");
   const [bannerUrl, setBannerUrl] = useState(club?.bannerUrl ?? "");
@@ -92,6 +95,7 @@ export default function ManageClubPage() {
       brandColor: brandColor.trim() || undefined,
       logoUrl: logoUrl.trim() || undefined,
       bannerUrl: bannerUrl.trim() || undefined,
+      requiresApproval,
     });
 
     setSaving(false);
@@ -277,6 +281,38 @@ export default function ManageClubPage() {
               />
               <span className="text-sm text-muted">{brandColor}</span>
             </div>
+          </div>
+
+          {/* Join Approval */}
+          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
+            <div>
+              <label
+                htmlFor="requires-approval"
+                className="text-sm font-medium text-white"
+              >
+                Require Join Approval
+              </label>
+              <p className="text-xs text-muted">
+                When enabled, new members must be approved by an admin or exec
+              </p>
+            </div>
+            <button
+              id="requires-approval"
+              type="button"
+              role="switch"
+              aria-checked={requiresApproval}
+              onClick={() => setRequiresApproval((v) => !v)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/25 ${
+                requiresApproval ? "bg-primary" : "bg-surface-alt"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  requiresApproval ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
 
           <div className="flex gap-4 pt-2">

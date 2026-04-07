@@ -24,6 +24,7 @@ export default function ClubDetails() {
     getClubById,
     loading,
     isJoined,
+    isPending,
     joinClub,
     leaveClub,
     isSaved,
@@ -37,6 +38,7 @@ export default function ClubDetails() {
   const eventIds = useMemo(() => clubEvents.map((e) => e.id), [clubEvents]);
   const { myRsvps, counts, setRsvp, removeRsvp } = useEventRsvps(eventIds);
   const joined = club ? isJoined(club.id) : false;
+  const pending = club ? isPending(club.id) : false;
   const saved = club ? isSaved(club.id) : false;
 
   const upcomingEvents = clubEvents
@@ -138,6 +140,11 @@ export default function ClubDetails() {
                   Joined
                 </span>
               )}
+              {pending && (
+                <span className="inline-block rounded-full bg-yellow-500 px-3 py-0.5 text-xs font-semibold text-white shadow">
+                  Requested
+                </span>
+              )}
             </div>
             <h1 className="text-3xl font-extrabold text-white sm:text-4xl lg:text-5xl leading-tight">
               {club.name}
@@ -222,12 +229,16 @@ export default function ClubDetails() {
             </button>
             <Button
               size="lg"
-              variant={joined ? "outline" : "primary"}
+              variant={joined ? "outline" : pending ? "outline" : "primary"}
               onClick={() =>
-                joined ? leaveClub(club.id) : joinClub(club.id)
+                joined
+                  ? leaveClub(club.id)
+                  : pending
+                    ? leaveClub(club.id)
+                    : joinClub(club.id)
               }
             >
-              {joined ? "Leave Club" : "Join Club"}
+              {joined ? "Leave Club" : pending ? "Cancel Request" : "Join Club"}
             </Button>
           </div>
         </div>

@@ -41,6 +41,7 @@ function mapRow(row: Record<string, unknown>): Club {
     joinCode: (row.join_code as string) ?? undefined,
     socialLinks: (row.social_links as Club["socialLinks"]) ?? undefined,
     events: (row.events as Club["events"]) ?? [],
+    requiresApproval: (row.requires_approval as boolean) ?? false,
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
   };
@@ -97,6 +98,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
   // ---- User club state (join/save) ----
   const [joinedClubs, setJoinedClubs] = useState<string[]>([]);
+  const [pendingClubs, setPendingClubs] = useState<string[]>([]);
   const [savedClubs, setSavedClubs] = useState<string[]>([]);
   const [userRoles, setUserRoles] = useState<Record<string, MemberRole>>({});
   const [fetchedForUser, setFetchedForUser] = useState<string | null>(null);
@@ -108,13 +110,12 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
-    // Fetch memberships (with role) from club_members and saved clubs from user_clubs in parallel
+    // Fetch memberships (with role + status) from club_members and saved clubs from user_clubs in parallel
     Promise.all([
       supabase
         .from("club_members")
-        .select("club_id, role")
-        .eq("user_id", userId)
-        .eq("status", "active"),
+        .select("club_id, role, status")
+        .eq("user_id", userId),
       supabase
         .from("user_clubs")
         .select("club_id")
@@ -128,13 +129,19 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (savedRes.error) {
         console.error("Failed to load saved clubs:", savedRes.error.message);
       }
-      setJoinedClubs(
-        (membersRes.data ?? []).map((row) => row.club_id),
-      );
+      const activeIds: string[] = [];
+      const pendingIds: string[] = [];
       const roles: Record<string, MemberRole> = {};
       for (const row of membersRes.data ?? []) {
-        roles[row.club_id] = row.role as MemberRole;
+        if (row.status === "active") {
+          activeIds.push(row.club_id);
+          roles[row.club_id] = row.role as MemberRole;
+        } else if (row.status === "pending") {
+          pendingIds.push(row.club_id);
+        }
       }
+      setJoinedClubs(activeIds);
+      setPendingClubs(pendingIds);
       setUserRoles(roles);
       setSavedClubs(
         (savedRes.data ?? []).map((row) => row.club_id),
@@ -145,6 +152,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       setJoinedClubs([]);
+      setPendingClubs([]);
       setSavedClubs([]);
       setUserRoles({});
       setFetchedForUser(null);
@@ -154,10 +162,21 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const joinClub = useCallback(
     (clubId: string) => {
       if (!user) return;
-      // Prevent duplicate — optimistic update
-      setJoinedClubs((prev) =>
-        prev.includes(clubId) ? prev : [...prev, clubId],
-      );
+      const club = clubs.find((c) => c.id === clubId);
+      const needsApproval = club?.requiresApproval ?? false;
+      const status = needsApproval ? "pending" : "active";
+
+      // Optimistic update
+      if (needsApproval) {
+        setPendingClubs((prev) =>
+          prev.includes(clubId) ? prev : [...prev, clubId],
+        );
+      } else {
+        setJoinedClubs((prev) =>
+          prev.includes(clubId) ? prev : [...prev, clubId],
+        );
+      }
+
       supabase
         .from("club_members")
         .upsert(
@@ -165,7 +184,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             club_id: clubId,
             user_id: user.id,
             role: "member",
-            status: "active",
+            status,
           },
           { onConflict: "club_id,user_id" },
         )
@@ -173,17 +192,22 @@ export function ClubProvider({ children }: { children: ReactNode }) {
           if (error) {
             console.error("Failed to join club:", error.message);
             // Rollback optimistic update
-            setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
+            if (needsApproval) {
+              setPendingClubs((prev) => prev.filter((id) => id !== clubId));
+            } else {
+              setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
+            }
           }
         });
     },
-    [user],
+    [user, clubs],
   );
 
   const leaveClub = useCallback(
     (clubId: string) => {
       if (!user) return;
       setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
+      setPendingClubs((prev) => prev.filter((id) => id !== clubId));
       supabase
         .from("club_members")
         .delete()
@@ -247,6 +271,11 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const isJoined = useCallback(
     (clubId: string) => joinedClubs.includes(clubId),
     [joinedClubs],
+  );
+
+  const isPending = useCallback(
+    (clubId: string) => pendingClubs.includes(clubId),
+    [pendingClubs],
   );
 
   const isSaved = useCallback(
@@ -328,6 +357,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.brandColor !== undefined) row.brand_color = fields.brandColor;
       if (fields.logoUrl !== undefined) row.logo_url = fields.logoUrl;
       if (fields.bannerUrl !== undefined) row.banner_url = fields.bannerUrl;
+      if (fields.requiresApproval !== undefined)
+        row.requires_approval = fields.requiresApproval;
 
       const { data, error } = await supabase
         .from("clubs")
@@ -360,11 +391,13 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       getClubById,
       getClubBySlug,
       joinedClubs,
+      pendingClubs,
       savedClubs,
       joinClub,
       leaveClub,
       toggleSaveClub,
       isJoined,
+      isPending,
       isSaved,
       createClub,
       getUserRole,
@@ -379,11 +412,13 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       getClubById,
       getClubBySlug,
       joinedClubs,
+      pendingClubs,
       savedClubs,
       joinClub,
       leaveClub,
       toggleSaveClub,
       isJoined,
+      isPending,
       isSaved,
       createClub,
       getUserRole,

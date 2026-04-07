@@ -30,6 +30,7 @@ export interface Club {
     discord?: string;
   };
   events: ClubEvent[];
+  requiresApproval?: boolean;
   createdBy?: string;
   createdAt?: string;
 }

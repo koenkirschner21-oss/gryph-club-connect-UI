@@ -15,11 +15,13 @@ export interface ClubContextValue {
   /** Look up a single club by slug. */
   getClubBySlug: (slug: string) => Club | undefined;
   joinedClubs: string[];
+  pendingClubs: string[];
   savedClubs: string[];
   joinClub: (clubId: string) => void;
   leaveClub: (clubId: string) => void;
   toggleSaveClub: (clubId: string) => void;
   isJoined: (clubId: string) => boolean;
+  isPending: (clubId: string) => boolean;
   isSaved: (clubId: string) => boolean;
   /** Create a new club and add the current user as admin. Returns the new club ID or null on error. */
   createClub: (fields: Partial<Club>) => Promise<string | null>;
