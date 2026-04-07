@@ -96,6 +96,31 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
       }
 
       setEvents((prev) => [...prev, mapEventRow(data)]);
+
+      // Notify club members about the new event (fire-and-forget)
+      supabase
+        .from("club_members")
+        .select("user_id")
+        .eq("club_id", clubId)
+        .eq("status", "active")
+        .then(({ data: members }) => {
+          if (!members || members.length === 0) return;
+          const rows = members.map((m) => ({
+            user_id: m.user_id,
+            type: "new_event",
+            message: `New event: ${fields.title} on ${fields.date}`,
+            club_id: clubId,
+          }));
+          supabase
+            .from("notifications")
+            .insert(rows)
+            .then(({ error: notifErr }) => {
+              if (notifErr) {
+                console.error("Failed to send notifications:", notifErr.message);
+              }
+            });
+        });
+
       return true;
     },
     [clubId],

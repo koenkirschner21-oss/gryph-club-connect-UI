@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
+import NotificationBell from "../ui/NotificationBell";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -72,6 +73,7 @@ export default function Navbar() {
 
           {user ? (
             <div className="ml-3 flex items-center gap-3">
+              <NotificationBell />
               <span className="text-sm text-muted" aria-label="Logged in as">
                 {user.email}
               </span>

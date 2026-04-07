@@ -146,6 +146,21 @@ export interface UserClubRow {
 }
 
 // ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+export type NotificationType = "new_event" | "club_update";
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  message: string;
+  read: boolean;
+  clubId?: string;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Club claim requests
 // ---------------------------------------------------------------------------
 export type ClaimStatus = "pending" | "approved" | "rejected";
