@@ -59,110 +59,157 @@ export default function Explore() {
   }, [search, activeCategory]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-accent">Explore Clubs</h1>
-        <p className="mt-2 text-muted">
-          Browse and discover student organizations at the University of Guelph
-        </p>
-      </div>
+    <>
+      {/* Hero / Page Header */}
+      <section className="relative overflow-hidden bg-accent">
+        <div className="hero-overlay absolute inset-0" aria-hidden="true" />
+        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
+          <div className="max-w-2xl">
+            <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+              Explore Clubs
+            </h1>
+            <p className="mt-4 text-lg text-white/75">
+              Discover student organizations at the{" "}
+              <span className="font-semibold text-secondary">
+                University of Guelph
+              </span>{" "}
+              — find your community and get involved.
+            </p>
+          </div>
+        </div>
+      </section>
 
-      {/* Search & Filter */}
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <SearchBar value={search} onChange={setSearch} />
-        <div className="flex flex-wrap gap-2">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setActiveCategory(cat)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
-                activeCategory === cat
-                  ? "bg-primary text-white"
-                  : "bg-surface text-muted hover:bg-surface-alt"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Search & Filters */}
+      <section className="border-b border-border bg-surface shadow-sm">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <SearchBar value={search} onChange={setSearch} />
+            </div>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="self-start text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer sm:self-center"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
 
-      {/* Error banner */}
-      {error && (
-        <div
-          role="alert"
-          className="mb-6 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
-        >
-          Could not load clubs from the server. Please check your connection and
-          try again.
+          {/* Category chips */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategory(cat)}
+                className={`filter-chip ${
+                  activeCategory === cat
+                    ? "filter-chip-active"
+                    : "filter-chip-inactive"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+      </section>
 
-      {/* Loading */}
-      {loading ? (
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <Spinner label="Loading clubs…" />
-        </div>
-      ) : filteredClubs.length > 0 ? (
-        /* Results */
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredClubs.map((club) => (
-            <ClubCard key={club.id} club={club} />
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border bg-surface py-16 text-center">
-          <svg
-            className="mx-auto h-12 w-12 text-muted"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
+      {/* Main Content */}
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {/* Error banner */}
+        {error && (
+          <div
+            role="alert"
+            className="mb-6 rounded-lg border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-          <p className="mt-4 text-lg font-medium text-accent">
-            {emptyStateMessage.title}
-          </p>
-          <p className="mt-2 text-sm text-muted">
-            {emptyStateMessage.description}
-          </p>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="mt-4 inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-dark cursor-pointer"
-            >
-              Clear all filters
-            </button>
-          )}
-        </div>
-      )}
+            ⚠️ Could not load clubs from the server. Please check your
+            connection and try again.
+          </div>
+        )}
 
-      {/* Result Count */}
-      {!loading && (
-        <div className="mt-6 flex items-center justify-between">
-          <p className="text-sm text-muted">
-            Showing {filteredClubs.length} of {clubs.length} clubs
-          </p>
-          {hasActiveFilters && filteredClubs.length > 0 && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+        {/* Loading */}
+        {loading ? (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <Spinner label="Loading clubs…" />
+          </div>
+        ) : filteredClubs.length > 0 ? (
+          <>
+            {/* Result count + clear */}
+            <div className="mb-5 flex items-center justify-between">
+              <p className="text-sm text-muted">
+                Showing{" "}
+                <span className="font-semibold text-accent">
+                  {filteredClubs.length}
+                </span>{" "}
+                of {clubs.length} clubs
+                {activeCategory !== "All" && (
+                  <span className="ml-1">
+                    in{" "}
+                    <span className="font-medium text-primary">
+                      {activeCategory}
+                    </span>
+                  </span>
+                )}
+              </p>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+
+            {/* Grid */}
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredClubs.map((club) => (
+                <ClubCard key={club.id} club={club} />
+              ))}
+            </div>
+          </>
+        ) : (
+          /* Empty state */
+          <div className="rounded-2xl border border-border bg-surface py-20 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-alt">
+              <svg
+                className="h-8 w-8 text-muted"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+            <p className="mt-5 text-xl font-bold text-accent">
+              {emptyStateMessage.title}
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              {emptyStateMessage.description}
+            </p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-6 inline-flex items-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark cursor-pointer"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
+

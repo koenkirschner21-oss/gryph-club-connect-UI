@@ -19,3 +19,96 @@
   /* Spacing */
   --spacing-section: 5rem;
 }
+
+/* Smooth scroll for the whole document */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Club card image aspect ratio utility */
+.club-img-ratio {
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  width: 100%;
+}
+
+/* Hero gradient overlay */
+.hero-overlay {
+  background: linear-gradient(135deg, rgba(26,26,46,0.92) 0%, rgba(194,4,48,0.75) 100%);
+}
+
+/* Chip/filter button base */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.375rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25;
+  transition: background-color 150ms, color 150ms, box-shadow 150ms;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-chip-active {
+  background-color: var(--color-primary);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(194,4,48,0.35);
+}
+
+.filter-chip-inactive {
+  background-color: var(--color-surface);
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+}
+
+.filter-chip-inactive:hover {
+  background-color: var(--color-surface-alt);
+  color: var(--color-accent);
+  border-color: #d1d5db;
+}
+
+/* Club card image aspect ratio utility */
+.club-img-ratio {
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  width: 100%;
+}
+
+/* Hero gradient overlay */
+.hero-overlay {
+  background: linear-gradient(135deg, rgba(26,26,46,0.92) 0%, rgba(194,4,48,0.75) 100%);
+}
+
+/* Chip/filter button base */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.375rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25;
+  transition: background-color 150ms, color 150ms, box-shadow 150ms;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-chip-active {
+  background-color: var(--color-primary);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(194,4,48,0.35);
+}
+
+.filter-chip-inactive {
+  background-color: var(--color-surface);
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+}
+
+.filter-chip-inactive:hover {
+  background-color: var(--color-surface-alt);
+  color: var(--color-accent);
+  border-color: #d1d5db;
+}

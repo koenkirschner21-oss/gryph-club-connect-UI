@@ -28,26 +28,28 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+    <header className="sticky top-0 z-50 border-b border-border bg-surface/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface/90">
       <nav
         className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
         aria-label="Main navigation"
       >
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2">
-          <img
-            src="/assets/placeholders/logo-gryph-placeholder.svg"
-            alt=""
-            className="h-8 w-8"
-            aria-hidden="true"
-          />
-          <span className="text-lg font-bold text-accent">
-            Gryph Club Connect
+        <Link to="/" className="flex items-center gap-2.5 group">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-sm transition-opacity group-hover:opacity-90">
+            <img
+              src="/assets/placeholders/logo-gryph-placeholder.svg"
+              alt=""
+              className="h-6 w-6 brightness-0 invert"
+              aria-hidden="true"
+            />
+          </div>
+          <span className="text-base font-extrabold tracking-tight text-accent">
+            Gryph<span className="text-primary">Club</span>Connect
           </span>
         </Link>
 
         {/* Desktop Nav */}
-        <div className="hidden items-center gap-6 md:flex">
+        <div className="hidden items-center gap-1 md:flex">
           {(user ? authNavLinks : navLinks).map((link) => {
             const isActive = location.pathname === link.to;
             return (
@@ -55,8 +57,10 @@ export default function Navbar() {
                 key={link.to}
                 to={link.to}
                 aria-current={isActive ? "page" : undefined}
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  isActive ? "text-primary" : "text-muted"
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  isActive
+                    ? "bg-primary/8 text-primary"
+                    : "text-muted hover:bg-surface-alt hover:text-accent"
                 }`}
               >
                 {link.label}
@@ -64,34 +68,36 @@ export default function Navbar() {
             );
           })}
 
+          <div className="ml-2 h-5 w-px bg-border" aria-hidden="true" />
+
           {user ? (
-            <div className="flex items-center gap-4">
+            <div className="ml-2 flex items-center gap-3">
               <span className="text-sm text-muted" aria-label="Logged in as">
                 {user.email}
               </span>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="cursor-pointer text-sm font-medium text-muted transition-colors hover:text-primary"
+                className="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted transition-colors hover:border-primary hover:text-primary"
               >
                 Logout
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-4">
+            <div className="ml-2 flex items-center gap-2">
               <Link
                 to="/login"
-                className={`text-sm font-medium transition-colors hover:text-primary ${
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
                   location.pathname === "/login"
                     ? "text-primary"
-                    : "text-muted"
+                    : "text-muted hover:text-accent"
                 }`}
               >
                 Login
               </Link>
               <Link
                 to="/signup"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-dark"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark"
               >
                 Sign Up
               </Link>
@@ -102,7 +108,7 @@ export default function Navbar() {
         {/* Mobile Hamburger */}
         <button
           type="button"
-          className="inline-flex cursor-pointer items-center justify-center rounded-md p-2 text-muted hover:text-accent md:hidden"
+          className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted hover:bg-surface-alt hover:text-accent md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-expanded={mobileOpen}
           aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
@@ -135,7 +141,7 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {mobileOpen && (
-        <div className="border-t border-border md:hidden">
+        <div className="border-t border-border bg-surface md:hidden">
           <div className="space-y-1 px-4 py-3">
             {(user ? authNavLinks : navLinks).map((link) => {
               const isActive = location.pathname === link.to;
@@ -145,14 +151,18 @@ export default function Navbar() {
                   to={link.to}
                   onClick={() => setMobileOpen(false)}
                   aria-current={isActive ? "page" : undefined}
-                  className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-surface-alt ${
-                    isActive ? "text-primary" : "text-muted"
+                  className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    isActive
+                      ? "bg-primary/8 text-primary"
+                      : "text-muted hover:bg-surface-alt hover:text-accent"
                   }`}
                 >
                   {link.label}
                 </Link>
               );
             })}
+
+            <div className="my-2 border-t border-border" aria-hidden="true" />
 
             {user ? (
               <>
@@ -165,7 +175,7 @@ export default function Navbar() {
                     setMobileOpen(false);
                     handleLogout();
                   }}
-                  className="block w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-primary"
+                  className="block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-muted transition-colors hover:bg-surface-alt hover:text-primary"
                 >
                   Logout
                 </button>
@@ -175,14 +185,14 @@ export default function Navbar() {
                 <Link
                   to="/login"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt"
+                  className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-surface-alt hover:text-accent"
                 >
                   Login
                 </Link>
                 <Link
                   to="/signup"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-md px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-surface-alt"
+                  className="block rounded-lg bg-primary px-3 py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
                 >
                   Sign Up
                 </Link>

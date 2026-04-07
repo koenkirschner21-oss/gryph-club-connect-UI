@@ -7,12 +7,12 @@ interface SearchBarProps {
 export default function SearchBar({
   value,
   onChange,
-  placeholder = "Search clubs...",
+  placeholder = "Search clubs by name, description, or tag…",
 }: SearchBarProps) {
   return (
-    <div className="relative w-full max-w-md">
+    <div className="relative w-full max-w-lg">
       <svg
-        className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted"
+        className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -31,13 +31,13 @@ export default function SearchBar({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="w-full rounded-lg border border-border bg-surface py-2.5 pl-10 pr-10 text-sm text-accent placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        className="w-full rounded-xl border border-border bg-surface py-2.5 pl-11 pr-10 text-sm text-accent shadow-sm placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-colors"
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange("")}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted transition-colors hover:text-accent cursor-pointer"
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted transition-colors hover:bg-surface-alt hover:text-accent cursor-pointer"
           aria-label="Clear search"
         >
           <svg
