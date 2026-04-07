@@ -74,6 +74,7 @@ export interface ClubMember {
   fullName?: string;
   email?: string;
   avatarUrl?: string;
+  program?: string;
 }
 
 // ---------------------------------------------------------------------------
