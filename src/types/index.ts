@@ -147,9 +147,22 @@ export interface UserClubRow {
 }
 
 // ---------------------------------------------------------------------------
+// Posts / Announcements
+// ---------------------------------------------------------------------------
+export interface Post {
+  id: string;
+  clubId: string;
+  authorId: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  authorName?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
-export type NotificationType = "new_event" | "club_update";
+export type NotificationType = "new_event" | "club_update" | "announcement";
 
 export interface Notification {
   id: string;

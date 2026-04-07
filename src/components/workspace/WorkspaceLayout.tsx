@@ -4,6 +4,7 @@ import Spinner from "../ui/Spinner";
 
 const workspaceLinks = [
   { to: "", label: "Dashboard", end: true },
+  { to: "announcements", label: "Announcements", end: false },
   { to: "chat", label: "Chat", end: false },
   { to: "tasks", label: "Tasks", end: false },
   { to: "events", label: "Events", end: false },
