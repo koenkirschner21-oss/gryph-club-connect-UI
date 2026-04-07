@@ -31,7 +31,7 @@ export default function WorkspaceLayout() {
   return (
     <div className="flex min-h-[calc(100vh-4rem)]">
       {/* Sidebar */}
-      <aside className="hidden w-64 flex-shrink-0 border-r border-border bg-surface md:block">
+      <aside className="hidden w-64 flex-shrink-0 border-r border-border bg-card md:block">
         <div className="flex h-full flex-col">
           {/* Club header */}
           <div className="border-b border-border p-4">
@@ -42,7 +42,7 @@ export default function WorkspaceLayout() {
                 className="h-10 w-10 rounded-lg bg-surface-alt object-cover"
               />
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-sm font-bold text-accent">
+                <h2 className="truncate text-sm font-bold text-white">
                   {club.name}
                 </h2>
                 <p className="truncate text-xs text-muted">{club.category}</p>
@@ -61,7 +61,7 @@ export default function WorkspaceLayout() {
                   `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
                       ? "bg-primary/10 text-primary"
-                      : "text-muted hover:bg-surface-alt hover:text-accent"
+                      : "text-muted hover:bg-surface-alt hover:text-white"
                   }`
                 }
               >
@@ -74,7 +74,7 @@ export default function WorkspaceLayout() {
           <div className="border-t border-border p-3">
             <NavLink
               to={`/clubs/${club.slug}`}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-accent"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-white"
             >
               <svg
                 className="h-4 w-4"
@@ -98,7 +98,7 @@ export default function WorkspaceLayout() {
 
       {/* Mobile workspace tabs */}
       <div className="flex flex-1 flex-col">
-        <nav className="flex gap-1 overflow-x-auto border-b border-border bg-surface px-4 py-2 md:hidden">
+        <nav className="flex gap-1 overflow-x-auto border-b border-border bg-card px-4 py-2 md:hidden">
           {workspaceLinks.map((link) => (
             <NavLink
               key={link.to}

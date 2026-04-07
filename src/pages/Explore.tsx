@@ -15,7 +15,7 @@ function contrastText(hex: string | undefined): string {
   const g = parseInt(c.substring(2, 4), 16);
   const b = parseInt(c.substring(4, 6), 16);
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.6 ? "text-accent" : "text-white";
+  return lum > 0.6 ? "text-black" : "text-white";
 }
 
 // ─── Spotlight card (horizontal, larger) ────────────────────────────────────
@@ -24,11 +24,11 @@ function SpotlightCard({ club }: { club: Club }) {
   return (
     <a
       href={`/clubs/${club.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 sm:flex-row"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-border-light hover:shadow-lg sm:flex-row"
     >
       {/* Left accent */}
       <div
-        className="flex w-full items-center justify-center p-6 sm:w-48 sm:flex-shrink-0"
+        className="flex w-full items-center justify-center p-8 sm:w-52 sm:flex-shrink-0"
         style={{ backgroundColor: accent }}
       >
         {club.logoUrl ? (
@@ -48,14 +48,14 @@ function SpotlightCard({ club }: { club: Club }) {
       </div>
 
       {/* Right content */}
-      <div className="flex flex-1 flex-col justify-center p-5 sm:p-6">
+      <div className="flex flex-1 flex-col justify-center p-6 sm:p-7">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-bold text-accent group-hover:text-primary transition-colors">
+          <h3 className="text-lg font-bold text-white group-hover:text-primary-light transition-colors">
             {club.name}
           </h3>
           {club.isVerified && (
             <svg
-              className="h-4 w-4 text-blue-500"
+              className="h-4 w-4 text-secondary"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-label="Verified"
@@ -68,11 +68,11 @@ function SpotlightCard({ club }: { club: Club }) {
             </svg>
           )}
         </div>
-        <p className="mt-1 line-clamp-2 text-sm text-muted">
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted">
           {club.shortDescription || club.description}
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-semibold text-primary">
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
+          <span className="rounded-full bg-primary/15 px-2.5 py-0.5 font-semibold text-primary-light">
             {club.category}
           </span>
           {club.memberCount > 0 && (
@@ -156,29 +156,37 @@ export default function Explore() {
 
   return (
     <>
-      {/* ──────────── Dark Hero Section ──────────── */}
-      <section className="relative overflow-hidden bg-accent">
+      {/* ──────────── Hero Section ──────────── */}
+      <section className="relative overflow-hidden bg-page-bg">
+        {/* Subtle warm gradient */}
         <div className="hero-overlay absolute inset-0" aria-hidden="true" />
-        {/* Decorative dots */}
-        <div className="absolute inset-0 opacity-[0.04] hero-dots" aria-hidden="true" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-          <div className="max-w-2xl">
-            <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-secondary">
-              University of Guelph
-            </p>
+        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8 lg:py-32">
+          <div className="max-w-3xl">
+            <div className="mb-6 flex items-center gap-3">
+              <img
+                src="/assets/gryphon-logo.svg"
+                alt=""
+                className="h-10 w-10"
+                aria-hidden="true"
+              />
+              <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
+                Gryph Club Connect
+              </span>
+            </div>
             <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-              Discover Your Club
+              Discover Your{" "}
+              <span className="text-primary">Club</span>
             </h1>
-            <p className="mt-4 text-lg leading-relaxed text-white/70">
+            <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">
               Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
               organizations — from academics and athletics to arts and culture.
               Find your people and get involved.
             </p>
           </div>
 
-          {/* Search inside hero */}
-          <div className="mt-8 max-w-xl">
+          {/* Search bar */}
+          <div className="mt-10 max-w-2xl">
             <SearchBar
               value={search}
               onChange={setSearch}
@@ -188,18 +196,19 @@ export default function Explore() {
 
           {/* Quick stats */}
           {clubs.length > 0 && (
-            <div className="mt-8 flex flex-wrap gap-6 text-sm text-white/60">
-              <span>
-                <strong className="text-white">{clubs.length}</strong> clubs
+            <div className="mt-8 flex flex-wrap gap-8 text-sm">
+              <span className="text-muted">
+                <strong className="text-xl font-bold text-white">{clubs.length}</strong>{" "}
+                <span className="ml-1">clubs</span>
               </span>
-              <span>
-                <strong className="text-white">{categories.length - 1}</strong>{" "}
-                categories
+              <span className="text-muted">
+                <strong className="text-xl font-bold text-white">{categories.length - 1}</strong>{" "}
+                <span className="ml-1">categories</span>
               </span>
               {featuredClubs.length > 0 && (
-                <span>
-                  <strong className="text-white">{featuredClubs.length}</strong>{" "}
-                  featured
+                <span className="text-muted">
+                  <strong className="text-xl font-bold text-white">{featuredClubs.length}</strong>{" "}
+                  <span className="ml-1">featured</span>
                 </span>
               )}
             </div>
@@ -207,11 +216,11 @@ export default function Explore() {
         </div>
       </section>
 
-      {/* ──────────── Featured Clubs Ribbon ──────────── */}
+      {/* ──────────── Featured Clubs ──────────── */}
       {!loading && featuredClubs.length > 0 && !hasActiveFilters && (
-        <section className="border-b border-border bg-surface-alt/60">
-          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <div className="mb-5 flex items-center gap-2">
+        <section className="border-t border-border bg-page-bg">
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+            <div className="mb-8 flex items-center gap-3">
               <svg
                 className="h-5 w-5 text-secondary"
                 viewBox="0 0 20 20"
@@ -220,9 +229,10 @@ export default function Explore() {
               >
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
-              <h2 className="text-lg font-bold text-accent">Featured Clubs</h2>
+              <h2 className="text-xl font-bold text-white">Featured Clubs</h2>
+              <div className="divider-gold ml-2" aria-hidden="true" />
             </div>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {featuredClubs.map((club) => (
                 <ClubCard key={club.id} club={club} variant="compact" />
               ))}
@@ -231,13 +241,13 @@ export default function Explore() {
         </section>
       )}
 
-      {/* ──────────── Spotlight Section ──────────── */}
+      {/* ──────────── Verified Clubs ──────────── */}
       {!loading && spotlightClubs.length > 0 && !hasActiveFilters && (
-        <section className="border-b border-border bg-surface">
-          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <div className="mb-5 flex items-center gap-2">
+        <section className="border-t border-border bg-card">
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+            <div className="mb-8 flex items-center gap-3">
               <svg
-                className="h-5 w-5 text-primary"
+                className="h-5 w-5 text-secondary"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 aria-hidden="true"
@@ -248,11 +258,12 @@ export default function Explore() {
                   clipRule="evenodd"
                 />
               </svg>
-              <h2 className="text-lg font-bold text-accent">
-                Verified Spotlight
+              <h2 className="text-xl font-bold text-white">
+                Verified Clubs
               </h2>
+              <div className="divider-gold ml-2" aria-hidden="true" />
             </div>
-            <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
               {spotlightClubs.map((club) => (
                 <SpotlightCard key={club.id} club={club} />
               ))}
@@ -262,7 +273,7 @@ export default function Explore() {
       )}
 
       {/* ──────────── Filter Bar ──────────── */}
-      <section className="sticky top-16 z-30 border-b border-border bg-surface/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-surface/90">
+      <section className="sticky top-16 z-30 border-t border-b border-border bg-page-bg/95 backdrop-blur supports-[backdrop-filter]:bg-page-bg/80">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
@@ -286,7 +297,7 @@ export default function Explore() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="self-start text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer sm:self-center"
+                className="self-start text-sm font-medium text-primary-light transition-colors hover:text-primary cursor-pointer sm:self-center"
               >
                 Clear filters
               </button>
@@ -296,12 +307,12 @@ export default function Explore() {
       </section>
 
       {/* ──────────── Main Results ──────────── */}
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Error banner */}
         {error && (
           <div
             role="alert"
-            className="mb-6 rounded-lg border border-primary/20 bg-primary/8 px-4 py-3 text-sm font-medium text-primary"
+            className="mb-8 rounded-xl border border-primary/30 bg-primary/10 px-5 py-4 text-sm font-medium text-primary-light"
           >
             ⚠️ Could not load clubs from the server. Please check your
             connection and try again.
@@ -316,17 +327,17 @@ export default function Explore() {
         ) : filteredClubs.length > 0 ? (
           <>
             {/* Result count */}
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-8 flex items-center justify-between">
               <p className="text-sm text-muted">
                 Showing{" "}
-                <span className="font-semibold text-accent">
+                <span className="font-semibold text-white">
                   {filteredClubs.length}
                 </span>{" "}
                 of {clubs.length} clubs
                 {activeCategory !== "All" && (
                   <span className="ml-1">
                     in{" "}
-                    <span className="font-medium text-primary">
+                    <span className="font-medium text-primary-light">
                       {activeCategory}
                     </span>
                   </span>
@@ -336,7 +347,7 @@ export default function Explore() {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
+                  className="text-sm font-medium text-primary-light transition-colors hover:text-primary cursor-pointer"
                 >
                   Clear filters
                 </button>
@@ -344,7 +355,7 @@ export default function Explore() {
             </div>
 
             {/* Grid */}
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
               {filteredClubs.map((club) => (
                 <ClubCard key={club.id} club={club} />
               ))}
@@ -352,7 +363,7 @@ export default function Explore() {
           </>
         ) : (
           /* Empty state */
-          <div className="rounded-2xl border border-border bg-surface py-20 text-center">
+          <div className="rounded-2xl border border-border bg-card py-24 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-alt">
               <svg
                 className="h-8 w-8 text-muted"
@@ -369,7 +380,7 @@ export default function Explore() {
                 />
               </svg>
             </div>
-            <p className="mt-5 text-xl font-bold text-accent">
+            <p className="mt-5 text-xl font-bold text-white">
               {emptyStateMessage.title}
             </p>
             <p className="mt-2 text-sm text-muted">

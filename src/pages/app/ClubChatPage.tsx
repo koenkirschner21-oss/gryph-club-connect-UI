@@ -78,7 +78,7 @@ export default function ClubChatPage() {
                 className={`w-full cursor-pointer rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
                   activeChannel === ch.id
                     ? "bg-primary/10 font-medium text-primary"
-                    : "text-muted hover:bg-surface hover:text-accent"
+                    : "text-muted hover:bg-surface hover:text-white"
                 }`}
               >
                 # {ch.name}
@@ -92,13 +92,13 @@ export default function ClubChatPage() {
       <div className="flex flex-1 flex-col">
         {/* Channel header */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <h2 className="text-sm font-bold text-accent">
+          <h2 className="text-sm font-bold text-white">
             # {activeChannelName}
           </h2>
 
           {/* Mobile channel picker */}
           <select
-            className="ml-auto rounded-md border border-border bg-surface px-2 py-1 text-xs text-accent md:hidden"
+            className="ml-auto rounded-md border border-border bg-surface px-2 py-1 text-xs text-white md:hidden"
             value={activeChannel}
             onChange={(e) => setActiveChannel(e.target.value)}
           >
@@ -115,7 +115,7 @@ export default function ClubChatPage() {
           {channelMessages.length === 0 ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
-                <p className="text-sm font-medium text-accent">
+                <p className="text-sm font-medium text-white">
                   No messages yet
                 </p>
                 <p className="mt-1 text-xs text-muted">
@@ -132,7 +132,7 @@ export default function ClubChatPage() {
                   </div>
                   <div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-sm font-semibold text-accent">
+                      <span className="text-sm font-semibold text-white">
                         {msg.authorName ?? "Unknown"}
                       </span>
                       <span className="text-xs text-muted">
@@ -142,7 +142,7 @@ export default function ClubChatPage() {
                         })}
                       </span>
                     </div>
-                    <p className="text-sm text-accent">{msg.content}</p>
+                    <p className="text-sm text-white">{msg.content}</p>
                   </div>
                 </div>
               ))}
@@ -165,7 +165,7 @@ export default function ClubChatPage() {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder={`Message #${activeChannelName}`}
-              className="flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
             <Button type="submit" disabled={!draft.trim()}>
               Send

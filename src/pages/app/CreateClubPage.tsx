@@ -64,7 +64,7 @@ export default function CreateClubPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <h1 className="mb-2 text-2xl font-bold text-accent">Create a Club</h1>
+      <h1 className="mb-2 text-2xl font-bold text-white">Create a Club</h1>
       <p className="mb-8 text-muted">
         Set up your club&apos;s public profile and private workspace.
       </p>
@@ -81,7 +81,7 @@ export default function CreateClubPage() {
       <form onSubmit={handleSubmit} className="space-y-6" noValidate>
         {/* Basic Info */}
         <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold text-accent">
+          <legend className="text-lg font-semibold text-white">
             Basic Information
           </legend>
 
@@ -97,7 +97,7 @@ export default function CreateClubPage() {
           <div>
             <label
               htmlFor="slug"
-              className="mb-1 block text-sm font-medium text-accent"
+              className="mb-1 block text-sm font-medium text-white"
             >
               URL Slug
             </label>
@@ -105,7 +105,7 @@ export default function CreateClubPage() {
               <span className="text-sm text-muted">/clubs/</span>
               <input
                 id="slug"
-                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 value={slug}
                 onChange={(e) => setSlug(generateSlug(e.target.value))}
                 placeholder="gryphon-robotics-club"
@@ -116,7 +116,7 @@ export default function CreateClubPage() {
           <div>
             <label
               htmlFor="category"
-              className="mb-1 block text-sm font-medium text-accent"
+              className="mb-1 block text-sm font-medium text-white"
             >
               Category
             </label>
@@ -124,7 +124,7 @@ export default function CreateClubPage() {
               id="category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               <option value="">Select a category</option>
               <option value="Academic">Academic</option>
@@ -146,7 +146,7 @@ export default function CreateClubPage() {
           <div>
             <label
               htmlFor="description"
-              className="mb-1 block text-sm font-medium text-accent"
+              className="mb-1 block text-sm font-medium text-white"
             >
               Description
             </label>
@@ -156,14 +156,14 @@ export default function CreateClubPage() {
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
               placeholder="Tell students what your club is about…"
-              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
         </fieldset>
 
         {/* Meeting Info */}
         <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold text-accent">
+          <legend className="text-lg font-semibold text-white">
             Meeting Details
           </legend>
 
@@ -186,7 +186,7 @@ export default function CreateClubPage() {
 
         {/* Contact & Links */}
         <fieldset className="space-y-4">
-          <legend className="text-lg font-semibold text-accent">
+          <legend className="text-lg font-semibold text-white">
             Contact & Social Links
           </legend>
 

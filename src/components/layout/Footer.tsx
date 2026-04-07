@@ -2,18 +2,21 @@ import { Link } from "react-router-dom";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-border bg-accent text-white">
+    <footer className="border-t border-border bg-page-bg text-white">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div>
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-4 flex items-center gap-3">
               <img
-                src="/assets/placeholders/logo-gryph-placeholder.svg"
+                src="/assets/gryphon-logo.svg"
                 alt="Gryph Club Connect"
-                className="h-8 w-8 brightness-0 invert"
+                className="h-8 w-8"
               />
-              <span className="text-lg font-bold">Gryph Club Connect</span>
+              <span className="text-base font-bold">
+                <span className="text-primary">Club</span>
+                <span className="text-secondary">Connect</span>
+              </span>
             </div>
             <p className="text-sm text-white/70">
               Discover, join, and manage university clubs at the University of

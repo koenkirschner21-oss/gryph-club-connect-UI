@@ -65,7 +65,7 @@ export default function ClubTasksPage() {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-accent">Tasks</h1>
+          <h1 className="text-xl font-bold text-white">Tasks</h1>
           <p className="text-sm text-muted">
             {tasks.length} task{tasks.length !== 1 ? "s" : ""} total
           </p>
@@ -78,7 +78,7 @@ export default function ClubTasksPage() {
       {/* New task form */}
       {showForm && (
         <Card className="mb-6 p-5">
-          <h3 className="mb-4 font-semibold text-accent">Create New Task</h3>
+          <h3 className="mb-4 font-semibold text-white">Create New Task</h3>
           <div className="space-y-3">
             <FormInput
               id="taskTitle"
@@ -91,7 +91,7 @@ export default function ClubTasksPage() {
             <div>
               <label
                 htmlFor="taskDesc"
-                className="mb-1 block text-sm font-medium text-accent"
+                className="mb-1 block text-sm font-medium text-white"
               >
                 Description
               </label>
@@ -101,14 +101,14 @@ export default function ClubTasksPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
                 placeholder="Add details…"
-                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div className="flex gap-4">
               <div className="flex-1">
                 <label
                   htmlFor="taskPriority"
-                  className="mb-1 block text-sm font-medium text-accent"
+                  className="mb-1 block text-sm font-medium text-white"
                 >
                   Priority
                 </label>
@@ -116,7 +116,7 @@ export default function ClubTasksPage() {
                   id="taskPriority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                  className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -177,7 +177,7 @@ export default function ClubTasksPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h3
-                      className={`font-medium ${task.status === "done" ? "text-muted line-through" : "text-accent"}`}
+                      className={`font-medium ${task.status === "done" ? "text-muted line-through" : "text-white"}`}
                     >
                       {task.title}
                     </h3>
@@ -207,7 +207,7 @@ export default function ClubTasksPage() {
                   onChange={(e) =>
                     handleStatusChange(task.id, e.target.value as TaskStatus)
                   }
-                  className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-accent"
+                  className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-white"
                 >
                   <option value="todo">To Do</option>
                   <option value="in_progress">In Progress</option>

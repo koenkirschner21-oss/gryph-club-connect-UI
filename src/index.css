@@ -1,17 +1,37 @@
 @import "tailwindcss";
 
 @theme {
-  /* Brand Colors */
-  --color-primary: #c20430;
-  --color-primary-dark: #9e0328;
-  --color-primary-light: #e8365c;
-  --color-secondary: #ffd100;
-  --color-secondary-dark: #ccaa00;
-  --color-accent: #1a1a2e;
-  --color-surface: #ffffff;
-  --color-surface-alt: #f5f5f7;
-  --color-muted: #6b7280;
-  --color-border: #e5e7eb;
+  /* ── Gryph Club Connect Brand Tokens ── */
+  /* Primary: Gryphon Red — from the official logo */
+  --color-primary: #C20430;
+  --color-primary-dark: #A00328;
+  --color-primary-light: #D93A5C;
+
+  /* Secondary: Gryphon Gold — from the logo wordmark "Connect" */
+  --color-secondary: #F5C542;
+  --color-secondary-dark: #D4A832;
+
+  /* Surfaces — warm-black base (not blue-tinted) */
+  --color-page-bg: #0B0B0B;
+  --color-card: #131313;
+  --color-card-raised: #1A1A1A;
+  --color-surface: #131313;
+  --color-surface-alt: #181818;
+  --color-surface-raised: #1E1E1E;
+  --color-surface-overlay: #242424;
+
+  /* Borders */
+  --color-border: #222222;
+  --color-border-light: #2E2E2E;
+
+  /* Text */
+  --color-accent: #FFFFFF;
+  --color-text-primary: #F5F5F5;
+  --color-text-secondary: #9CA3AF;
+  --color-muted: #9CA3AF;
+
+  /* Compat */
+  --color-nav-bg: #0B0B0B;
 
   /* Typography */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -20,33 +40,43 @@
   --spacing-section: 5rem;
 }
 
-/* Smooth scroll for the whole document */
+/* ── Base ── */
 html {
   scroll-behavior: smooth;
 }
 
-/* Club card image aspect ratio utility */
+body {
+  background-color: var(--color-page-bg);
+  color: var(--color-text-primary);
+}
+
+/* ── Club card image ── */
 .club-img-ratio {
   aspect-ratio: 16 / 9;
   object-fit: cover;
   width: 100%;
 }
 
-/* Hero gradient overlay */
+/* ── Hero: subtle warm gradient, not heavy glow ── */
 .hero-overlay {
-  background: linear-gradient(135deg, rgba(26,26,46,0.92) 0%, rgba(194,4,48,0.75) 100%);
+  background: radial-gradient(ellipse 90% 70% at 50% 20%, rgba(194,4,48,0.18) 0%, transparent 60%),
+              linear-gradient(180deg, transparent 0%, var(--color-page-bg) 100%);
 }
 
-/* Chip/filter button base */
+.hero-glow {
+  background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(194,4,48,0.12) 0%, transparent 60%);
+}
+
+/* ── Filter chips ── */
 .filter-chip {
   display: inline-flex;
   align-items: center;
   border-radius: 9999px;
-  padding: 0.375rem 1rem;
+  padding: 0.4rem 1.1rem;
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.25;
-  transition: background-color 150ms, color 150ms, box-shadow 150ms;
+  transition: all 150ms ease;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -54,24 +84,35 @@ html {
 .filter-chip-active {
   background-color: var(--color-primary);
   color: #ffffff;
-  box-shadow: 0 1px 4px rgba(194,4,48,0.35);
 }
 
 .filter-chip-inactive {
-  background-color: var(--color-surface);
+  background-color: var(--color-card);
   color: var(--color-muted);
   border: 1px solid var(--color-border);
 }
 
 .filter-chip-inactive:hover {
-  background-color: var(--color-surface-alt);
-  color: var(--color-accent);
-  border-color: #d1d5db;
+  background-color: var(--color-surface-overlay);
+  color: #ffffff;
+  border-color: var(--color-border-light);
 }
 
-/* Decorative dot pattern for hero sections */
-.hero-dots {
-  background-image: radial-gradient(circle, #fff 1px, transparent 1px);
-  background-size: 24px 24px;
+/* ── Buttons ── */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark);
+}
+
+/* Gold divider accent */
+.divider-gold {
+  height: 3px;
+  width: 3rem;
+  background: linear-gradient(90deg, var(--color-secondary) 0%, transparent 100%);
+  border-radius: 2px;
 }
 

@@ -22,7 +22,7 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-accent">
+        <h1 className="text-2xl font-bold text-white">
           Welcome back{user?.email ? `, ${user.email.split("@")[0]}` : ""}
         </h1>
         <p className="mt-1 text-muted">
@@ -44,7 +44,7 @@ export default function DashboardPage() {
       </div>
 
       {/* My Clubs */}
-      <h2 className="mb-4 text-xl font-bold text-accent">My Clubs</h2>
+      <h2 className="mb-4 text-xl font-bold text-white">My Clubs</h2>
 
       {myClubs.length === 0 ? (
         <Card className="p-8 text-center">
@@ -62,7 +62,7 @@ export default function DashboardPage() {
               d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
             />
           </svg>
-          <p className="mt-4 text-lg font-medium text-accent">
+          <p className="mt-4 text-lg font-medium text-white">
             You haven&apos;t joined any clubs yet
           </p>
           <p className="mt-2 text-sm text-muted">
@@ -91,7 +91,7 @@ export default function DashboardPage() {
                     className="h-10 w-10 rounded-lg bg-surface-alt object-cover"
                   />
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate font-semibold text-accent">
+                    <h3 className="truncate font-semibold text-white">
                       {club.name}
                     </h3>
                     <p className="text-xs text-muted">{club.category}</p>

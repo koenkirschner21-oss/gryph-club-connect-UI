@@ -11,7 +11,7 @@ export default function ClubHomePage() {
 
   return (
     <div className="p-6">
-      <h1 className="mb-1 text-xl font-bold text-accent">{club.name}</h1>
+      <h1 className="mb-1 text-xl font-bold text-white">{club.name}</h1>
       <p className="mb-6 text-sm text-muted">{club.description}</p>
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -40,7 +40,7 @@ export default function ClubHomePage() {
           <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">
             Meeting
           </h3>
-          <p className="text-lg font-semibold text-accent">
+          <p className="text-lg font-semibold text-white">
             {club.meetingSchedule || "Not set"}
           </p>
           <p className="mt-1 text-xs text-muted">
@@ -51,7 +51,7 @@ export default function ClubHomePage() {
 
       {/* Recent Activity placeholder */}
       <div className="mt-8">
-        <h2 className="mb-4 text-lg font-bold text-accent">Recent Activity</h2>
+        <h2 className="mb-4 text-lg font-bold text-white">Recent Activity</h2>
         <Card className="p-8 text-center">
           <svg
             className="mx-auto h-10 w-10 text-muted"
@@ -77,7 +77,7 @@ export default function ClubHomePage() {
       {/* Upcoming Events */}
       {club.events.length > 0 && (
         <div className="mt-8">
-          <h2 className="mb-4 text-lg font-bold text-accent">
+          <h2 className="mb-4 text-lg font-bold text-white">
             Upcoming Events
           </h2>
           <div className="space-y-3">
@@ -94,7 +94,7 @@ export default function ClubHomePage() {
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-accent">{event.title}</h3>
+                  <h3 className="font-semibold text-white">{event.title}</h3>
                   <p className="text-xs text-muted">
                     {event.time} · {event.location}
                   </p>

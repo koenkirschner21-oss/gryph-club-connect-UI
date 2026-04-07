@@ -21,17 +21,17 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
 
   return (
     <Link to={`/clubs/${club.slug}`} className="group block focus:outline-none">
-      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition-all duration-200 group-hover:shadow-lg group-hover:-translate-y-0.5 group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-border-light group-hover:shadow-lg group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-page-bg">
         {/* Accent top bar */}
         <div className="h-1 w-full" style={{ backgroundColor: accent }} />
 
         {/* Card body */}
-        <div className={`flex flex-1 flex-col ${variant === "compact" ? "p-4" : "p-5"}`}>
+        <div className={`flex flex-1 flex-col ${variant === "compact" ? "p-5" : "p-6"}`}>
           {/* Top row: logo/initials + meta */}
-          <div className="mb-3 flex items-start gap-3">
+          <div className="mb-4 flex items-start gap-4">
             {/* Logo or initials */}
             <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-sm"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
               style={{ backgroundColor: accent }}
             >
               {club.logoUrl ? (
@@ -48,12 +48,12 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
             <div className="min-w-0 flex-1">
               {/* Name + verified */}
               <div className="flex items-center gap-1.5">
-                <h3 className="truncate text-base font-bold leading-snug text-accent group-hover:text-primary transition-colors">
+                <h3 className="truncate text-base font-bold leading-tight text-white group-hover:text-primary-light transition-colors">
                   {club.name}
                 </h3>
                 {club.isVerified && (
                   <svg
-                    className="h-4 w-4 flex-shrink-0 text-blue-500"
+                    className="h-4 w-4 flex-shrink-0 text-secondary"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                     aria-label="Verified club"
@@ -68,8 +68,8 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
               </div>
 
               {/* Category + member count */}
-              <div className="mt-0.5 flex items-center gap-2 text-xs">
-                <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+              <div className="mt-1.5 flex items-center gap-2.5 text-xs">
+                <span className="inline-block rounded-full bg-primary/15 px-2.5 py-0.5 font-semibold text-primary-light">
                   {club.category}
                 </span>
                 {club.memberCount > 0 && (
@@ -103,7 +103,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
                 toggleSaveClub(club.id);
               }}
               aria-label={saved ? "Unsave club" : "Save club"}
-              className="flex-shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-surface-alt hover:text-primary cursor-pointer"
+              className="flex-shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-white/10 hover:text-primary-light cursor-pointer"
             >
               <svg
                 className={`h-4 w-4 transition-colors ${saved ? "fill-primary text-primary" : "fill-none"}`}
@@ -128,7 +128,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
 
           {/* Tags */}
           {tags.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-4 flex flex-wrap gap-1.5">
               {tags.slice(0, 3).map((tag) => (
                 <span
                   key={tag}
@@ -146,7 +146,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
           )}
 
           {/* Bottom row: location + badges */}
-          <div className="mt-3 flex items-center justify-between">
+          <div className="mt-4 flex items-center justify-between">
             {club.location ? (
               <div className="flex items-center gap-1.5 text-xs text-muted">
                 <svg
@@ -176,7 +176,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
             )}
 
             {joined && (
-              <span className="rounded-full bg-green-600/10 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+              <span className="rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-semibold text-green-400">
                 Joined
               </span>
             )}
