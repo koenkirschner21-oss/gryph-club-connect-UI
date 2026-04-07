@@ -24,7 +24,7 @@ function SpotlightCard({ club }: { club: Club }) {
   return (
     <a
       href={`/clubs/${club.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_24px_rgba(194,4,48,0.2)] hover:border-primary/30 sm:flex-row"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-border-light hover:shadow-lg sm:flex-row"
     >
       {/* Left accent */}
       <div
@@ -55,7 +55,7 @@ function SpotlightCard({ club }: { club: Club }) {
           </h3>
           {club.isVerified && (
             <svg
-              className="h-4 w-4 text-blue-400"
+              className="h-4 w-4 text-secondary"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-label="Verified"
@@ -156,29 +156,37 @@ export default function Explore() {
 
   return (
     <>
-      {/* ──────────── Dark Hero Section with Red Glow ──────────── */}
+      {/* ──────────── Hero Section ──────────── */}
       <section className="relative overflow-hidden bg-page-bg">
-        {/* Radial red glow */}
+        {/* Subtle warm gradient */}
         <div className="hero-overlay absolute inset-0" aria-hidden="true" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-36">
+        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8 lg:py-32">
           <div className="max-w-3xl">
-            <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-secondary">
-              University of Guelph
-            </p>
-            <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl">
+            <div className="mb-6 flex items-center gap-3">
+              <img
+                src="/assets/gryphon-logo.svg"
+                alt=""
+                className="h-10 w-10"
+                aria-hidden="true"
+              />
+              <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
+                Gryph Club Connect
+              </span>
+            </div>
+            <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
               Discover Your{" "}
               <span className="text-primary">Club</span>
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">
+            <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">
               Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
               organizations — from academics and athletics to arts and culture.
               Find your people and get involved.
             </p>
           </div>
 
-          {/* Large search bar inside hero */}
-          <div className="mt-12 max-w-2xl">
+          {/* Search bar */}
+          <div className="mt-10 max-w-2xl">
             <SearchBar
               value={search}
               onChange={setSearch}
@@ -188,18 +196,18 @@ export default function Explore() {
 
           {/* Quick stats */}
           {clubs.length > 0 && (
-            <div className="mt-10 flex flex-wrap gap-10 text-sm text-muted">
-              <span>
-                <strong className="text-2xl font-bold text-white">{clubs.length}</strong>{" "}
+            <div className="mt-8 flex flex-wrap gap-8 text-sm">
+              <span className="text-muted">
+                <strong className="text-xl font-bold text-white">{clubs.length}</strong>{" "}
                 <span className="ml-1">clubs</span>
               </span>
-              <span>
-                <strong className="text-2xl font-bold text-white">{categories.length - 1}</strong>{" "}
+              <span className="text-muted">
+                <strong className="text-xl font-bold text-white">{categories.length - 1}</strong>{" "}
                 <span className="ml-1">categories</span>
               </span>
               {featuredClubs.length > 0 && (
-                <span>
-                  <strong className="text-2xl font-bold text-white">{featuredClubs.length}</strong>{" "}
+                <span className="text-muted">
+                  <strong className="text-xl font-bold text-white">{featuredClubs.length}</strong>{" "}
                   <span className="ml-1">featured</span>
                 </span>
               )}
@@ -210,19 +218,19 @@ export default function Explore() {
 
       {/* ──────────── Featured Clubs ──────────── */}
       {!loading && featuredClubs.length > 0 && !hasActiveFilters && (
-        <section className="relative border-t border-border bg-page-bg">
-          <div className="hero-glow absolute inset-0 pointer-events-none" aria-hidden="true" />
-          <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+        <section className="border-t border-border bg-page-bg">
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
             <div className="mb-8 flex items-center gap-3">
               <svg
-                className="h-6 w-6 text-secondary"
+                className="h-5 w-5 text-secondary"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 aria-hidden="true"
               >
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
-              <h2 className="text-2xl font-extrabold text-white">Featured Clubs</h2>
+              <h2 className="text-xl font-bold text-white">Featured Clubs</h2>
+              <div className="divider-gold ml-2" aria-hidden="true" />
             </div>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {featuredClubs.map((club) => (
@@ -233,13 +241,13 @@ export default function Explore() {
         </section>
       )}
 
-      {/* ──────────── Verified Spotlight ──────────── */}
+      {/* ──────────── Verified Clubs ──────────── */}
       {!loading && spotlightClubs.length > 0 && !hasActiveFilters && (
         <section className="border-t border-border bg-card">
           <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
             <div className="mb-8 flex items-center gap-3">
               <svg
-                className="h-6 w-6 text-primary-light"
+                className="h-5 w-5 text-secondary"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 aria-hidden="true"
@@ -250,9 +258,10 @@ export default function Explore() {
                   clipRule="evenodd"
                 />
               </svg>
-              <h2 className="text-2xl font-extrabold text-white">
+              <h2 className="text-xl font-bold text-white">
                 Verified Clubs
               </h2>
+              <div className="divider-gold ml-2" aria-hidden="true" />
             </div>
             <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
               {spotlightClubs.map((club) => (
@@ -381,7 +390,7 @@ export default function Explore() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-6 inline-flex items-center rounded-lg btn-gradient-red px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
+                className="mt-6 inline-flex items-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark cursor-pointer"
               >
                 Clear all filters
               </button>

@@ -7,13 +7,16 @@ export default function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div>
-            <div className="mb-4 flex items-center gap-2">
+            <div className="mb-4 flex items-center gap-3">
               <img
-                src="/assets/placeholders/logo-gryph-placeholder.svg"
+                src="/assets/gryphon-logo.svg"
                 alt="Gryph Club Connect"
-                className="h-8 w-8 brightness-0 invert"
+                className="h-8 w-8"
               />
-              <span className="text-lg font-bold">Gryph Club Connect</span>
+              <span className="text-base font-bold">
+                <span className="text-primary">Club</span>
+                <span className="text-secondary">Connect</span>
+              </span>
             </div>
             <p className="text-sm text-white/70">
               Discover, join, and manage university clubs at the University of

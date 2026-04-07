@@ -21,7 +21,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
 
   return (
     <Link to={`/clubs/${club.slug}`} className="group block focus:outline-none">
-      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-[0_0_24px_rgba(194,4,48,0.25)] group-hover:border-primary/30 group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-page-bg">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-border-light group-hover:shadow-lg group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-page-bg">
         {/* Accent top bar */}
         <div className="h-1 w-full" style={{ backgroundColor: accent }} />
 
@@ -53,7 +53,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
                 </h3>
                 {club.isVerified && (
                   <svg
-                    className="h-4 w-4 flex-shrink-0 text-blue-400"
+                    className="h-4 w-4 flex-shrink-0 text-secondary"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                     aria-label="Verified club"

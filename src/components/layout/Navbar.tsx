@@ -33,18 +33,17 @@ export default function Navbar() {
         className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
         aria-label="Main navigation"
       >
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-2.5 group">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-sm transition-all group-hover:shadow-[0_0_12px_rgba(194,4,48,0.5)]">
-            <img
-              src="/assets/placeholders/logo-gryph-placeholder.svg"
-              alt=""
-              className="h-6 w-6 brightness-0 invert"
-              aria-hidden="true"
-            />
-          </div>
-          <span className="text-base font-extrabold tracking-tight text-white">
-            Gryph<span className="text-primary">Club</span>Connect
+        {/* Logo — gryphon + wordmark matching brand identity */}
+        <Link to="/" className="flex items-center gap-3 group">
+          <img
+            src="/assets/gryphon-logo.svg"
+            alt=""
+            className="h-9 w-9"
+            aria-hidden="true"
+          />
+          <span className="text-base font-extrabold tracking-tight">
+            <span className="text-primary">Club</span>
+            <span className="text-secondary">Connect</span>
           </span>
         </Link>
 
@@ -57,10 +56,10 @@ export default function Navbar() {
                 key={link.to}
                 to={link.to}
                 aria-current={isActive ? "page" : undefined}
-                className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200 ${
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-white/10 text-white"
-                    : "text-muted hover:bg-white/5 hover:text-white"
+                    : "text-muted hover:text-white"
                 }`}
               >
                 {link.label}
@@ -78,7 +77,7 @@ export default function Navbar() {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="cursor-pointer rounded-lg border border-border px-3.5 py-2 text-sm font-semibold text-muted transition-all duration-200 hover:border-primary/50 hover:text-white hover:shadow-[0_0_10px_rgba(194,4,48,0.2)]"
+                className="cursor-pointer rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-border-light hover:text-white"
               >
                 Logout
               </button>
@@ -87,7 +86,7 @@ export default function Navbar() {
             <div className="ml-3 flex items-center gap-2">
               <Link
                 to="/login"
-                className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200 ${
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
                   location.pathname === "/login"
                     ? "text-white"
                     : "text-muted hover:text-white"
@@ -97,7 +96,7 @@ export default function Navbar() {
               </Link>
               <Link
                 to="/signup"
-                className="btn-gradient-red rounded-lg px-5 py-2 text-sm font-bold text-white transition-all duration-200"
+                className="rounded-lg bg-primary px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-primary-dark"
               >
                 Sign Up
               </Link>
@@ -151,7 +150,7 @@ export default function Navbar() {
                   to={link.to}
                   onClick={() => setMobileOpen(false)}
                   aria-current={isActive ? "page" : undefined}
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     isActive
                       ? "bg-white/10 text-white"
                       : "text-muted hover:bg-white/5 hover:text-white"
@@ -175,7 +174,7 @@ export default function Navbar() {
                     setMobileOpen(false);
                     handleLogout();
                   }}
-                  className="block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-muted transition-colors hover:bg-white/5 hover:text-primary"
+                  className="block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-medium text-muted transition-colors hover:bg-white/5 hover:text-primary"
                 >
                   Logout
                 </button>
@@ -185,14 +184,14 @@ export default function Navbar() {
                 <Link
                   to="/login"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-lg px-3 py-2.5 text-sm font-semibold text-muted transition-colors hover:bg-white/5 hover:text-white"
+                  className="block rounded-lg px-3 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-white/5 hover:text-white"
                 >
                   Login
                 </Link>
                 <Link
                   to="/signup"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-lg btn-gradient-red px-3 py-2.5 text-center text-sm font-bold text-white"
+                  className="block rounded-lg bg-primary px-3 py-2.5 text-center text-sm font-bold text-white transition-colors hover:bg-primary-dark"
                 >
                   Sign Up
                 </Link>
