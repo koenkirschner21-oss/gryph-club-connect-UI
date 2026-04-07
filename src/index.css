@@ -69,3 +69,9 @@ html {
   border-color: #d1d5db;
 }
 
+/* Decorative dot pattern for hero sections */
+.hero-dots {
+  background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+

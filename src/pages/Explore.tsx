@@ -169,7 +169,7 @@ export default function Explore() {
       <section className="relative overflow-hidden bg-accent">
         <div className="hero-overlay absolute inset-0" aria-hidden="true" />
         {/* Decorative dots */}
-        <div className="absolute inset-0 opacity-[0.04]" aria-hidden="true" style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+        <div className="absolute inset-0 opacity-[0.04] hero-dots" aria-hidden="true" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
           <div className="max-w-2xl">
