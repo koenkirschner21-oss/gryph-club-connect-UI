@@ -13,7 +13,7 @@ export default function ClubCard({ club }: ClubCardProps) {
   const joined = isJoined(club.id);
 
   return (
-    <Link to={`/explore/${club.id}`} className="block">
+    <Link to={`/clubs/${club.slug}`} className="block">
       <Card className="overflow-hidden">
         <div className="relative">
           <img

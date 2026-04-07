@@ -43,6 +43,14 @@ export default function Footer() {
                   Explore Clubs
                 </Link>
               </li>
+              <li>
+                <Link
+                  to="/app"
+                  className="text-sm text-white/70 transition-colors hover:text-white"
+                >
+                  Dashboard
+                </Link>
+              </li>
             </ul>
           </div>
 

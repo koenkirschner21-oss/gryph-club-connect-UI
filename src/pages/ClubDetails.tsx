@@ -1,12 +1,14 @@
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../context/useClubContext";
+import { useAuthContext } from "../context/useAuthContext";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
 
 export default function ClubDetails() {
-  const { clubId } = useParams<{ clubId: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const {
+    getClubBySlug,
     getClubById,
     loading,
     isJoined,
@@ -15,8 +17,10 @@ export default function ClubDetails() {
     isSaved,
     toggleSaveClub,
   } = useClubContext();
+  const { user } = useAuthContext();
 
-  const club = getClubById(clubId ?? "");
+  // Support both slug and id lookups for backwards compatibility
+  const club = getClubBySlug(slug ?? "") ?? getClubById(slug ?? "");
   const joined = club ? isJoined(club.id) : false;
   const saved = club ? isSaved(club.id) : false;
 
@@ -78,6 +82,14 @@ export default function ClubDetails() {
               <p className="mt-3 max-w-2xl text-muted">{club.description}</p>
             </div>
             <div className="flex items-center gap-3">
+              {/* Open workspace button for members */}
+              {user && joined && (
+                <Link to={`/app/clubs/${club.id}`}>
+                  <Button size="lg" variant="secondary">
+                    Open Workspace
+                  </Button>
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={() => toggleSaveClub(club.id)}
