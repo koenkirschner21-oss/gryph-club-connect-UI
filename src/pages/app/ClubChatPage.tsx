@@ -21,6 +21,7 @@ export default function ClubChatPage() {
   const [activeChannel, setActiveChannel] = useState<ChannelName>("general");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const channelMessages = messages.filter(
@@ -39,8 +40,13 @@ export default function ClubChatPage() {
   async function handleSend() {
     if (!draft.trim() || !user || sending) return;
     setSending(true);
-    await sendMessage(activeChannel, draft.trim());
-    setDraft("");
+    setSendError(false);
+    const ok = await sendMessage(activeChannel, draft.trim());
+    if (ok) {
+      setDraft("");
+    } else {
+      setSendError(true);
+    }
     setSending(false);
   }
 
@@ -152,6 +158,11 @@ export default function ClubChatPage() {
 
         {/* Message input */}
         <div className="border-t border-border p-4">
+          {sendError && (
+            <p className="mb-2 text-xs text-primary">
+              Failed to send message. Please try again.
+            </p>
+          )}
           {canPost ? (
             <form
               onSubmit={(e) => {

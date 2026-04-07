@@ -19,6 +19,7 @@ export default function ClubAnnouncementsPage() {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   function resetForm() {
     setTitle("");
@@ -29,16 +30,29 @@ export default function ClubAnnouncementsPage() {
   async function handleSubmit() {
     if (!title.trim() || !content.trim()) return;
     setSaving(true);
+    setFeedback(null);
     const ok = await createPost({
       title: title.trim(),
       content: content.trim(),
     });
     setSaving(false);
-    if (ok) resetForm();
+    if (ok) {
+      resetForm();
+      setFeedback({ type: "success", text: "Announcement posted." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to post announcement." });
+    }
   }
 
   async function handleDelete(postId: string) {
-    await deletePost(postId);
+    if (!window.confirm("Delete this announcement? This cannot be undone.")) return;
+    setFeedback(null);
+    const ok = await deletePost(postId);
+    if (ok) {
+      setFeedback({ type: "success", text: "Announcement deleted." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to delete announcement." });
+    }
   }
 
   if (loading) {
@@ -69,6 +83,20 @@ export default function ClubAnnouncementsPage() {
           </Button>
         )}
       </div>
+
+      {/* Feedback message */}
+      {feedback && (
+        <div
+          role="alert"
+          className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
+            feedback.type === "success"
+              ? "bg-green-500/10 text-green-400"
+              : "bg-primary/10 text-primary"
+          }`}
+        >
+          {feedback.text}
+        </div>
+      )}
 
       {/* Create form — admin/exec only */}
       {showForm && isAdminOrExec && (

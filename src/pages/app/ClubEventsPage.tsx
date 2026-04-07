@@ -31,6 +31,7 @@ export default function ClubEventsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Form state for create / edit
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export default function ClubEventsPage() {
   async function handleSubmit() {
     if (!title.trim() || !date) return;
     setSaving(true);
+    setFeedback(null);
 
     const fields = {
       title: title.trim(),
@@ -72,18 +74,27 @@ export default function ClubEventsPage() {
       location: location.trim() || "TBD",
     };
 
+    let ok: boolean;
     if (editingId) {
-      await updateEvent(editingId, fields);
+      ok = !!(await updateEvent(editingId, fields));
     } else {
-      await createEvent(fields);
+      ok = !!(await createEvent(fields));
     }
 
     setSaving(false);
+    if (ok) {
+      setFeedback({ type: "success", text: editingId ? "Event updated." : "Event created." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to save event." });
+    }
     resetForm();
   }
 
   async function handleDelete(eventId: string) {
+    if (!window.confirm("Delete this event? This cannot be undone.")) return;
+    setFeedback(null);
     await deleteEvent(eventId);
+    setFeedback({ type: "success", text: "Event deleted." });
   }
 
   async function handleRsvp(eventId: string, status: RsvpStatus) {
@@ -141,6 +152,20 @@ export default function ClubEventsPage() {
           </Button>
         )}
       </div>
+
+      {/* Feedback message */}
+      {feedback && (
+        <div
+          role="alert"
+          className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
+            feedback.type === "success"
+              ? "bg-green-500/10 text-green-400"
+              : "bg-primary/10 text-primary"
+          }`}
+        >
+          {feedback.text}
+        </div>
+      )}
 
       {/* Create / edit form — admin/exec only */}
       {showForm && isAdminOrExec && (

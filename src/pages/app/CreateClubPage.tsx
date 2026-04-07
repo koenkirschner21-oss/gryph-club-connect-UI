@@ -136,6 +136,7 @@ export default function CreateClubPage() {
               className="mb-1 block text-sm font-medium text-white"
             >
               Category
+              <span className="ml-1 text-primary" aria-label="required">*</span>
             </label>
             <select
               id="category"

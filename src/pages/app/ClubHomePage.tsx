@@ -1,13 +1,16 @@
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
+import { useClubPosts } from "../../hooks/useClubPosts";
 import Card from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
 
 export default function ClubHomePage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { getClubById } = useClubContext();
   const club = getClubById(clubId ?? "");
   const { events, loading: eventsLoading } = useClubEvents(clubId);
+  const { posts } = useClubPosts(clubId);
 
   if (!club) return null;
 
@@ -55,39 +58,60 @@ export default function ClubHomePage() {
         </Card>
       </div>
 
-      {/* Recent Activity placeholder */}
+      {/* Recent Activity — real data from announcements */}
       <div className="mt-8">
-        <h2 className="mb-4 text-lg font-bold text-white">Recent Activity</h2>
-        <Card className="p-8 text-center">
-          <svg
-            className="mx-auto h-10 w-10 text-muted"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <p className="mt-3 text-sm text-muted">
-            Activity feed will appear here as members interact with the
-            workspace.
-          </p>
-        </Card>
+        <h2 className="mb-4 text-lg font-bold text-white">Recent Announcements</h2>
+        {posts.length === 0 ? (
+          <Card className="p-6 text-center">
+            <p className="text-sm text-muted">
+              No announcements yet. Check back soon!
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {posts.slice(0, 3).map((post) => (
+              <Card key={post.id} className="p-4">
+                <h3 className="font-semibold text-white">{post.title}</h3>
+                <p className="mt-1 text-xs text-muted">
+                  {post.authorName ?? "Unknown"} ·{" "}
+                  {new Date(post.createdAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </p>
+                <p className="mt-2 line-clamp-2 text-sm text-white/80">
+                  {post.content}
+                </p>
+              </Card>
+            ))}
+            {posts.length > 3 && (
+              <Link to="announcements">
+                <Button variant="ghost" size="sm">
+                  View all announcements →
+                </Button>
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Upcoming Events */}
-      {upcomingEvents.length > 0 && (
-        <div className="mt-8">
-          <h2 className="mb-4 text-lg font-bold text-white">
-            Upcoming Events
-          </h2>
+      <div className="mt-8">
+        <h2 className="mb-4 text-lg font-bold text-white">
+          Upcoming Events
+        </h2>
+        {upcomingEvents.length === 0 ? (
+          <Card className="p-6 text-center">
+            <p className="text-sm text-muted">No upcoming events scheduled.</p>
+            <Link to="events" className="mt-3 inline-block">
+              <Button variant="ghost" size="sm">
+                View Events Page →
+              </Button>
+            </Link>
+          </Card>
+        ) : (
           <div className="space-y-3">
-            {upcomingEvents.map((event) => (
+            {upcomingEvents.slice(0, 3).map((event) => (
               <Card key={event.id} className="flex items-center gap-4 p-4">
                 <div className="flex-shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-center">
                   <p className="text-xs font-medium text-primary">
@@ -107,9 +131,16 @@ export default function ClubHomePage() {
                 </div>
               </Card>
             ))}
+            {upcomingEvents.length > 3 && (
+              <Link to="events">
+                <Button variant="ghost" size="sm">
+                  View all events →
+                </Button>
+              </Link>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

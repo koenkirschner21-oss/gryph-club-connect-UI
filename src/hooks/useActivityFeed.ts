@@ -27,12 +27,14 @@ export interface ActivityItem {
  */
 export function useActivityFeed(joinedClubIds: string[]) {
   const [items, setItems] = useState<ActivityItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(joinedClubIds.length > 0);
+
+  // Stable key for the dependency — avoids object identity issues
+  const clubKey = joinedClubIds.join(",");
 
   useEffect(() => {
     if (joinedClubIds.length === 0) {
-      setItems([]);
-      setLoading(false);
+      // No clubs — nothing to fetch
       return;
     }
 
@@ -62,7 +64,10 @@ export function useActivityFeed(joinedClubIds: string[]) {
       // Map posts
       if (postsRes.data) {
         for (const row of postsRes.data) {
-          const club = (row.clubs ?? {}) as Record<string, unknown>;
+          const clubRaw = row.clubs as unknown;
+          const club = (
+            Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
+          ) as Record<string, unknown>;
           feed.push({
             id: row.id as string,
             type: "post",
@@ -78,7 +83,10 @@ export function useActivityFeed(joinedClubIds: string[]) {
       // Map events
       if (eventsRes.data) {
         for (const row of eventsRes.data) {
-          const club = (row.clubs ?? {}) as Record<string, unknown>;
+          const clubRaw = row.clubs as unknown;
+          const club = (
+            Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
+          ) as Record<string, unknown>;
           feed.push({
             id: row.id as string,
             type: "event",
@@ -106,7 +114,7 @@ export function useActivityFeed(joinedClubIds: string[]) {
     return () => {
       cancelled = true;
     };
-  }, [joinedClubIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clubKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { items, loading };
 }

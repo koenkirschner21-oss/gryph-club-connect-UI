@@ -21,6 +21,8 @@ export default function ClubMembersPage() {
   const { members, pendingMembers, loading, updateRole, removeMember, approveRequest, rejectRequest } = useClubMembers(clubId);
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const roleOrder = { admin: 0, exec: 1, member: 2 } as const;
   const sortedMembers = [...members].sort(
@@ -35,32 +37,52 @@ export default function ClubMembersPage() {
 
   async function handlePromote(memberId: string) {
     setActionLoading(memberId);
+    setFeedback(null);
     await updateRole(memberId, "exec");
+    setFeedback({ type: "success", text: "Member promoted to exec." });
     setActionLoading(null);
   }
 
   async function handleDemote(memberId: string) {
     setActionLoading(memberId);
+    setFeedback(null);
     await updateRole(memberId, "member");
+    setFeedback({ type: "success", text: "Member demoted to member." });
     setActionLoading(null);
   }
 
   async function handleRemove(memberId: string) {
+    if (!window.confirm("Remove this member from the club?")) return;
     setActionLoading(memberId);
+    setFeedback(null);
     await removeMember(memberId);
+    setFeedback({ type: "success", text: "Member removed." });
     setActionLoading(null);
   }
 
   async function handleApprove(memberId: string) {
     setActionLoading(memberId);
+    setFeedback(null);
     await approveRequest(memberId);
+    setFeedback({ type: "success", text: "Request approved." });
     setActionLoading(null);
   }
 
   async function handleReject(memberId: string) {
+    if (!window.confirm("Reject this join request?")) return;
     setActionLoading(memberId);
+    setFeedback(null);
     await rejectRequest(memberId);
+    setFeedback({ type: "success", text: "Request rejected." });
     setActionLoading(null);
+  }
+
+  function handleCopyCode() {
+    if (!club?.joinCode) return;
+    navigator.clipboard.writeText(club.joinCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
 
   function renderAdminActions(
@@ -139,11 +161,35 @@ export default function ClubMembersPage() {
                 Share this code to invite new members
               </p>
             </div>
-            <div className="rounded-lg bg-surface-alt px-4 py-2 font-mono text-lg font-bold tracking-widest text-white">
-              {club.joinCode}
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-surface-alt px-4 py-2 font-mono text-lg font-bold tracking-widest text-white">
+                {club.joinCode}
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                className="cursor-pointer rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-white"
+                title="Copy to clipboard"
+              >
+                {copied ? "✓ Copied" : "Copy"}
+              </button>
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Feedback message */}
+      {feedback && (
+        <div
+          role="alert"
+          className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
+            feedback.type === "success"
+              ? "bg-green-500/10 text-green-400"
+              : "bg-primary/10 text-primary"
+          }`}
+        >
+          {feedback.text}
+        </div>
       )}
 
       {/* Pending requests section — admin/exec only */}
