@@ -12,6 +12,8 @@ export interface ClubContextValue {
   categories: string[];
   /** Look up a single club by ID. */
   getClubById: (clubId: string) => Club | undefined;
+  /** Look up a single club by slug. */
+  getClubBySlug: (slug: string) => Club | undefined;
   joinedClubs: string[];
   savedClubs: string[];
   joinClub: (clubId: string) => void;

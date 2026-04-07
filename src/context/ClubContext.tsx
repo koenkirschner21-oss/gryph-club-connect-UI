@@ -8,7 +8,6 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
-import { mockClubs, categories as fallbackCategories } from "../data/clubs";
 import type { Club } from "../types";
 
 export function ClubProvider({ children }: { children: ReactNode }) {
@@ -16,7 +15,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const userId = user?.id;
 
   // ---- Clubs data ----
-  const [clubs, setClubs] = useState<Club[]>(mockClubs);
+  const [clubs, setClubs] = useState<Club[]>([]);
   const [clubsLoading, setClubsLoading] = useState(true);
   const [clubsError, setClubsError] = useState<string | null>(null);
 
@@ -31,31 +30,37 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (error) {
           console.error("Failed to load clubs:", error.message);
-          // Fall back to mock data so the app remains usable
-          setClubs(mockClubs);
           setClubsError(error.message);
         } else if (data && data.length > 0) {
           // Map DB rows → Club shape. Fields not in DB get safe defaults.
           const mapped: Club[] = data.map((row) => ({
             id: row.id,
             name: row.name ?? "",
+            slug: row.slug ?? row.id,
             description: row.description ?? "",
+            shortDescription: row.short_description ?? undefined,
             category: row.category ?? "",
             memberCount: row.member_count ?? 0,
             meetingSchedule: row.meeting_schedule ?? "",
+            meetingLocation: row.meeting_location ?? undefined,
             location: row.location ?? "",
             imageUrl:
-              row.image_url ?? "/assets/placeholders/placeholder-rect.svg",
+              row.image_url ??
+              row.logo_url ??
+              "/assets/placeholders/placeholder-rect.svg",
+            bannerUrl: row.banner_url ?? undefined,
             tags: row.tags ?? [],
             contactEmail: row.contact_email ?? "",
+            isPublic: row.is_public ?? true,
+            joinCode: row.join_code ?? undefined,
             socialLinks: row.social_links ?? undefined,
             events: row.events ?? [],
+            createdBy: row.created_by ?? undefined,
+            createdAt: row.created_at ?? undefined,
           }));
           setClubs(mapped);
-        } else {
-          // Empty table – use mock data as seed display
-          setClubs(mockClubs);
         }
+        // If data is empty, clubs stays as [] — no mock fallback
         setClubsLoading(false);
       });
 
@@ -66,13 +71,17 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
   // Derive categories from current clubs list
   const categories = useMemo(() => {
-    if (clubs === mockClubs) return fallbackCategories;
     const cats = new Set(clubs.map((c) => c.category).filter(Boolean));
     return ["All", ...Array.from(cats).sort()];
   }, [clubs]);
 
   const getClubById = useCallback(
     (clubId: string): Club | undefined => clubs.find((c) => c.id === clubId),
+    [clubs],
+  );
+
+  const getClubBySlug = useCallback(
+    (slug: string): Club | undefined => clubs.find((c) => c.slug === slug),
     [clubs],
   );
 
@@ -223,6 +232,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       error: clubsError,
       categories,
       getClubById,
+      getClubBySlug,
       joinedClubs,
       savedClubs,
       joinClub,
@@ -237,6 +247,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       clubsError,
       categories,
       getClubById,
+      getClubBySlug,
       joinedClubs,
       savedClubs,
       joinClub,

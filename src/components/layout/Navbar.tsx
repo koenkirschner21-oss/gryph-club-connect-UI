@@ -7,6 +7,11 @@ const navLinks = [
   { to: "/explore", label: "Explore Clubs" },
 ];
 
+const authNavLinks = [
+  { to: "/app", label: "Dashboard" },
+  { to: "/explore", label: "Explore" },
+];
+
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -43,7 +48,7 @@ export default function Navbar() {
 
         {/* Desktop Nav */}
         <div className="hidden items-center gap-6 md:flex">
-          {navLinks.map((link) => {
+          {(user ? authNavLinks : navLinks).map((link) => {
             const isActive = location.pathname === link.to;
             return (
               <Link
@@ -132,7 +137,7 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="border-t border-border md:hidden">
           <div className="space-y-1 px-4 py-3">
-            {navLinks.map((link) => {
+            {(user ? authNavLinks : navLinks).map((link) => {
               const isActive = location.pathname === link.to;
               return (
                 <Link
