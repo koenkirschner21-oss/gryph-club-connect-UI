@@ -24,7 +24,7 @@ function SpotlightCard({ club }: { club: Club }) {
   return (
     <a
       href={`/clubs/${club.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card card-glow-hover hover:-translate-y-1 hover:border-border-light sm:flex-row"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card card-glow-hover hover:border-border-light sm:flex-row"
     >
       {/* Left accent */}
       <div
@@ -161,29 +161,66 @@ export default function Explore() {
         {/* Layered warm gradient */}
         <div className="hero-overlay absolute inset-0" aria-hidden="true" />
         <div className="hero-glow absolute inset-0" aria-hidden="true" />
+        <div className="hero-focal-glow absolute inset-0" aria-hidden="true" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-36">
-          <div className="max-w-3xl">
-            <div className="mb-5 flex items-center gap-3">
-              <img
-                src="/assets/gryphon-logo.svg"
-                alt=""
-                className="h-12 w-12"
-                aria-hidden="true"
-              />
-              <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
-                Gryph Club Connect
-              </span>
+          <div className="flex items-center gap-12 lg:gap-16">
+            {/* Left: text content */}
+            <div className="max-w-3xl flex-1">
+              <div className="mb-5 flex items-center gap-3">
+                <img
+                  src="/assets/gryphon-logo.svg"
+                  alt=""
+                  className="h-12 w-12"
+                  aria-hidden="true"
+                />
+                <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
+                  Gryph Club Connect
+                </span>
+              </div>
+              <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]">
+                <span className="text-white/80">Discover Your</span>{" "}
+                <span className="text-primary">Club</span>
+              </h1>
+              <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
+                Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
+                organizations — from academics and athletics to arts and culture.
+                Find your people and get involved.
+              </p>
             </div>
-            <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl leading-[1.05]">
-              Discover Your{" "}
-              <span className="text-primary">Club</span>
-            </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
-              Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
-              organizations — from academics and athletics to arts and culture.
-              Find your people and get involved.
-            </p>
+
+            {/* Right: visual anchor — decorative blurred panel */}
+            <div className="hidden flex-shrink-0 lg:block" aria-hidden="true">
+              <div className="relative w-64 xl:w-72">
+                <div className="absolute -inset-4 rounded-3xl bg-primary/5 blur-2xl" />
+                <div className="relative rounded-2xl border border-border/60 bg-card/80 p-5 backdrop-blur-sm shadow-elevated">
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-primary/20" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-2.5 w-20 rounded-full bg-white/15" />
+                      <div className="h-2 w-14 rounded-full bg-white/8" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-2 w-full rounded-full bg-white/8" />
+                    <div className="h-2 w-5/6 rounded-full bg-white/6" />
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <div className="h-5 w-14 rounded-full bg-primary/15" />
+                    <div className="h-5 w-10 rounded-full bg-secondary/10" />
+                  </div>
+                </div>
+                <div className="relative -mt-1.5 ml-3 rounded-2xl border border-border/40 bg-surface-alt/60 p-4 backdrop-blur-sm">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-7 w-7 rounded-lg bg-secondary/15" />
+                    <div className="flex-1 space-y-1">
+                      <div className="h-2 w-16 rounded-full bg-white/12" />
+                      <div className="h-1.5 w-12 rounded-full bg-white/6" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Search bar — more prominent */}
@@ -219,7 +256,7 @@ export default function Explore() {
 
       {/* ──────────── Featured Clubs ──────────── */}
       {!loading && featuredClubs.length > 0 && !hasActiveFilters && (
-        <section className="border-t border-border bg-page-bg">
+        <section className="border-t border-border bg-surface-alt/50">
           <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
             <div className="mb-8 flex items-center gap-3">
               <svg

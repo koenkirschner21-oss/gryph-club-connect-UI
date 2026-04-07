@@ -13,9 +13,9 @@ export default function Footer() {
                 alt="Gryph Club Connect"
                 className="h-10 w-10"
               />
-              <span className="text-lg font-bold">
-                <span className="text-primary">Club</span>
-                <span className="text-secondary/90">Connect</span>
+              <span className="text-lg font-extrabold">
+                <span className="text-white">Club</span>
+                <span className="text-secondary">Connect</span>
               </span>
             </div>
             <p className="text-sm text-white/70">

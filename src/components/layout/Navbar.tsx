@@ -42,8 +42,8 @@ export default function Navbar() {
             aria-hidden="true"
           />
           <span className="text-lg font-extrabold tracking-tight leading-none">
-            <span className="text-primary">Club</span>
-            <span className="text-secondary/90">Connect</span>
+            <span className="text-white">Club</span>
+            <span className="text-secondary">Connect</span>
           </span>
         </Link>
 
