@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
+import { uploadImage } from "../../lib/uploadImage";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Card from "../../components/ui/Card";
+import ImageUpload from "../../components/ui/ImageUpload";
 
 export default function ManageClubPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -25,6 +27,11 @@ export default function ManageClubPage() {
   );
   const [brandColor, setBrandColor] = useState(club?.brandColor ?? "#C20430");
 
+  const [logoUrl, setLogoUrl] = useState(club?.logoUrl ?? "");
+  const [bannerUrl, setBannerUrl] = useState(club?.bannerUrl ?? "");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +39,36 @@ export default function ManageClubPage() {
   // Only admin or exec can access this page
   if (!club || (role !== "admin" && role !== "exec")) {
     return <Navigate to="/app" replace />;
+  }
+
+  async function handleLogoUpload(file: File) {
+    if (!clubId) return;
+    setUploadingLogo(true);
+    setError(null);
+    const ext = file.name.split(".").pop() ?? "png";
+    const path = `${clubId}.${ext}`;
+    const url = await uploadImage("club-logos", path, file);
+    if (url) {
+      setLogoUrl(`${url}?t=${Date.now()}`);
+    } else {
+      setError("Logo upload failed.");
+    }
+    setUploadingLogo(false);
+  }
+
+  async function handleBannerUpload(file: File) {
+    if (!clubId) return;
+    setUploadingBanner(true);
+    setError(null);
+    const ext = file.name.split(".").pop() ?? "png";
+    const path = `${clubId}.${ext}`;
+    const url = await uploadImage("club-banners", path, file);
+    if (url) {
+      setBannerUrl(`${url}?t=${Date.now()}`);
+    } else {
+      setError("Banner upload failed.");
+    }
+    setUploadingBanner(false);
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -53,6 +90,8 @@ export default function ManageClubPage() {
       category: category.trim(),
       abbreviation: abbreviation.trim() || undefined,
       brandColor: brandColor.trim() || undefined,
+      logoUrl: logoUrl.trim() || undefined,
+      bannerUrl: bannerUrl.trim() || undefined,
     });
 
     setSaving(false);
@@ -172,6 +211,54 @@ export default function ManageClubPage() {
             placeholder="e.g. GRC"
             maxLength={10}
           />
+
+          {/* Club Logo */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-white">
+              Club Logo
+            </label>
+            <ImageUpload
+              currentUrl={logoUrl}
+              onFileSelected={handleLogoUpload}
+              uploading={uploadingLogo}
+              label="Upload Logo"
+              shape="circle"
+            />
+            <div className="mt-2">
+              <FormInput
+                id="logo-url"
+                label="Or paste logo URL"
+                type="url"
+                placeholder="https://example.com/logo.png"
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Club Banner */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-white">
+              Club Banner
+            </label>
+            <ImageUpload
+              currentUrl={bannerUrl}
+              onFileSelected={handleBannerUpload}
+              uploading={uploadingBanner}
+              label="Upload Banner"
+              shape="rect"
+            />
+            <div className="mt-2">
+              <FormInput
+                id="banner-url"
+                label="Or paste banner URL"
+                type="url"
+                placeholder="https://example.com/banner.jpg"
+                value={bannerUrl}
+                onChange={(e) => setBannerUrl(e.target.value)}
+              />
+            </div>
+          </div>
 
           <div>
             <label

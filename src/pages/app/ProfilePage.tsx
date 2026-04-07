@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
+import { uploadImage } from "../../lib/uploadImage";
 import FormInput from "../../components/ui/FormInput";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
+import ImageUpload from "../../components/ui/ImageUpload";
 
 interface ProfileData {
   full_name: string;
@@ -26,6 +28,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -73,6 +76,26 @@ export default function ProfilePage() {
     setMessage(null);
   }
 
+  async function handleAvatarUpload(file: File) {
+    if (!user) return;
+    setUploading(true);
+    setMessage(null);
+
+    const ext = file.name.split(".").pop() ?? "png";
+    const path = `${user.id}.${ext}`;
+    const url = await uploadImage("profile-pictures", path, file);
+
+    if (url) {
+      // Append a cache-busting param so the browser shows the fresh image
+      const freshUrl = `${url}?t=${Date.now()}`;
+      setProfile((prev) => ({ ...prev, avatar_url: freshUrl }));
+      setMessage({ type: "success", text: "Avatar uploaded. Click Save to keep it." });
+    } else {
+      setMessage({ type: "error", text: "Avatar upload failed." });
+    }
+    setUploading(false);
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
@@ -118,45 +141,26 @@ export default function ProfilePage() {
       </p>
 
       <form onSubmit={handleSave} noValidate className="mt-8 space-y-6">
-        {/* Avatar preview */}
-        <div className="flex items-center gap-5">
-          <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-alt">
-            {profile.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt="Profile picture"
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <svg
-                className="h-8 w-8 text-muted"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
-                />
-              </svg>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <FormInput
-              label="Profile Picture URL"
-              id="avatar_url"
-              type="url"
-              placeholder="https://example.com/your-photo.jpg"
-              value={profile.avatar_url}
-              onChange={(e) => handleChange("avatar_url", e.target.value)}
-            />
-          </div>
+        {/* Avatar upload + URL fallback */}
+        <div className="space-y-3">
+          <label className="block text-sm font-medium text-white">
+            Profile Picture
+          </label>
+          <ImageUpload
+            currentUrl={profile.avatar_url}
+            onFileSelected={handleAvatarUpload}
+            uploading={uploading}
+            label="Upload Avatar"
+            shape="circle"
+          />
+          <FormInput
+            label="Or paste image URL"
+            id="avatar_url"
+            type="url"
+            placeholder="https://example.com/your-photo.jpg"
+            value={profile.avatar_url}
+            onChange={(e) => handleChange("avatar_url", e.target.value)}
+          />
         </div>
 
         <FormInput

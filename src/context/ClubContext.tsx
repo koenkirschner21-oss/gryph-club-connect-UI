@@ -326,6 +326,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.abbreviation !== undefined)
         row.abbreviation = fields.abbreviation;
       if (fields.brandColor !== undefined) row.brand_color = fields.brandColor;
+      if (fields.logoUrl !== undefined) row.logo_url = fields.logoUrl;
+      if (fields.bannerUrl !== undefined) row.banner_url = fields.bannerUrl;
 
       const { data, error } = await supabase
         .from("clubs")
