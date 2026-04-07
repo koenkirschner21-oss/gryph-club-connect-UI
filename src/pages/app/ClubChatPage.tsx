@@ -59,7 +59,7 @@ export default function ClubChatPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-8rem)] md:h-[calc(100dvh-4rem)]">
+    <div className="flex h-[calc(100vh-8rem)] md:h-[calc(100vh-4rem)]">
       {/* Channel list */}
       <div className="hidden w-48 flex-shrink-0 border-r border-border bg-surface-alt md:block">
         <div className="p-3">
