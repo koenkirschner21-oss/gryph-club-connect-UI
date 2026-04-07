@@ -92,11 +92,11 @@ export interface Channel {
 
 export interface Message {
   id: string;
-  channelId: string;
-  userId: string;
+  clubId: string;
+  authorId: string;
+  channel: string;
   content: string;
   createdAt: string;
-  updatedAt?: string;
   authorName?: string;
   authorAvatar?: string;
 }
