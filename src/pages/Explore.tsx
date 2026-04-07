@@ -68,7 +68,7 @@ function SpotlightCard({ club }: { club: Club }) {
             </svg>
           )}
         </div>
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted">
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted/80">
           {club.shortDescription || club.description}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
@@ -179,7 +179,7 @@ export default function Explore() {
                 </span>
               </div>
               <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]">
-                <span className="text-white/80">Discover Your</span>{" "}
+                <span className="text-white/60">Discover Your</span>{" "}
                 <span className="text-primary">Club</span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">

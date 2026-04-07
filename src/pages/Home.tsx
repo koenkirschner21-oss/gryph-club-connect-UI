@@ -40,9 +40,9 @@ export default function Home() {
                 </span>
               </div>
               <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]">
-                <span className="text-white/80">Discover Your</span>{" "}
+                <span className="text-white/60">Discover Your</span>{" "}
                 <span className="text-secondary">Community</span>{" "}
-                <span className="text-white/80">at Guelph</span>
+                <span className="text-white/60">at Guelph</span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
                 Browse 200+ student clubs, find your passion, and connect with
@@ -162,7 +162,7 @@ export default function Home() {
       {/* CTA Section */}
       <section className="bg-primary">
         <div className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-white">
+          <h2 className="text-3xl font-extrabold text-white">
             Ready to Get Involved?
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-white/80">

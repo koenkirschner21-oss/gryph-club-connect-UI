@@ -69,7 +69,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
 
               {/* Category + member count */}
               <div className="mt-2 flex items-center gap-2.5 text-xs">
-                <span className="inline-block rounded-full bg-primary/15 px-2.5 py-0.5 font-semibold text-primary-light">
+                <span className="inline-block rounded-full bg-primary/12 px-2.5 py-0.5 font-medium text-primary-light">
                   {club.category}
                 </span>
                 {club.memberCount > 0 && (
@@ -122,7 +122,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
           </div>
 
           {/* Description */}
-          <p className="line-clamp-2 text-sm leading-relaxed text-muted flex-1">
+          <p className="line-clamp-2 text-sm leading-relaxed text-muted/80 flex-1">
             {displayDescription}
           </p>
 
