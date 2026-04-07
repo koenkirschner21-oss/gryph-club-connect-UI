@@ -157,6 +157,7 @@ body {
 
   .card-glow-hover:hover {
     transform: none;
+    box-shadow: none;
   }
 }
 
