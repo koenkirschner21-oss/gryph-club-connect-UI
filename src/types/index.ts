@@ -129,6 +129,7 @@ export interface Profile {
   email: string;
   avatarUrl?: string;
   university?: string;
+  program?: string;
   createdAt: string;
 }
 

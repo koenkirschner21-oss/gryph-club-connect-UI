@@ -19,6 +19,7 @@ import ClubChatPage from "./pages/app/ClubChatPage";
 import ClubTasksPage from "./pages/app/ClubTasksPage";
 import ClubEventsPage from "./pages/app/ClubEventsPage";
 import ClubMembersPage from "./pages/app/ClubMembersPage";
+import ProfilePage from "./pages/app/ProfilePage";
 
 export default function App() {
   return (
@@ -66,6 +67,14 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <JoinClubPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/profile"
+                  element={
+                    <ProtectedRoute>
+                      <ProfilePage />
                     </ProtectedRoute>
                   }
                 />

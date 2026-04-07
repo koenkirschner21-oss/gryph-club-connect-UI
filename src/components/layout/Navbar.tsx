@@ -10,6 +10,7 @@ const navLinks = [
 const authNavLinks = [
   { to: "/app", label: "Dashboard" },
   { to: "/explore", label: "Explore" },
+  { to: "/app/profile", label: "Profile" },
 ];
 
 export default function Navbar() {

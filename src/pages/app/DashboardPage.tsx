@@ -41,6 +41,9 @@ export default function DashboardPage() {
         <Link to="/explore">
           <Button variant="ghost">Explore Clubs</Button>
         </Link>
+        <Link to="/app/profile">
+          <Button variant="ghost">Edit Profile</Button>
+        </Link>
       </div>
 
       {/* My Clubs */}
