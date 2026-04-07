@@ -19,6 +19,9 @@ import ClubChatPage from "./pages/app/ClubChatPage";
 import ClubTasksPage from "./pages/app/ClubTasksPage";
 import ClubEventsPage from "./pages/app/ClubEventsPage";
 import ClubMembersPage from "./pages/app/ClubMembersPage";
+import ManageClubPage from "./pages/app/ManageClubPage";
+import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
+import ProfilePage from "./pages/app/ProfilePage";
 
 export default function App() {
   return (
@@ -69,6 +72,14 @@ export default function App() {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/app/profile"
+                  element={
+                    <ProtectedRoute>
+                      <ProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Club workspace with sidebar layout */}
                 <Route
@@ -80,10 +91,12 @@ export default function App() {
                   }
                 >
                   <Route index element={<ClubHomePage />} />
+                  <Route path="announcements" element={<ClubAnnouncementsPage />} />
                   <Route path="chat" element={<ClubChatPage />} />
                   <Route path="tasks" element={<ClubTasksPage />} />
                   <Route path="events" element={<ClubEventsPage />} />
                   <Route path="members" element={<ClubMembersPage />} />
+                  <Route path="settings" element={<ManageClubPage />} />
                 </Route>
 
                 {/* Catch-all 404 */}

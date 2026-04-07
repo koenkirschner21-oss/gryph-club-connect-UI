@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
+import NotificationBell from "../ui/NotificationBell";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -10,6 +11,7 @@ const navLinks = [
 const authNavLinks = [
   { to: "/app", label: "Dashboard" },
   { to: "/explore", label: "Explore" },
+  { to: "/app/profile", label: "Profile" },
 ];
 
 export default function Navbar() {
@@ -34,16 +36,16 @@ export default function Navbar() {
         aria-label="Main navigation"
       >
         {/* Logo — gryphon + wordmark matching brand identity */}
-        <Link to="/" className="flex items-center gap-3 group">
+        <Link to="/" className="flex items-center gap-2.5 group">
           <img
             src="/assets/gryphon-logo.svg"
             alt=""
-            className="h-9 w-9"
+            className="h-10 w-10"
             aria-hidden="true"
           />
-          <span className="text-base font-extrabold tracking-tight">
-            <span className="text-primary">Club</span>
-            <span className="text-secondary">Connect</span>
+          <span className="text-lg font-extrabold tracking-tight leading-none">
+            <span className="tracking-[0.02em] text-white">Club</span>
+            <span className="text-secondary/90">Connect</span>
           </span>
         </Link>
 
@@ -71,6 +73,7 @@ export default function Navbar() {
 
           {user ? (
             <div className="ml-3 flex items-center gap-3">
+              <NotificationBell />
               <span className="text-sm text-muted" aria-label="Logged in as">
                 {user.email}
               </span>

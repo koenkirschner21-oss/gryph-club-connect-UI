@@ -30,6 +30,7 @@ export interface Club {
     discord?: string;
   };
   events: ClubEvent[];
+  requiresApproval?: boolean;
   createdBy?: string;
   createdAt?: string;
 }
@@ -51,11 +52,23 @@ export interface ClubEvent {
   createdAt?: string;
 }
 
+export type RsvpStatus = "going" | "maybe" | "not_going";
+
 export interface EventRsvp {
   id: string;
   eventId: string;
   userId: string;
-  status: "going" | "maybe" | "not_going";
+  status: RsvpStatus;
+  createdAt?: string;
+  fullName?: string;
+  avatarUrl?: string;
+  program?: string;
+}
+
+export interface RsvpCounts {
+  going: number;
+  maybe: number;
+  not_going: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +87,7 @@ export interface ClubMember {
   fullName?: string;
   email?: string;
   avatarUrl?: string;
+  program?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,11 +105,11 @@ export interface Channel {
 
 export interface Message {
   id: string;
-  channelId: string;
-  userId: string;
+  clubId: string;
+  authorId: string;
+  channel: string;
   content: string;
   createdAt: string;
-  updatedAt?: string;
   authorName?: string;
   authorAvatar?: string;
 }
@@ -129,6 +143,7 @@ export interface Profile {
   email: string;
   avatarUrl?: string;
   university?: string;
+  program?: string;
   createdAt: string;
 }
 
@@ -142,6 +157,34 @@ export interface UserClubRow {
   club_id: string;
   type: "joined" | "saved";
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Posts / Announcements
+// ---------------------------------------------------------------------------
+export interface Post {
+  id: string;
+  clubId: string;
+  authorId: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  authorName?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+export type NotificationType = "new_event" | "club_update" | "announcement";
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  message: string;
+  read: boolean;
+  clubId?: string;
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------

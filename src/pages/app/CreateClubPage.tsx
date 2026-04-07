@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubContext } from "../../context/useClubContext";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 
 export default function CreateClubPage() {
   const { user } = useAuthContext();
+  const { createClub } = useClubContext();
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
@@ -49,12 +51,27 @@ export default function CreateClubPage() {
     setLoading(true);
 
     try {
-      // For now, create a local club record. When Supabase tables are ready,
-      // this will insert into the clubs + club_members tables and use the
-      // returned database ID for navigation instead of the slug.
-      const clubId = slug || generateSlug(name);
-      // Navigate to the new club workspace
-      navigate(`/app/clubs/${clubId}`);
+      const socialLinks: Record<string, string> = {};
+      if (website.trim()) socialLinks.website = website.trim();
+      if (instagram.trim()) socialLinks.instagram = instagram.trim();
+      if (discord.trim()) socialLinks.discord = discord.trim();
+
+      const clubId = await createClub({
+        name: name.trim(),
+        slug: slug || generateSlug(name),
+        description: description.trim(),
+        category: category.trim(),
+        contactEmail: contactEmail.trim(),
+        meetingSchedule: meetingSchedule.trim(),
+        meetingLocation: meetingLocation.trim(),
+        socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
+      });
+
+      if (clubId) {
+        navigate(`/app/clubs/${clubId}`);
+      } else {
+        setError("Failed to create club. Please try again.");
+      }
     } catch {
       setError("Failed to create club. Please try again.");
     } finally {
@@ -119,6 +136,7 @@ export default function CreateClubPage() {
               className="mb-1 block text-sm font-medium text-white"
             >
               Category
+              <span className="ml-1 text-primary" aria-label="required">*</span>
             </label>
             <select
               id="category"

@@ -1,11 +1,21 @@
+import { useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../context/useClubContext";
+import { useClubEvents } from "../hooks/useClubEvents";
+import { useEventRsvps } from "../hooks/useEventRsvps";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
 import { useAuthContext } from "../context/useAuthContext";
+import type { RsvpStatus } from "../types";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
+
+const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
+  { value: "going", label: "Going" },
+  { value: "maybe", label: "Maybe" },
+  { value: "not_going", label: "Not Going" },
+];
 
 export default function ClubDetails() {
   const { slug } = useParams<{ slug: string }>();
@@ -14,6 +24,7 @@ export default function ClubDetails() {
     getClubById,
     loading,
     isJoined,
+    isPending,
     joinClub,
     leaveClub,
     isSaved,
@@ -23,8 +34,16 @@ export default function ClubDetails() {
 
   // Look up by slug first (primary), fall back to id for legacy /explore/:id links
   const club = getClubBySlug(slug ?? "") ?? getClubById(slug ?? "");
+  const { events: clubEvents } = useClubEvents(club?.id);
+  const eventIds = useMemo(() => clubEvents.map((e) => e.id), [clubEvents]);
+  const { myRsvps, counts, setRsvp, removeRsvp } = useEventRsvps(eventIds);
   const joined = club ? isJoined(club.id) : false;
+  const pending = club ? isPending(club.id) : false;
   const saved = club ? isSaved(club.id) : false;
+
+  const upcomingEvents = clubEvents
+    .filter((e) => new Date(e.date) >= new Date())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   if (loading) {
     return (
@@ -68,7 +87,7 @@ export default function ClubDetails() {
   return (
     <>
       {/* Hero Banner */}
-      <div className="relative h-56 w-full overflow-hidden bg-page-bg sm:h-72 lg:h-80">
+      <div className="relative h-60 w-full overflow-hidden bg-page-bg sm:h-80 lg:h-96">
         <img
           src={club.bannerUrl ?? club.imageUrl}
           alt=""
@@ -76,15 +95,16 @@ export default function ClubDetails() {
           className="h-full w-full object-cover opacity-40"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-page-bg via-page-bg/60 to-transparent" />
+        <div className="hero-glow absolute inset-0" aria-hidden="true" />
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Club identity row — overlaps hero */}
-        <div className="-mt-16 mb-8 flex flex-col gap-5 sm:-mt-20 sm:flex-row sm:items-end sm:gap-6">
+        <div className="-mt-20 mb-10 flex flex-col gap-6 sm:-mt-24 sm:flex-row sm:items-end sm:gap-7">
           {/* Club avatar / logo */}
           <div className="relative z-10 flex-shrink-0">
             <div
-              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-card shadow-lg sm:h-28 sm:w-28"
+              className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border-4 border-card shadow-elevated sm:h-32 sm:w-32"
               style={{ backgroundColor: club.brandColor ?? "var(--color-primary)" }}
             >
               {club.logoUrl ? (
@@ -120,8 +140,13 @@ export default function ClubDetails() {
                   Joined
                 </span>
               )}
+              {pending && (
+                <span className="inline-block rounded-full bg-yellow-500 px-3 py-0.5 text-xs font-semibold text-white shadow">
+                  Pending Approval
+                </span>
+              )}
             </div>
-            <h1 className="text-2xl font-extrabold text-white sm:text-3xl lg:text-4xl">
+            <h1 className="text-3xl font-extrabold text-white sm:text-4xl lg:text-5xl leading-tight">
               {club.name}
             </h1>
             {/* Quick meta */}
@@ -204,12 +229,16 @@ export default function ClubDetails() {
             </button>
             <Button
               size="lg"
-              variant={joined ? "outline" : "primary"}
+              variant={joined ? "outline" : pending ? "outline" : "primary"}
               onClick={() =>
-                joined ? leaveClub(club.id) : joinClub(club.id)
+                joined
+                  ? leaveClub(club.id)
+                  : pending
+                    ? leaveClub(club.id)
+                    : joinClub(club.id)
               }
             >
-              {joined ? "Leave Club" : "Join Club"}
+              {joined ? "Leave Club" : pending ? "Cancel Request" : "Join Club"}
             </Button>
           </div>
         </div>
@@ -229,13 +258,14 @@ export default function ClubDetails() {
 
         <div className="grid gap-8 pb-16 lg:grid-cols-3">
           {/* Main Content */}
-          <div className="space-y-8 lg:col-span-2">
+          <div className="space-y-8 col-span-full lg:col-span-2">
             {/* Description */}
-            <Card className="p-6">
-              <h2 className="mb-3 text-lg font-bold text-white">About</h2>
-              <p className="leading-relaxed text-muted">{club.longDescription ?? club.description}</p>
+            <Card className="p-7">
+              <h2 className="mb-4 text-xl font-bold text-white">About</h2>
+              <div className="divider-gold mb-5" aria-hidden="true" />
+              <p className="text-base leading-7 text-muted">{club.longDescription ?? club.description}</p>
               {club.shortDescription && club.longDescription && (
-                <p className="mt-3 text-sm font-medium text-white/70 italic">
+                <p className="mt-4 text-sm font-medium text-white/70 italic leading-relaxed">
                   {club.shortDescription}
                 </p>
               )}
@@ -246,9 +276,12 @@ export default function ClubDetails() {
               <h2 className="mb-4 text-xl font-bold text-white">
                 Upcoming Events
               </h2>
-              {club.events.length > 0 ? (
+              {upcomingEvents.length > 0 ? (
                 <div className="space-y-4">
-                  {club.events.map((event) => (
+                  {upcomingEvents.map((event) => {
+                    const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
+                    const myStatus = myRsvps[event.id];
+                    return (
                     <Card key={event.id} className="p-5">
                       <div className="flex items-start gap-4">
                         {/* Date badge */}
@@ -308,10 +341,52 @@ export default function ClubDetails() {
                               {event.description}
                             </p>
                           )}
+
+                          {/* RSVP counts */}
+                          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
+                            <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-green-400">
+                              {c.going} going
+                            </span>
+                            <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-yellow-400">
+                              {c.maybe} maybe
+                            </span>
+                            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-red-400">
+                              {c.not_going} not going
+                            </span>
+                          </div>
+
+                          {/* RSVP buttons (logged-in users only) */}
+                          {user && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {RSVP_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() =>
+                                    myStatus === opt.value
+                                      ? removeRsvp(event.id)
+                                      : setRsvp(event.id, opt.value)
+                                  }
+                                  className={`cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                                    myStatus === opt.value
+                                      ? opt.value === "going"
+                                        ? "border-green-500 bg-green-500/20 text-green-400"
+                                        : opt.value === "maybe"
+                                          ? "border-yellow-500 bg-yellow-500/20 text-yellow-400"
+                                          : "border-red-500 bg-red-500/20 text-red-400"
+                                      : "border-border bg-surface text-muted hover:bg-surface-alt hover:text-white"
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Card>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <Card className="p-8 text-center">
@@ -341,10 +416,10 @@ export default function ClubDetails() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-5">
+          <div className="col-span-full space-y-6 lg:col-span-1">
             {/* Details Card */}
-            <Card className="overflow-hidden">
-              <div className="border-b border-border bg-surface-alt px-5 py-3">
+            <Card className="overflow-hidden shadow-elevated">
+              <div className="border-b border-border bg-surface-alt px-5 py-4">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-muted">
                   Club Details
                 </h3>

@@ -26,7 +26,7 @@ export default function Signup() {
     setLoading(true);
     try {
       await signUp(email, password);
-      navigate("/");
+      navigate("/app/profile");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {
@@ -51,6 +51,7 @@ export default function Signup() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <fieldset disabled={loading} className="space-y-4">
           <FormInput
             id="email"
             label="Email"
@@ -71,6 +72,7 @@ export default function Signup() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
+            hint="Must be at least 6 characters"
           />
 
           <FormInput
@@ -83,6 +85,7 @@ export default function Signup() {
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="••••••••"
           />
+          </fieldset>
 
           <Button
             type="submit"
