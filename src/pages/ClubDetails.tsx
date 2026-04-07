@@ -19,7 +19,7 @@ export default function ClubDetails() {
   } = useClubContext();
   const { user } = useAuthContext();
 
-  // Support both slug and id lookups for backwards compatibility
+  // Look up by slug first (primary), fall back to id for legacy /explore/:id links
   const club = getClubBySlug(slug ?? "") ?? getClubById(slug ?? "");
   const joined = club ? isJoined(club.id) : false;
   const saved = club ? isSaved(club.id) : false;

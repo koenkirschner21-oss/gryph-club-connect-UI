@@ -50,7 +50,8 @@ export default function CreateClubPage() {
 
     try {
       // For now, create a local club record. When Supabase tables are ready,
-      // this will insert into the clubs + club_members tables.
+      // this will insert into the clubs + club_members tables and use the
+      // returned database ID for navigation instead of the slug.
       const clubId = slug || generateSlug(name);
       // Navigate to the new club workspace
       navigate(`/app/clubs/${clubId}`);

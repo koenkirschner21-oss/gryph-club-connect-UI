@@ -46,7 +46,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             memberCount: row.member_count ?? 0,
             meetingSchedule: row.meeting_schedule ?? "",
             meetingLocation: row.meeting_location ?? undefined,
-            location: row.location ?? row.meeting_location ?? "",
+            location: row.location ?? "",
             imageUrl:
               row.image_url ??
               row.logo_url ??
