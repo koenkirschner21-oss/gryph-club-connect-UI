@@ -94,15 +94,15 @@ type SizeFilter = "all" | "small" | "medium" | "large";
 const SIZE_LABELS: Record<SizeFilter, string> = {
   all: "Any Size",
   small: "Small (≤20)",
-  medium: "Medium (21–50)",
+  medium: "Medium (21–49)",
   large: "Large (50+)",
 };
 
 function matchesSize(club: Club, filter: SizeFilter): boolean {
   if (filter === "all") return true;
   if (filter === "small") return club.memberCount <= 20;
-  if (filter === "medium") return club.memberCount > 20 && club.memberCount <= 50;
-  return club.memberCount > 50;
+  if (filter === "medium") return club.memberCount > 20 && club.memberCount < 50;
+  return club.memberCount >= 50;
 }
 
 // ─── Main Explore page ──────────────────────────────────────────────────────

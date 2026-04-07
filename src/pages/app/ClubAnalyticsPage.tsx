@@ -36,7 +36,9 @@ export default function ClubAnalyticsPage() {
       const sevenDaysAgo = new Date(
         Date.now() - 7 * 24 * 60 * 60 * 1000,
       ).toISOString();
-      const today = new Date().toISOString().split("T")[0];
+      // Use local date for upcoming events comparison
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
       const [
         membersRes,
@@ -94,13 +96,20 @@ export default function ClubAnalyticsPage() {
 
       if (cancelled) return;
 
-      const hasError = [
-        membersRes, newMembersRes, eventsRes, upcomingEventsRes,
-        postsRes, messagesRes, tasksRes, completedTasksRes, rsvpsRes,
-      ].some((r) => r.error);
+      const errors: string[] = [];
+      if (membersRes.error) errors.push("members");
+      if (newMembersRes.error) errors.push("new members");
+      if (eventsRes.error) errors.push("events");
+      if (upcomingEventsRes.error) errors.push("upcoming events");
+      if (postsRes.error) errors.push("posts");
+      if (messagesRes.error) errors.push("messages");
+      if (tasksRes.error) errors.push("tasks");
+      if (completedTasksRes.error) errors.push("completed tasks");
+      if (rsvpsRes.error) errors.push("RSVPs");
 
-      if (hasError) {
-        setError("Failed to load some analytics data.");
+      if (errors.length > 0) {
+        console.error("Analytics query failures:", errors);
+        setError(`Failed to load: ${errors.join(", ")}`);
       }
 
       setAnalytics({
