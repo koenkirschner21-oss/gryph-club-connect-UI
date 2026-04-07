@@ -1,13 +1,19 @@
 import { useParams } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
+import { useClubEvents } from "../../hooks/useClubEvents";
 import Card from "../../components/ui/Card";
 
 export default function ClubHomePage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { getClubById } = useClubContext();
   const club = getClubById(clubId ?? "");
+  const { events, loading: eventsLoading } = useClubEvents(clubId);
 
   if (!club) return null;
+
+  const upcomingEvents = events
+    .filter((e) => new Date(e.date) >= new Date())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   return (
     <div className="p-6">
@@ -31,7 +37,7 @@ export default function ClubHomePage() {
             Upcoming Events
           </h3>
           <p className="text-3xl font-bold text-primary">
-            {club.events.length}
+            {eventsLoading ? "…" : upcomingEvents.length}
           </p>
           <p className="mt-1 text-xs text-muted">Scheduled events</p>
         </Card>
@@ -75,13 +81,13 @@ export default function ClubHomePage() {
       </div>
 
       {/* Upcoming Events */}
-      {club.events.length > 0 && (
+      {upcomingEvents.length > 0 && (
         <div className="mt-8">
           <h2 className="mb-4 text-lg font-bold text-white">
             Upcoming Events
           </h2>
           <div className="space-y-3">
-            {club.events.map((event) => (
+            {upcomingEvents.map((event) => (
               <Card key={event.id} className="flex items-center gap-4 p-4">
                 <div className="flex-shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-center">
                   <p className="text-xs font-medium text-primary">

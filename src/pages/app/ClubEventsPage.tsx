@@ -1,58 +1,95 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
+import { useClubEvents } from "../../hooks/useClubEvents";
 import type { ClubEvent } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
+import Spinner from "../../components/ui/Spinner";
 
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
-  const { getClubById } = useClubContext();
-  const club = getClubById(clubId ?? "");
+  const { getUserRole } = useClubContext();
+  const { events, loading, createEvent, updateEvent, deleteEvent } =
+    useClubEvents(clubId);
 
-  const [localEvents, setLocalEvents] = useState<ClubEvent[]>(
-    club?.events ?? [],
-  );
+  const role = getUserRole(clubId ?? "");
+  const isAdminOrExec = role === "admin" || role === "exec";
+
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // New event form state
+  // Form state for create / edit
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
 
-  function handleAddEvent() {
-    if (!title.trim() || !date) return;
-
-    const event: ClubEvent = {
-      id: `event-${Date.now()}`,
-      clubId: clubId,
-      title: title.trim(),
-      description: description.trim(),
-      date,
-      time: time || "TBD",
-      location: location.trim() || "TBD",
-      createdAt: new Date().toISOString(),
-    };
-
-    setLocalEvents((prev) => [...prev, event]);
+  function resetForm() {
     setTitle("");
     setDescription("");
     setDate("");
     setTime("");
     setLocation("");
+    setEditingId(null);
     setShowForm(false);
   }
 
-  const upcomingEvents = localEvents
-    .filter((e) => new Date(e.date) >= new Date())
+  function startEdit(event: ClubEvent) {
+    setEditingId(event.id);
+    setTitle(event.title);
+    setDescription(event.description);
+    setDate(event.date);
+    setTime(event.time);
+    setLocation(event.location);
+    setShowForm(true);
+  }
+
+  async function handleSubmit() {
+    if (!title.trim() || !date) return;
+    setSaving(true);
+
+    const fields = {
+      title: title.trim(),
+      description: description.trim(),
+      date,
+      time: time || "TBD",
+      location: location.trim() || "TBD",
+    };
+
+    if (editingId) {
+      await updateEvent(editingId, fields);
+    } else {
+      await createEvent(fields);
+    }
+
+    setSaving(false);
+    resetForm();
+  }
+
+  async function handleDelete(eventId: string) {
+    await deleteEvent(eventId);
+  }
+
+  const now = new Date();
+  const upcomingEvents = events
+    .filter((e) => new Date(e.date) >= now)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const pastEvents = localEvents
-    .filter((e) => new Date(e.date) < new Date())
+  const pastEvents = events
+    .filter((e) => new Date(e.date) < now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Spinner label="Loading events…" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -64,15 +101,24 @@ export default function ClubEventsPage() {
             {upcomingEvents.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          {showForm ? "Cancel" : "+ New Event"}
-        </Button>
+        {isAdminOrExec && (
+          <Button
+            onClick={() => {
+              if (showForm) resetForm();
+              else setShowForm(true);
+            }}
+          >
+            {showForm ? "Cancel" : "+ New Event"}
+          </Button>
+        )}
       </div>
 
-      {/* New event form */}
-      {showForm && (
+      {/* Create / edit form — admin/exec only */}
+      {showForm && isAdminOrExec && (
         <Card className="mb-6 p-5">
-          <h3 className="mb-4 font-semibold text-white">Create New Event</h3>
+          <h3 className="mb-4 font-semibold text-white">
+            {editingId ? "Edit Event" : "Create New Event"}
+          </h3>
           <div className="space-y-3">
             <FormInput
               id="eventTitle"
@@ -95,7 +141,7 @@ export default function ClubEventsPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
                 placeholder="Add details…"
-                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
               />
             </div>
             <div className="flex gap-4">
@@ -126,12 +172,21 @@ export default function ClubEventsPage() {
               onChange={(e) => setLocation(e.target.value)}
               placeholder="e.g. Thornbrough Building, Room 1307"
             />
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end gap-3 pt-2">
+              {editingId && (
+                <Button variant="ghost" onClick={resetForm}>
+                  Cancel Edit
+                </Button>
+              )}
               <Button
-                onClick={handleAddEvent}
-                disabled={!title.trim() || !date}
+                onClick={handleSubmit}
+                disabled={!title.trim() || !date || saving}
               >
-                Add Event
+                {saving
+                  ? "Saving…"
+                  : editingId
+                    ? "Save Changes"
+                    : "Add Event"}
               </Button>
             </div>
           </div>
@@ -143,7 +198,8 @@ export default function ClubEventsPage() {
       {upcomingEvents.length === 0 ? (
         <Card className="mb-8 p-8 text-center">
           <p className="text-sm text-muted">
-            No upcoming events. Create one to get started!
+            No upcoming events.{" "}
+            {isAdminOrExec ? "Create one to get started!" : "Check back soon!"}
           </p>
         </Card>
       ) : (
@@ -172,6 +228,24 @@ export default function ClubEventsPage() {
                     </p>
                   )}
                 </div>
+                {isAdminOrExec && (
+                  <div className="flex flex-shrink-0 gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => startEdit(event)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(event.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                )}
               </div>
             </Card>
           ))}
@@ -196,12 +270,21 @@ export default function ClubEventsPage() {
                       {new Date(event.date).getDate()}
                     </p>
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h3 className="font-semibold text-white">{event.title}</h3>
                     <p className="mt-0.5 text-xs text-muted">
                       {event.time} · {event.location}
                     </p>
                   </div>
+                  {isAdminOrExec && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(event.id)}
+                    >
+                      Delete
+                    </Button>
+                  )}
                 </div>
               </Card>
             ))}

@@ -1,5 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../context/useClubContext";
+import { useClubEvents } from "../hooks/useClubEvents";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
 import { useAuthContext } from "../context/useAuthContext";
@@ -23,8 +24,13 @@ export default function ClubDetails() {
 
   // Look up by slug first (primary), fall back to id for legacy /explore/:id links
   const club = getClubBySlug(slug ?? "") ?? getClubById(slug ?? "");
+  const { events: clubEvents } = useClubEvents(club?.id);
   const joined = club ? isJoined(club.id) : false;
   const saved = club ? isSaved(club.id) : false;
+
+  const upcomingEvents = clubEvents
+    .filter((e) => new Date(e.date) >= new Date())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   if (loading) {
     return (
@@ -248,9 +254,9 @@ export default function ClubDetails() {
               <h2 className="mb-4 text-xl font-bold text-white">
                 Upcoming Events
               </h2>
-              {club.events.length > 0 ? (
+              {upcomingEvents.length > 0 ? (
                 <div className="space-y-4">
-                  {club.events.map((event) => (
+                  {upcomingEvents.map((event) => (
                     <Card key={event.id} className="p-5">
                       <div className="flex items-start gap-4">
                         {/* Date badge */}
