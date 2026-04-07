@@ -29,8 +29,8 @@ export default function Login() {
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-sm">
-        <h1 className="mb-6 text-center text-2xl font-bold text-accent">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8">
+        <h1 className="mb-6 text-center text-2xl font-extrabold text-white">
           Log In
         </h1>
 

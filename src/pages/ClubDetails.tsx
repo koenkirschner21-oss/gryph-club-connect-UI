@@ -53,7 +53,7 @@ export default function ClubDetails() {
             />
           </svg>
         </div>
-        <h1 className="mt-5 text-3xl font-bold text-accent">Club Not Found</h1>
+        <h1 className="mt-5 text-3xl font-bold text-white">Club Not Found</h1>
         <p className="mt-3 text-muted">
           The club you&apos;re looking for doesn&apos;t exist or may have been
           removed.
@@ -68,14 +68,14 @@ export default function ClubDetails() {
   return (
     <>
       {/* Hero Banner */}
-      <div className="relative h-56 w-full overflow-hidden bg-nav-bg sm:h-72 lg:h-80">
+      <div className="relative h-56 w-full overflow-hidden bg-page-bg sm:h-72 lg:h-80">
         <img
           src={club.bannerUrl ?? club.imageUrl}
           alt=""
           aria-hidden="true"
           className="h-full w-full object-cover opacity-40"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-nav-bg via-nav-bg/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-page-bg via-page-bg/60 to-transparent" />
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -84,7 +84,7 @@ export default function ClubDetails() {
           {/* Club avatar / logo */}
           <div className="relative z-10 flex-shrink-0">
             <div
-              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-surface shadow-lg sm:h-28 sm:w-28"
+              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-card shadow-lg sm:h-28 sm:w-28"
               style={{ backgroundColor: club.brandColor ?? "var(--color-primary)" }}
             >
               {club.logoUrl ? (
@@ -121,7 +121,7 @@ export default function ClubDetails() {
                 </span>
               )}
             </div>
-            <h1 className="text-2xl font-extrabold text-accent sm:text-3xl lg:text-4xl">
+            <h1 className="text-2xl font-extrabold text-white sm:text-3xl lg:text-4xl">
               {club.name}
             </h1>
             {/* Quick meta */}
@@ -224,7 +224,7 @@ export default function ClubDetails() {
             Explore
           </Link>
           <span className="mx-2 text-border">/</span>
-          <span className="font-medium text-accent">{club.name}</span>
+          <span className="font-medium text-white">{club.name}</span>
         </nav>
 
         <div className="grid gap-8 pb-16 lg:grid-cols-3">
@@ -232,10 +232,10 @@ export default function ClubDetails() {
           <div className="space-y-8 lg:col-span-2">
             {/* Description */}
             <Card className="p-6">
-              <h2 className="mb-3 text-lg font-bold text-accent">About</h2>
+              <h2 className="mb-3 text-lg font-bold text-white">About</h2>
               <p className="leading-relaxed text-muted">{club.longDescription ?? club.description}</p>
               {club.shortDescription && club.longDescription && (
-                <p className="mt-3 text-sm font-medium text-accent/70 italic">
+                <p className="mt-3 text-sm font-medium text-white/70 italic">
                   {club.shortDescription}
                 </p>
               )}
@@ -243,7 +243,7 @@ export default function ClubDetails() {
 
             {/* Events */}
             <div>
-              <h2 className="mb-4 text-xl font-bold text-accent">
+              <h2 className="mb-4 text-xl font-bold text-white">
                 Upcoming Events
               </h2>
               {club.events.length > 0 ? (
@@ -263,7 +263,7 @@ export default function ClubDetails() {
                           </p>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-accent">
+                          <h3 className="font-bold text-white">
                             {event.title}
                           </h3>
                           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-muted">
@@ -331,7 +331,7 @@ export default function ClubDetails() {
                       />
                     </svg>
                   </div>
-                  <p className="font-medium text-accent">No upcoming events</p>
+                  <p className="font-medium text-white">No upcoming events</p>
                   <p className="mt-1 text-sm text-muted">
                     Check back soon for new events.
                   </p>
@@ -369,7 +369,7 @@ export default function ClubDetails() {
                     <dt className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Members
                     </dt>
-                    <dd className="mt-0.5 text-sm font-medium text-accent">
+                    <dd className="mt-0.5 text-sm font-medium text-white">
                       {club.memberCount} members
                     </dd>
                   </div>
@@ -393,7 +393,7 @@ export default function ClubDetails() {
                     <dt className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Meeting Schedule
                     </dt>
-                    <dd className="mt-0.5 text-sm font-medium text-accent">
+                    <dd className="mt-0.5 text-sm font-medium text-white">
                       {club.meetingSchedule}
                     </dd>
                   </div>
@@ -423,7 +423,7 @@ export default function ClubDetails() {
                     <dt className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Location
                     </dt>
-                    <dd className="mt-0.5 text-sm font-medium text-accent">
+                    <dd className="mt-0.5 text-sm font-medium text-white">
                       {club.location}
                     </dd>
                   </div>
@@ -491,7 +491,7 @@ export default function ClubDetails() {
                       href={club.socialLinks.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-accent transition-colors hover:border-primary hover:text-primary"
+                      className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-white transition-colors hover:border-primary hover:text-primary"
                     >
                       <svg
                         className="h-4 w-4 flex-shrink-0"
@@ -515,7 +515,7 @@ export default function ClubDetails() {
                       href={club.socialLinks.instagram}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-accent transition-colors hover:border-primary hover:text-primary"
+                      className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-white transition-colors hover:border-primary hover:text-primary"
                     >
                       <svg
                         className="h-4 w-4 flex-shrink-0"
@@ -533,7 +533,7 @@ export default function ClubDetails() {
                       href={club.socialLinks.discord}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-accent transition-colors hover:border-primary hover:text-primary"
+                      className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-white transition-colors hover:border-primary hover:text-primary"
                     >
                       <svg
                         className="h-4 w-4 flex-shrink-0"

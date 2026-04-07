@@ -58,7 +58,7 @@ export default function ClubEventsPage() {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-accent">Events</h1>
+          <h1 className="text-xl font-bold text-white">Events</h1>
           <p className="text-sm text-muted">
             {upcomingEvents.length} upcoming event
             {upcomingEvents.length !== 1 ? "s" : ""}
@@ -72,7 +72,7 @@ export default function ClubEventsPage() {
       {/* New event form */}
       {showForm && (
         <Card className="mb-6 p-5">
-          <h3 className="mb-4 font-semibold text-accent">Create New Event</h3>
+          <h3 className="mb-4 font-semibold text-white">Create New Event</h3>
           <div className="space-y-3">
             <FormInput
               id="eventTitle"
@@ -85,7 +85,7 @@ export default function ClubEventsPage() {
             <div>
               <label
                 htmlFor="eventDesc"
-                className="mb-1 block text-sm font-medium text-accent"
+                className="mb-1 block text-sm font-medium text-white"
               >
                 Description
               </label>
@@ -95,7 +95,7 @@ export default function ClubEventsPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
                 placeholder="Add details…"
-                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-accent placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
             <div className="flex gap-4">
@@ -139,7 +139,7 @@ export default function ClubEventsPage() {
       )}
 
       {/* Upcoming Events */}
-      <h2 className="mb-3 text-lg font-bold text-accent">Upcoming</h2>
+      <h2 className="mb-3 text-lg font-bold text-white">Upcoming</h2>
       {upcomingEvents.length === 0 ? (
         <Card className="mb-8 p-8 text-center">
           <p className="text-sm text-muted">
@@ -162,7 +162,7 @@ export default function ClubEventsPage() {
                   </p>
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-accent">{event.title}</h3>
+                  <h3 className="font-semibold text-white">{event.title}</h3>
                   <p className="mt-0.5 text-xs text-muted">
                     {event.time} · {event.location}
                   </p>
@@ -181,7 +181,7 @@ export default function ClubEventsPage() {
       {/* Past Events */}
       {pastEvents.length > 0 && (
         <>
-          <h2 className="mb-3 text-lg font-bold text-accent">Past Events</h2>
+          <h2 className="mb-3 text-lg font-bold text-white">Past Events</h2>
           <div className="space-y-3 opacity-60">
             {pastEvents.map((event) => (
               <Card key={event.id} className="p-4">
@@ -197,7 +197,7 @@ export default function ClubEventsPage() {
                     </p>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-accent">{event.title}</h3>
+                    <h3 className="font-semibold text-white">{event.title}</h3>
                     <p className="mt-0.5 text-xs text-muted">
                       {event.time} · {event.location}
                     </p>

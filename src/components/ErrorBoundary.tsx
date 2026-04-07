@@ -42,7 +42,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
             />
           </svg>
-          <h1 className="text-2xl font-bold text-accent">
+          <h1 className="text-2xl font-extrabold text-white">
             Something went wrong
           </h1>
           <p className="mt-2 max-w-md text-muted">

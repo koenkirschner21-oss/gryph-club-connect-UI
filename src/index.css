@@ -1,87 +1,119 @@
 @import "tailwindcss";
 
 @theme {
-  /* Brand Colors */
-  --color-primary: #c20430;
+  /* ── Brand / Design-System Tokens ── */
+  --color-primary: #C20430;
   --color-primary-dark: #9e0328;
   --color-primary-light: #e8365c;
-  --color-secondary: #ffd100;
-  --color-secondary-dark: #ccaa00;
-  --color-accent: #e8eaf0;
-  --color-surface: #1e1e2e;
-  --color-surface-alt: #252538;
-  --color-surface-raised: #2a2a3e;
-  --color-surface-overlay: #32324a;
-  --color-muted: #9ca3b0;
-  --color-border: #35354d;
-  --color-page-bg: #141422;
-  --color-nav-bg: #0f0f1c;
-  --color-text-primary: #f0f1f5;
-  --color-text-secondary: #b0b5c3;
+  --color-secondary: #F5C542;
+  --color-secondary-dark: #d4a832;
+
+  /* Surfaces */
+  --color-page-bg: #0A0A0A;
+  --color-card: #111111;
+  --color-card-raised: #181818;
+  --color-surface: #111111;
+  --color-surface-alt: #161616;
+  --color-surface-raised: #1A1A1A;
+  --color-surface-overlay: #222222;
+
+  /* Borders */
+  --color-border: #1F1F1F;
+  --color-border-light: #2A2A2A;
+
+  /* Text */
+  --color-accent: #FFFFFF;
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #A1A1AA;
+  --color-muted: #A1A1AA;
+
+  /* Legacy compat aliases */
+  --color-nav-bg: #0A0A0A;
 
   /* Typography */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
   /* Spacing */
-  --spacing-section: 5rem;
+  --spacing-section: 6rem;
 }
 
-/* Smooth scroll for the whole document */
+/* ── Base resets ── */
 html {
   scroll-behavior: smooth;
 }
 
 body {
   background-color: var(--color-page-bg);
+  color: var(--color-text-primary);
 }
 
-/* Club card image aspect ratio utility */
+/* ── Club card image aspect ratio ── */
 .club-img-ratio {
   aspect-ratio: 16 / 9;
   object-fit: cover;
   width: 100%;
 }
 
-/* Hero gradient overlay */
+/* ── Hero gradient overlay (radial red glow) ── */
 .hero-overlay {
-  background: linear-gradient(135deg, rgba(15,15,28,0.94) 0%, rgba(194,4,48,0.6) 100%);
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(194,4,48,0.35) 0%, transparent 70%),
+              linear-gradient(180deg, rgba(10,10,10,0.0) 0%, rgba(10,10,10,1) 100%);
 }
 
-/* Chip/filter button base */
+/* ── Hero radial red glow (standalone) ── */
+.hero-glow {
+  background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(194,4,48,0.25) 0%, transparent 70%);
+}
+
+/* ── Filter chips ── */
 .filter-chip {
   display: inline-flex;
   align-items: center;
   border-radius: 9999px;
-  padding: 0.4rem 1.1rem;
+  padding: 0.45rem 1.15rem;
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.25;
-  transition: background-color 150ms, color 150ms, box-shadow 150ms, border-color 150ms;
+  transition: all 150ms ease;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .filter-chip-active {
-  background-color: var(--color-primary);
+  background: linear-gradient(135deg, #C20430 0%, #e8365c 100%);
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(194,4,48,0.4);
+  box-shadow: 0 0 16px rgba(194,4,48,0.5);
 }
 
 .filter-chip-inactive {
-  background-color: var(--color-surface-raised);
+  background-color: var(--color-card);
   color: var(--color-muted);
   border: 1px solid var(--color-border);
 }
 
 .filter-chip-inactive:hover {
   background-color: var(--color-surface-overlay);
-  color: var(--color-text-primary);
-  border-color: #4a4a65;
+  color: #ffffff;
+  border-color: var(--color-border-light);
 }
 
-/* Decorative dot pattern for hero sections */
-.hero-dots {
-  background-image: radial-gradient(circle, #fff 1px, transparent 1px);
-  background-size: 24px 24px;
+/* ── Glow shadow utilities ── */
+.glow-red {
+  box-shadow: 0 0 20px rgba(194,4,48,0.35), 0 0 60px rgba(194,4,48,0.10);
+}
+
+.glow-red-sm {
+  box-shadow: 0 0 12px rgba(194,4,48,0.3);
+}
+
+/* ── Button gradient utilities ── */
+.btn-gradient-red {
+  background: linear-gradient(135deg, #C20430 0%, #e8365c 100%);
+  box-shadow: 0 0 20px rgba(194,4,48,0.4);
+}
+
+.btn-gradient-red:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 0 28px rgba(194,4,48,0.55);
 }
 

@@ -36,7 +36,7 @@ export default function JoinClubPage() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
       <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-sm">
-        <h1 className="mb-2 text-center text-2xl font-bold text-accent">
+        <h1 className="mb-2 text-center text-2xl font-bold text-white">
           Join a Club
         </h1>
         <p className="mb-6 text-center text-sm text-muted">

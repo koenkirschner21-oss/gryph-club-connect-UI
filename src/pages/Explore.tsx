@@ -15,7 +15,7 @@ function contrastText(hex: string | undefined): string {
   const g = parseInt(c.substring(2, 4), 16);
   const b = parseInt(c.substring(4, 6), 16);
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.6 ? "text-accent" : "text-white";
+  return lum > 0.6 ? "text-black" : "text-white";
 }
 
 // ─── Spotlight card (horizontal, larger) ────────────────────────────────────
@@ -24,7 +24,7 @@ function SpotlightCard({ club }: { club: Club }) {
   return (
     <a
       href={`/clubs/${club.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-md transition-all hover:shadow-xl hover:-translate-y-0.5 sm:flex-row"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_24px_rgba(194,4,48,0.2)] hover:border-primary/30 sm:flex-row"
     >
       {/* Left accent */}
       <div
@@ -50,7 +50,7 @@ function SpotlightCard({ club }: { club: Club }) {
       {/* Right content */}
       <div className="flex flex-1 flex-col justify-center p-6 sm:p-7">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-bold text-text-primary group-hover:text-primary-light transition-colors">
+          <h3 className="text-lg font-bold text-white group-hover:text-primary-light transition-colors">
             {club.name}
           </h3>
           {club.isVerified && (
@@ -68,7 +68,7 @@ function SpotlightCard({ club }: { club: Club }) {
             </svg>
           )}
         </div>
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-text-secondary">
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted">
           {club.shortDescription || club.description}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
@@ -156,29 +156,29 @@ export default function Explore() {
 
   return (
     <>
-      {/* ──────────── Dark Hero Section ──────────── */}
-      <section className="relative overflow-hidden bg-nav-bg">
+      {/* ──────────── Dark Hero Section with Red Glow ──────────── */}
+      <section className="relative overflow-hidden bg-page-bg">
+        {/* Radial red glow */}
         <div className="hero-overlay absolute inset-0" aria-hidden="true" />
-        {/* Decorative dots */}
-        <div className="absolute inset-0 opacity-[0.03] hero-dots" aria-hidden="true" />
 
-        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
-          <div className="max-w-2xl">
-            <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-secondary">
+        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-36">
+          <div className="max-w-3xl">
+            <p className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-secondary">
               University of Guelph
             </p>
-            <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-              Discover Your Club
+            <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl lg:text-7xl">
+              Discover Your{" "}
+              <span className="text-primary">Club</span>
             </h1>
-            <p className="mt-5 text-lg leading-relaxed text-white/65">
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">
               Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
               organizations — from academics and athletics to arts and culture.
               Find your people and get involved.
             </p>
           </div>
 
-          {/* Search inside hero */}
-          <div className="mt-10 max-w-xl">
+          {/* Large search bar inside hero */}
+          <div className="mt-12 max-w-2xl">
             <SearchBar
               value={search}
               onChange={setSearch}
@@ -188,18 +188,19 @@ export default function Explore() {
 
           {/* Quick stats */}
           {clubs.length > 0 && (
-            <div className="mt-10 flex flex-wrap gap-8 text-sm text-white/50">
+            <div className="mt-10 flex flex-wrap gap-10 text-sm text-muted">
               <span>
-                <strong className="text-white">{clubs.length}</strong> clubs
+                <strong className="text-2xl font-bold text-white">{clubs.length}</strong>{" "}
+                <span className="ml-1">clubs</span>
               </span>
               <span>
-                <strong className="text-white">{categories.length - 1}</strong>{" "}
-                categories
+                <strong className="text-2xl font-bold text-white">{categories.length - 1}</strong>{" "}
+                <span className="ml-1">categories</span>
               </span>
               {featuredClubs.length > 0 && (
                 <span>
-                  <strong className="text-white">{featuredClubs.length}</strong>{" "}
-                  featured
+                  <strong className="text-2xl font-bold text-white">{featuredClubs.length}</strong>{" "}
+                  <span className="ml-1">featured</span>
                 </span>
               )}
             </div>
@@ -207,20 +208,21 @@ export default function Explore() {
         </div>
       </section>
 
-      {/* ──────────── Featured Clubs Ribbon ──────────── */}
+      {/* ──────────── Featured Clubs ──────────── */}
       {!loading && featuredClubs.length > 0 && !hasActiveFilters && (
-        <section className="border-b border-border bg-surface">
-          <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-            <div className="mb-6 flex items-center gap-2">
+        <section className="relative border-t border-border bg-page-bg">
+          <div className="hero-glow absolute inset-0 pointer-events-none" aria-hidden="true" />
+          <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+            <div className="mb-8 flex items-center gap-3">
               <svg
-                className="h-5 w-5 text-secondary"
+                className="h-6 w-6 text-secondary"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 aria-hidden="true"
               >
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
-              <h2 className="text-lg font-bold text-text-primary">Featured Clubs</h2>
+              <h2 className="text-2xl font-extrabold text-white">Featured Clubs</h2>
             </div>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {featuredClubs.map((club) => (
@@ -231,13 +233,13 @@ export default function Explore() {
         </section>
       )}
 
-      {/* ──────────── Spotlight Section ──────────── */}
+      {/* ──────────── Verified Spotlight ──────────── */}
       {!loading && spotlightClubs.length > 0 && !hasActiveFilters && (
-        <section className="border-b border-border bg-surface-alt">
-          <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-            <div className="mb-6 flex items-center gap-2">
+        <section className="border-t border-border bg-card">
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+            <div className="mb-8 flex items-center gap-3">
               <svg
-                className="h-5 w-5 text-primary-light"
+                className="h-6 w-6 text-primary-light"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 aria-hidden="true"
@@ -248,8 +250,8 @@ export default function Explore() {
                   clipRule="evenodd"
                 />
               </svg>
-              <h2 className="text-lg font-bold text-text-primary">
-                Verified Spotlight
+              <h2 className="text-2xl font-extrabold text-white">
+                Verified Clubs
               </h2>
             </div>
             <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
@@ -262,7 +264,7 @@ export default function Explore() {
       )}
 
       {/* ──────────── Filter Bar ──────────── */}
-      <section className="sticky top-16 z-30 border-b border-border bg-surface shadow-md">
+      <section className="sticky top-16 z-30 border-t border-b border-border bg-page-bg/95 backdrop-blur supports-[backdrop-filter]:bg-page-bg/80">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
@@ -296,12 +298,12 @@ export default function Explore() {
       </section>
 
       {/* ──────────── Main Results ──────────── */}
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Error banner */}
         {error && (
           <div
             role="alert"
-            className="mb-8 rounded-lg border border-primary/30 bg-primary/10 px-5 py-4 text-sm font-medium text-primary-light"
+            className="mb-8 rounded-xl border border-primary/30 bg-primary/10 px-5 py-4 text-sm font-medium text-primary-light"
           >
             ⚠️ Could not load clubs from the server. Please check your
             connection and try again.
@@ -316,10 +318,10 @@ export default function Explore() {
         ) : filteredClubs.length > 0 ? (
           <>
             {/* Result count */}
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-8 flex items-center justify-between">
               <p className="text-sm text-muted">
                 Showing{" "}
-                <span className="font-semibold text-text-primary">
+                <span className="font-semibold text-white">
                   {filteredClubs.length}
                 </span>{" "}
                 of {clubs.length} clubs
@@ -352,7 +354,7 @@ export default function Explore() {
           </>
         ) : (
           /* Empty state */
-          <div className="rounded-2xl border border-border bg-surface py-24 text-center">
+          <div className="rounded-2xl border border-border bg-card py-24 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-alt">
               <svg
                 className="h-8 w-8 text-muted"
@@ -369,7 +371,7 @@ export default function Explore() {
                 />
               </svg>
             </div>
-            <p className="mt-5 text-xl font-bold text-text-primary">
+            <p className="mt-5 text-xl font-bold text-white">
               {emptyStateMessage.title}
             </p>
             <p className="mt-2 text-sm text-muted">
@@ -379,7 +381,7 @@ export default function Explore() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-6 inline-flex items-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark cursor-pointer"
+                className="mt-6 inline-flex items-center rounded-lg btn-gradient-red px-5 py-2.5 text-sm font-semibold text-white cursor-pointer"
               >
                 Clear all filters
               </button>
