@@ -81,12 +81,28 @@ export default function ClubDetails() {
         <div className="-mt-16 mb-8 flex flex-col gap-5 sm:-mt-20 sm:flex-row sm:items-end sm:gap-6">
           {/* Club avatar / logo */}
           <div className="relative z-10 flex-shrink-0">
-            <div className="h-24 w-24 overflow-hidden rounded-2xl border-4 border-surface bg-surface shadow-lg sm:h-28 sm:w-28">
-              <img
-                src={club.imageUrl}
-                alt={club.name}
-                className="h-full w-full object-cover"
-              />
+            <div
+              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-surface shadow-lg sm:h-28 sm:w-28"
+              style={{ backgroundColor: club.brandColor ?? "var(--color-primary)" }}
+            >
+              {club.logoUrl ? (
+                <img
+                  src={club.logoUrl}
+                  alt={club.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-2xl font-extrabold text-white sm:text-3xl" aria-hidden="true">
+                  {club.abbreviation
+                    ? club.abbreviation.slice(0, 3).toUpperCase()
+                    : club.name
+                        .split(/\s+/)
+                        .slice(0, 2)
+                        .map((w) => w[0])
+                        .join("")
+                        .toUpperCase()}
+                </span>
+              )}
             </div>
           </div>
 
@@ -96,6 +112,14 @@ export default function ClubDetails() {
               <span className="inline-block rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-white shadow">
                 {club.category}
               </span>
+              {club.isVerified && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-semibold text-blue-600">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Verified
+                </span>
+              )}
               {joined && (
                 <span className="inline-block rounded-full bg-green-600 px-3 py-0.5 text-xs font-semibold text-white shadow">
                   Joined
@@ -214,7 +238,12 @@ export default function ClubDetails() {
             {/* Description */}
             <Card className="p-6">
               <h2 className="mb-3 text-lg font-bold text-accent">About</h2>
-              <p className="leading-relaxed text-muted">{club.description}</p>
+              <p className="leading-relaxed text-muted">{club.longDescription ?? club.description}</p>
+              {club.shortDescription && club.longDescription && (
+                <p className="mt-3 text-sm font-medium text-accent/70 italic">
+                  {club.shortDescription}
+                </p>
+              )}
             </Card>
 
             {/* Events */}

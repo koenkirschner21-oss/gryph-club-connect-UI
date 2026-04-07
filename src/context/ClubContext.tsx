@@ -39,6 +39,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             slug: row.slug ?? row.id,
             description: row.description ?? "",
             shortDescription: row.short_description ?? undefined,
+            longDescription: row.long_description ?? undefined,
             category: row.category ?? "",
             memberCount: row.member_count ?? 0,
             meetingSchedule: row.meeting_schedule ?? "",
@@ -48,10 +49,15 @@ export function ClubProvider({ children }: { children: ReactNode }) {
               row.image_url ??
               row.logo_url ??
               "/assets/placeholders/placeholder-rect.svg",
+            logoUrl: row.logo_url ?? undefined,
             bannerUrl: row.banner_url ?? undefined,
+            brandColor: row.brand_color ?? undefined,
             tags: row.tags ?? [],
             contactEmail: row.contact_email ?? "",
             isPublic: row.is_public ?? true,
+            isFeatured: row.is_featured ?? false,
+            isVerified: row.is_verified ?? false,
+            abbreviation: row.abbreviation ?? undefined,
             joinCode: row.join_code ?? undefined,
             socialLinks: row.social_links ?? undefined,
             events: row.events ?? [],
