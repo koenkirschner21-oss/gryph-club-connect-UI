@@ -1,12 +1,19 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
-import type { ClubEvent } from "../../types";
+import { useEventRsvps } from "../../hooks/useEventRsvps";
+import type { ClubEvent, RsvpStatus } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
+
+const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
+  { value: "going", label: "Going" },
+  { value: "maybe", label: "Maybe" },
+  { value: "not_going", label: "Not Going" },
+];
 
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -16,6 +23,11 @@ export default function ClubEventsPage() {
 
   const role = getUserRole(clubId ?? "");
   const isAdminOrExec = role === "admin" || role === "exec";
+
+  const eventIds = useMemo(() => events.map((e) => e.id), [events]);
+  const { myRsvps, counts, attendees, setRsvp, removeRsvp, loadAttendees } =
+    useEventRsvps(eventIds);
+  const [expandedAttendees, setExpandedAttendees] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -72,6 +84,23 @@ export default function ClubEventsPage() {
 
   async function handleDelete(eventId: string) {
     await deleteEvent(eventId);
+  }
+
+  async function handleRsvp(eventId: string, status: RsvpStatus) {
+    if (myRsvps[eventId] === status) {
+      await removeRsvp(eventId);
+    } else {
+      await setRsvp(eventId, status);
+    }
+  }
+
+  async function toggleAttendees(eventId: string) {
+    if (expandedAttendees === eventId) {
+      setExpandedAttendees(null);
+    } else {
+      await loadAttendees(eventId);
+      setExpandedAttendees(eventId);
+    }
   }
 
   const now = new Date();
@@ -204,7 +233,10 @@ export default function ClubEventsPage() {
         </Card>
       ) : (
         <div className="mb-8 space-y-3">
-          {upcomingEvents.map((event) => (
+          {upcomingEvents.map((event) => {
+            const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
+            const myStatus = myRsvps[event.id];
+            return (
             <Card key={event.id} className="p-4">
               <div className="flex items-start gap-4">
                 <div className="flex-shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-center">
@@ -227,6 +259,103 @@ export default function ClubEventsPage() {
                       {event.description}
                     </p>
                   )}
+
+                  {/* RSVP counts */}
+                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
+                    <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-green-400">
+                      {c.going} going
+                    </span>
+                    <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-yellow-400">
+                      {c.maybe} maybe
+                    </span>
+                    <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-red-400">
+                      {c.not_going} not going
+                    </span>
+                  </div>
+
+                  {/* RSVP buttons */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {RSVP_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => handleRsvp(event.id, opt.value)}
+                        className={`cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                          myStatus === opt.value
+                            ? opt.value === "going"
+                              ? "border-green-500 bg-green-500/20 text-green-400"
+                              : opt.value === "maybe"
+                                ? "border-yellow-500 bg-yellow-500/20 text-yellow-400"
+                                : "border-red-500 bg-red-500/20 text-red-400"
+                            : "border-border bg-surface text-muted hover:bg-surface-alt hover:text-white"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Admin: attendee list toggle */}
+                  {isAdminOrExec && (
+                    <button
+                      type="button"
+                      onClick={() => toggleAttendees(event.id)}
+                      className="mt-3 cursor-pointer text-xs font-medium text-primary hover:underline"
+                    >
+                      {expandedAttendees === event.id
+                        ? "Hide attendees"
+                        : "View attendees"}
+                    </button>
+                  )}
+
+                  {/* Attendee list */}
+                  {expandedAttendees === event.id && attendees[event.id] && (
+                    <div className="mt-3 space-y-2 rounded-lg border border-border bg-surface p-3">
+                      {attendees[event.id].length === 0 ? (
+                        <p className="text-xs text-muted">No RSVPs yet.</p>
+                      ) : (
+                        attendees[event.id].map((a) => (
+                          <div
+                            key={a.id}
+                            className="flex items-center gap-3"
+                          >
+                            {a.avatarUrl ? (
+                              <img
+                                src={a.avatarUrl}
+                                alt=""
+                                className="h-7 w-7 flex-shrink-0 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                                {(a.fullName ?? "U")[0].toUpperCase()}
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="truncate text-sm font-medium text-white">
+                                {a.fullName ?? "Unknown"}
+                              </p>
+                              {a.program && (
+                                <p className="truncate text-xs text-muted">
+                                  {a.program}
+                                </p>
+                              )}
+                            </div>
+                            <span
+                              className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                a.status === "going"
+                                  ? "bg-green-500/10 text-green-400"
+                                  : a.status === "maybe"
+                                    ? "bg-yellow-500/10 text-yellow-400"
+                                    : "bg-red-500/10 text-red-400"
+                              }`}
+                            >
+                              {a.status === "not_going" ? "Not Going" : a.status.charAt(0).toUpperCase() + a.status.slice(1)}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
                 {isAdminOrExec && (
                   <div className="flex flex-shrink-0 gap-2">
@@ -248,7 +377,8 @@ export default function ClubEventsPage() {
                 )}
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -1,12 +1,21 @@
+import { useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../context/useClubContext";
 import { useClubEvents } from "../hooks/useClubEvents";
+import { useEventRsvps } from "../hooks/useEventRsvps";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
 import { useAuthContext } from "../context/useAuthContext";
+import type { RsvpStatus } from "../types";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
+
+const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
+  { value: "going", label: "Going" },
+  { value: "maybe", label: "Maybe" },
+  { value: "not_going", label: "Not Going" },
+];
 
 export default function ClubDetails() {
   const { slug } = useParams<{ slug: string }>();
@@ -25,6 +34,8 @@ export default function ClubDetails() {
   // Look up by slug first (primary), fall back to id for legacy /explore/:id links
   const club = getClubBySlug(slug ?? "") ?? getClubById(slug ?? "");
   const { events: clubEvents } = useClubEvents(club?.id);
+  const eventIds = useMemo(() => clubEvents.map((e) => e.id), [clubEvents]);
+  const { myRsvps, counts, setRsvp, removeRsvp } = useEventRsvps(eventIds);
   const joined = club ? isJoined(club.id) : false;
   const saved = club ? isSaved(club.id) : false;
 
@@ -256,7 +267,10 @@ export default function ClubDetails() {
               </h2>
               {upcomingEvents.length > 0 ? (
                 <div className="space-y-4">
-                  {upcomingEvents.map((event) => (
+                  {upcomingEvents.map((event) => {
+                    const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
+                    const myStatus = myRsvps[event.id];
+                    return (
                     <Card key={event.id} className="p-5">
                       <div className="flex items-start gap-4">
                         {/* Date badge */}
@@ -316,10 +330,52 @@ export default function ClubDetails() {
                               {event.description}
                             </p>
                           )}
+
+                          {/* RSVP counts */}
+                          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
+                            <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-green-400">
+                              {c.going} going
+                            </span>
+                            <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-yellow-400">
+                              {c.maybe} maybe
+                            </span>
+                            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-red-400">
+                              {c.not_going} not going
+                            </span>
+                          </div>
+
+                          {/* RSVP buttons (logged-in users only) */}
+                          {user && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {RSVP_OPTIONS.map((opt) => (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() =>
+                                    myStatus === opt.value
+                                      ? removeRsvp(event.id)
+                                      : setRsvp(event.id, opt.value)
+                                  }
+                                  className={`cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
+                                    myStatus === opt.value
+                                      ? opt.value === "going"
+                                        ? "border-green-500 bg-green-500/20 text-green-400"
+                                        : opt.value === "maybe"
+                                          ? "border-yellow-500 bg-yellow-500/20 text-yellow-400"
+                                          : "border-red-500 bg-red-500/20 text-red-400"
+                                      : "border-border bg-surface text-muted hover:bg-surface-alt hover:text-white"
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Card>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <Card className="p-8 text-center">

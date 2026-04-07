@@ -51,11 +51,23 @@ export interface ClubEvent {
   createdAt?: string;
 }
 
+export type RsvpStatus = "going" | "maybe" | "not_going";
+
 export interface EventRsvp {
   id: string;
   eventId: string;
   userId: string;
-  status: "going" | "maybe" | "not_going";
+  status: RsvpStatus;
+  createdAt?: string;
+  fullName?: string;
+  avatarUrl?: string;
+  program?: string;
+}
+
+export interface RsvpCounts {
+  going: number;
+  maybe: number;
+  not_going: number;
 }
 
 // ---------------------------------------------------------------------------
