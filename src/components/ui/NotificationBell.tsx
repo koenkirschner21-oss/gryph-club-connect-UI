@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNotifications } from "../../hooks/useNotifications";
 
 export default function NotificationBell() {
@@ -16,6 +16,16 @@ export default function NotificationBell() {
       setOpen(false);
     }
   }
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
 
   return (
     <div ref={containerRef} className="relative" onBlur={handleBlur}>

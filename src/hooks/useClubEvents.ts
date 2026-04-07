@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useAuthContext } from "../context/useAuthContext";
 import type { ClubEvent } from "../types";
 
 /** Map a Supabase `events` row to our ClubEvent type. */
@@ -36,6 +37,7 @@ export interface UseClubEventsReturn {
  * Fetches from the Supabase `events` table.
  */
 export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
+  const { user } = useAuthContext();
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +107,12 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
         .eq("status", "active")
         .then(({ data: members }) => {
           if (!members || members.length === 0) return;
-          const rows = members.map((m) => ({
+          // Exclude the creator from notifications
+          const recipients = members.filter(
+            (m) => m.user_id !== user?.id,
+          );
+          if (recipients.length === 0) return;
+          const rows = recipients.map((m) => ({
             user_id: m.user_id,
             type: "new_event",
             message: `New event: ${fields.title} on ${fields.date}`,
@@ -123,7 +130,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
 
       return true;
     },
-    [clubId],
+    [clubId, user],
   );
 
   const updateEvent = useCallback(
