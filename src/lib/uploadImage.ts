@@ -18,7 +18,7 @@ export async function uploadImage(
     .upload(path, file, { upsert: true });
 
   if (error) {
-    console.error(`Upload to ${bucket}/${path} failed:`, error.message);
+    console.error("Upload failed:", bucket, path, error.message);
     return null;
   }
 
