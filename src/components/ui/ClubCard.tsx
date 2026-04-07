@@ -1,23 +1,13 @@
 import { Link } from "react-router-dom";
 import type { Club } from "../../types";
 import { normalizeTags } from "../../lib/normalizeTags";
+import { getClubInitials } from "../../lib/clubUtils";
 import { useClubContext } from "../../context/useClubContext";
 
 interface ClubCardProps {
   club: Club;
   /** When true, renders a wider horizontal layout for spotlight/featured sections. */
   variant?: "default" | "compact";
-}
-
-/** Generate initials from abbreviation or club name. */
-function getInitials(club: Club): string {
-  if (club.abbreviation) return club.abbreviation.slice(0, 3).toUpperCase();
-  return club.name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
 }
 
 export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
@@ -51,7 +41,7 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
                   className="h-full w-full rounded-xl object-cover"
                 />
               ) : (
-                <span aria-hidden="true">{getInitials(club)}</span>
+                <span aria-hidden="true">{getClubInitials(club)}</span>
               )}
             </div>
 

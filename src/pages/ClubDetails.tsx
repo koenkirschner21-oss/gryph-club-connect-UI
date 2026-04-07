@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../context/useClubContext";
 import { normalizeTags } from "../lib/normalizeTags";
+import { getClubInitials } from "../lib/clubUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -94,14 +95,7 @@ export default function ClubDetails() {
                 />
               ) : (
                 <span className="text-2xl font-extrabold text-white sm:text-3xl" aria-hidden="true">
-                  {club.abbreviation
-                    ? club.abbreviation.slice(0, 3).toUpperCase()
-                    : club.name
-                        .split(/\s+/)
-                        .slice(0, 2)
-                        .map((w) => w[0])
-                        .join("")
-                        .toUpperCase()}
+                  {getClubInitials(club)}
                 </span>
               )}
             </div>

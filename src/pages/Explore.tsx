@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useClubContext } from "../context/useClubContext";
 import { normalizeTags } from "../lib/normalizeTags";
+import { getClubInitials } from "../lib/clubUtils";
 import SearchBar from "../components/ui/SearchBar";
 import ClubCard from "../components/ui/ClubCard";
 import Spinner from "../components/ui/Spinner";
@@ -15,17 +16,6 @@ function contrastText(hex: string | undefined): string {
   const b = parseInt(c.substring(4, 6), 16);
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return lum > 0.6 ? "text-accent" : "text-white";
-}
-
-/** Initials helper shared with SpotlightCard. */
-function getInitials(club: Club): string {
-  if (club.abbreviation) return club.abbreviation.slice(0, 3).toUpperCase();
-  return club.name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
 }
 
 // ─── Spotlight card (horizontal, larger) ────────────────────────────────────
@@ -52,7 +42,7 @@ function SpotlightCard({ club }: { club: Club }) {
             className={`text-3xl font-extrabold ${contrastText(club.brandColor)}`}
             aria-hidden="true"
           >
-            {getInitials(club)}
+            {getClubInitials(club)}
           </span>
         )}
       </div>
@@ -181,7 +171,7 @@ export default function Explore() {
               Discover Your Club
             </h1>
             <p className="mt-4 text-lg leading-relaxed text-white/70">
-              Browse {clubs.length > 0 ? `${clubs.length}+` : ""} student
+              Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
               organizations — from academics and athletics to arts and culture.
               Find your people and get involved.
             </p>
