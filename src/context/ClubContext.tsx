@@ -59,10 +59,12 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    supabase
-      .from("clubs")
-      .select("*")
-      .order("name")
+    Promise.resolve(
+      supabase
+        .from("clubs")
+        .select("*")
+        .order("name"),
+    )
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
@@ -72,7 +74,14 @@ export function ClubProvider({ children }: { children: ReactNode }) {
           setClubs(data.map(mapRow));
         }
         // If data is empty, clubs stays as [] — no mock fallback
-        setClubsLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.error("Failed to load clubs:", err);
+        setClubsError(String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setClubsLoading(false);
       });
 
     return () => {
@@ -146,6 +155,10 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       setSavedClubs(
         (savedRes.data ?? []).map((row) => row.club_id),
       );
+      setFetchedForUser(userId);
+    }).catch((err: unknown) => {
+      if (cancelled) return;
+      console.error("Failed to load user clubs:", err);
       setFetchedForUser(userId);
     });
 

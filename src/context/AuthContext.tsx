@@ -16,11 +16,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Restore existing session on mount
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: s } }) => {
+        setSession(s);
+        setUser(s?.user ?? null);
+      })
+      .catch((err) => {
+        console.error("Failed to restore session:", err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     // Listen for auth state changes
     const {
