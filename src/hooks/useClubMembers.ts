@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { ClubMember, MemberRole } from "../types";
 
@@ -40,6 +40,10 @@ export function useClubMembers(
 ): UseClubMembersReturn {
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [pendingMembers, setPendingMembers] = useState<ClubMember[]>([]);
+  const pendingMembersRef = useRef(pendingMembers);
+  useEffect(() => {
+    pendingMembersRef.current = pendingMembers;
+  }, [pendingMembers]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -139,7 +143,7 @@ export function useClubMembers(
       }
 
       // Move from pending to active members
-      const approved = pendingMembers.find((m) => m.id === memberId);
+      const approved = pendingMembersRef.current.find((m) => m.id === memberId);
       setPendingMembers((prev) => prev.filter((m) => m.id !== memberId));
       if (approved) {
         setMembers((active) => [...active, { ...approved, status: "active" }]);
@@ -163,7 +167,7 @@ export function useClubMembers(
       }
       return true;
     },
-    [clubId, pendingMembers],
+    [clubId],
   );
 
   /** Reject a pending join request → delete the row. */

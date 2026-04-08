@@ -20,7 +20,6 @@ export function useDashboardEvents(joinedClubIds: string[]) {
 
   useEffect(() => {
     if (joinedClubIds.length === 0) {
-      // Use a microtask to avoid synchronous setState in effect body
       queueMicrotask(() => setLoading(false));
       return;
     }
