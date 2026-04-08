@@ -36,16 +36,19 @@ ALTER TABLE public.user_interests ENABLE ROW LEVEL SECURITY;
 -- 5. RLS Policies for user_interests
 
 -- Users can view their own interests
+DROP POLICY IF EXISTS "Users can view own interests" ON public.user_interests;
 CREATE POLICY "Users can view own interests"
   ON public.user_interests FOR SELECT
   USING (user_id = auth.uid());
 
 -- Users can insert their own interests
+DROP POLICY IF EXISTS "Users can insert own interests" ON public.user_interests;
 CREATE POLICY "Users can insert own interests"
   ON public.user_interests FOR INSERT
   WITH CHECK (user_id = auth.uid());
 
 -- Users can delete their own interests
+DROP POLICY IF EXISTS "Users can delete own interests" ON public.user_interests;
 CREATE POLICY "Users can delete own interests"
   ON public.user_interests FOR DELETE
   USING (user_id = auth.uid());
