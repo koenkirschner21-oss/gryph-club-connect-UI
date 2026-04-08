@@ -24,9 +24,11 @@ export default function OnboardingPage() {
 
   async function handleFinish() {
     setSaving(true);
-    await saveInterests(selected);
+    const ok = await saveInterests(selected);
     setSaving(false);
-    navigate("/app");
+    if (ok) {
+      navigate("/app");
+    }
   }
 
   function handleSkip() {

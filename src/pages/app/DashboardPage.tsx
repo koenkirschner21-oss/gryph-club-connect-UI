@@ -42,12 +42,19 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return;
 
+    let cancelled = false;
+
     supabase
       .from("profiles")
       .select("full_name, program, university")
       .eq("id", user.id)
       .single()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load profile:", error.message);
+          return;
+        }
         if (data) {
           setProfile({
             fullName: (data.full_name as string) ?? "",
@@ -56,6 +63,10 @@ export default function DashboardPage() {
           });
         }
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const myClubs = useMemo(

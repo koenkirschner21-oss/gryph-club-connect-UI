@@ -219,6 +219,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const leaveClub = useCallback(
     (clubId: string) => {
       if (!user) return;
+      const wasPending = pendingClubs.includes(clubId);
       setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
       setPendingClubs((prev) => prev.filter((id) => id !== clubId));
       supabase
@@ -229,14 +230,20 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         .then(({ error }) => {
           if (error) {
             console.error("Failed to leave club:", error.message);
-            // Rollback optimistic update
-            setJoinedClubs((prev) =>
-              prev.includes(clubId) ? prev : [...prev, clubId],
-            );
+            // Rollback optimistic update to correct state
+            if (wasPending) {
+              setPendingClubs((prev) =>
+                prev.includes(clubId) ? prev : [...prev, clubId],
+              );
+            } else {
+              setJoinedClubs((prev) =>
+                prev.includes(clubId) ? prev : [...prev, clubId],
+              );
+            }
           }
         });
     },
-    [user],
+    [user, pendingClubs],
   );
 
   const toggleSaveClub = useCallback(

@@ -93,8 +93,12 @@ export default function ClubEventsPage() {
   async function handleDelete(eventId: string) {
     if (!window.confirm("Delete this event? This cannot be undone.")) return;
     setFeedback(null);
-    await deleteEvent(eventId);
-    setFeedback({ type: "success", text: "Event deleted." });
+    const ok = await deleteEvent(eventId);
+    if (ok) {
+      setFeedback({ type: "success", text: "Event deleted." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to delete event." });
+    }
   }
 
   async function handleRsvp(eventId: string, status: RsvpStatus) {

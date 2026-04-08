@@ -139,33 +139,31 @@ export function useClubMembers(
       }
 
       // Move from pending to active members
-      setPendingMembers((prev) => {
-        const approved = prev.find((m) => m.id === memberId);
-        if (approved) {
-          setMembers((active) => [...active, { ...approved, status: "active" }]);
+      const approved = pendingMembers.find((m) => m.id === memberId);
+      setPendingMembers((prev) => prev.filter((m) => m.id !== memberId));
+      if (approved) {
+        setMembers((active) => [...active, { ...approved, status: "active" }]);
 
-          // Notify the user that their request was approved (fire-and-forget)
-          if (clubId) {
-            supabase
-              .from("notifications")
-              .insert({
-                user_id: approved.userId,
-                type: "join_approved",
-                message: "Your join request has been approved!",
-                club_id: clubId,
-              })
-              .then(({ error: notifErr }) => {
-                if (notifErr) {
-                  console.error("Failed to send approval notification:", notifErr.message);
-                }
-              });
-          }
+        // Notify the user that their request was approved (fire-and-forget)
+        if (clubId) {
+          supabase
+            .from("notifications")
+            .insert({
+              user_id: approved.userId,
+              type: "join_approved",
+              message: "Your join request has been approved!",
+              club_id: clubId,
+            })
+            .then(({ error: notifErr }) => {
+              if (notifErr) {
+                console.error("Failed to send approval notification:", notifErr.message);
+              }
+            });
         }
-        return prev.filter((m) => m.id !== memberId);
-      });
+      }
       return true;
     },
-    [clubId],
+    [clubId, pendingMembers],
   );
 
   /** Reject a pending join request → delete the row. */
