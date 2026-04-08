@@ -132,13 +132,13 @@ export default function ClubChatPage() {
                     />
                   ) : (
                     <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                      {(msg.authorName ?? "U")[0].toUpperCase()}
+                      {(msg.authorName || "Unknown User").charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div>
                     <div className="flex items-baseline gap-2">
                       <span className="text-sm font-semibold text-white">
-                        {msg.authorName ?? "Unknown"}
+                        {msg.authorName || "Unknown User"}
                       </span>
                       <span className="text-xs text-muted">
                         {new Date(msg.createdAt).toLocaleTimeString([], {
