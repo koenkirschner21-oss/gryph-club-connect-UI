@@ -15,6 +15,16 @@ import { useEventRsvps } from "../../hooks/useEventRsvps";
 // ---------------------------------------------------------------------------
 type DashboardTab = "overview" | "events" | "tasks";
 
+/** Derive an abbreviation from a club name (e.g. "Guelph Marketing Association" → "GMA"). */
+function deriveAbbreviation(name: string, maxLen = 3): string {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, maxLen)
+    .toUpperCase();
+}
+
 // ---------------------------------------------------------------------------
 // Main Dashboard
 // ---------------------------------------------------------------------------
@@ -130,7 +140,7 @@ export default function DashboardPage() {
               to={`/app/clubs/${primaryClub.id}`}
               className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
             >
-              Open {primaryClub.abbreviation || primaryClub.name.split(" ").map((w) => w[0]).join("").slice(0, 4)} →
+              Open {primaryClub.abbreviation || deriveAbbreviation(primaryClub.name, 4)} →
             </Link>
           )}
         </div>
@@ -612,14 +622,7 @@ function ClubBadge({
   brandColor?: string;
   size?: "sm" | "md";
 }) {
-  const abbr =
-    abbreviation ||
-    name
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .slice(0, 3)
-      .toUpperCase();
+  const abbr = abbreviation || deriveAbbreviation(name);
 
   const bg = brandColor || "#C20430";
   const sizeClass = size === "sm" ? "h-8 w-8 text-[10px]" : "h-10 w-10 text-xs";
@@ -682,18 +685,16 @@ function EventCard({
                 Maybe
               </span>
             )}
-            {(goingCount > 0 || maybeCount > 0) && (
+            {(goingCount > 0 || maybeCount > 0) ? (
               <span className="text-xs text-muted">
-                {rsvpStatus === "going" || rsvpStatus === "maybe" ? "" : "👥 "}
                 {goingCount} going
                 {maybeCount > 0 ? ` · ${maybeCount} maybe` : ""}
               </span>
-            )}
-            {!rsvpStatus && goingCount === 0 && (
+            ) : !rsvpStatus ? (
               <span className="text-xs text-muted">
                 👥 Open to all students
               </span>
-            )}
+            ) : null}
           </div>
         </div>
 
