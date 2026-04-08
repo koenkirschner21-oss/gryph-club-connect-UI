@@ -31,6 +31,7 @@ ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 -- 4. RLS Policies
 
 -- SELECT: Any club member can view tasks for their club
+DROP POLICY IF EXISTS "Club members can view tasks" ON public.tasks;
 CREATE POLICY "Club members can view tasks"
   ON public.tasks FOR SELECT
   USING (
@@ -43,6 +44,7 @@ CREATE POLICY "Club members can view tasks"
   );
 
 -- INSERT: Only admins/execs can create tasks
+DROP POLICY IF EXISTS "Admins and execs can create tasks" ON public.tasks;
 CREATE POLICY "Admins and execs can create tasks"
   ON public.tasks FOR INSERT
   WITH CHECK (
@@ -56,6 +58,7 @@ CREATE POLICY "Admins and execs can create tasks"
   );
 
 -- UPDATE: Admins/execs can update any field; assigned members can only update status
+DROP POLICY IF EXISTS "Admins/execs can update tasks" ON public.tasks;
 CREATE POLICY "Admins/execs can update tasks"
   ON public.tasks FOR UPDATE
   USING (
@@ -68,6 +71,7 @@ CREATE POLICY "Admins/execs can update tasks"
     )
   );
 
+DROP POLICY IF EXISTS "Assigned users can update task status" ON public.tasks;
 CREATE POLICY "Assigned users can update task status"
   ON public.tasks FOR UPDATE
   USING (
@@ -81,6 +85,7 @@ CREATE POLICY "Assigned users can update task status"
   );
 
 -- DELETE: Only admins/execs can delete tasks
+DROP POLICY IF EXISTS "Admins and execs can delete tasks" ON public.tasks;
 CREATE POLICY "Admins and execs can delete tasks"
   ON public.tasks FOR DELETE
   USING (
