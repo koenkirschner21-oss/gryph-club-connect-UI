@@ -108,6 +108,7 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
             type: "announcement",
             message: `New announcement: ${fields.title}`,
             club_id: clubId,
+            reference_id: data.id as string,
           }));
           supabase
             .from("notifications")

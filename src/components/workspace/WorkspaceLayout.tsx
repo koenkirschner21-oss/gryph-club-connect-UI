@@ -72,18 +72,32 @@ export default function WorkspaceLayout() {
               </NavLink>
             ))}
             {isAdminOrExec && (
-              <NavLink
-                to="settings"
-                className={({ isActive }) =>
-                  `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted hover:bg-surface-alt hover:text-white"
-                  }`
-                }
-              >
-                Settings
-              </NavLink>
+              <>
+                <NavLink
+                  to="analytics"
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted hover:bg-surface-alt hover:text-white"
+                    }`
+                  }
+                >
+                  Analytics
+                </NavLink>
+                <NavLink
+                  to="settings"
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted hover:bg-surface-alt hover:text-white"
+                    }`
+                  }
+                >
+                  Settings
+                </NavLink>
+              </>
             )}
           </nav>
 
@@ -133,18 +147,32 @@ export default function WorkspaceLayout() {
             </NavLink>
           ))}
           {isAdminOrExec && (
-            <NavLink
-              to="settings"
-              className={({ isActive }) =>
-                `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted hover:bg-surface-alt"
-                }`
-              }
-            >
-              Settings
-            </NavLink>
+            <>
+              <NavLink
+                to="analytics"
+                className={({ isActive }) =>
+                  `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted hover:bg-surface-alt"
+                  }`
+                }
+              >
+                Analytics
+              </NavLink>
+              <NavLink
+                to="settings"
+                className={({ isActive }) =>
+                  `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted hover:bg-surface-alt"
+                  }`
+                }
+              >
+                Settings
+              </NavLink>
+            </>
           )}
         </nav>
 

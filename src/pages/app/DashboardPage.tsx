@@ -1,11 +1,13 @@
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import { useUserInterests } from "../../hooks/useUserInterests";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
+import ClubCard from "../../components/ui/ClubCard";
 import { useActivityFeed, type ActivityItem } from "../../hooks/useActivityFeed";
 
 export default function DashboardPage() {
@@ -35,6 +37,18 @@ export default function DashboardPage() {
   const myClubs = clubs.filter((c) => joinedClubs.includes(c.id));
   const { items: activityItems, loading: activityLoading } =
     useActivityFeed(joinedClubs);
+  const { interests } = useUserInterests();
+
+  // Recommend clubs matching user interests that they haven't joined
+  const recommendedClubs = useMemo(() => {
+    if (interests.length === 0) return [];
+    return clubs
+      .filter(
+        (c) =>
+          interests.includes(c.category) && !joinedClubs.includes(c.id),
+      )
+      .slice(0, 6);
+  }, [clubs, interests, joinedClubs]);
 
   if (loading) {
     return (
@@ -152,6 +166,20 @@ export default function DashboardPage() {
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Recommended Clubs */}
+      {recommendedClubs.length > 0 && (
+        <div className="mt-12">
+          <h2 className="mb-4 text-xl font-bold text-white">
+            Recommended for You
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {recommendedClubs.map((club) => (
+              <ClubCard key={club.id} club={club} variant="compact" />
+            ))}
+          </div>
         </div>
       )}
 

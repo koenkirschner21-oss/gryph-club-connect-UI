@@ -175,7 +175,12 @@ export interface Post {
 // ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
-export type NotificationType = "new_event" | "club_update" | "announcement";
+export type NotificationType =
+  | "new_event"
+  | "club_update"
+  | "announcement"
+  | "task_assigned"
+  | "join_approved";
 
 export interface Notification {
   id: string;
@@ -184,6 +189,17 @@ export interface Notification {
   message: string;
   read: boolean;
   clubId?: string;
+  referenceId?: string;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// User interests (onboarding)
+// ---------------------------------------------------------------------------
+export interface UserInterest {
+  id: string;
+  userId: string;
+  category: string;
   createdAt: string;
 }
 
