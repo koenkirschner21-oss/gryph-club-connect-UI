@@ -38,16 +38,24 @@ export default function ClubMembersPage() {
   async function handlePromote(memberId: string) {
     setActionLoading(memberId);
     setFeedback(null);
-    await updateRole(memberId, "exec");
-    setFeedback({ type: "success", text: "Member promoted to exec." });
+    const ok = await updateRole(memberId, "exec");
+    if (ok) {
+      setFeedback({ type: "success", text: "Member promoted to exec." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to promote member." });
+    }
     setActionLoading(null);
   }
 
   async function handleDemote(memberId: string) {
     setActionLoading(memberId);
     setFeedback(null);
-    await updateRole(memberId, "member");
-    setFeedback({ type: "success", text: "Member demoted to regular member." });
+    const ok = await updateRole(memberId, "member");
+    if (ok) {
+      setFeedback({ type: "success", text: "Member demoted to regular member." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to demote member." });
+    }
     setActionLoading(null);
   }
 
@@ -55,16 +63,24 @@ export default function ClubMembersPage() {
     if (!window.confirm("Remove this member from the club?")) return;
     setActionLoading(memberId);
     setFeedback(null);
-    await removeMember(memberId);
-    setFeedback({ type: "success", text: "Member removed." });
+    const ok = await removeMember(memberId);
+    if (ok) {
+      setFeedback({ type: "success", text: "Member removed." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to remove member." });
+    }
     setActionLoading(null);
   }
 
   async function handleApprove(memberId: string) {
     setActionLoading(memberId);
     setFeedback(null);
-    await approveRequest(memberId);
-    setFeedback({ type: "success", text: "Request approved." });
+    const ok = await approveRequest(memberId);
+    if (ok) {
+      setFeedback({ type: "success", text: "Request approved." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to approve request." });
+    }
     setActionLoading(null);
   }
 
@@ -72,17 +88,26 @@ export default function ClubMembersPage() {
     if (!window.confirm("Reject this join request?")) return;
     setActionLoading(memberId);
     setFeedback(null);
-    await rejectRequest(memberId);
-    setFeedback({ type: "success", text: "Request rejected." });
+    const ok = await rejectRequest(memberId);
+    if (ok) {
+      setFeedback({ type: "success", text: "Request rejected." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to reject request." });
+    }
     setActionLoading(null);
   }
 
   function handleCopyCode() {
     if (!club?.joinCode) return;
-    navigator.clipboard.writeText(club.joinCode).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    navigator.clipboard.writeText(club.joinCode).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => {
+        setFeedback({ type: "error", text: "Failed to copy to clipboard." });
+      },
+    );
   }
 
   function renderAdminActions(

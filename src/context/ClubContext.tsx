@@ -348,6 +348,9 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
       if (memberErr) {
         console.error("Failed to add admin membership:", memberErr.message);
+        // Rollback club creation if membership failed — the club is unusable without an admin
+        await supabase.from("clubs").delete().eq("id", data.id);
+        return null;
       }
 
       // Update local state

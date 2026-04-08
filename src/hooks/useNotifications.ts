@@ -81,8 +81,7 @@ export function useNotifications(): UseNotificationsReturn {
     await supabase
       .from("notifications")
       .update({ read: true })
-      .eq("user_id", userId)
-      .eq("read", false);
+      .eq("user_id", userId);
   }, [userId]);
 
   return { notifications, unreadCount, loading, markRead, markAllRead, refresh };

@@ -12,6 +12,7 @@ export default function OnboardingPage() {
   const { saveInterests, loading: interestsLoading } = useUserInterests();
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Filter out "All" from categories
   const availableCategories = categories.filter((c) => c !== "All");
@@ -24,10 +25,13 @@ export default function OnboardingPage() {
 
   async function handleFinish() {
     setSaving(true);
+    setError(null);
     const ok = await saveInterests(selected);
     setSaving(false);
     if (ok) {
       navigate("/app");
+    } else {
+      setError("Failed to save interests. Please try again.");
     }
   }
 
@@ -58,6 +62,14 @@ export default function OnboardingPage() {
       </div>
 
       <Card className="p-6">
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
+          >
+            {error}
+          </div>
+        )}
         <h2 className="mb-4 text-lg font-semibold text-white">
           What are you interested in?
         </h2>

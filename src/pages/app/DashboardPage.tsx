@@ -48,7 +48,7 @@ export default function DashboardPage() {
       .from("profiles")
       .select("full_name, program, university")
       .eq("id", user.id)
-      .single()
+      .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {

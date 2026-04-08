@@ -1,31 +1,75 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { useClubContext } from "../../context/useClubContext";
+import { useAuthContext } from "../../context/useAuthContext";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 
 export default function JoinClubPage() {
   const navigate = useNavigate();
+  const { user } = useAuthContext();
+  const { clubs, joinClub, isJoined, isPending } = useClubContext();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
 
     if (!code.trim()) {
       setError("Please enter a join code");
       return;
     }
 
+    if (!user) {
+      setError("You must be logged in to join a club.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // When Supabase is wired, this will query clubs by join_code and
-      // insert into club_members. For now, show a placeholder flow.
-      setError(
-        "Club not found with that code. Please check and try again.",
+      // Find club by join code (case-insensitive match)
+      const club = clubs.find(
+        (c) => c.joinCode?.toUpperCase() === code.trim().toUpperCase(),
       );
+
+      if (!club) {
+        setError(
+          "Club not found with that code. Please check and try again.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Check if already a member
+      if (isJoined(club.id)) {
+        setError("You are already a member of this club.");
+        setLoading(false);
+        return;
+      }
+
+      // Check if already pending
+      if (isPending(club.id)) {
+        setError("You already have a pending request for this club.");
+        setLoading(false);
+        return;
+      }
+
+      await joinClub(club.id);
+
+      if (club.requiresApproval) {
+        setSuccess(
+          `Request sent to join "${club.name}". An admin will review your request.`,
+        );
+      } else {
+        setSuccess(`You have joined "${club.name}"!`);
+        // Navigate to the club workspace after a short delay
+        setTimeout(() => navigate(`/app/clubs/${club.id}`), 1500);
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -50,6 +94,15 @@ export default function JoinClubPage() {
             className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
           >
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg bg-green-500/10 px-4 py-3 text-sm text-green-400"
+          >
+            {success}
           </div>
         )}
 
