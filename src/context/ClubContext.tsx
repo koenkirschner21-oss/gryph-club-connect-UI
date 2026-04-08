@@ -74,13 +74,14 @@ export function ClubProvider({ children }: { children: ReactNode }) {
           setClubs(data.map(mapRow));
         }
         // If data is empty, clubs stays as [] — no mock fallback
-        setClubsLoading(false);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         console.error("Failed to load clubs:", err);
         setClubsError(String(err));
-        setClubsLoading(false);
+      })
+      .finally(() => {
+        if (!cancelled) setClubsLoading(false);
       });
 
     return () => {
