@@ -91,18 +91,8 @@ export interface ClubMember {
 }
 
 // ---------------------------------------------------------------------------
-// Channels & Messages (workspace chat)
+// Messages (workspace chat)
 // ---------------------------------------------------------------------------
-export type ChannelType = "general" | "announcements" | "team";
-
-export interface Channel {
-  id: string;
-  clubId: string;
-  name: string;
-  type: ChannelType;
-  createdAt: string;
-}
-
 export interface Message {
   id: string;
   clubId: string;
