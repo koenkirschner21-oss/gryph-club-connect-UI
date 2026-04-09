@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../context/useClubContext";
 import { useClubEvents } from "../hooks/useClubEvents";
@@ -40,6 +40,21 @@ export default function ClubDetails() {
   const joined = club ? isJoined(club.id) : false;
   const pending = club ? isPending(club.id) : false;
   const saved = club ? isSaved(club.id) : false;
+  const [joinError, setJoinError] = useState(false);
+  const [joining, setJoining] = useState(false);
+
+  async function handleJoinOrLeave() {
+    if (!club) return;
+    if (joined || pending) {
+      leaveClub(club.id);
+      return;
+    }
+    setJoining(true);
+    setJoinError(false);
+    const ok = await joinClub(club.id);
+    if (!ok) setJoinError(true);
+    setJoining(false);
+  }
 
   const upcomingEvents = clubEvents
     .filter((e) => new Date(e.date) >= new Date())
@@ -230,16 +245,22 @@ export default function ClubDetails() {
             <Button
               size="lg"
               variant={joined ? "outline" : pending ? "outline" : "primary"}
-              onClick={() =>
-                joined
-                  ? leaveClub(club.id)
-                  : pending
-                    ? leaveClub(club.id)
-                    : joinClub(club.id)
-              }
+              disabled={joining}
+              onClick={handleJoinOrLeave}
             >
-              {joined ? "Leave Club" : pending ? "Cancel Request" : "Join Club"}
+              {joining
+                ? "Joining…"
+                : joined
+                  ? "Leave Club"
+                  : pending
+                    ? "Cancel Request"
+                    : "Join Club"}
             </Button>
+            {joinError && (
+              <p className="mt-2 text-sm text-primary" role="alert">
+                Failed to join club. Please try again.
+              </p>
+            )}
           </div>
         </div>
 
