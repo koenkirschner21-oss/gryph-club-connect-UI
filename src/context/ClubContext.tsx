@@ -385,6 +385,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.bannerUrl !== undefined) row.banner_url = fields.bannerUrl;
       if (fields.requiresApproval !== undefined)
         row.requires_approval = fields.requiresApproval;
+      if (fields.joinCode !== undefined) row.join_code = fields.joinCode;
 
       const { data, error } = await supabase
         .from("clubs")
