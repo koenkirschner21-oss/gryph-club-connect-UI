@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../../lib/supabaseClient";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import Button from "../../components/ui/Button";
@@ -8,7 +9,7 @@ import FormInput from "../../components/ui/FormInput";
 export default function JoinClubPage() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { clubs, joinClub, isJoined, isPending } = useClubContext();
+  const { joinClub, isJoined, isPending } = useClubContext();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -32,12 +33,21 @@ export default function JoinClubPage() {
     setLoading(true);
 
     try {
-      // Find club by join code (case-insensitive match)
-      const club = clubs.find(
-        (c) => c.joinCode?.toUpperCase() === code.trim().toUpperCase(),
-      );
+      // Look up the club directly in Supabase by join_code (server-side,
+      // works even if the club hasn't been loaded into the local context yet).
+      const { data: clubRow, error: lookupErr } = await supabase
+        .from("clubs")
+        .select("id, name, requires_approval")
+        .eq("join_code", code.trim().toUpperCase())
+        .maybeSingle();
 
-      if (!club) {
+      if (lookupErr) {
+        setError("Something went wrong looking up the code. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      if (!clubRow) {
         setError(
           "Club not found with that code. Please check and try again.",
         );
@@ -45,30 +55,34 @@ export default function JoinClubPage() {
         return;
       }
 
+      const clubId = clubRow.id as string;
+      const clubName = clubRow.name as string;
+      const requiresApproval = (clubRow.requires_approval as boolean) ?? false;
+
       // Check if already a member
-      if (isJoined(club.id)) {
+      if (isJoined(clubId)) {
         setError("You are already a member of this club.");
         setLoading(false);
         return;
       }
 
       // Check if already pending
-      if (isPending(club.id)) {
+      if (isPending(clubId)) {
         setError("You already have a pending request for this club.");
         setLoading(false);
         return;
       }
 
-      await joinClub(club.id);
+      await joinClub(clubId);
 
-      if (club.requiresApproval) {
+      if (requiresApproval) {
         setSuccess(
-          `Request sent to join "${club.name}". An admin will review your request.`,
+          `Request sent to join "${clubName}". An admin will review your request.`,
         );
       } else {
-        setSuccess(`You have joined "${club.name}"!`);
+        setSuccess(`You have joined "${clubName}"!`);
         // Navigate to the club workspace after a short delay
-        setTimeout(() => navigate(`/app/clubs/${club.id}`), 1500);
+        setTimeout(() => navigate(`/app/clubs/${clubId}`), 1500);
       }
     } catch {
       setError("Something went wrong. Please try again.");

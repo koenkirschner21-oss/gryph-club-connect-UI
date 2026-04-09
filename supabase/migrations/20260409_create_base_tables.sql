@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS public.clubs (
   is_featured        boolean DEFAULT false,
   is_verified        boolean DEFAULT false,
   abbreviation       text,
-  join_code          text,
+  join_code          text UNIQUE,
   social_links       jsonb,
   requires_approval  boolean DEFAULT false,
   created_by         uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -95,15 +95,28 @@ CREATE TABLE IF NOT EXISTS public.clubs (
 
 CREATE INDEX IF NOT EXISTS idx_clubs_slug ON public.clubs(slug);
 CREATE INDEX IF NOT EXISTS idx_clubs_category ON public.clubs(category);
+CREATE INDEX IF NOT EXISTS idx_clubs_join_code ON public.clubs(join_code);
 
--- Generate a join_code automatically when a club is created (if not supplied)
+-- Generate a join_code automatically when a club is created (if not supplied).
+-- Retries on collision because join_code has a UNIQUE constraint.
 CREATE OR REPLACE FUNCTION public.generate_join_code()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  candidate text;
+  attempts  int := 0;
 BEGIN
   IF NEW.join_code IS NULL OR NEW.join_code = '' THEN
-    NEW.join_code := upper(substr(md5(random()::text), 1, 6));
+    LOOP
+      candidate := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6));
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM public.clubs WHERE join_code = candidate);
+      attempts := attempts + 1;
+      IF attempts > 20 THEN
+        RAISE EXCEPTION 'Could not generate a unique join code after 20 attempts';
+      END IF;
+    END LOOP;
+    NEW.join_code := candidate;
   END IF;
   RETURN NEW;
 END;
