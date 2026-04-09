@@ -173,13 +173,30 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const joinClub = useCallback(
-    (clubId: string) => {
-      if (!user) return;
+    async (clubId: string): Promise<boolean> => {
+      if (!user) return false;
       const club = clubs.find((c) => c.id === clubId);
       const needsApproval = club?.requiresApproval ?? false;
       const status = needsApproval ? "pending" : "active";
 
-      // Optimistic update
+      const { error } = await supabase
+        .from("club_members")
+        .upsert(
+          {
+            club_id: clubId,
+            user_id: user.id,
+            role: "member",
+            status,
+          },
+          { onConflict: "club_id,user_id" },
+        );
+
+      if (error) {
+        console.error("Failed to join club:", error.message);
+        return false;
+      }
+
+      // Update local state only after DB confirms success
       if (needsApproval) {
         setPendingClubs((prev) =>
           prev.includes(clubId) ? prev : [...prev, clubId],
@@ -190,28 +207,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      supabase
-        .from("club_members")
-        .upsert(
-          {
-            club_id: clubId,
-            user_id: user.id,
-            role: "member",
-            status,
-          },
-          { onConflict: "club_id,user_id" },
-        )
-        .then(({ error }) => {
-          if (error) {
-            console.error("Failed to join club:", error.message);
-            // Rollback optimistic update
-            if (needsApproval) {
-              setPendingClubs((prev) => prev.filter((id) => id !== clubId));
-            } else {
-              setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
-            }
-          }
-        });
+      return true;
     },
     [user, clubs],
   );

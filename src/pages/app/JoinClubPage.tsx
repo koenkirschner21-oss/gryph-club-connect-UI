@@ -73,7 +73,12 @@ export default function JoinClubPage() {
         return;
       }
 
-      await joinClub(clubId);
+      const joined = await joinClub(clubId);
+
+      if (!joined) {
+        setError("Failed to join club. Please try again.");
+        return;
+      }
 
       if (requiresApproval) {
         setSuccess(
