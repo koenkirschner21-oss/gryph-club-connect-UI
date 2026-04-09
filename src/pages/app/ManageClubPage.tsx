@@ -113,12 +113,10 @@ export default function ManageClubPage() {
     if (!clubId) return;
     setRegeneratingCode(true);
     setError(null);
-    // Generate a 6-char uppercase alphanumeric code
+    // Generate a 6-char uppercase alphanumeric code using crypto-safe randomness
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let newCode = "";
-    for (let i = 0; i < 6; i++) {
-      newCode += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    const randomValues = crypto.getRandomValues(new Uint8Array(6));
+    const newCode = Array.from(randomValues, (v) => chars[v % chars.length]).join("");
     const ok = await updateClub(clubId, { joinCode: newCode });
     setRegeneratingCode(false);
     if (ok) {

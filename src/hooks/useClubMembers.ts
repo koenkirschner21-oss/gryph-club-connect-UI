@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { ClubMember, MemberRole } from "../types";
 
@@ -40,10 +40,6 @@ export function useClubMembers(
 ): UseClubMembersReturn {
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [pendingMembers, setPendingMembers] = useState<ClubMember[]>([]);
-  const pendingMembersRef = useRef(pendingMembers);
-  useEffect(() => {
-    pendingMembersRef.current = pendingMembers;
-  }, [pendingMembers]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -143,10 +139,14 @@ export function useClubMembers(
       }
 
       // Move from pending to active members
-      const approved = pendingMembersRef.current.find((m) => m.id === memberId);
-      setPendingMembers((prev) => prev.filter((m) => m.id !== memberId));
+      let approved: ClubMember | undefined;
+      setPendingMembers((prev) => {
+        approved = prev.find((m) => m.id === memberId);
+        return prev.filter((m) => m.id !== memberId);
+      });
       if (approved) {
-        setMembers((active) => [...active, { ...approved, status: "active" }]);
+        const approvedMember = approved;
+        setMembers((active) => [...active, { ...approvedMember, status: "active" }]);
 
         // Notify the user that their request was approved (fire-and-forget)
         if (clubId) {
