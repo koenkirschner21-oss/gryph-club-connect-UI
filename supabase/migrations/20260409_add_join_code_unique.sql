@@ -45,6 +45,30 @@ BEGIN
   END IF;
 END $$;
 
+-- Step 1b: Regenerate join_codes for any clubs that now have NULL join_code.
+-- We can't use the INSERT trigger, so we generate directly here.
+DO $$
+DECLARE
+  club_row RECORD;
+  candidate text;
+  attempts int;
+BEGIN
+  FOR club_row IN
+    SELECT id FROM public.clubs WHERE join_code IS NULL
+  LOOP
+    attempts := 0;
+    LOOP
+      candidate := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6));
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM public.clubs WHERE join_code = candidate);
+      attempts := attempts + 1;
+      IF attempts > 20 THEN
+        RAISE EXCEPTION 'Could not generate a unique join code after 20 attempts for club %', club_row.id;
+      END IF;
+    END LOOP;
+    UPDATE public.clubs SET join_code = candidate WHERE id = club_row.id;
+  END LOOP;
+END $$;
+
 -- Step 2: Add UNIQUE constraint if it doesn't already exist.
 -- PostgreSQL doesn't have ADD CONSTRAINT IF NOT EXISTS, so we check first.
 DO $$

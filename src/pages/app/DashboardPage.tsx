@@ -19,6 +19,7 @@ type DashboardTab = "overview" | "events" | "tasks";
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
     .split(" ")
+    .filter((w) => w.length > 0)
     .map((w) => w[0])
     .join("")
     .slice(0, maxLen)
