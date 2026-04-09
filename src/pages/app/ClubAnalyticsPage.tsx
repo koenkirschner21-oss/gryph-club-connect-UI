@@ -40,6 +40,15 @@ export default function ClubAnalyticsPage() {
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
+      // Fetch event IDs for this club first (needed for RSVP count)
+      const { data: eventRows } = await supabase
+        .from("events")
+        .select("id")
+        .eq("club_id", clubId);
+      const eventIds = (eventRows ?? []).map((e) => e.id as string);
+
+      if (cancelled) return;
+
       const [
         membersRes,
         newMembersRes,
@@ -88,10 +97,12 @@ export default function ClubAnalyticsPage() {
           .select("id", { count: "exact", head: true })
           .eq("club_id", clubId)
           .eq("status", "done"),
-        supabase
-          .from("event_rsvps")
-          .select("id, events!inner(club_id)", { count: "exact", head: true })
-          .eq("events.club_id", clubId),
+        eventIds.length > 0
+          ? supabase
+              .from("event_rsvps")
+              .select("id", { count: "exact", head: true })
+              .in("event_id", eventIds)
+          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
       ]);
 
       if (cancelled) return;

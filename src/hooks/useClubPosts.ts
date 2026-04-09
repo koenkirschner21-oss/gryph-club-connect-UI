@@ -92,36 +92,40 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
       setPosts((prev) => [mapPostRow(data), ...prev]);
 
       // Notify club members about the new announcement (fire-and-forget)
-      supabase
-        .from("club_members")
-        .select("user_id")
-        .eq("club_id", clubId)
-        .eq("status", "active")
-        .then(({ data: members }) => {
-          if (!members || members.length === 0) return;
-          const recipients = members.filter(
-            (m) => m.user_id !== user.id,
-          );
-          if (recipients.length === 0) return;
-          const rows = recipients.map((m) => ({
-            user_id: m.user_id,
-            type: "announcement",
-            message: `New announcement: ${fields.title}`,
-            club_id: clubId,
-            reference_id: data.id as string,
-          }));
-          supabase
-            .from("notifications")
-            .insert(rows)
-            .then(({ error: notifErr }) => {
-              if (notifErr) {
-                console.error(
-                  "Failed to send announcement notifications:",
-                  notifErr.message,
-                );
-              }
-            });
-        });
+      Promise.resolve(
+        supabase
+          .from("club_members")
+          .select("user_id")
+          .eq("club_id", clubId)
+          .eq("status", "active")
+          .then(({ data: members }) => {
+            if (!members || members.length === 0) return;
+            const recipients = members.filter(
+              (m) => m.user_id !== user.id,
+            );
+            if (recipients.length === 0) return;
+            const rows = recipients.map((m) => ({
+              user_id: m.user_id,
+              type: "announcement",
+              message: `New announcement: ${fields.title}`,
+              club_id: clubId,
+              reference_id: data.id as string,
+            }));
+            supabase
+              .from("notifications")
+              .insert(rows)
+              .then(({ error: notifErr }) => {
+                if (notifErr) {
+                  console.error(
+                    "Failed to send announcement notifications:",
+                    notifErr.message,
+                  );
+                }
+              });
+          }),
+      ).catch((err: unknown) => {
+        console.error("Failed to send announcement notifications:", err);
+      });
 
       return true;
     },

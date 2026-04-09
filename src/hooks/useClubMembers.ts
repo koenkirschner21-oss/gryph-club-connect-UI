@@ -150,19 +150,23 @@ export function useClubMembers(
 
         // Notify the user that their request was approved (fire-and-forget)
         if (clubId) {
-          supabase
-            .from("notifications")
-            .insert({
-              user_id: approved.userId,
-              type: "join_approved",
-              message: "Your join request has been approved!",
-              club_id: clubId,
-            })
-            .then(({ error: notifErr }) => {
-              if (notifErr) {
-                console.error("Failed to send approval notification:", notifErr.message);
-              }
-            });
+          Promise.resolve(
+            supabase
+              .from("notifications")
+              .insert({
+                user_id: approved.userId,
+                type: "join_approved",
+                message: "Your join request has been approved!",
+                club_id: clubId,
+              })
+              .then(({ error: notifErr }) => {
+                if (notifErr) {
+                  console.error("Failed to send approval notification:", notifErr.message);
+                }
+              }),
+          ).catch((err: unknown) => {
+            console.error("Failed to send approval notification:", err);
+          });
         }
       }
       return true;

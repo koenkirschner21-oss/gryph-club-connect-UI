@@ -46,7 +46,9 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
   const { user } = useAuthContext();
   const [myRsvps, setMyRsvps] = useState<Record<string, RsvpStatus>>({});
   const myRsvpsRef = useRef(myRsvps);
-  myRsvpsRef.current = myRsvps;
+  useEffect(() => {
+    myRsvpsRef.current = myRsvps;
+  }, [myRsvps]);
   const [counts, setCounts] = useState<Record<string, RsvpCounts>>({});
   const [attendees, setAttendees] = useState<Record<string, EventRsvp[]>>({});
   const [loading, setLoading] = useState(true);
