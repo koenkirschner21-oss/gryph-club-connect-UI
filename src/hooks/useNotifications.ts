@@ -88,7 +88,8 @@ export function useNotifications(): UseNotificationsReturn {
     const { error } = await supabase
       .from("notifications")
       .update({ read: true })
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("read", false);
     if (error) {
       console.error("Failed to mark all notifications as read:", error.message);
     }
