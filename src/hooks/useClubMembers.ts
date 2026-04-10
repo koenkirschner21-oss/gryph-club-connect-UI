@@ -139,13 +139,18 @@ export function useClubMembers(
       }
 
       // Move from pending to active members
+      let approved: ClubMember | undefined;
       setPendingMembers((prev) => {
-        const approved = prev.find((m) => m.id === memberId);
-        if (approved) {
-          setMembers((active) => [...active, { ...approved, status: "active" }]);
+        approved = prev.find((m) => m.id === memberId);
+        return prev.filter((m) => m.id !== memberId);
+      });
+      if (approved) {
+        const approvedMember = approved;
+        setMembers((active) => [...active, { ...approvedMember, status: "active" }]);
 
-          // Notify the user that their request was approved (fire-and-forget)
-          if (clubId) {
+        // Notify the user that their request was approved (fire-and-forget)
+        if (clubId) {
+          Promise.resolve(
             supabase
               .from("notifications")
               .insert({
@@ -158,11 +163,12 @@ export function useClubMembers(
                 if (notifErr) {
                   console.error("Failed to send approval notification:", notifErr.message);
                 }
-              });
-          }
+              }),
+          ).catch((err: unknown) => {
+            console.error("Failed to send approval notification:", err);
+          });
         }
-        return prev.filter((m) => m.id !== memberId);
-      });
+      }
       return true;
     },
     [clubId],

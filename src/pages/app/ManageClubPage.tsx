@@ -38,6 +38,8 @@ export default function ManageClubPage() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [regeneratingCode, setRegeneratingCode] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Only admin or exec can access this page
   if (!club || (role !== "admin" && role !== "exec")) {
@@ -105,6 +107,37 @@ export default function ManageClubPage() {
     } else {
       setError("Failed to save changes. Please try again.");
     }
+  }
+
+  async function handleRegenerateCode() {
+    if (!clubId) return;
+    setRegeneratingCode(true);
+    setError(null);
+    // Generate a 6-char uppercase alphanumeric code using crypto-safe randomness
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const randomValues = crypto.getRandomValues(new Uint8Array(6));
+    const newCode = Array.from(randomValues, (v) => chars[v % chars.length]).join("");
+    const ok = await updateClub(clubId, { joinCode: newCode });
+    setRegeneratingCode(false);
+    if (ok) {
+      setSuccess(true);
+    } else {
+      setError("Failed to regenerate join code.");
+    }
+  }
+
+  function handleCopyCode() {
+    const currentCode = getClubById(clubId ?? "")?.joinCode;
+    if (!currentCode) return;
+    navigator.clipboard.writeText(currentCode).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => {
+        setError("Failed to copy to clipboard.");
+      },
+    );
   }
 
   return (
@@ -321,6 +354,53 @@ export default function ManageClubPage() {
             </Button>
           </div>
         </form>
+      </Card>
+
+      {/* Join Code Management */}
+      <Card className="mt-6 p-6">
+        <h2 className="mb-1 text-lg font-bold text-white">Join Code</h2>
+        <p className="mb-4 text-sm text-muted">
+          Share this code to let people join your club.
+        </p>
+
+        {(() => {
+          const currentCode = getClubById(clubId ?? "")?.joinCode;
+          return currentCode ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="rounded-lg bg-surface-alt px-4 py-2 font-mono text-lg font-bold tracking-widest text-white">
+                {currentCode}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="cursor-pointer rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-white"
+                >
+                  {copied ? "✓ Copied" : "Copy"}
+                </button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={regeneratingCode}
+                  onClick={handleRegenerateCode}
+                >
+                  {regeneratingCode ? "Regenerating…" : "Regenerate"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted">No join code generated yet.</p>
+              <Button
+                size="sm"
+                disabled={regeneratingCode}
+                onClick={handleRegenerateCode}
+              >
+                {regeneratingCode ? "Generating…" : "Generate Code"}
+              </Button>
+            </div>
+          );
+        })()}
       </Card>
     </div>
   );

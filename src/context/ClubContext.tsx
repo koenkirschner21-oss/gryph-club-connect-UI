@@ -173,13 +173,30 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const joinClub = useCallback(
-    (clubId: string) => {
-      if (!user) return;
+    async (clubId: string): Promise<boolean> => {
+      if (!user) return false;
       const club = clubs.find((c) => c.id === clubId);
       const needsApproval = club?.requiresApproval ?? false;
       const status = needsApproval ? "pending" : "active";
 
-      // Optimistic update
+      const { error } = await supabase
+        .from("club_members")
+        .upsert(
+          {
+            club_id: clubId,
+            user_id: user.id,
+            role: "member",
+            status,
+          },
+          { onConflict: "club_id,user_id" },
+        );
+
+      if (error) {
+        console.error("Failed to join club:", error.message);
+        return false;
+      }
+
+      // Update local state only after DB confirms success
       if (needsApproval) {
         setPendingClubs((prev) =>
           prev.includes(clubId) ? prev : [...prev, clubId],
@@ -190,28 +207,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      supabase
-        .from("club_members")
-        .upsert(
-          {
-            club_id: clubId,
-            user_id: user.id,
-            role: "member",
-            status,
-          },
-          { onConflict: "club_id,user_id" },
-        )
-        .then(({ error }) => {
-          if (error) {
-            console.error("Failed to join club:", error.message);
-            // Rollback optimistic update
-            if (needsApproval) {
-              setPendingClubs((prev) => prev.filter((id) => id !== clubId));
-            } else {
-              setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
-            }
-          }
-        });
+      return true;
     },
     [user, clubs],
   );
@@ -219,6 +215,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const leaveClub = useCallback(
     (clubId: string) => {
       if (!user) return;
+      const wasPending = pendingClubs.includes(clubId);
       setJoinedClubs((prev) => prev.filter((id) => id !== clubId));
       setPendingClubs((prev) => prev.filter((id) => id !== clubId));
       supabase
@@ -229,14 +226,20 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         .then(({ error }) => {
           if (error) {
             console.error("Failed to leave club:", error.message);
-            // Rollback optimistic update
-            setJoinedClubs((prev) =>
-              prev.includes(clubId) ? prev : [...prev, clubId],
-            );
+            // Rollback optimistic update to correct state
+            if (wasPending) {
+              setPendingClubs((prev) =>
+                prev.includes(clubId) ? prev : [...prev, clubId],
+              );
+            } else {
+              setJoinedClubs((prev) =>
+                prev.includes(clubId) ? prev : [...prev, clubId],
+              );
+            }
           }
         });
     },
-    [user],
+    [user, pendingClubs],
   );
 
   const toggleSaveClub = useCallback(
@@ -341,6 +344,12 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
       if (memberErr) {
         console.error("Failed to add admin membership:", memberErr.message);
+        // Rollback club creation if membership failed — the club is unusable without an admin
+        const { error: rollbackErr } = await supabase.from("clubs").delete().eq("id", data.id);
+        if (rollbackErr) {
+          console.error("Failed to rollback club creation:", rollbackErr.message);
+        }
+        return null;
       }
 
       // Update local state
@@ -372,6 +381,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.bannerUrl !== undefined) row.banner_url = fields.bannerUrl;
       if (fields.requiresApproval !== undefined)
         row.requires_approval = fields.requiresApproval;
+      if (fields.joinCode !== undefined) row.join_code = fields.joinCode;
 
       const { data, error } = await supabase
         .from("clubs")

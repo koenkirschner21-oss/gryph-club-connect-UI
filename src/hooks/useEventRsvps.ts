@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { EventRsvp, RsvpCounts, RsvpStatus } from "../types";
@@ -45,6 +45,10 @@ export interface UseEventRsvpsReturn {
 export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
   const { user } = useAuthContext();
   const [myRsvps, setMyRsvps] = useState<Record<string, RsvpStatus>>({});
+  const myRsvpsRef = useRef(myRsvps);
+  useEffect(() => {
+    myRsvpsRef.current = myRsvps;
+  }, [myRsvps]);
   const [counts, setCounts] = useState<Record<string, RsvpCounts>>({});
   const [attendees, setAttendees] = useState<Record<string, EventRsvp[]>>({});
   const [loading, setLoading] = useState(true);
@@ -133,7 +137,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
       // Optimistic update for counts
       setCounts((prev) => {
         const old = prev[eventId] ?? emptyCounts();
-        const prevStatus = myRsvps[eventId];
+        const prevStatus = myRsvpsRef.current[eventId];
         const updated = { ...old };
         if (prevStatus) updated[prevStatus] = Math.max(0, updated[prevStatus] - 1);
         updated[status] += 1;
@@ -142,7 +146,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
 
       return true;
     },
-    [user, myRsvps],
+    [user],
   );
 
   /** Remove current user's RSVP. */
@@ -161,7 +165,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
         return false;
       }
 
-      const prevStatus = myRsvps[eventId];
+      const prevStatus = myRsvpsRef.current[eventId];
       setMyRsvps((prev) => {
         const next = { ...prev };
         delete next[eventId];
@@ -180,7 +184,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
 
       return true;
     },
-    [user, myRsvps],
+    [user],
   );
 
   /** Load full attendee list with profile info for a specific event. */

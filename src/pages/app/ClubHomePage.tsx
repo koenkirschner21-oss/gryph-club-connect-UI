@@ -13,7 +13,18 @@ export default function ClubHomePage() {
   const { events, loading: eventsLoading } = useClubEvents(clubId);
   const { posts, loading: postsLoading } = useClubPosts(clubId);
 
-  if (!club) return null;
+  if (!club) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg font-semibold text-white">Club not found</p>
+          <p className="mt-1 text-sm text-muted">
+            This club may have been removed or you don&apos;t have access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const upcomingEvents = events
     .filter((e) => new Date(e.date) >= new Date())

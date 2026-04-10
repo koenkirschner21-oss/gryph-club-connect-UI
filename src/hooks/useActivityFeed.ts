@@ -59,6 +59,13 @@ export function useActivityFeed(joinedClubIds: string[]) {
 
       if (cancelled) return;
 
+      if (postsRes.error) {
+        console.error("Failed to load posts feed:", postsRes.error.message);
+      }
+      if (eventsRes.error) {
+        console.error("Failed to load events feed:", eventsRes.error.message);
+      }
+
       const feed: ActivityItem[] = [];
 
       // Map posts

@@ -127,23 +127,27 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
 
       // Notify the assigned user (fire-and-forget)
       if (fields.assignedTo && fields.assignedTo !== user.id) {
-        supabase
-          .from("notifications")
-          .insert({
-            user_id: fields.assignedTo,
-            type: "task_assigned",
-            message: `You were assigned a task: ${fields.title}`,
-            club_id: clubId,
-            reference_id: data.id as string,
-          })
-          .then(({ error: notifErr }) => {
-            if (notifErr) {
-              console.error(
-                "Failed to send task notification:",
-                notifErr.message,
-              );
-            }
-          });
+        Promise.resolve(
+          supabase
+            .from("notifications")
+            .insert({
+              user_id: fields.assignedTo,
+              type: "task_assigned",
+              message: `You were assigned a task: ${fields.title}`,
+              club_id: clubId,
+              reference_id: data.id as string,
+            })
+            .then(({ error: notifErr }) => {
+              if (notifErr) {
+                console.error(
+                  "Failed to send task notification:",
+                  notifErr.message,
+                );
+              }
+            }),
+        ).catch((err: unknown) => {
+          console.error("Failed to send task notification:", err);
+        });
       }
 
       return true;
