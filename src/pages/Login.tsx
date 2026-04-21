@@ -1,0 +1,92 @@
+import { type FormEvent, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import Button from "../components/ui/Button";
+import FormInput from "../components/ui/FormInput";
+import { useAuthContext } from "../context/useAuthContext";
+
+export default function Login() {
+  const { signIn } = useAuthContext();
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      await signIn(email, password);
+      navigate("/app");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8">
+        <h1 className="mb-6 text-center text-2xl font-extrabold text-white">
+          Log In
+        </h1>
+
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <fieldset disabled={loading} className="space-y-4">
+          <FormInput
+            id="email"
+            label="Email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+
+          <FormInput
+            id="password"
+            label="Password"
+            type="password"
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
+          </fieldset>
+
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full"
+          >
+            {loading ? "Logging in…" : "Log In"}
+          </Button>
+        </form>
+
+        <p className="mt-6 text-center text-sm text-muted">
+          Don&apos;t have an account?{" "}
+          <Link
+            to="/signup"
+            className="font-medium text-primary hover:text-primary-dark"
+          >
+            Sign Up
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

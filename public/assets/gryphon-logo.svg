@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!--
+    Gryphon passant (walking) silhouette — matches the ClubConnect brand logo.
+    Red body with gold wing stripes, beak, and talons.
+  -->
+
+  <!-- Head & Neck -->
+  <path d="M22 24 C22 18 24 14 28 10 C30 8 33 6 36 6 C38 6 39 7 39 9 C39 11 37 13 35 14 L38 12 C40 10 42 9 43 10 C44 11 43 13 41 15 C39 17 36 18 34 18 L30 20 C28 21 26 22 24 24Z" fill="#C20430"/>
+  <!-- Eye -->
+  <circle cx="35" cy="10" r="1.2" fill="#FFFFFF"/>
+  <!-- Beak -->
+  <path d="M39 9 L45 7 L42 11 L39 10Z" fill="#F5C542"/>
+
+  <!-- Body -->
+  <path d="M24 24 C22 26 20 30 20 34 C20 38 22 42 24 46 L30 46 C30 42 28 38 26 34 C25 31 26 28 28 26 L36 22 C38 20 40 20 42 22 C44 24 44 28 42 32 C40 36 38 40 38 44 L44 44 C46 40 48 36 50 34 C52 30 52 26 48 24 C46 22 42 20 38 20 L30 22 C28 23 26 24 24 24Z" fill="#C20430"/>
+
+  <!-- Wing (raised) -->
+  <path d="M30 24 C32 20 36 18 40 18 C42 18 44 20 44 22 C44 24 42 26 40 28 L34 30 C32 30 30 28 30 26Z" fill="#D4282E"/>
+  <!-- Wing stripes (gold) -->
+  <path d="M32 22 L40 20" stroke="#F5C542" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M31 25 L39 23" stroke="#F5C542" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M32 28 L38 26" stroke="#F5C542" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Front legs -->
+  <path d="M24 46 C22 48 20 50 18 52 L16 52 C16 50 18 48 20 46" fill="#C20430"/>
+  <path d="M30 46 C28 48 28 50 28 52 L26 52 C24 50 24 48 26 46" fill="#C20430"/>
+  <!-- Front talons (gold) -->
+  <path d="M16 52 L14 56 M18 52 L18 56 M20 52 L22 56" stroke="#F5C542" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M26 52 L24 56 M28 52 L28 56" stroke="#F5C542" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Hind legs -->
+  <path d="M38 44 C38 46 36 48 36 50 L34 52 C34 50 34 48 36 46" fill="#C20430"/>
+  <path d="M44 44 C44 46 44 48 44 50 L42 52 C40 50 40 48 42 46" fill="#C20430"/>
+  <!-- Hind talons (gold) -->
+  <path d="M34 52 L32 56 M36 52 L36 56" stroke="#F5C542" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M42 52 L40 56 M44 52 L44 56" stroke="#F5C542" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Tail (lion-like with tuft) -->
+  <path d="M48 24 C52 22 56 20 58 22 C60 24 58 28 54 30 C52 31 50 32 48 30 C46 28 46 26 48 24Z" fill="#C20430"/>
+  <path d="M58 22 C60 20 62 20 62 22 C62 24 60 26 58 24" fill="#D4282E"/>
+</svg>
