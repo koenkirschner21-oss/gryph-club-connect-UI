@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { Notification } from "../types";
@@ -42,6 +42,27 @@ export function useNotifications(): UseNotificationsReturn {
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  const upsertNotification = useCallback((next: Notification) => {
+    setNotifications((prev) => {
+      const existingIndex = prev.findIndex((n) => n.id === next.id);
+      let merged: Notification[];
+
+      if (existingIndex === -1) {
+        merged = [next, ...prev];
+      } else {
+        merged = prev.map((n, i) => (i === existingIndex ? { ...n, ...next } : n));
+      }
+
+      return merged
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 50);
+    });
+  }, []);
+
+  const removeNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
   useEffect(() => {
     if (!userId) return;
 
@@ -70,7 +91,34 @@ export function useNotifications(): UseNotificationsReturn {
 
   useEffect(() => {
     if (!userId) return;
-    if (realtimeChannelRef.current) return;
+
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const onNotificationChange = (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+      if (payload.eventType === "INSERT") {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          upsertNotification(mapRow(payload.new));
+        }
+        return;
+      }
+
+      if (payload.eventType === "UPDATE") {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          upsertNotification(mapRow(payload.new));
+        }
+        return;
+      }
+
+      if (payload.eventType === "DELETE") {
+        const deletedId = payload.old?.id;
+        if (typeof deletedId === "string" && deletedId.length > 0) {
+          removeNotification(deletedId);
+        }
+      }
+    };
 
     const channel = supabase
       .channel(`notifications:${userId}`)
@@ -82,9 +130,7 @@ export function useNotifications(): UseNotificationsReturn {
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
-        () => {
-          refresh();
-        },
+        onNotificationChange,
       )
       .subscribe();
 
@@ -96,7 +142,7 @@ export function useNotifications(): UseNotificationsReturn {
         realtimeChannelRef.current = null;
       }
     };
-  }, [refresh, userId]);
+  }, [removeNotification, upsertNotification, userId]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
