@@ -9,6 +9,8 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { AuthContext, type AuthContextValue } from "./authContextValue";
 
+const ALLOWED_EMAIL_DOMAIN = "uoguelph.ca";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -41,6 +43,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
+    const domain = email.split("@")[1]?.toLowerCase();
+    if (domain !== ALLOWED_EMAIL_DOMAIN) {
+      throw new Error(
+        `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
+      );
+    }
     const { error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
   }, []);

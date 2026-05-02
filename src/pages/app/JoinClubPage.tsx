@@ -5,28 +5,24 @@ import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
+import { showToast } from "../../components/ui/Toast";
 
 export default function JoinClubPage() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { joinClub, isJoined, isPending } = useClubContext();
   const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-
     if (!code.trim()) {
-      setError("Please enter a join code");
+      showToast("Please enter a join code", "error");
       return;
     }
 
     if (!user) {
-      setError("You must be logged in to join a club.");
+      showToast("You must be logged in to join a club.", "error");
       return;
     }
 
@@ -42,14 +38,15 @@ export default function JoinClubPage() {
         .maybeSingle();
 
       if (lookupErr) {
-        setError("Something went wrong looking up the code. Please try again.");
+        showToast("Something went wrong looking up the code. Please try again.", "error");
         setLoading(false);
         return;
       }
 
       if (!clubRow) {
-        setError(
+        showToast(
           "Club not found with that code. Please check and try again.",
+          "error",
         );
         setLoading(false);
         return;
@@ -61,14 +58,14 @@ export default function JoinClubPage() {
 
       // Check if already a member
       if (isJoined(clubId)) {
-        setError("You are already a member of this club.");
+        showToast("You are already a member of this club.", "error");
         setLoading(false);
         return;
       }
 
       // Check if already pending
       if (isPending(clubId)) {
-        setError("You already have a pending request for this club.");
+        showToast("You already have a pending request for this club.", "error");
         setLoading(false);
         return;
       }
@@ -76,21 +73,22 @@ export default function JoinClubPage() {
       const joined = await joinClub(clubId);
 
       if (!joined) {
-        setError("Failed to join club. Please try again.");
+        showToast("Failed to join club. Please try again.", "error");
         return;
       }
 
       if (requiresApproval) {
-        setSuccess(
+        showToast(
           `Request sent to join "${clubName}". An admin will review your request.`,
+          "success",
         );
       } else {
-        setSuccess(`You have joined "${clubName}"!`);
+        showToast(`You have joined "${clubName}"!`, "success");
         // Navigate to the club workspace after a short delay
         setTimeout(() => navigate(`/app/clubs/${clubId}`), 1500);
       }
     } catch {
-      setError("Something went wrong. Please try again.");
+      showToast("Something went wrong. Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -106,24 +104,6 @@ export default function JoinClubPage() {
           Enter the join code shared by your club&apos;s admin to access their
           workspace.
         </p>
-
-        {error && (
-          <div
-            role="alert"
-            className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
-          >
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div
-            role="alert"
-            className="mb-4 rounded-lg bg-green-500/10 px-4 py-3 text-sm text-green-400"
-          >
-            {success}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <FormInput

@@ -227,13 +227,13 @@ export default function Explore() {
                   className="h-12 w-12"
                   aria-hidden="true"
                 />
-                <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
+                <span className="text-sm font-bold uppercase tracking-[0.15em] text-[var(--gold)]">
                   Gryph Club Connect
                 </span>
               </div>
               <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]">
                 <span className="text-white/60">Discover Your</span>{" "}
-                <span className="text-primary">Club</span>
+                <span className="text-[var(--gold)]">Club</span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
                 Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
@@ -245,30 +245,30 @@ export default function Explore() {
             {/* Right: visual anchor — decorative blurred panel */}
             <div className="hidden flex-shrink-0 lg:block" aria-hidden="true">
               <div className="relative w-64 xl:w-72">
-                <div className="absolute -inset-4 rounded-3xl bg-primary/5 blur-2xl" />
+                <div className="absolute -inset-4 rounded-3xl bg-[var(--red-dim)] blur-2xl" />
                 <div className="relative rounded-2xl border border-border/60 bg-card/80 p-5 backdrop-blur-sm shadow-elevated">
                   <div className="mb-3 flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-primary/20" />
+                    <div className="skeleton h-9 w-9 rounded-xl" />
                     <div className="flex-1 space-y-1.5">
-                      <div className="h-2.5 w-20 rounded-full bg-white/15" />
-                      <div className="h-2 w-14 rounded-full bg-white/8" />
+                      <div className="skeleton h-2.5 w-20 rounded-full" />
+                      <div className="skeleton h-2 w-14 rounded-full" />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <div className="h-2 w-full rounded-full bg-white/8" />
-                    <div className="h-2 w-5/6 rounded-full bg-white/6" />
+                    <div className="skeleton h-2 w-full rounded-full" />
+                    <div className="skeleton h-2 w-5/6 rounded-full" />
                   </div>
                   <div className="mt-4 flex gap-2">
-                    <div className="h-5 w-14 rounded-full bg-primary/15" />
-                    <div className="h-5 w-10 rounded-full bg-secondary/10" />
+                    <div className="skeleton h-5 w-14 rounded-full" />
+                    <div className="skeleton h-5 w-10 rounded-full" />
                   </div>
                 </div>
                 <div className="relative -mt-1.5 ml-3 rounded-2xl border border-border/40 bg-surface-alt/60 p-4 backdrop-blur-sm">
                   <div className="flex items-center gap-2.5">
-                    <div className="h-7 w-7 rounded-lg bg-secondary/15" />
+                    <div className="skeleton h-7 w-7 rounded-lg" />
                     <div className="flex-1 space-y-1">
-                      <div className="h-2 w-16 rounded-full bg-white/12" />
-                      <div className="h-1.5 w-12 rounded-full bg-white/6" />
+                      <div className="skeleton h-2 w-16 rounded-full" />
+                      <div className="skeleton h-1.5 w-12 rounded-full" />
                     </div>
                   </div>
                 </div>
@@ -304,6 +304,7 @@ export default function Explore() {
               )}
             </div>
           )}
+          <div className="mt-6 border-b border-[var(--border)]" />
         </div>
       </section>
 
@@ -526,7 +527,7 @@ export default function Explore() {
             </div>
 
             {/* Grid */}
-            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid items-stretch gap-7 sm:grid-cols-2 lg:grid-cols-3">
               {filteredClubs.map((club) => (
                 <ClubCard key={club.id} club={club} />
               ))}

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { notifyUsers } from "../lib/notifyUsers";
 import type { ClubMember, MemberRole } from "../types";
 
 /** Map a joined club_members + profiles row to our ClubMember type. */
 function mapMemberRow(row: Record<string, unknown>): ClubMember {
-  const profile = (row.profiles ?? {}) as Record<string, unknown>;
+  const profile = (row.member_profile ?? {}) as Record<string, unknown>;
   return {
     id: row.id as string,
     clubId: row.club_id as string,
@@ -53,13 +54,39 @@ export function useClubMembers(
     Promise.all([
       supabase
         .from("club_members")
-        .select("*, profiles ( full_name, email, avatar_url, program )")
+        .select(`
+          id,
+          club_id,
+          user_id,
+          role,
+          status,
+          created_at,
+          member_profile:profiles!club_members_user_profile_fkey (
+            full_name,
+            email,
+            avatar_url,
+            program
+          )
+        `)
         .eq("club_id", clubId)
         .eq("status", "active")
         .order("created_at", { ascending: true }),
       supabase
         .from("club_members")
-        .select("*, profiles ( full_name, email, avatar_url, program )")
+        .select(`
+          id,
+          club_id,
+          user_id,
+          role,
+          status,
+          created_at,
+          member_profile:profiles!club_members_user_profile_fkey (
+            full_name,
+            email,
+            avatar_url,
+            program
+          )
+        `)
         .eq("club_id", clubId)
         .eq("status", "pending")
         .order("created_at", { ascending: true }),
@@ -151,19 +178,18 @@ export function useClubMembers(
         // Notify the user that their request was approved (fire-and-forget)
         if (clubId) {
           Promise.resolve(
-            supabase
-              .from("notifications")
-              .insert({
+            notifyUsers([
+              {
                 user_id: approved.userId,
                 type: "join_approved",
                 message: "Your join request has been approved!",
                 club_id: clubId,
-              })
-              .then(({ error: notifErr }) => {
-                if (notifErr) {
-                  console.error("Failed to send approval notification:", notifErr.message);
-                }
-              }),
+              },
+            ]).then((ok) => {
+              if (!ok) {
+                console.error("Failed to send approval notification.");
+              }
+            }),
           ).catch((err: unknown) => {
             console.error("Failed to send approval notification:", err);
           });

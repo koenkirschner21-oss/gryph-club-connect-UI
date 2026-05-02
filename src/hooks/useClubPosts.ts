@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
+import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import type { Post } from "../types";
 
 /** Map a Supabase `posts` row (joined with profiles) to our Post type. */
 function mapPostRow(row: Record<string, unknown>): Post {
-  const profile = (row.profiles ?? {}) as Record<string, unknown>;
+  const profile = (row.author ?? {}) as Record<string, unknown>;
   return {
     id: row.id as string,
     clubId: row.club_id as string,
@@ -48,7 +49,17 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
 
     supabase
       .from("posts")
-      .select("*, profiles:author_id ( full_name )")
+      .select(`
+        id,
+        club_id,
+        author_id,
+        title,
+        content,
+        created_at,
+        author:profiles!posts_author_profile_fkey (
+          full_name
+        )
+      `)
       .eq("club_id", clubId)
       .order("created_at", { ascending: false })
       .then(({ data, error: err }) => {
@@ -81,7 +92,17 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           title: fields.title,
           content: fields.content,
         })
-        .select("*, profiles:author_id ( full_name )")
+        .select(`
+          id,
+          club_id,
+          author_id,
+          title,
+          content,
+          created_at,
+          author:profiles!posts_author_profile_fkey (
+            full_name
+          )
+        `)
         .single();
 
       if (err || !data) {
@@ -104,24 +125,18 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
               (m) => m.user_id !== user.id,
             );
             if (recipients.length === 0) return;
-            const rows = recipients.map((m) => ({
+            const rows: NotificationRequest[] = recipients.map((m) => ({
               user_id: m.user_id,
               type: "announcement",
               message: `New announcement: ${fields.title}`,
               club_id: clubId,
               reference_id: data.id as string,
             }));
-            supabase
-              .from("notifications")
-              .insert(rows)
-              .then(({ error: notifErr }) => {
-                if (notifErr) {
-                  console.error(
-                    "Failed to send announcement notifications:",
-                    notifErr.message,
-                  );
-                }
-              });
+            notifyUsers(rows).then((ok) => {
+              if (!ok) {
+                console.error("Failed to send announcement notifications.");
+              }
+            });
           }),
       ).catch((err: unknown) => {
         console.error("Failed to send announcement notifications:", err);

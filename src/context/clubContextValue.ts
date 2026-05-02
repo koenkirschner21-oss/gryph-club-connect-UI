@@ -31,6 +31,10 @@ export interface ClubContextValue {
   userRoles: Record<string, MemberRole>;
   /** Update a club's details in Supabase and local state. */
   updateClub: (clubId: string, fields: Partial<Club>) => Promise<boolean>;
+  /** Active club selection synchronized with route/session. */
+  activeClubId: string | null;
+  /** Switch active club and persist session preference. */
+  switchClub: (clubId: string | null) => void;
 }
 
 export const ClubContext = createContext<ClubContextValue | undefined>(

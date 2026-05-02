@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
 import FormInput from "../../components/ui/FormInput";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
-import ImageUpload from "../../components/ui/ImageUpload";
+import { showToast } from "../../components/ui/Toast";
 
 interface ProfileData {
   full_name: string;
@@ -29,10 +29,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch existing profile on mount
   useEffect(() => {
@@ -47,7 +44,7 @@ export default function ProfilePage() {
 
       if (error && error.code !== "PGRST116") {
         // PGRST116 = row not found — that's OK for new users
-        setMessage({ type: "error", text: "Failed to load profile." });
+        showToast("Failed to load profile.", "error");
       }
 
       if (data) {
@@ -73,13 +70,11 @@ export default function ProfilePage() {
 
   function handleChange(field: keyof ProfileData, value: string) {
     setProfile((prev) => ({ ...prev, [field]: value }));
-    setMessage(null);
   }
 
   async function handleAvatarUpload(file: File) {
     if (!user) return;
     setUploading(true);
-    setMessage(null);
 
     const ext = file.name.split(".").pop() ?? "png";
     const path = `${user.id}.${ext}`;
@@ -89,9 +84,9 @@ export default function ProfilePage() {
       // Append a cache-busting param so the browser shows the fresh image
       const freshUrl = `${url}?t=${Date.now()}`;
       setProfile((prev) => ({ ...prev, avatar_url: freshUrl }));
-      setMessage({ type: "success", text: "Avatar uploaded. Click Save to keep it." });
+      showToast("Photo uploaded. Save changes to keep it.", "success");
     } else {
-      setMessage({ type: "error", text: "Avatar upload failed." });
+      showToast("Avatar upload failed.", "error");
     }
     setUploading(false);
   }
@@ -101,7 +96,6 @@ export default function ProfilePage() {
     if (!user) return;
 
     setSaving(true);
-    setMessage(null);
 
     const { error } = await supabase.from("profiles").upsert(
       {
@@ -117,9 +111,9 @@ export default function ProfilePage() {
     );
 
     if (error) {
-      setMessage({ type: "error", text: "Failed to save profile. Please try again." });
+      showToast("Failed to save profile. Please try again.", "error");
     } else {
-      setMessage({ type: "success", text: "Profile updated successfully." });
+      showToast("Profile saved.", "success");
     }
 
     setSaving(false);
@@ -134,90 +128,98 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-bold text-white">Your Profile</h1>
-      <p className="mt-1 text-sm text-muted">
-        Update your personal information.
-      </p>
+    <div className="page-root mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      <h1 className="text-[26px] font-semibold tracking-[-0.5px] text-[var(--text-1)]">Profile settings</h1>
+      <p className="mt-1 text-sm text-[var(--text-2)]">Manage your personal information</p>
 
-      <form onSubmit={handleSave} noValidate className="mt-8 space-y-6">
-        {/* Avatar upload + URL fallback */}
-        <div className="space-y-3">
-          <label className="block text-sm font-medium text-white">
-            Profile Picture
-          </label>
-          <ImageUpload
-            currentUrl={profile.avatar_url}
-            onFileSelected={handleAvatarUpload}
-            uploading={uploading}
-            label="Upload Avatar"
-            shape="circle"
+      <form onSubmit={handleSave} noValidate className="mt-8 grid gap-6 rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-2)] p-6 md:grid-cols-[280px_1fr]">
+        <aside className="space-y-4 border-b border-[var(--border)] pb-6 md:border-b-0 md:border-r md:pb-0 md:pr-6">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleAvatarUpload(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="group relative h-24 w-24 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-3)]"
+          >
+            {profile.avatar_url ? (
+              <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-xl font-medium text-[var(--text-1)]">
+                {(profile.full_name || profile.email || "GC").slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <span className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.55)] text-xs text-[var(--text-1)] opacity-0 transition-opacity group-hover:opacity-100">
+              {uploading ? "Uploading..." : "Change photo"}
+            </span>
+          </button>
+          <div>
+            <p className="text-base font-medium text-[var(--text-1)]">{profile.full_name || "Set your name"}</p>
+            <p className="mt-1 text-sm text-[var(--text-2)]">{profile.email}</p>
+            <p className="mt-1 text-sm text-[var(--text-2)]">{profile.program || "No program set"}</p>
+          </div>
+        </aside>
+
+        <section className="space-y-4">
+          <FormInput
+            label="Full Name"
+            id="full_name"
+            type="text"
+            placeholder="Jane Doe"
+            autoComplete="name"
+            value={profile.full_name}
+            onChange={(e) => handleChange("full_name", e.target.value)}
+          />
+          <div>
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-[var(--text-1)]">
+              Email
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="email"
+                type="email"
+                value={profile.email}
+                readOnly
+                className="h-[38px] w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-3 text-sm text-[var(--text-2)] opacity-60"
+              />
+              <span className="rounded-[var(--r-full)] border border-[var(--green)] bg-[var(--green-dim)] px-2 py-1 text-xs text-[var(--green)]">
+                verified
+              </span>
+            </div>
+          </div>
+          <FormInput
+            label="University"
+            id="university"
+            type="text"
+            placeholder="University of Guelph"
+            value={profile.university}
+            onChange={(e) => handleChange("university", e.target.value)}
           />
           <FormInput
-            label="Or paste image URL"
-            id="avatar_url"
-            type="url"
-            placeholder="https://example.com/your-photo.jpg"
-            value={profile.avatar_url}
-            onChange={(e) => handleChange("avatar_url", e.target.value)}
+            label="Program"
+            id="program"
+            type="text"
+            placeholder="e.g. Computer Science, B.Sc."
+            value={profile.program}
+            onChange={(e) => handleChange("program", e.target.value)}
           />
-        </div>
 
-        <FormInput
-          label="Full Name"
-          id="full_name"
-          type="text"
-          placeholder="Jane Doe"
-          autoComplete="name"
-          value={profile.full_name}
-          onChange={(e) => handleChange("full_name", e.target.value)}
-        />
-
-        <FormInput
-          label="Email"
-          id="email"
-          type="email"
-          placeholder="you@uoguelph.ca"
-          autoComplete="email"
-          value={profile.email}
-          onChange={(e) => handleChange("email", e.target.value)}
-        />
-
-        <FormInput
-          label="University"
-          id="university"
-          type="text"
-          placeholder="University of Guelph"
-          value={profile.university}
-          onChange={(e) => handleChange("university", e.target.value)}
-        />
-
-        <FormInput
-          label="Program"
-          id="program"
-          type="text"
-          placeholder="e.g. Computer Science, B.Sc."
-          value={profile.program}
-          onChange={(e) => handleChange("program", e.target.value)}
-        />
-
-        {/* Status message */}
-        {message && (
-          <p
-            role="alert"
-            className={`rounded-lg px-4 py-3 text-sm font-medium ${
-              message.type === "success"
-                ? "bg-green-500/10 text-green-400"
-                : "bg-primary/10 text-primary-light"
-            }`}
-          >
-            {message.text}
-          </p>
-        )}
-
-        <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Save Changes"}
-        </Button>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="ghost">
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving} className="h-9 bg-[var(--red)] hover:bg-[var(--red-hover)]">
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        </section>
       </form>
     </div>
   );

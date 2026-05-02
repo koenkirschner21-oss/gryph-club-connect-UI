@@ -11,7 +11,6 @@ const navLinks = [
 const authNavLinks = [
   { to: "/app", label: "Dashboard" },
   { to: "/explore", label: "Explore" },
-  { to: "/app/profile", label: "Profile" },
 ];
 
 export default function Navbar() {
@@ -19,6 +18,10 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { user, signOut } = useAuthContext();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const initials =
+    user?.email?.slice(0, 2).toUpperCase() ??
+    "GC";
 
   async function handleLogout() {
     try {
@@ -30,9 +33,9 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-page-bg/95 backdrop-blur supports-[backdrop-filter]:bg-page-bg/80">
+    <header className="sticky top-0 z-[100] border-b border-[var(--border)] bg-[rgba(10,10,10,0.85)] backdrop-blur-[12px]">
       <nav
-        className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
+        className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
         aria-label="Main navigation"
       >
         {/* Logo — gryphon + wordmark matching brand identity */}
@@ -50,7 +53,7 @@ export default function Navbar() {
         </Link>
 
         {/* Desktop Nav */}
-        <div className="hidden items-center gap-1 md:flex">
+        <div className="hidden items-center gap-6 md:flex">
           {(user ? authNavLinks : navLinks).map((link) => {
             const isActive = location.pathname === link.to;
             return (
@@ -58,10 +61,10 @@ export default function Navbar() {
                 key={link.to}
                 to={link.to}
                 aria-current={isActive ? "page" : undefined}
-                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
+                className={`border-b-2 px-0 py-2 text-sm transition-all ${
                   isActive
-                    ? "bg-white/10 text-white"
-                    : "text-muted hover:text-white"
+                    ? "border-[var(--red)] font-medium text-[var(--text-1)]"
+                    : "border-transparent text-[var(--text-2)] hover:text-[var(--text-1)]"
                 }`}
               >
                 {link.label}
@@ -69,21 +72,46 @@ export default function Navbar() {
             );
           })}
 
-          <div className="ml-3 h-5 w-px bg-border" aria-hidden="true" />
-
           {user ? (
             <div className="ml-3 flex items-center gap-3">
               <NotificationBell />
-              <span className="text-sm text-muted" aria-label="Logged in as">
-                {user.email}
-              </span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="cursor-pointer rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-border-light hover:text-white"
-              >
-                Logout
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen((v) => !v)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-2)] text-xs font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
+                >
+                  {initials}
+                </button>
+                {profileOpen && (
+                  <div className="absolute right-0 top-10 z-[120] w-44 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-2)] p-1 shadow-[var(--shadow-md)]">
+                    <Link
+                      to="/app/profile"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-[var(--r-sm)] px-3 py-2 text-sm text-[var(--text-2)] hover:bg-[var(--bg-3)] hover:text-[var(--text-1)]"
+                    >
+                      Profile
+                    </Link>
+                    <Link
+                      to="/app/profile"
+                      onClick={() => setProfileOpen(false)}
+                      className="block rounded-[var(--r-sm)] px-3 py-2 text-sm text-[var(--text-2)] hover:bg-[var(--bg-3)] hover:text-[var(--text-1)]"
+                    >
+                      Settings
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        handleLogout();
+                      }}
+                      className="block w-full cursor-pointer rounded-[var(--r-sm)] px-3 py-2 text-left text-sm text-[var(--text-2)] hover:bg-[var(--bg-3)] hover:text-[var(--text-1)]"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="ml-3 flex items-center gap-2">

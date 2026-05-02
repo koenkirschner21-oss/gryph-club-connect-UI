@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
+import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import type { ClubEvent } from "../types";
 
 /** Map a Supabase `events` row to our ClubEvent type. */
@@ -42,6 +44,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -72,6 +75,40 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
       cancelled = true;
     };
   }, [clubId, refreshKey]);
+
+  useEffect(() => {
+    if (!clubId) return;
+
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`events:club:${clubId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "events",
+          filter: `club_id=eq.${clubId}`,
+        },
+        () => {
+          refresh();
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [clubId, refresh]);
 
   const createEvent = useCallback(
     async (
@@ -113,21 +150,18 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
               (m) => m.user_id !== user?.id,
             );
             if (recipients.length === 0) return;
-            const rows = recipients.map((m) => ({
+            const rows: NotificationRequest[] = recipients.map((m) => ({
               user_id: m.user_id,
               type: "new_event",
               message: `New event: ${fields.title} on ${fields.date}`,
               club_id: clubId,
               reference_id: data.id as string,
             }));
-            supabase
-              .from("notifications")
-              .insert(rows)
-              .then(({ error: notifErr }) => {
-                if (notifErr) {
-                  console.error("Failed to send notifications:", notifErr.message);
-                }
-              });
+            notifyUsers(rows).then((ok) => {
+              if (!ok) {
+                console.error("Failed to send notifications.");
+              }
+            });
           }),
       ).catch((err: unknown) => {
         console.error("Failed to send event notifications:", err);

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { NavLink, Outlet, useParams, Navigate } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import Spinner from "../ui/Spinner";
@@ -13,10 +14,17 @@ const workspaceLinks = [
 
 export default function WorkspaceLayout() {
   const { clubId } = useParams<{ clubId: string }>();
-  const { getClubById, loading, getUserRole } = useClubContext();
+  const { getClubById, loading, getUserRole, activeClubId, switchClub } = useClubContext();
+  const resolvedClubId = clubId ?? activeClubId ?? "";
 
-  const club = getClubById(clubId ?? "");
-  const role = getUserRole(clubId ?? "");
+  useEffect(() => {
+    if (clubId && clubId !== activeClubId) {
+      switchClub(clubId);
+    }
+  }, [activeClubId, clubId, switchClub]);
+
+  const club = getClubById(resolvedClubId);
+  const role = getUserRole(resolvedClubId);
   const isAdminOrExec = role === "admin" || role === "exec";
 
   if (loading) {

@@ -3,6 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/ui/Button";
 import FormInput from "../components/ui/FormInput";
 import { useAuthContext } from "../context/useAuthContext";
+import { showToast } from "../components/ui/Toast";
+
+const ALLOWED_DOMAIN = "uoguelph.ca";
 
 export default function Signup() {
   const { signUp } = useAuthContext();
@@ -11,15 +14,18 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
-
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      showToast("Passwords do not match", "error");
+      return;
+    }
+
+    const domain = email.split("@")[1]?.toLowerCase();
+    if (domain !== ALLOWED_DOMAIN) {
+      showToast(`Only @${ALLOWED_DOMAIN} email addresses are permitted to sign up.`, "error");
       return;
     }
 
@@ -28,7 +34,7 @@ export default function Signup() {
       await signUp(email, password);
       navigate("/app/onboarding");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign up failed");
+      showToast(err instanceof Error ? err.message : "Sign up failed", "error");
     } finally {
       setLoading(false);
     }
@@ -40,15 +46,6 @@ export default function Signup() {
         <h1 className="mb-6 text-center text-2xl font-extrabold text-white">
           Sign Up
         </h1>
-
-        {error && (
-          <div
-            role="alert"
-            className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
-          >
-            {error}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <fieldset disabled={loading} className="space-y-4">

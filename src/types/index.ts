@@ -97,6 +97,7 @@ export interface Message {
   id: string;
   clubId: string;
   authorId: string;
+  channelId?: string;
   channel: string;
   content: string;
   createdAt: string;

@@ -31,7 +31,7 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
 // ---------------------------------------------------------------------------
 export default function DashboardPage() {
   const { user } = useAuthContext();
-  const { clubs, joinedClubs, savedClubs, loading } = useClubContext();
+  const { clubs, joinedClubs, savedClubs, loading, getUserRole } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [profile, setProfile] = useState<{
     fullName: string;
@@ -92,9 +92,8 @@ export default function DashboardPage() {
   );
   const { myRsvps, counts: rsvpCounts } = useEventRsvps(eventIds);
 
-  // Primary club (first joined club) for the "Open" button
-  const primaryClub = myClubs[0] ?? null;
-  const displayName = profile?.fullName || user?.email?.split("@")[0] || "";
+  const sourceName = profile?.fullName || user?.email?.split("@")[0] || "";
+  const displayName = sourceName.split(" ")[0];
 
   // Subtitle parts
   const subtitleParts = [
@@ -128,8 +127,8 @@ export default function DashboardPage() {
           <p className="text-xs font-medium tracking-wider text-muted uppercase">
             Gryph Club Connect
           </p>
-          <h1 className="mt-1 text-3xl font-bold text-white">
-            Welcome back, {displayName} 👋
+          <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.5px] text-[var(--text-1)]">
+            Welcome back, {displayName}
           </h1>
           {subtitleParts.length > 0 && (
             <p className="mt-1 text-sm text-muted">
@@ -137,24 +136,25 @@ export default function DashboardPage() {
             </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Link
+            to="/app/create-club"
+            className="inline-flex h-9 items-center rounded-[var(--r-md)] bg-[var(--red)] px-4 text-sm font-medium text-white transition hover:bg-[var(--red-hover)]"
+          >
+            Create a Club
+          </Link>
+          <Link
+            to="/app/join-club"
+            className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-4 text-sm font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
+          >
+            Join with Code
+          </Link>
           <Link
             to="/explore"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-surface-alt"
+            className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-4 text-sm font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
             Explore Clubs
           </Link>
-          {primaryClub && (
-            <Link
-              to={`/app/clubs/${primaryClub.id}`}
-              className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
-            >
-              Open {primaryClub.abbreviation || deriveAbbreviation(primaryClub.name, 4)} →
-            </Link>
-          )}
         </div>
       </div>
 
@@ -191,6 +191,7 @@ export default function DashboardPage() {
           totalClubs={clubs.length}
           myRsvps={myRsvps}
           rsvpCounts={rsvpCounts}
+          getUserRole={getUserRole}
         />
       )}
       {activeTab === "events" && (
@@ -253,6 +254,7 @@ function OverviewTab({
   totalClubs,
   myRsvps,
   rsvpCounts,
+  getUserRole,
 }: {
   myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
@@ -264,6 +266,7 @@ function OverviewTab({
   totalClubs: number;
   myRsvps: Record<string, string>;
   rsvpCounts: Record<string, import("../../types").RsvpCounts>;
+  getUserRole: (clubId: string) => import("../../types").MemberRole | null;
 }) {
   return (
     <>
@@ -355,14 +358,23 @@ function OverviewTab({
           <Card className="p-5">
             <h3 className="mb-4 text-base font-bold text-white">My Clubs</h3>
             {myClubs.length === 0 ? (
-              <p className="text-sm text-muted">You haven't joined any clubs yet.</p>
+              <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-4 py-8 text-center">
+                <svg className="mx-auto mb-2 h-6 w-6 text-[var(--text-2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 10l9-7 9 7v10a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V10z" />
+                </svg>
+                <p className="text-sm text-[var(--text-2)]">You have not joined any clubs yet.</p>
+                <div className="mt-4 flex justify-center gap-2">
+                  <Link to="/app/join-club" className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-3 text-sm text-[var(--text-1)] hover:bg-[var(--bg-4)]">Join Club</Link>
+                  <Link to="/explore" className="inline-flex h-9 items-center rounded-[var(--r-md)] bg-[var(--red)] px-3 text-sm text-white hover:bg-[var(--red-hover)]">Explore</Link>
+                </div>
+              </div>
             ) : (
               <div className="space-y-3">
                 {myClubs.map((club) => (
                   <Link
                     key={club.id}
                     to={`/app/clubs/${club.id}`}
-                    className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-surface-alt"
+                    className="card-interactive flex items-center gap-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] p-3 transition-colors hover:bg-[var(--bg-4)]"
                   >
                     <ClubBadge
                       abbreviation={club.abbreviation}
@@ -373,13 +385,11 @@ function OverviewTab({
                       <p className="truncate text-sm font-semibold text-white">
                         {club.name}
                       </p>
-                      <p className="text-xs text-muted">
-                        {club.memberCount} members
+                      <p className="text-xs text-[var(--text-2)]">
+                        {club.memberCount} members · <span className="rounded-[var(--r-full)] bg-[var(--red-dim)] px-1.5 py-0.5 text-[var(--red)]">{getUserRole(club.id) ?? "member"}</span>
                       </p>
                     </div>
-                    <svg className="h-4 w-4 shrink-0 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                    <span className="text-xs text-[var(--text-2)]">Open workspace →</span>
                   </Link>
                 ))}
               </div>

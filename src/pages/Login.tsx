@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/ui/Button";
 import FormInput from "../components/ui/FormInput";
 import { useAuthContext } from "../context/useAuthContext";
+import { showToast } from "../components/ui/Toast";
 
 export default function Login() {
   const { signIn } = useAuthContext();
@@ -10,18 +11,16 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     setLoading(true);
     try {
       await signIn(email, password);
       navigate("/app");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      showToast(err instanceof Error ? err.message : "Login failed", "error");
     } finally {
       setLoading(false);
     }
@@ -33,15 +32,6 @@ export default function Login() {
         <h1 className="mb-6 text-center text-2xl font-extrabold text-white">
           Log In
         </h1>
-
-        {error && (
-          <div
-            role="alert"
-            className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
-          >
-            {error}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <fieldset disabled={loading} className="space-y-4">
@@ -76,6 +66,15 @@ export default function Login() {
             {loading ? "Logging in…" : "Log In"}
           </Button>
         </form>
+
+        <p className="mt-3 text-center text-sm text-muted">
+          <Link
+            to="/forgot-password"
+            className="font-medium text-primary hover:text-primary-dark"
+          >
+            Forgot password?
+          </Link>
+        </p>
 
         <p className="mt-6 text-center text-sm text-muted">
           Don&apos;t have an account?{" "}

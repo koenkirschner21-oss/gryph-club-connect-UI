@@ -111,8 +111,20 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const [savedClubs, setSavedClubs] = useState<string[]>([]);
   const [userRoles, setUserRoles] = useState<Record<string, MemberRole>>({});
   const [fetchedForUser, setFetchedForUser] = useState<string | null>(null);
+  const [activeClubId, setActiveClubId] = useState<string | null>(() =>
+    sessionStorage.getItem("activeClubId"),
+  );
 
   const userClubsLoading = !!userId && fetchedForUser !== userId;
+
+  const switchClub = useCallback((clubId: string | null) => {
+    setActiveClubId(clubId);
+    if (clubId) {
+      sessionStorage.setItem("activeClubId", clubId);
+    } else {
+      sessionStorage.removeItem("activeClubId");
+    }
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -171,6 +183,25 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       setFetchedForUser(null);
     };
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      switchClub(null);
+      return;
+    }
+
+    const activeMemberships = joinedClubs;
+    if (activeMemberships.length === 0) {
+      switchClub(null);
+      return;
+    }
+
+    if (activeClubId && activeMemberships.includes(activeClubId)) {
+      return;
+    }
+
+    switchClub(activeMemberships[0]);
+  }, [activeClubId, joinedClubs, switchClub, userId]);
 
   const joinClub = useCallback(
     async (clubId: string): Promise<boolean> => {
@@ -426,6 +457,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       getUserRole,
       userRoles,
       updateClub,
+      activeClubId,
+      switchClub,
     }),
     [
       clubs,
@@ -447,6 +480,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       getUserRole,
       userRoles,
       updateClub,
+      activeClubId,
+      switchClub,
     ],
   );
 

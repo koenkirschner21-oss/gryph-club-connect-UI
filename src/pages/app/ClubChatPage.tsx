@@ -3,30 +3,34 @@ import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMessages } from "../../hooks/useClubMessages";
+import { useClubChannels } from "../../hooks/useClubChannels";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
-
-const CHANNELS = ["general", "announcements"] as const;
-type ChannelName = (typeof CHANNELS)[number];
 
 export default function ClubChatPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
   const { getUserRole } = useClubContext();
+  const { channels, loading: channelsLoading } = useClubChannels(clubId);
+  const [activeChannelId, setActiveChannelId] = useState<string>("");
   const { messages, loading, sendMessage } = useClubMessages(clubId);
 
   const role = getUserRole(clubId ?? "");
   const isAdminOrExec = role === "admin" || role === "exec";
 
-  const [activeChannel, setActiveChannel] = useState<ChannelName>("general");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const channelMessages = messages.filter(
-    (m) => m.channel === activeChannel,
-  );
+  useEffect(() => {
+    if (!activeChannelId && channels.length > 0) {
+      setActiveChannelId(channels[0].id);
+    }
+  }, [activeChannelId, channels]);
+
+  const activeChannel = channels.find((ch) => ch.id === activeChannelId);
+  const channelMessages = messages.filter((m) => m.channelId === activeChannelId);
 
   // Auto-scroll when messages change
   useEffect(() => {
@@ -34,14 +38,14 @@ export default function ClubChatPage() {
   }, [channelMessages.length]);
 
   // Announcements channel is read-only for regular members
-  const canPost =
-    activeChannel === "general" || isAdminOrExec;
+  const canPost = activeChannel?.isAnnouncementOnly ? isAdminOrExec : true;
 
   async function handleSend() {
     if (!draft.trim() || !user || sending) return;
+    if (!activeChannelId) return;
     setSending(true);
     setSendError(false);
-    const ok = await sendMessage(activeChannel, draft.trim());
+    const ok = await sendMessage(activeChannelId, draft.trim());
     if (ok) {
       setDraft("");
     } else {
@@ -50,7 +54,7 @@ export default function ClubChatPage() {
     setSending(false);
   }
 
-  if (loading) {
+  if (loading || channelsLoading) {
     return (
       <div className="flex h-[60vh] items-center justify-center md:h-[calc(100vh-4rem)]">
         <Spinner label="Loading messages…" />
@@ -67,18 +71,18 @@ export default function ClubChatPage() {
             Channels
           </h3>
           <div className="space-y-0.5">
-            {CHANNELS.map((ch) => (
+            {channels.map((ch) => (
               <button
-                key={ch}
+                key={ch.id}
                 type="button"
-                onClick={() => setActiveChannel(ch)}
+                onClick={() => setActiveChannelId(ch.id)}
                 className={`w-full cursor-pointer rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
-                  activeChannel === ch
+                  activeChannelId === ch.id
                     ? "bg-primary/10 font-medium text-primary"
                     : "text-muted hover:bg-surface hover:text-white"
                 }`}
               >
-                # {ch}
+                # {ch.name}
               </button>
             ))}
           </div>
@@ -90,18 +94,18 @@ export default function ClubChatPage() {
         {/* Channel header */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <h2 className="text-sm font-bold text-white">
-            # {activeChannel}
+            # {activeChannel?.name ?? "general"}
           </h2>
 
           {/* Mobile channel picker */}
           <select
             className="ml-auto rounded-md border border-border bg-surface px-3 py-2 text-sm text-white md:hidden"
-            value={activeChannel}
-            onChange={(e) => setActiveChannel(e.target.value as ChannelName)}
+            value={activeChannelId}
+            onChange={(e) => setActiveChannelId(e.target.value)}
           >
-            {CHANNELS.map((ch) => (
-              <option key={ch} value={ch}>
-                # {ch}
+            {channels.map((ch) => (
+              <option key={ch.id} value={ch.id}>
+                # {ch.name}
               </option>
             ))}
           </select>
@@ -116,7 +120,7 @@ export default function ClubChatPage() {
                   No messages yet
                 </p>
                 <p className="mt-1 text-xs text-muted">
-                  Be the first to say something in #{activeChannel}
+                  Be the first to say something in #{activeChannel?.name ?? "general"}
                 </p>
               </div>
             </div>
@@ -175,7 +179,7 @@ export default function ClubChatPage() {
                 type="text"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder={`Message #${activeChannel}`}
+                placeholder={`Message #${activeChannel?.name ?? "general"}`}
                 className="flex-1 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
               <Button type="submit" disabled={!draft.trim() || sending}>
@@ -184,7 +188,7 @@ export default function ClubChatPage() {
             </form>
           ) : (
             <p className="text-center text-sm text-muted">
-              Only admins and execs can post in #{activeChannel}
+              Only admins and execs can post in #{activeChannel?.name ?? "general"}
             </p>
           )}
         </div>

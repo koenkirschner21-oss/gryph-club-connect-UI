@@ -5,7 +5,7 @@ import type { EventRsvp, RsvpCounts, RsvpStatus } from "../types";
 
 /** Map a Supabase `event_rsvps` row (optionally joined with profiles) to EventRsvp. */
 function mapRsvpRow(row: Record<string, unknown>): EventRsvp {
-  const profile = (row.profiles ?? {}) as Record<string, unknown>;
+  const profile = (row.attendee ?? {}) as Record<string, unknown>;
   return {
     id: row.id as string,
     eventId: row.event_id as string,
@@ -191,7 +191,18 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
   const loadAttendees = useCallback(async (eventId: string): Promise<void> => {
     const { data, error } = await supabase
       .from("event_rsvps")
-      .select("*, profiles:user_id ( full_name, avatar_url, program )")
+      .select(`
+        id,
+        event_id,
+        user_id,
+        status,
+        created_at,
+        attendee:profiles!event_rsvps_user_profile_fkey (
+          full_name,
+          avatar_url,
+          program
+        )
+      `)
       .eq("event_id", eventId)
       .order("created_at", { ascending: true });
 

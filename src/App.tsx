@@ -10,6 +10,8 @@ import Explore from "./pages/Explore";
 import ClubDetails from "./pages/ClubDetails";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import DashboardPage from "./pages/app/DashboardPage";
 import CreateClubPage from "./pages/app/CreateClubPage";
@@ -24,6 +26,9 @@ import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
 import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
 import OnboardingPage from "./pages/app/OnboardingPage";
 import ProfilePage from "./pages/app/ProfilePage";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminClubs from "./pages/admin/AdminClubs";
+import AdminUsers from "./pages/admin/AdminUsers";
 
 export default function App() {
   return (
@@ -45,6 +50,8 @@ export default function App() {
                 <Route path="/clubs/:slug" element={<ClubDetails />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
 
                 {/* Legacy route — redirect old explore/:id links */}
                 <Route path="/explore/:slug" element={<ClubDetails />} />
@@ -87,6 +94,30 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <OnboardingPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/admin"
+                  element={
+                    <ProtectedRoute>
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/admin/clubs"
+                  element={
+                    <ProtectedRoute>
+                      <AdminClubs />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/admin/users"
+                  element={
+                    <ProtectedRoute>
+                      <AdminUsers />
                     </ProtectedRoute>
                   }
                 />

@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
+import { notifyUsers } from "../lib/notifyUsers";
 import type { Task, TaskStatus, TaskPriority } from "../types";
 
 /** Map a Supabase `tasks` row (with optional profile join) to our Task type. */
 function mapTaskRow(row: Record<string, unknown>): Task {
-  const profile = (row.assignee ?? row.profiles ?? null) as Record<
-    string,
-    unknown
-  > | null;
+  const profile = (row.assignee ?? null) as Record<string, unknown> | null;
   return {
     id: row.id as string,
     clubId: row.club_id as string,
@@ -60,6 +59,7 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -71,7 +71,24 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
 
     supabase
       .from("tasks")
-      .select("*, assignee:profiles!tasks_assigned_to_fkey ( full_name )")
+      .select(`
+        id,
+        club_id,
+        title,
+        description,
+        status,
+        priority,
+        assigned_to,
+        due_date,
+        created_by,
+        created_at,
+        assignee:profiles!tasks_assigned_profile_fkey (
+          full_name
+        ),
+        creator:profiles!tasks_creator_profile_fkey (
+          full_name
+        )
+      `)
       .eq("club_id", clubId)
       .order("created_at", { ascending: false })
       .then(({ data, error: err }) => {
@@ -90,6 +107,40 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
       cancelled = true;
     };
   }, [clubId, refreshKey]);
+
+  useEffect(() => {
+    if (!clubId) return;
+
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`tasks:club:${clubId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+          filter: `club_id=eq.${clubId}`,
+        },
+        () => {
+          refresh();
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [clubId, refresh]);
 
   const createTask = useCallback(
     async (fields: {
@@ -113,9 +164,24 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
           due_date: fields.dueDate || null,
           created_by: user.id,
         })
-        .select(
-          "*, assignee:profiles!tasks_assigned_to_fkey ( full_name )",
-        )
+        .select(`
+          id,
+          club_id,
+          title,
+          description,
+          status,
+          priority,
+          assigned_to,
+          due_date,
+          created_by,
+          created_at,
+          assignee:profiles!tasks_assigned_profile_fkey (
+            full_name
+          ),
+          creator:profiles!tasks_creator_profile_fkey (
+            full_name
+          )
+        `)
         .single();
 
       if (err || !data) {
@@ -128,23 +194,19 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
       // Notify the assigned user (fire-and-forget)
       if (fields.assignedTo && fields.assignedTo !== user.id) {
         Promise.resolve(
-          supabase
-            .from("notifications")
-            .insert({
+          notifyUsers([
+            {
               user_id: fields.assignedTo,
               type: "task_assigned",
               message: `You were assigned a task: ${fields.title}`,
               club_id: clubId,
               reference_id: data.id as string,
-            })
-            .then(({ error: notifErr }) => {
-              if (notifErr) {
-                console.error(
-                  "Failed to send task notification:",
-                  notifErr.message,
-                );
-              }
-            }),
+            },
+          ]).then((ok) => {
+            if (!ok) {
+              console.error("Failed to send task notification.");
+            }
+          }),
         ).catch((err: unknown) => {
           console.error("Failed to send task notification:", err);
         });
@@ -180,9 +242,24 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
         .from("tasks")
         .update(row)
         .eq("id", taskId)
-        .select(
-          "*, assignee:profiles!tasks_assigned_to_fkey ( full_name )",
-        )
+        .select(`
+          id,
+          club_id,
+          title,
+          description,
+          status,
+          priority,
+          assigned_to,
+          due_date,
+          created_by,
+          created_at,
+          assignee:profiles!tasks_assigned_profile_fkey (
+            full_name
+          ),
+          creator:profiles!tasks_creator_profile_fkey (
+            full_name
+          )
+        `)
         .single();
 
       if (err || !data) {

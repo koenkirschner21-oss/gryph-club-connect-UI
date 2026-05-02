@@ -102,7 +102,7 @@ export default function ClubDetails() {
   return (
     <>
       {/* Hero Banner */}
-      <div className="relative h-60 w-full overflow-hidden bg-page-bg sm:h-80 lg:h-96">
+      <div className="relative min-h-[200px] w-full overflow-hidden bg-page-bg sm:h-80 lg:h-96">
         <img
           src={club.bannerUrl ?? club.imageUrl}
           alt=""
@@ -111,6 +111,9 @@ export default function ClubDetails() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-page-bg via-page-bg/60 to-transparent" />
         <div className="hero-glow absolute inset-0" aria-hidden="true" />
+        <div className="banner-text absolute inset-0 flex items-center justify-center whitespace-nowrap text-center text-[clamp(60px,10vw,120px)] font-extrabold tracking-[-2px] text-white opacity-[0.07] select-none">
+          {club.name}
+        </div>
       </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -247,6 +250,7 @@ export default function ClubDetails() {
               variant={joined ? "outline" : pending ? "outline" : "primary"}
               disabled={joining}
               onClick={handleJoinOrLeave}
+              className="focus-visible:shadow-[var(--shadow-red)]"
             >
               {joining
                 ? "Joining…"
@@ -285,11 +289,6 @@ export default function ClubDetails() {
               <h2 className="mb-4 text-xl font-bold text-white">About</h2>
               <div className="divider-gold mb-5" aria-hidden="true" />
               <p className="text-base leading-7 text-muted">{club.longDescription ?? club.description}</p>
-              {club.shortDescription && club.longDescription && (
-                <p className="mt-4 text-sm font-medium text-white/70 italic leading-relaxed">
-                  {club.shortDescription}
-                </p>
-              )}
             </Card>
 
             {/* Events */}
@@ -446,6 +445,7 @@ export default function ClubDetails() {
                 </h3>
               </div>
               <dl className="divide-y divide-border">
+                {club.memberCount > 0 && (
                 <div className="flex items-start gap-3 px-5 py-3.5">
                   <svg
                     className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary"
@@ -470,6 +470,8 @@ export default function ClubDetails() {
                     </dd>
                   </div>
                 </div>
+                )}
+                {club.meetingSchedule && (
                 <div className="flex items-start gap-3 px-5 py-3.5">
                   <svg
                     className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary"
@@ -494,6 +496,8 @@ export default function ClubDetails() {
                     </dd>
                   </div>
                 </div>
+                )}
+                {club.location && (
                 <div className="flex items-start gap-3 px-5 py-3.5">
                   <svg
                     className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary"
@@ -524,6 +528,8 @@ export default function ClubDetails() {
                     </dd>
                   </div>
                 </div>
+                )}
+                {club.contactEmail && (
                 <div className="flex items-start gap-3 px-5 py-3.5">
                   <svg
                     className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary"
@@ -553,6 +559,7 @@ export default function ClubDetails() {
                     </dd>
                   </div>
                 </div>
+                )}
               </dl>
             </Card>
 
