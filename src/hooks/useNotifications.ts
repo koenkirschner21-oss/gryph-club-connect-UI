@@ -1,8 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { Notification } from "../types";
+
+const notificationsRealtimeOwnersByUserId = new Map<string, number>();
+const notificationsRealtimeByUserId = new Map<
+  string,
+  { channel: RealtimeChannel | null; timeoutId: ReturnType<typeof setTimeout> | null }
+>();
+
+function teardownNotificationsRealtimeForUser(userId: string): void {
+  const entry = notificationsRealtimeByUserId.get(userId);
+  if (!entry) return;
+
+  if (entry.timeoutId) clearTimeout(entry.timeoutId);
+  entry.timeoutId = null;
+
+  if (entry.channel) {
+    supabase.removeChannel(entry.channel);
+    entry.channel = null;
+  }
+}
 
 /** Map a Supabase `notifications` row to our Notification type. */
 function mapRow(row: Record<string, unknown>): Notification {
@@ -31,14 +50,13 @@ export interface UseNotificationsReturn {
  * Hook that fetches & manages the current user's notifications from Supabase.
  * Fetches once on mount (no real-time).
  */
-export function useNotifications(): UseNotificationsReturn {
+export function useNotificationsSubscription(): UseNotificationsReturn {
   const { user } = useAuthContext();
   const userId = user?.id;
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -92,10 +110,7 @@ export function useNotifications(): UseNotificationsReturn {
   useEffect(() => {
     if (!userId) return;
 
-    if (realtimeChannelRef.current) {
-      supabase.removeChannel(realtimeChannelRef.current);
-      realtimeChannelRef.current = null;
-    }
+    const STABILIZATION_MS = 150;
 
     const onNotificationChange = (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       if (payload.eventType === "INSERT") {
@@ -120,26 +135,60 @@ export function useNotifications(): UseNotificationsReturn {
       }
     };
 
-    const channel = supabase
-      .channel(`notifications:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        onNotificationChange,
-      )
-      .subscribe();
+    let entry =
+      notificationsRealtimeByUserId.get(userId) ?? ({ channel: null, timeoutId: null } satisfies {
+        channel: RealtimeChannel | null;
+        timeoutId: ReturnType<typeof setTimeout> | null;
+      });
+    notificationsRealtimeByUserId.set(userId, entry);
 
-    realtimeChannelRef.current = channel;
+    // Ensure we never collide with whatever channel/timer may still exist for this topic.
+    teardownNotificationsRealtimeForUser(userId);
+    entry =
+      notificationsRealtimeByUserId.get(userId) ?? ({ channel: null, timeoutId: null } satisfies {
+        channel: RealtimeChannel | null;
+        timeoutId: ReturnType<typeof setTimeout> | null;
+      });
+    notificationsRealtimeByUserId.set(userId, entry);
+
+    notificationsRealtimeOwnersByUserId.set(
+      userId,
+      (notificationsRealtimeOwnersByUserId.get(userId) ?? 0) + 1,
+    );
+
+    entry.timeoutId = setTimeout(() => {
+      entry.timeoutId = null;
+
+      if (entry.channel) {
+        supabase.removeChannel(entry.channel);
+        entry.channel = null;
+      }
+
+      const channel = supabase
+        .channel(`notifications:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          onNotificationChange,
+        )
+        .subscribe();
+
+      entry.channel = channel;
+    }, STABILIZATION_MS);
 
     return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
+      const nextOwners = Math.max((notificationsRealtimeOwnersByUserId.get(userId) ?? 1) - 1, 0);
+      if (nextOwners === 0) {
+        notificationsRealtimeOwnersByUserId.delete(userId);
+        teardownNotificationsRealtimeForUser(userId);
+        notificationsRealtimeByUserId.delete(userId);
+      } else {
+        notificationsRealtimeOwnersByUserId.set(userId, nextOwners);
       }
     };
   }, [removeNotification, upsertNotification, userId]);

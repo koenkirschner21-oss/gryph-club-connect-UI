@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import WorkspaceLayout from "./components/workspace/WorkspaceLayout";
 import { AuthProvider } from "./context/AuthContext";
 import { ClubProvider } from "./context/ClubContext";
+import { NotificationsProvider } from "./context/NotificationsProvider";
 import Home from "./pages/Home";
 import Explore from "./pages/Explore";
 import ClubDetails from "./pages/ClubDetails";
@@ -35,6 +36,7 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
+          <NotificationsProvider>
           <ClubProvider>
             <a
               href="#main-content"
@@ -146,6 +148,7 @@ export default function App() {
               </Route>
             </Routes>
           </ClubProvider>
+          </NotificationsProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNotifications } from "../../hooks/useNotifications";
+import { useNotifications } from "../../context/NotificationsProvider";
 import type { NotificationType } from "../../types";
 
 const NOTIFICATION_ICONS: Record<NotificationType, string> = {
