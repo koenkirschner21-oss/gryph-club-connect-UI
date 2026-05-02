@@ -48,8 +48,11 @@ export interface ClubEvent {
   startAt?: string;
   endAt?: string;
   location: string;
+  /** Event author (auth user id). */
   createdBy?: string;
   createdAt?: string;
+  creatorName?: string;
+  creatorAvatar?: string;
 }
 
 export type RsvpStatus = "going" | "maybe" | "not_going";
@@ -120,6 +123,9 @@ export interface Task {
   priority: TaskPriority;
   assignedTo?: string;
   assigneeName?: string;
+  assigneeAvatar?: string;
+  creatorName?: string;
+  creatorAvatar?: string;
   dueDate?: string;
   createdBy: string;
   createdAt: string;

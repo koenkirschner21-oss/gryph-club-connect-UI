@@ -35,6 +35,10 @@ export interface ClubContextValue {
   activeClubId: string | null;
   /** Switch active club and persist session preference. */
   switchClub: (clubId: string | null) => void;
+  /** Alias for `switchClub` — set active workspace club and persist. */
+  setActiveClubId: (clubId: string | null) => void;
+  /** Club IDs the user is an active member of. */
+  userClubs: string[];
 }
 
 export const ClubContext = createContext<ClubContextValue | undefined>(

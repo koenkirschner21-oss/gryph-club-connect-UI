@@ -11,6 +11,24 @@ import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club, MemberRole } from "../types";
 
+const ACTIVE_CLUB_STORAGE_KEY = "activeClubId";
+
+function readStoredActiveClubId(): string | null {
+  try {
+    const fromLocal = localStorage.getItem(ACTIVE_CLUB_STORAGE_KEY);
+    if (fromLocal) return fromLocal;
+    const fromSession = sessionStorage.getItem(ACTIVE_CLUB_STORAGE_KEY);
+    if (fromSession) {
+      localStorage.setItem(ACTIVE_CLUB_STORAGE_KEY, fromSession);
+      sessionStorage.removeItem(ACTIVE_CLUB_STORAGE_KEY);
+      return fromSession;
+    }
+  } catch {
+    /* storage unavailable */
+  }
+  return null;
+}
+
 /** Map a Supabase clubs row to our Club type. */
 function mapRow(row: Record<string, unknown>): Club {
   return {
@@ -111,18 +129,23 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const [savedClubs, setSavedClubs] = useState<string[]>([]);
   const [userRoles, setUserRoles] = useState<Record<string, MemberRole>>({});
   const [fetchedForUser, setFetchedForUser] = useState<string | null>(null);
-  const [activeClubId, setActiveClubId] = useState<string | null>(() =>
-    sessionStorage.getItem("activeClubId"),
+  const [activeClubId, setActiveClubIdState] = useState<string | null>(
+    () => readStoredActiveClubId(),
   );
 
   const userClubsLoading = !!userId && fetchedForUser !== userId;
 
   const switchClub = useCallback((clubId: string | null) => {
-    setActiveClubId(clubId);
-    if (clubId) {
-      sessionStorage.setItem("activeClubId", clubId);
-    } else {
-      sessionStorage.removeItem("activeClubId");
+    setActiveClubIdState(clubId);
+    try {
+      if (clubId) {
+        localStorage.setItem(ACTIVE_CLUB_STORAGE_KEY, clubId);
+      } else {
+        localStorage.removeItem(ACTIVE_CLUB_STORAGE_KEY);
+      }
+      sessionStorage.removeItem(ACTIVE_CLUB_STORAGE_KEY);
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -459,6 +482,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       updateClub,
       activeClubId,
       switchClub,
+      setActiveClubId: switchClub,
+      userClubs: joinedClubs,
     }),
     [
       clubs,
@@ -482,6 +507,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       updateClub,
       activeClubId,
       switchClub,
+      joinedClubs,
     ],
   );
 

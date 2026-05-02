@@ -13,7 +13,7 @@ function mapMessageRow(row: Record<string, unknown>): Message {
     clubId: row.club_id as string,
     authorId: row.author_id as string,
     channelId: (row.channel_id as string) ?? undefined,
-    channel: (channel.name as string) ?? (row.channel as string) ?? "general",
+    channel: (channel.name as string) ?? "general",
     content: (row.content as string) ?? "",
     createdAt: (row.created_at as string) ?? "",
     authorName: (profile.full_name as string) ?? undefined,
@@ -31,10 +31,11 @@ export interface UseClubMessagesReturn {
 
 /**
  * Hook that provides read/write operations for chat messages
- * belonging to a specific club.
+ * belonging to a specific club channel.
  */
 export function useClubMessages(
   clubId: string | undefined,
+  channelId?: string | undefined,
 ): UseClubMessagesReturn {
   const { user } = useAuthContext();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -45,10 +46,16 @@ export function useClubMessages(
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Fetch all messages for this club (joined with author profile)
   useEffect(() => {
-    if (!clubId) return;
+    if (!clubId || !channelId) {
+      setMessages([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
+    setLoading(true);
 
     supabase
       .from("messages")
@@ -57,18 +64,19 @@ export function useClubMessages(
         club_id,
         author_id,
         channel_id,
-        channel,
         content,
         created_at,
         channel_meta:channels!messages_channel_id_fkey (
           name
         ),
         sender:profiles!messages_author_profile_fkey (
+          id,
           full_name,
           avatar_url
         )
       `)
       .eq("club_id", clubId)
+      .eq("channel_id", channelId)
       .order("created_at", { ascending: true })
       .then(({ data, error: err }) => {
         if (cancelled) return;
@@ -85,10 +93,16 @@ export function useClubMessages(
     return () => {
       cancelled = true;
     };
-  }, [clubId, refreshKey]);
+  }, [clubId, channelId, refreshKey]);
 
   useEffect(() => {
-    if (!clubId) return;
+    if (!clubId || !channelId) {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+      return;
+    }
 
     if (realtimeChannelRef.current) {
       supabase.removeChannel(realtimeChannelRef.current);
@@ -96,14 +110,14 @@ export function useClubMessages(
     }
 
     const channel = supabase
-      .channel(`messages:club:${clubId}`)
+      .channel(`messages:club:${clubId}:channel:${channelId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "messages",
-          filter: `club_id=eq.${clubId}`,
+          filter: `channel_id=eq.${channelId}`,
         },
         () => {
           refresh();
@@ -119,11 +133,10 @@ export function useClubMessages(
         realtimeChannelRef.current = null;
       }
     };
-  }, [clubId, refresh]);
+  }, [clubId, channelId, refresh]);
 
-  /** Send a new message to a channel. */
   const sendMessage = useCallback(
-    async (channelId: string, content: string): Promise<boolean> => {
+    async (sendChannelId: string, content: string): Promise<boolean> => {
       if (!clubId || !user) return false;
 
       const { data, error: err } = await supabase
@@ -131,7 +144,7 @@ export function useClubMessages(
         .insert({
           club_id: clubId,
           author_id: user.id,
-          channel_id: channelId,
+          channel_id: sendChannelId,
           content,
         })
         .select(`
@@ -139,13 +152,13 @@ export function useClubMessages(
           club_id,
           author_id,
           channel_id,
-          channel,
           content,
           created_at,
           channel_meta:channels!messages_channel_id_fkey (
             name
           ),
           sender:profiles!messages_author_profile_fkey (
+            id,
             full_name,
             avatar_url
           )

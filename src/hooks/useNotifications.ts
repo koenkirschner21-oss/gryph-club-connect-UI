@@ -1,8 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useCallback, useEffect, useState } from "react";
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { Notification } from "../types";
+
+const notificationsRealtimeOwnersByUserId = new Map<string, number>();
+const notificationsRealtimeByUserId = new Map<
+  string,
+  { channel: RealtimeChannel | null; timeoutId: ReturnType<typeof setTimeout> | null }
+>();
+
+function teardownNotificationsRealtimeForUser(userId: string): void {
+  const entry = notificationsRealtimeByUserId.get(userId);
+  if (!entry) return;
+
+  if (entry.timeoutId) clearTimeout(entry.timeoutId);
+  entry.timeoutId = null;
+
+  if (entry.channel) {
+    supabase.removeChannel(entry.channel);
+    entry.channel = null;
+  }
+}
 
 /** Map a Supabase `notifications` row to our Notification type. */
 function mapRow(row: Record<string, unknown>): Notification {
@@ -31,16 +50,36 @@ export interface UseNotificationsReturn {
  * Hook that fetches & manages the current user's notifications from Supabase.
  * Fetches once on mount (no real-time).
  */
-export function useNotifications(): UseNotificationsReturn {
+export function useNotificationsSubscription(): UseNotificationsReturn {
   const { user } = useAuthContext();
   const userId = user?.id;
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const upsertNotification = useCallback((next: Notification) => {
+    setNotifications((prev) => {
+      const existingIndex = prev.findIndex((n) => n.id === next.id);
+      let merged: Notification[];
+
+      if (existingIndex === -1) {
+        merged = [next, ...prev];
+      } else {
+        merged = prev.map((n, i) => (i === existingIndex ? { ...n, ...next } : n));
+      }
+
+      return merged
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 50);
+    });
+  }, []);
+
+  const removeNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -70,33 +109,89 @@ export function useNotifications(): UseNotificationsReturn {
 
   useEffect(() => {
     if (!userId) return;
-    if (realtimeChannelRef.current) return;
 
-    const channel = supabase
-      .channel(`notifications:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          refresh();
-        },
-      )
-      .subscribe();
+    const STABILIZATION_MS = 150;
 
-    realtimeChannelRef.current = channel;
+    const onNotificationChange = (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+      if (payload.eventType === "INSERT") {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          upsertNotification(mapRow(payload.new));
+        }
+        return;
+      }
 
-    return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
+      if (payload.eventType === "UPDATE") {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          upsertNotification(mapRow(payload.new));
+        }
+        return;
+      }
+
+      if (payload.eventType === "DELETE") {
+        const deletedId = payload.old?.id;
+        if (typeof deletedId === "string" && deletedId.length > 0) {
+          removeNotification(deletedId);
+        }
       }
     };
-  }, [refresh, userId]);
+
+    let entry =
+      notificationsRealtimeByUserId.get(userId) ?? ({ channel: null, timeoutId: null } satisfies {
+        channel: RealtimeChannel | null;
+        timeoutId: ReturnType<typeof setTimeout> | null;
+      });
+    notificationsRealtimeByUserId.set(userId, entry);
+
+    // Ensure we never collide with whatever channel/timer may still exist for this topic.
+    teardownNotificationsRealtimeForUser(userId);
+    entry =
+      notificationsRealtimeByUserId.get(userId) ?? ({ channel: null, timeoutId: null } satisfies {
+        channel: RealtimeChannel | null;
+        timeoutId: ReturnType<typeof setTimeout> | null;
+      });
+    notificationsRealtimeByUserId.set(userId, entry);
+
+    notificationsRealtimeOwnersByUserId.set(
+      userId,
+      (notificationsRealtimeOwnersByUserId.get(userId) ?? 0) + 1,
+    );
+
+    entry.timeoutId = setTimeout(() => {
+      entry.timeoutId = null;
+
+      if (entry.channel) {
+        supabase.removeChannel(entry.channel);
+        entry.channel = null;
+      }
+
+      const channel = supabase
+        .channel(`notifications:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          onNotificationChange,
+        )
+        .subscribe();
+
+      entry.channel = channel;
+    }, STABILIZATION_MS);
+
+    return () => {
+      const nextOwners = Math.max((notificationsRealtimeOwnersByUserId.get(userId) ?? 1) - 1, 0);
+      if (nextOwners === 0) {
+        notificationsRealtimeOwnersByUserId.delete(userId);
+        teardownNotificationsRealtimeForUser(userId);
+        notificationsRealtimeByUserId.delete(userId);
+      } else {
+        notificationsRealtimeOwnersByUserId.set(userId, nextOwners);
+      }
+    };
+  }, [removeNotification, upsertNotification, userId]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

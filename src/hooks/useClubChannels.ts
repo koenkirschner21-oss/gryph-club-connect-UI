@@ -19,7 +19,6 @@ interface UseClubChannelsReturn {
     description?: string,
     isAnnouncementOnly?: boolean,
   ) => Promise<boolean>;
-  refresh: () => void;
 }
 
 function mapChannelRow(row: Record<string, unknown>): ClubChannel {
@@ -37,13 +36,12 @@ export function useClubChannels(clubId: string | undefined): UseClubChannelsRetu
   const [channels, setChannels] = useState<ClubChannel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     if (!clubId) return;
     let cancelled = false;
+
+    setLoading(true);
 
     supabase
       .from("channels")
@@ -65,7 +63,7 @@ export function useClubChannels(clubId: string | undefined): UseClubChannelsRetu
     return () => {
       cancelled = true;
     };
-  }, [clubId, refreshKey]);
+  }, [clubId]);
 
   const createChannel = useCallback(
     async (
@@ -98,5 +96,5 @@ export function useClubChannels(clubId: string | undefined): UseClubChannelsRetu
     [clubId, user],
   );
 
-  return { channels, loading, error, createChannel, refresh };
+  return { channels, loading, error, createChannel };
 }

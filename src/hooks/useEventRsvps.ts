@@ -198,6 +198,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
         status,
         created_at,
         attendee:profiles!event_rsvps_user_profile_fkey (
+          id,
           full_name,
           avatar_url,
           program

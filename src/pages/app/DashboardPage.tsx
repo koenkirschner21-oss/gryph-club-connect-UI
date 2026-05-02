@@ -7,7 +7,7 @@ import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
 import { useDashboardEvents, type DashboardEvent } from "../../hooks/useDashboardEvents";
 import { useDashboardTasks } from "../../hooks/useDashboardTasks";
-import { useNotifications } from "../../hooks/useNotifications";
+import { useNotifications } from "../../context/NotificationsProvider";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import type { ClubEvent } from "../types";
 
 /** Map a Supabase `events` row to our ClubEvent type. */
 function mapEventRow(row: Record<string, unknown>): ClubEvent {
+  const creator = (row.creator ?? null) as Record<string, unknown> | null;
   return {
     id: row.id as string,
     clubId: row.club_id as string,
@@ -15,6 +16,9 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
     date: (row.date as string) ?? "",
     time: (row.time as string) ?? "",
     location: (row.location as string) ?? "",
+    createdBy: (row.created_by as string) ?? undefined,
+    creatorName: (creator?.full_name as string) ?? undefined,
+    creatorAvatar: (creator?.avatar_url as string) ?? undefined,
     createdAt: (row.created_at as string) ?? "",
   };
 }
@@ -56,7 +60,21 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
 
     supabase
       .from("events")
-      .select("*")
+      .select(`
+        id,
+        club_id,
+        title,
+        description,
+        date,
+        time,
+        location,
+        created_at,
+        created_by,
+        creator:profiles!events_creator_profile_fkey (
+          full_name,
+          avatar_url
+        )
+      `)
       .eq("club_id", clubId)
       .order("date", { ascending: true })
       .then(({ data, error: err }) => {
@@ -114,7 +132,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
     async (
       fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location">,
     ): Promise<boolean> => {
-      if (!clubId) return false;
+      if (!clubId || !user) return false;
 
       const { data, error: err } = await supabase
         .from("events")
@@ -125,8 +143,23 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           date: fields.date,
           time: fields.time,
           location: fields.location,
+          created_by: user.id,
         })
-        .select()
+        .select(`
+          id,
+          club_id,
+          title,
+          description,
+          date,
+          time,
+          location,
+          created_at,
+          created_by,
+          creator:profiles!events_creator_profile_fkey (
+            full_name,
+            avatar_url
+          )
+        `)
         .single();
 
       if (err || !data) {
@@ -188,7 +221,21 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
         .from("events")
         .update(row)
         .eq("id", eventId)
-        .select()
+        .select(`
+          id,
+          club_id,
+          title,
+          description,
+          date,
+          time,
+          location,
+          created_at,
+          created_by,
+          creator:profiles!events_creator_profile_fkey (
+            full_name,
+            avatar_url
+          )
+        `)
         .single();
 
       if (err || !data) {
