@@ -8,6 +8,7 @@ import type { Task, TaskStatus, TaskPriority } from "../types";
 /** Map a Supabase `tasks` row (with optional profile join) to our Task type. */
 function mapTaskRow(row: Record<string, unknown>): Task {
   const profile = (row.assignee ?? null) as Record<string, unknown> | null;
+  const creator = (row.creator ?? null) as Record<string, unknown> | null;
   return {
     id: row.id as string,
     clubId: row.club_id as string,
@@ -17,6 +18,9 @@ function mapTaskRow(row: Record<string, unknown>): Task {
     priority: (row.priority as TaskPriority) ?? "medium",
     assignedTo: (row.assigned_to as string) ?? undefined,
     assigneeName: (profile?.full_name as string) ?? undefined,
+    assigneeAvatar: (profile?.avatar_url as string) ?? undefined,
+    creatorName: (creator?.full_name as string) ?? undefined,
+    creatorAvatar: (creator?.avatar_url as string) ?? undefined,
     dueDate: (row.due_date as string) ?? undefined,
     createdBy: (row.created_by as string) ?? "",
     createdAt: (row.created_at as string) ?? "",
@@ -83,10 +87,14 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
         created_by,
         created_at,
         assignee:profiles!tasks_assigned_profile_fkey (
-          full_name
+          id,
+          full_name,
+          avatar_url
         ),
         creator:profiles!tasks_creator_profile_fkey (
-          full_name
+          id,
+          full_name,
+          avatar_url
         )
       `)
       .eq("club_id", clubId)
@@ -176,10 +184,14 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
           created_by,
           created_at,
           assignee:profiles!tasks_assigned_profile_fkey (
-            full_name
+            id,
+            full_name,
+            avatar_url
           ),
           creator:profiles!tasks_creator_profile_fkey (
-            full_name
+            id,
+            full_name,
+            avatar_url
           )
         `)
         .single();
@@ -254,10 +266,14 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
           created_by,
           created_at,
           assignee:profiles!tasks_assigned_profile_fkey (
-            full_name
+            id,
+            full_name,
+            avatar_url
           ),
           creator:profiles!tasks_creator_profile_fkey (
-            full_name
+            id,
+            full_name,
+            avatar_url
           )
         `)
         .single();

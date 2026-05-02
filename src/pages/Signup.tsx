@@ -23,15 +23,15 @@ export default function Signup() {
       return;
     }
 
-    const domain = email.split("@")[1]?.toLowerCase();
-    if (domain !== ALLOWED_DOMAIN) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail.endsWith(`@${ALLOWED_DOMAIN}`)) {
       showToast(`Only @${ALLOWED_DOMAIN} email addresses are permitted to sign up.`, "error");
       return;
     }
 
     setLoading(true);
     try {
-      await signUp(email, password);
+      await signUp(normalizedEmail, password);
       navigate("/app/onboarding");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Sign up failed", "error");

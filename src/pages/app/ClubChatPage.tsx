@@ -13,7 +13,10 @@ export default function ClubChatPage() {
   const { getUserRole } = useClubContext();
   const { channels, loading: channelsLoading } = useClubChannels(clubId);
   const [activeChannelId, setActiveChannelId] = useState<string>("");
-  const { messages, loading, sendMessage } = useClubMessages(clubId);
+  const { messages, loading: messagesLoading, sendMessage } = useClubMessages(
+    clubId,
+    activeChannelId || undefined,
+  );
 
   const role = getUserRole(clubId ?? "");
   const isAdminOrExec = role === "admin" || role === "exec";
@@ -30,12 +33,11 @@ export default function ClubChatPage() {
   }, [activeChannelId, channels]);
 
   const activeChannel = channels.find((ch) => ch.id === activeChannelId);
-  const channelMessages = messages.filter((m) => m.channelId === activeChannelId);
 
   // Auto-scroll when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [channelMessages.length]);
+  }, [messages.length]);
 
   // Announcements channel is read-only for regular members
   const canPost = activeChannel?.isAnnouncementOnly ? isAdminOrExec : true;
@@ -54,10 +56,20 @@ export default function ClubChatPage() {
     setSending(false);
   }
 
-  if (loading || channelsLoading) {
+  const awaitingChannel =
+    !channelsLoading && channels.length > 0 && !activeChannelId;
+  if (channelsLoading || awaitingChannel || (Boolean(activeChannelId) && messagesLoading)) {
     return (
       <div className="flex h-[60vh] items-center justify-center md:h-[calc(100vh-4rem)]">
         <Spinner label="Loading messages…" />
+      </div>
+    );
+  }
+
+  if (!channelsLoading && channels.length === 0) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center p-6 md:h-[calc(100vh-4rem)]">
+        <p className="text-center text-sm text-muted">No channels are set up for this club yet.</p>
       </div>
     );
   }
@@ -113,7 +125,7 @@ export default function ClubChatPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-auto p-4">
-          {channelMessages.length === 0 ? (
+          {messages.length === 0 ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <p className="text-sm font-medium text-white">
@@ -126,7 +138,7 @@ export default function ClubChatPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {channelMessages.map((msg) => (
+              {messages.map((msg) => (
                 <div key={msg.id} className="flex gap-3">
                   {msg.authorAvatar ? (
                     <img
