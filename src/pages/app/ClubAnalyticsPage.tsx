@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubContext } from "../../context/useClubContext";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
 
@@ -21,7 +22,7 @@ export default function ClubAnalyticsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { getUserRole } = useClubContext();
   const role = getUserRole(clubId ?? "");
-  const isAdminOrExec = role === "admin" || role === "exec";
+  const isPrivileged = isPrivilegedClubRole(role);
 
   const [analytics, setAnalytics] = useState<ClubAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,7 +145,7 @@ export default function ClubAnalyticsPage() {
     };
   }, [clubId]);
 
-  if (!isAdminOrExec) {
+  if (!isPrivileged) {
     return (
       <div className="p-6">
         <Card className="p-8 text-center">

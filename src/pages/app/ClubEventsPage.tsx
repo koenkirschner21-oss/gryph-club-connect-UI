@@ -8,6 +8,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 
 const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
   { value: "going", label: "Going" },
@@ -22,7 +23,7 @@ export default function ClubEventsPage() {
     useClubEvents(clubId);
 
   const role = getUserRole(clubId ?? "");
-  const isAdminOrExec = role === "admin" || role === "exec";
+  const isPrivileged = isPrivilegedClubRole(role);
 
   const eventIds = useMemo(() => events.map((e) => e.id), [events]);
   const { myRsvps, counts, attendees, setRsvp, removeRsvp, loadAttendees } =
@@ -145,7 +146,7 @@ export default function ClubEventsPage() {
             {upcomingEvents.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {isAdminOrExec && (
+        {isPrivileged && (
           <Button
             onClick={() => {
               if (showForm) resetForm();
@@ -172,7 +173,7 @@ export default function ClubEventsPage() {
       )}
 
       {/* Create / edit form — admin/exec only */}
-      {showForm && isAdminOrExec && (
+      {showForm && isPrivileged && (
         <Card className="mb-6 p-5">
           <h3 className="mb-4 font-semibold text-white">
             {editingId ? "Edit Event" : "Create New Event"}
@@ -257,7 +258,7 @@ export default function ClubEventsPage() {
         <Card className="mb-8 p-8 text-center">
           <p className="text-sm text-muted">
             No upcoming events.{" "}
-            {isAdminOrExec ? "Create one to get started!" : "Check back soon!"}
+            {isPrivileged ? "Create one to get started!" : "Check back soon!"}
           </p>
         </Card>
       ) : (
@@ -325,7 +326,7 @@ export default function ClubEventsPage() {
                   </div>
 
                   {/* Admin: attendee list toggle */}
-                  {isAdminOrExec && (
+                  {isPrivileged && (
                     <button
                       type="button"
                       onClick={() => toggleAttendees(event.id)}
@@ -386,7 +387,7 @@ export default function ClubEventsPage() {
                     </div>
                   )}
                 </div>
-                {isAdminOrExec && (
+                {isPrivileged && (
                   <div className="flex flex-shrink-0 gap-2">
                     <Button
                       variant="ghost"
@@ -435,7 +436,7 @@ export default function ClubEventsPage() {
                       {event.time} · {event.location}
                     </p>
                   </div>
-                  {isAdminOrExec && (
+                  {isPrivileged && (
                     <Button
                       variant="ghost"
                       size="sm"

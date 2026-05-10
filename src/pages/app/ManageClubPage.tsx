@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useParams, Navigate } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { uploadImage } from "../../lib/uploadImage";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Card from "../../components/ui/Card";
@@ -41,8 +42,8 @@ export default function ManageClubPage() {
   const [regeneratingCode, setRegeneratingCode] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Only admin or exec can access this page
-  if (!club || (role !== "admin" && role !== "exec")) {
+  // Only privileged club roles manage settings (owner/admin/exec)
+  if (!club || !isPrivilegedClubRole(role)) {
     return <Navigate to="/app" replace />;
   }
 

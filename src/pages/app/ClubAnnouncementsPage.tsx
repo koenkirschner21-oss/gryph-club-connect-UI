@@ -6,6 +6,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 
 export default function ClubAnnouncementsPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -13,7 +14,7 @@ export default function ClubAnnouncementsPage() {
   const { posts, loading, createPost, deletePost } = useClubPosts(clubId);
 
   const role = getUserRole(clubId ?? "");
-  const isAdminOrExec = role === "admin" || role === "exec";
+  const isPrivileged = isPrivilegedClubRole(role);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -72,7 +73,7 @@ export default function ClubAnnouncementsPage() {
             {posts.length} post{posts.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {isAdminOrExec && (
+        {isPrivileged && (
           <Button
             onClick={() => {
               if (showForm) resetForm();
@@ -99,7 +100,7 @@ export default function ClubAnnouncementsPage() {
       )}
 
       {/* Create form — admin/exec only */}
-      {showForm && isAdminOrExec && (
+      {showForm && isPrivileged && (
         <Card className="mb-6 p-5">
           <h3 className="mb-4 font-semibold text-white">
             Create Announcement
@@ -146,7 +147,7 @@ export default function ClubAnnouncementsPage() {
         <Card className="p-8 text-center">
           <p className="text-sm text-muted">
             No announcements yet.{" "}
-            {isAdminOrExec
+            {isPrivileged
               ? "Create one to keep your members informed!"
               : "Check back soon!"}
           </p>
@@ -170,7 +171,7 @@ export default function ClubAnnouncementsPage() {
                     {post.content}
                   </p>
                 </div>
-                {isAdminOrExec && (
+                {isPrivileged && (
                   <Button
                     variant="ghost"
                     size="sm"

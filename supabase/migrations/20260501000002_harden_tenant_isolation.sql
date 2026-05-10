@@ -2,7 +2,7 @@
 -- P0.2 - Multi-Tenant Isolation (prevent cross-club data leakage)
 --
 -- NOTE: This codebase already shipped a prior hardening migration:
---   supabase/migrations/20260420_harden_select_rls_scoping.sql
+--   supabase/migrations/20260420101006_harden_select_rls_scoping.sql
 -- which scopes SELECT on:
 --   public.club_members, public.events, public.event_rsvps, public.profiles
 --

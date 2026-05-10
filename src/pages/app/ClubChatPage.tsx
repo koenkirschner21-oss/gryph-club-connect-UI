@@ -4,6 +4,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMessages } from "../../hooks/useClubMessages";
 import { useClubChannels } from "../../hooks/useClubChannels";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
 
@@ -19,7 +20,7 @@ export default function ClubChatPage() {
   );
 
   const role = getUserRole(clubId ?? "");
-  const isAdminOrExec = role === "admin" || role === "exec";
+  const isPrivileged = isPrivilegedClubRole(role);
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -40,7 +41,7 @@ export default function ClubChatPage() {
   }, [messages.length]);
 
   // Announcements channel is read-only for regular members
-  const canPost = activeChannel?.isAnnouncementOnly ? isAdminOrExec : true;
+  const canPost = activeChannel?.isAnnouncementOnly ? isPrivileged : true;
 
   async function handleSend() {
     if (!draft.trim() || !user || sending) return;

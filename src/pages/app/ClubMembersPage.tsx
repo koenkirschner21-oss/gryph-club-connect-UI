@@ -4,6 +4,10 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import type { MemberRole } from "../../types";
+import {
+  isPrivilegedClubRole,
+  isTopClubModeratorRole,
+} from "../../lib/clubRoles";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
@@ -15,8 +19,9 @@ export default function ClubMembersPage() {
   const club = getClubById(clubId ?? "");
 
   const role = getUserRole(clubId ?? "");
-  const isAdmin = role === "admin";
-  const isAdminOrExec = role === "admin" || role === "exec";
+  /** Admin or owner may change member roles / remove members; exec sees queue only. */
+  const canReorderRoster = isTopClubModeratorRole(role);
+  const canUseMembershipQueue = isPrivilegedClubRole(role);
 
   const { members, pendingMembers, loading, updateRole, removeMember, approveRequest, rejectRequest } = useClubMembers(clubId);
 
@@ -24,12 +29,13 @@ export default function ClubMembersPage() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const roleOrder = { admin: 0, exec: 1, member: 2 } as const;
+  const roleOrder = { owner: 0, admin: 1, exec: 2, member: 3 } as const;
   const sortedMembers = [...members].sort(
     (a, b) => roleOrder[a.role] - roleOrder[b.role],
   );
 
   const roleColors: Record<string, string> = {
+    owner: "bg-violet-500/10 text-violet-400",
     admin: "bg-primary/10 text-primary",
     exec: "bg-yellow-500/10 text-yellow-400",
     member: "bg-surface-alt text-muted",
@@ -115,8 +121,12 @@ export default function ClubMembersPage() {
     memberId: string,
     memberUserId: string,
   ) {
-    // Admins cannot modify themselves or other admins
-    if (!isAdmin || memberRole === "admin" || memberUserId === user?.id) {
+    // Owners/admins cannot modify themselves or other top moderators (owner/admin).
+    if (
+      !canReorderRoster
+      || isTopClubModeratorRole(memberRole)
+      || memberUserId === user?.id
+    ) {
       return null;
     }
 
@@ -218,7 +228,7 @@ export default function ClubMembersPage() {
       )}
 
       {/* Pending requests section — admin/exec only */}
-      {isAdminOrExec && pendingMembers.length > 0 && (
+      {canUseMembershipQueue && pendingMembers.length > 0 && (
         <div className="mb-6">
           <h2 className="mb-3 text-lg font-semibold text-white">
             Pending Requests ({pendingMembers.length})

@@ -66,46 +66,13 @@ function mapRow(row: Record<string, unknown>): Club {
 }
 
 export function ClubProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuthContext();
+  const { user, loading: authLoading } = useAuthContext();
   const userId = user?.id;
 
   // ---- Clubs data ----
   const [clubs, setClubs] = useState<Club[]>([]);
   const [clubsLoading, setClubsLoading] = useState(true);
   const [clubsError, setClubsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    Promise.resolve(
-      supabase
-        .from("clubs")
-        .select("*")
-        .order("name"),
-    )
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to load clubs:", error.message);
-          setClubsError(error.message);
-        } else if (data && data.length > 0) {
-          setClubs(data.map(mapRow));
-        }
-        // If data is empty, clubs stays as [] — no mock fallback
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        console.error("Failed to load clubs:", err);
-        setClubsError(String(err));
-      })
-      .finally(() => {
-        if (!cancelled) setClubsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Derive categories from current clubs list
   const categories = useMemo(() => {
@@ -128,12 +95,9 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const [pendingClubs, setPendingClubs] = useState<string[]>([]);
   const [savedClubs, setSavedClubs] = useState<string[]>([]);
   const [userRoles, setUserRoles] = useState<Record<string, MemberRole>>({});
-  const [fetchedForUser, setFetchedForUser] = useState<string | null>(null);
   const [activeClubId, setActiveClubIdState] = useState<string | null>(
     () => readStoredActiveClubId(),
   );
-
-  const userClubsLoading = !!userId && fetchedForUser !== userId;
 
   const switchClub = useCallback((clubId: string | null) => {
     setActiveClubIdState(clubId);
@@ -149,63 +113,116 @@ export function ClubProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /** Auth → memberships → club rows RLS-visible to this session (deterministic ordering). */
   useEffect(() => {
-    if (!userId) return;
+    if (authLoading) {
+      return;
+    }
 
     let cancelled = false;
 
-    // Fetch memberships (with role + status) from club_members and saved clubs from user_clubs in parallel
-    Promise.all([
-      supabase
-        .from("club_members")
-        .select("club_id, role, status")
-        .eq("user_id", userId),
-      supabase
-        .from("user_clubs")
-        .select("club_id")
-        .eq("user_id", userId)
-        .eq("type", "saved"),
-    ]).then(([membersRes, savedRes]) => {
+    async function syncClubs(): Promise<void> {
+      setClubsLoading(true);
+      setClubsError(null);
+
+      if (!userId) {
+        setJoinedClubs([]);
+        setPendingClubs([]);
+        setSavedClubs([]);
+        setUserRoles({});
+        setClubs([]);
+        if (!cancelled) setClubsLoading(false);
+        return;
+      }
+
+      const [{ data: memberRows, error: membersErr }, { data: savedRows, error: savedErr }] =
+        await Promise.all([
+          supabase
+            .from("club_members")
+            .select("club_id, role, status")
+            .eq("user_id", userId),
+          supabase
+            .from("user_clubs")
+            .select("club_id")
+            .eq("user_id", userId)
+            .eq("type", "saved"),
+        ]);
+
       if (cancelled) return;
-      if (membersRes.error) {
-        console.error("Failed to load club memberships:", membersRes.error.message);
-      }
-      if (savedRes.error) {
-        console.error("Failed to load saved clubs:", savedRes.error.message);
-      }
-      const activeIds: string[] = [];
-      const pendingIds: string[] = [];
-      const roles: Record<string, MemberRole> = {};
-      for (const row of membersRes.data ?? []) {
-        if (row.status === "active") {
-          activeIds.push(row.club_id);
-          roles[row.club_id] = row.role as MemberRole;
-        } else if (row.status === "pending") {
-          pendingIds.push(row.club_id);
+
+      if (membersErr) {
+        console.error("Failed to load club memberships:", membersErr.message);
+        setClubsError(membersErr.message);
+        setJoinedClubs([]);
+        setPendingClubs([]);
+        setUserRoles({});
+      } else {
+        const activeIds: string[] = [];
+        const pendingIds: string[] = [];
+        const roles: Record<string, MemberRole> = {};
+        for (const row of memberRows ?? []) {
+          if (row.status === "active") {
+            activeIds.push(row.club_id);
+            roles[row.club_id] = row.role as MemberRole;
+          } else if (row.status === "pending") {
+            pendingIds.push(row.club_id);
+          }
         }
+        setJoinedClubs(activeIds);
+        setPendingClubs(pendingIds);
+        setUserRoles(roles);
       }
-      setJoinedClubs(activeIds);
-      setPendingClubs(pendingIds);
-      setUserRoles(roles);
-      setSavedClubs(
-        (savedRes.data ?? []).map((row) => row.club_id),
+
+      if (savedErr) {
+        console.error("Failed to load saved clubs:", savedErr.message);
+        setSavedClubs([]);
+      } else {
+        setSavedClubs((savedRows ?? []).map((row) => row.club_id));
+      }
+
+      const memberClubIds = Array.from(
+        new Set((memberRows ?? []).map((r) => r.club_id)),
       );
-      setFetchedForUser(userId);
-    }).catch((err: unknown) => {
+
+      let memberClubData: Record<string, unknown>[] = [];
+      let memberClubErr = null as { message: string } | null;
+      if (memberClubIds.length > 0) {
+        const mRes = await supabase.from("clubs").select("*").in("id", memberClubIds);
+        memberClubData = (mRes.data ?? []) as Record<string, unknown>[];
+        memberClubErr = mRes.error;
+      }
+
+      const publicClubsRes = await supabase
+        .from("clubs")
+        .select("*")
+        .eq("is_public", true)
+        .order("name");
+
       if (cancelled) return;
-      console.error("Failed to load user clubs:", err);
-      setFetchedForUser(userId);
-    });
+
+      const err = memberClubErr ?? publicClubsRes.error;
+      if (err) {
+        console.error("Failed to load clubs:", err.message);
+        setClubsError(err.message);
+        setClubs([]);
+      } else {
+        const merged = new Map<string, Club>();
+        for (const row of [...memberClubData, ...(publicClubsRes.data ?? [])]) {
+          const c = mapRow(row as Record<string, unknown>);
+          merged.set(c.id, c);
+        }
+        setClubs(Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name)));
+      }
+
+      if (!cancelled) setClubsLoading(false);
+    }
+
+    void syncClubs();
 
     return () => {
       cancelled = true;
-      setJoinedClubs([]);
-      setPendingClubs([]);
-      setSavedClubs([]);
-      setUserRoles({});
-      setFetchedForUser(null);
     };
-  }, [userId]);
+  }, [authLoading, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -229,8 +246,26 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const joinClub = useCallback(
     async (clubId: string): Promise<boolean> => {
       if (!user) return false;
-      const club = clubs.find((c) => c.id === clubId);
-      const needsApproval = club?.requiresApproval ?? false;
+
+      const localClub = clubs.find((c) => c.id === clubId);
+      let needsApproval = localClub?.requiresApproval ?? false;
+
+      if (!localClub) {
+        const { data, error } = await supabase
+          .from("clubs")
+          .select("*")
+          .eq("id", clubId)
+          .maybeSingle();
+        if (error || !data) {
+          console.error("Failed to load club for join:", error?.message);
+          return false;
+        }
+        const c = mapRow(data as Record<string, unknown>);
+        needsApproval = c.requiresApproval ?? false;
+        setClubs((prev) =>
+          prev.some((x) => x.id === c.id) ? prev : [...prev, c]);
+      }
+
       const status = needsApproval ? "pending" : "active";
 
       const { error } = await supabase
@@ -250,7 +285,6 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      // Update local state only after DB confirms success
       if (needsApproval) {
         setPendingClubs((prev) =>
           prev.includes(clubId) ? prev : [...prev, clubId],
@@ -358,7 +392,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
     [userRoles],
   );
 
-  /** Create a club in Supabase and add the current user as admin. */
+  /** Create a club; DB trigger inserts creator as owner in club_members. */
   const createClub = useCallback(
     async (fields: Partial<Club>): Promise<string | null> => {
       if (!user) return null;
@@ -388,29 +422,11 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      // Add creator as admin in club_members
-      const { error: memberErr } = await supabase.from("club_members").insert({
-        club_id: data.id,
-        user_id: user.id,
-        role: "admin",
-        status: "active",
-      });
-
-      if (memberErr) {
-        console.error("Failed to add admin membership:", memberErr.message);
-        // Rollback club creation if membership failed — the club is unusable without an admin
-        const { error: rollbackErr } = await supabase.from("clubs").delete().eq("id", data.id);
-        if (rollbackErr) {
-          console.error("Failed to rollback club creation:", rollbackErr.message);
-        }
-        return null;
-      }
-
       // Update local state
       const newClub = mapRow(data);
       setClubs((prev) => [...prev, newClub]);
       setJoinedClubs((prev) => [...prev, newClub.id]);
-      setUserRoles((prev) => ({ ...prev, [newClub.id]: "admin" }));
+      setUserRoles((prev) => ({ ...prev, [newClub.id]: "owner" }));
 
       return newClub.id;
     },
@@ -457,7 +473,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const loading = clubsLoading || userClubsLoading;
+  const loading = authLoading || clubsLoading;
 
   const value = useMemo<ClubContextValue>(
     () => ({
