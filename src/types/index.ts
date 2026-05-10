@@ -77,7 +77,7 @@ export interface RsvpCounts {
 // ---------------------------------------------------------------------------
 // Membership
 // ---------------------------------------------------------------------------
-export type MemberRole = "admin" | "exec" | "member";
+export type MemberRole = "owner" | "admin" | "exec" | "member";
 export type MemberStatus = "active" | "pending";
 
 export interface ClubMember {

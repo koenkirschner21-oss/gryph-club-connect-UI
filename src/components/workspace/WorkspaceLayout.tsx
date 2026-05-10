@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { NavLink, Outlet, useParams, Navigate } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import Spinner from "../ui/Spinner";
 
 const workspaceLinks = [
@@ -25,7 +26,7 @@ export default function WorkspaceLayout() {
 
   const club = getClubById(resolvedClubId);
   const role = getUserRole(resolvedClubId);
-  const isAdminOrExec = role === "admin" || role === "exec";
+  const isPrivileged = isPrivilegedClubRole(role);
 
   if (loading) {
     return (
@@ -79,7 +80,7 @@ export default function WorkspaceLayout() {
                 {link.label}
               </NavLink>
             ))}
-            {isAdminOrExec && (
+            {isPrivileged && (
               <>
                 <NavLink
                   to="analytics"
@@ -154,7 +155,7 @@ export default function WorkspaceLayout() {
               {link.label}
             </NavLink>
           ))}
-          {isAdminOrExec && (
+          {isPrivileged && (
             <>
               <NavLink
                 to="analytics"

@@ -3,6 +3,7 @@ import { useNotificationsSubscription, type UseNotificationsReturn } from "../ho
 
 const NotificationsContext = createContext<UseNotificationsReturn | null>(null);
 
+/** Realtime + fetch live here only; consuming code uses useNotifications(). */
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const notifications = useNotificationsSubscription();
   return (

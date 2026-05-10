@@ -8,6 +8,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 
 const priorityColors: Record<TaskPriority, string> = {
   low: "bg-green-500/10 text-green-400",
@@ -41,7 +42,7 @@ export default function ClubTasksPage() {
   const { members } = useClubMembers(clubId);
 
   const role = getUserRole(clubId ?? "");
-  const isAdminOrExec = role === "admin" || role === "exec";
+  const isPrivileged = isPrivilegedClubRole(role);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -170,7 +171,7 @@ export default function ClubTasksPage() {
             {todoCt} to do · {inProgressCt} in progress · {doneCt} done
           </p>
         </div>
-        {isAdminOrExec && (
+        {isPrivileged && (
           <Button
             onClick={() => {
               if (showForm) resetForm();
@@ -197,7 +198,7 @@ export default function ClubTasksPage() {
       )}
 
       {/* Create / edit form — admin/exec only */}
-      {showForm && isAdminOrExec && (
+      {showForm && isPrivileged && (
         <Card className="mb-6 p-5">
           <h3 className="mb-4 font-semibold text-white">
             {editingId ? "Edit Task" : "Create New Task"}
@@ -331,7 +332,7 @@ export default function ClubTasksPage() {
           </p>
           <p className="mt-1 text-sm text-muted">
             {tasks.length === 0
-              ? isAdminOrExec
+              ? isPrivileged
                 ? "Create a task to get your team organized."
                 : "Your team hasn't created any tasks yet."
               : "Try a different filter to see more tasks."}
@@ -403,7 +404,7 @@ export default function ClubTasksPage() {
                       <option value="in_progress">In Progress</option>
                       <option value="done">Done</option>
                     </select>
-                    {isAdminOrExec && (
+                    {isPrivileged && (
                       <>
                         <Button
                           variant="ghost"

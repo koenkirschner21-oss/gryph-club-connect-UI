@@ -96,7 +96,7 @@ export function useClubMessages(
   }, [clubId, channelId, refreshKey]);
 
   useEffect(() => {
-    if (!clubId || !channelId) {
+    if (!clubId) {
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
@@ -110,14 +110,14 @@ export function useClubMessages(
     }
 
     const channel = supabase
-      .channel(`messages:club:${clubId}:channel:${channelId}`)
+      .channel(`messages:club:${clubId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "messages",
-          filter: `channel_id=eq.${channelId}`,
+          filter: `club_id=eq.${clubId}`,
         },
         () => {
           refresh();
@@ -133,7 +133,7 @@ export function useClubMessages(
         realtimeChannelRef.current = null;
       }
     };
-  }, [clubId, channelId, refresh]);
+  }, [clubId, refresh]);
 
   const sendMessage = useCallback(
     async (sendChannelId: string, content: string): Promise<boolean> => {

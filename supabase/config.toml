@@ -2,6 +2,11 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
+# CI / Supabase Cloud: GitHub Actions (.github/workflows/supabase-migrations.yml) uses secrets:
+#   SUPABASE_ACCESS_TOKEN — dashboard Account → Tokens
+#   SUPABASE_DB_PASSWORD — Database password for the target project
+#   SUPABASE_PROJECT_REF — Project Settings → General → Reference ID
+# Do not commit `.supabase/` linked state if it embeds passwords; CI links non-interactively.
 project_id = "gryph-club-connect-UI"
 
 [api]

@@ -1,0 +1,23 @@
+Historical migrations used the same numeric prefix "20260420_*.sql". Many Supabase CLI versions
+derive the migration VERSION from the leading timestamp only, so multiple files collide on
+schema_migrations_pkey and fail to record history correctly.
+
+FILES RENAMED IN REPO (preserve prior lexicographic application order):
+  20260420101001_add_performance_indexes.sql
+  20260420101002_add_profile_fk_aliases.sql
+  20260420101003_create_channels_and_message_channel_fk.sql
+  20260420101004_enforce_uoguelph_email.sql
+  20260420101005_fix_notifications_insert_policy.sql
+  20260420101006_harden_select_rls_scoping.sql
+  20260420101007_platform_admin_and_moderation.sql
+
+IF A REMOTE DATABASE ALREADY RAN THE OLD NAMES:
+1. In SQL editor, inspect: SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;
+2. Use the Supabase CLI migration repair tool to align remote rows with local filenames
+   (marks applied/reverted WITHOUT re-running SQL), e.g. after backup:
+     supabase migration repair <old_version> --status reverted
+     supabase migration repair 20260420101001 --status applied
+   Repeat per environment — do not DELETE real app data; only fix the history table if needed.
+3. Prefer testing on a branch database before touching production.
+
+SEE: https://supabase.com/docs/reference/cli/supabase-migration-repair
