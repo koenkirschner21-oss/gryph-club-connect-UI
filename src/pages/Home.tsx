@@ -28,12 +28,11 @@ export default function Home() {
             {/* Left: text content */}
             <div className="max-w-3xl flex-1">
               {/* Brand lockup */}
-              <div className="mb-6 flex items-center gap-3">
+              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <img
-                  src="/assets/gryphon-logo.svg"
-                  alt=""
-                  className="h-14 w-14"
-                  aria-hidden="true"
+                  src="/assets/gryph-club-connect-logo.png"
+                  alt="Gryph Club Connect"
+                  className="h-11 w-auto sm:h-12"
                 />
                 <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
                   University of Guelph

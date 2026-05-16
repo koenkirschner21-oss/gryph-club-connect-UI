@@ -105,6 +105,7 @@ WHERE c.club_id = m.club_id
 DROP POLICY IF EXISTS "Active members can send non-announcement messages" ON public.messages;
 DROP POLICY IF EXISTS "Admins and execs can send announcements" ON public.messages;
 
+DROP POLICY IF EXISTS "Members can send messages by channel permissions" ON public.messages;
 CREATE POLICY "Members can send messages by channel permissions"
   ON public.messages
   FOR INSERT

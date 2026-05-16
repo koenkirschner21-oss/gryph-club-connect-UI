@@ -1,0 +1,26 @@
+# GryphClubConnect — Cursor rules
+
+## Architecture
+- **Supabase is the backend:** PostgreSQL, Auth, Realtime, Storage as applicable. No custom Node/Express API; do not assume Socket.io/Redis unless explicitly added later.
+- **RLS is the security boundary:** If a user must not read/write data, enforce it in Postgres policies (and triggers where appropriate). Do not “secure” the app by hiding UI only or by using service-role keys in the browser.
+- **Migrations:** Preserve version order; prefer idempotent SQL (`IF NOT EXISTS`, guarded `DO` blocks). Assume long-lived databases — never assume only fresh installs. Follow existing unified-tenant / repair docs when touching migration history.
+
+## Realtime
+- Subscriptions must **clean up** (remove channel, clear timers). Avoid duplicate listeners (prefer a **singleton / root provider** pattern, as with notifications). New realtime features should match that discipline.
+
+## Scope guard
+- **In scope:** Private club operations — workspaces, access/join codes, channels, tasks, events, members, notifications that serve club logistics.
+- **Out of scope:** General social network, public discovery product, replacing official university systems, or generic consumer chat — push back on features that don’t help clubs **run**.
+
+## Quality bar
+- **`npm run build`** must pass (TypeScript + Vite) for changes you ship.
+- Features should behave correctly under **normal member sessions** (RLS), not only as a privileged test user.
+- **Responsive:** Primary users are students on phones; don’t ship desktop-only layouts for core flows.
+- **Bundle:** The app is already a large single chunk — avoid heavy new dependencies; prefer code-splitting when adding significant weight.
+- **Tests/docs:** The repo’s known gaps (no automated tests yet, README/env onboarding drift) should improve when you touch those areas — don’t widen the gap casually.
+
+## Product lens
+- **Users:** Time-poor Guelph students and execs; flows should be obvious without reading docs.
+- **North star:** Multi-tenant isolation today supports multi-university isolation later — tenant boundaries matter for security and expansion.
+
+For narrative vision, stack detail, data model notes, and “where we are,” read **`docs/PROJECT_CONTEXT.md`**.

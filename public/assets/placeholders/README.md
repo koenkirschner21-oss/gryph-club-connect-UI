@@ -1,14 +1,17 @@
 # Placeholder Assets
 
-This folder contains placeholder assets for the Gryph Club Connect UI prototype.
+This folder contains generic placeholder assets for the Gryph Club Connect UI prototype.
 
-## Files
+## Official branding
+
+The **production logo** (gryphon + ClubConnect wordmark) lives next to this folder:
+
+- `public/assets/gryph-club-connect-logo.png` — used in the navbar, marketing heroes, and favicon.
+
+## Files in this folder
 
 | File | Description |
 |------|-------------|
-| `logo-gryph-placeholder.svg` | Placeholder for the Gryph (griffin) logo |
-| `avatar-placeholder.png` | Generic avatar placeholder used for user profiles |
-| `hero-placeholder.jpg` | Placeholder for the hero/banner image on the landing page |
 | `placeholder-rect.svg` | Generic rectangular placeholder (reusable in any component) |
 
 ## How to Replace

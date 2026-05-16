@@ -1,3 +1,6 @@
+DROP POLICY IF EXISTS "Club members can post in general" ON public.messages;
+DROP POLICY IF EXISTS "Admins and execs can post in announcements" ON public.messages;
+
 -- =============================================================================
 -- P1.2 — Layer 000007 — Schema cleanup only (no RLS, no CREATE/DROP POLICY)
 -- Drops legacy messages.channel TEXT index/column after policies no longer use it,
