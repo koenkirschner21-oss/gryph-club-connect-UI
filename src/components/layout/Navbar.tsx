@@ -35,21 +35,19 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-[100] border-b border-[var(--border)] bg-[rgba(10,10,10,0.85)] backdrop-blur-[12px]">
       <nav
-        className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
+        className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
         aria-label="Main navigation"
       >
-        {/* Logo — gryphon + wordmark matching brand identity */}
-        <Link to="/" className="flex items-center gap-2.5 group">
+        {/* Official logo — home (larger tap target + clearer wordmark) */}
+        <Link
+          to="/"
+          className="group flex shrink-0 items-center rounded-md px-2 py-1.5 -my-0.5 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(10,10,10,0.85)]"
+        >
           <img
-            src="/assets/gryphon-logo.svg"
-            alt=""
-            className="h-10 w-10"
-            aria-hidden="true"
+            src="/assets/gryph-club-connect-logo.png"
+            alt="Gryph Club Connect"
+            className="h-11 w-auto sm:h-12 md:h-14"
           />
-          <span className="text-lg font-extrabold tracking-tight leading-none">
-            <span className="tracking-[0.02em] text-white">Club</span>
-            <span className="text-secondary/90">Connect</span>
-          </span>
         </Link>
 
         {/* Desktop Nav */}

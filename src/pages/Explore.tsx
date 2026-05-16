@@ -220,16 +220,12 @@ export default function Explore() {
           <div className="flex items-center gap-12 lg:gap-16">
             {/* Left: text content */}
             <div className="max-w-3xl flex-1">
-              <div className="mb-5 flex items-center gap-3">
+              <div className="mb-5">
                 <img
-                  src="/assets/gryphon-logo.svg"
-                  alt=""
-                  className="h-12 w-12"
-                  aria-hidden="true"
+                  src="/assets/gryph-club-connect-logo.png"
+                  alt="Gryph Club Connect"
+                  className="h-10 w-auto sm:h-11"
                 />
-                <span className="text-sm font-bold uppercase tracking-[0.15em] text-[var(--gold)]">
-                  Gryph Club Connect
-                </span>
               </div>
               <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]">
                 <span className="text-white/60">Discover Your</span>{" "}

@@ -29,7 +29,16 @@ CREATE POLICY "notifications_insert_own"
   TO authenticated
   WITH CHECK (auth.uid() IS NOT NULL AND user_id = auth.uid());
 
-REVOKE ALL ON FUNCTION public.create_notification(uuid, text, text, text, uuid, uuid) FROM PUBLIC;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'create_notification'
+  ) THEN
+    REVOKE ALL ON FUNCTION public.create_notification(uuid, text, text, text, uuid, uuid) FROM PUBLIC;
+  END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.create_notification(
   p_user_id uuid,

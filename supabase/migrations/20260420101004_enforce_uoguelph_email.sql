@@ -1,25 +1,37 @@
 -- =============================================================================
--- Enforce @uoguelph.ca emails at auth insert time
+-- Enforce @uoguelph.ca emails on public.profiles (no auth schema functions/triggers)
 -- =============================================================================
 
-CREATE SCHEMA IF NOT EXISTS auth;
-
-CREATE OR REPLACE FUNCTION auth.check_email_domain()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
+CREATE OR REPLACE FUNCTION public.is_uoguelph_ca_email(email text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = public
 AS $$
-BEGIN
-  IF NEW.email IS NULL OR NEW.email !~* '@uoguelph\.ca$' THEN
-    RAISE EXCEPTION 'Only @uoguelph.ca email addresses are permitted.';
-  END IF;
-  RETURN NEW;
-END;
+  SELECT email IS NOT NULL
+     AND btrim(email) <> ''
+     AND btrim(email) ~* '^[^@]+@uoguelph\.ca$'
 $$;
 
-DROP TRIGGER IF EXISTS enforce_email_domain ON auth.users;
+COMMENT ON FUNCTION public.is_uoguelph_ca_email(text) IS
+  'True when email is a single @uoguelph.ca address (used by profiles email CHECK).';
 
-CREATE TRIGGER enforce_email_domain
-  BEFORE INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION auth.check_email_domain();
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'profiles'
+      AND c.relkind IN ('r', 'p')
+  ) THEN
+    ALTER TABLE public.profiles
+      DROP CONSTRAINT IF EXISTS profiles_email_uoguelph_ca;
+
+    ALTER TABLE public.profiles
+      ADD CONSTRAINT profiles_email_uoguelph_ca
+      CHECK (public.is_uoguelph_ca_email(email));
+  END IF;
+END $$;
