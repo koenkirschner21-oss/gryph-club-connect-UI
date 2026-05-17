@@ -124,10 +124,14 @@ export default function DashboardPage() {
       {/* ── Header ── */}
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-medium tracking-wider text-muted uppercase">
-            Gryph Club Connect
-          </p>
-          <h1 className="mt-1 text-[26px] font-semibold tracking-[-0.5px] text-[var(--text-1)]">
+          <h1
+            style={{
+              fontWeight: 700,
+              fontSize: "22px",
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
             Welcome back, {displayName}
           </h1>
           {subtitleParts.length > 0 && (
@@ -148,12 +152,6 @@ export default function DashboardPage() {
             className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-4 text-sm font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
           >
             Join with Code
-          </Link>
-          <Link
-            to="/explore"
-            className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-4 text-sm font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
-          >
-            Explore Clubs
           </Link>
         </div>
       </div>
@@ -274,6 +272,7 @@ function OverviewTab({
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="MY CLUBS"
+          accentColor="#E51937"
           value={myClubs.length}
           sublabel="Active memberships"
           icon={
@@ -284,6 +283,7 @@ function OverviewTab({
         />
         <StatCard
           label="UPCOMING"
+          accentColor="#FFC429"
           value={eventsThisMonth}
           sublabel="Events this month"
           icon={
@@ -294,6 +294,7 @@ function OverviewTab({
         />
         <StatCard
           label="TASKS"
+          accentColor="#E51937"
           value={taskCount}
           sublabel="Active tasks"
           icon={
@@ -304,6 +305,7 @@ function OverviewTab({
         />
         <StatCard
           label="UNREAD"
+          accentColor="#747676"
           value={unreadCount}
           sublabel="Notifications"
           icon={
@@ -612,21 +614,63 @@ function StatCard({
   value,
   sublabel,
   icon,
+  accentColor,
 }: {
   label: string;
   value: number;
   sublabel: string;
   icon: React.ReactNode;
+  accentColor: string;
 }) {
   return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between">
-        <p className="text-xs font-semibold tracking-wider text-muted">{label}</p>
-        <span className="text-muted">{icon}</span>
-      </div>
-      <p className="mt-2 text-3xl font-bold text-white">{value}</p>
-      <p className="mt-0.5 text-xs text-muted">{sublabel}</p>
-    </Card>
+    <div
+      style={{
+        background: "#1a1a1a",
+        borderRadius: "8px",
+        padding: "12px 16px",
+        borderLeft: `3px solid ${accentColor}`,
+        position: "relative",
+      }}
+    >
+      <span
+        className="[&_svg]:h-[18px] [&_svg]:w-[18px]"
+        style={{
+          position: "absolute",
+          top: "12px",
+          right: "12px",
+          color: accentColor,
+          fontSize: "18px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {icon}
+      </span>
+      <p
+        style={{
+          fontSize: "10px",
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+          color: "#747676",
+          margin: "0 0 6px",
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          fontSize: "2rem",
+          fontWeight: 700,
+          color: "#ffffff",
+          lineHeight: 1,
+          margin: "0 0 3px",
+        }}
+      >
+        {value}
+      </p>
+      <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>{sublabel}</p>
+    </div>
   );
 }
 
@@ -662,6 +706,82 @@ function ClubBadge({
 // ---------------------------------------------------------------------------
 // Event Card
 // ---------------------------------------------------------------------------
+const eventDateBlockStyle = {
+  backgroundColor: "#E51937",
+  borderRadius: "6px",
+  width: "40px",
+  height: "40px",
+  flexShrink: 0,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+} as const;
+
+function parseEventDate(
+  dateStr: string | null | undefined,
+): { month: string; day: string } | null {
+  if (dateStr == null || typeof dateStr !== "string") return null;
+
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T12:00:00`)
+    : new Date(trimmed);
+
+  if (Number.isNaN(d.getTime())) return null;
+
+  return {
+    month: d.toLocaleDateString("en-US", { month: "short" }).toUpperCase(),
+    day: String(d.getDate()),
+  };
+}
+
+function EventDateBlock({ date }: { date: string }) {
+  const parsed = parseEventDate(date);
+
+  return (
+    <div style={eventDateBlockStyle}>
+      {parsed ? (
+        <>
+          <span
+            style={{
+              fontSize: "9px",
+              textTransform: "uppercase",
+              color: "#ffffff",
+              lineHeight: 1.1,
+            }}
+          >
+            {parsed.month}
+          </span>
+          <span
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#ffffff",
+              lineHeight: 1.1,
+            }}
+          >
+            {parsed.day}
+          </span>
+        </>
+      ) : (
+        <span
+          style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            color: "#ffffff",
+            lineHeight: 1.1,
+          }}
+        >
+          TBD
+        </span>
+      )}
+    </div>
+  );
+}
+
 function EventCard({
   event,
   rsvpStatus,
@@ -677,6 +797,7 @@ function EventCard({
   return (
     <Link to={`/app/clubs/${event.clubId}/events`}>
       <div className="flex items-start gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-alt">
+        <EventDateBlock date={event.date} />
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-semibold text-white">{event.title}</h4>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">

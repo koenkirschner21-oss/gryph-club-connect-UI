@@ -17,6 +17,60 @@ const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
   { value: "not_going", label: "Not Going" },
 ];
 
+
+function rsvpButtonClass(value: RsvpStatus, active: boolean): string {
+  const base =
+    "cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-colors";
+  if (!active) {
+    if (value === "going") return `${base} border-[#1a4a1a] bg-transparent text-[#4ade80]`;
+    if (value === "maybe") return `${base} border-[#3a3a1a] bg-transparent text-[#FFC429]`;
+    return `${base} border-[#333333] bg-transparent text-[#888888]`;
+  }
+  if (value === "going") return `${base} border-[#1a4a1a] bg-[#0d2b0d] text-[#4ade80]`;
+  if (value === "maybe") return `${base} border-[#3a3a1a] bg-[#2a2a0d] text-[#FFC429]`;
+  return `${base} border-[#333333] bg-[#1a1a1a] text-[#888888]`;
+}
+
+function EventDateBlock({ date }: { date: string }) {
+  const parsedDate = new Date(date);
+  const monthLabel = Number.isNaN(parsedDate.getTime())
+    ? "---"
+    : parsedDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const dayLabel = Number.isNaN(parsedDate.getTime())
+    ? "?"
+    : String(parsedDate.getDate());
+
+  return (
+    <div
+      className="flex shrink-0 flex-col items-center justify-center"
+      style={{
+        width: "40px",
+        height: "40px",
+        backgroundColor: "#E51937",
+        borderRadius: "6px" }}
+    >
+      <span
+        style={{
+          fontSize: "9px",
+          textTransform: "uppercase",
+          color: "#ffffff",
+          lineHeight: 1.1 }}
+      >
+        {monthLabel}
+      </span>
+      <span
+        style={{
+          fontSize: "16px",
+          fontWeight: 700,
+          color: "#ffffff",
+          lineHeight: 1.1 }}
+      >
+        {dayLabel}
+      </span>
+    </div>
+  );
+}
+
 export default function ClubDetails() {
   const { slug } = useParams<{ slug: string }>();
   const {
@@ -28,8 +82,7 @@ export default function ClubDetails() {
     joinClub,
     leaveClub,
     isSaved,
-    toggleSaveClub,
-  } = useClubContext();
+    toggleSaveClub } = useClubContext();
   const { user } = useAuthContext();
 
   // Look up by slug first (primary), fall back to id for legacy /explore/:id links
@@ -102,28 +155,26 @@ export default function ClubDetails() {
   return (
     <>
       {/* Hero Banner */}
-      <div className="relative min-h-[200px] w-full overflow-hidden bg-page-bg sm:h-80 lg:h-96">
-        <img
-          src={club.bannerUrl ?? club.imageUrl}
-          alt=""
-          aria-hidden="true"
-          className="h-full w-full object-cover opacity-40"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-page-bg via-page-bg/60 to-transparent" />
-        <div className="hero-glow absolute inset-0" aria-hidden="true" />
-        <div className="banner-text absolute inset-0 flex items-center justify-center whitespace-nowrap text-center text-[clamp(60px,10vw,120px)] font-extrabold tracking-[-2px] text-white opacity-[0.07] select-none">
-          {club.name}
-        </div>
-      </div>
+      <div
+        className="relative min-h-[200px] w-full overflow-hidden sm:h-80 lg:h-96"
+        style={{
+          background: "linear-gradient(135deg, #1a0a0a 0%, #2d0d0d 50%, #1a0a0a 100%)",
+          borderBottom: "2px solid #E51937" }}
+      />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div
+        className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
+        style={{ backgroundColor: "#0f0f0f" }}
+      >
         {/* Club identity row — overlaps hero */}
         <div className="-mt-20 mb-10 flex flex-col gap-6 sm:-mt-24 sm:flex-row sm:items-end sm:gap-7">
           {/* Club avatar / logo */}
           <div className="relative z-10 flex-shrink-0">
             <div
-              className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border-4 border-card shadow-elevated sm:h-32 sm:w-32"
-              style={{ backgroundColor: club.brandColor ?? "var(--color-primary)" }}
+              className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border-4 shadow-elevated sm:h-32 sm:w-32"
+              style={{
+                backgroundColor: club.brandColor ?? "#E51937",
+                borderColor: "#1a1a1a" }}
             >
               {club.logoUrl ? (
                 <img
@@ -142,7 +193,16 @@ export default function ClubDetails() {
           {/* Name + meta */}
           <div className="relative z-10 flex-1 pb-1">
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-white shadow">
+              <span
+                className="inline-block"
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "20px",
+                  padding: "4px 12px",
+                  fontSize: "12px" }}
+              >
                 {club.category}
               </span>
               {club.isVerified && (
@@ -154,7 +214,16 @@ export default function ClubDetails() {
                 </span>
               )}
               {joined && (
-                <span className="inline-block rounded-full bg-green-600 px-3 py-0.5 text-xs font-semibold text-white shadow">
+                <span
+                  className="inline-block"
+                  style={{
+                    backgroundColor: "#0d2b0d",
+                    color: "#4ade80",
+                    border: "1px solid #1a4a1a",
+                    borderRadius: "20px",
+                    padding: "4px 12px",
+                    fontSize: "12px" }}
+                >
                   Joined
                 </span>
               )}
@@ -164,11 +233,17 @@ export default function ClubDetails() {
                 </span>
               )}
             </div>
-            <h1 className="text-3xl font-extrabold text-white sm:text-4xl lg:text-5xl leading-tight">
+            <h1
+              style={{
+                fontWeight: 700,
+                fontSize: "28px",
+                color: "#ffffff",
+                lineHeight: 1.2 }}
+            >
               {club.name}
             </h1>
             {/* Quick meta */}
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" style={{ color: "#747676" }}>
               {club.memberCount > 0 && (
                 <span className="flex items-center gap-1">
                   <svg
@@ -220,7 +295,10 @@ export default function ClubDetails() {
           <div className="relative z-10 flex flex-shrink-0 flex-wrap items-center gap-3">
             {user && joined && (
               <Link to={`/app/clubs/${club.id}`}>
-                <Button size="lg" variant="secondary">
+                <Button
+                  size="lg"
+                  className="!border-0 !bg-[#E51937] !text-white hover:!bg-[#c41430]"
+                >
                   Open Workspace
                 </Button>
               </Link>
@@ -250,7 +328,13 @@ export default function ClubDetails() {
               variant={joined ? "outline" : pending ? "outline" : "primary"}
               disabled={joining}
               onClick={handleJoinOrLeave}
-              className="focus-visible:shadow-[var(--shadow-red)]"
+              className={
+                joined
+                  ? "!border !border-[#E51937] !bg-transparent !text-[#E51937] hover:!bg-[#E51937]/10"
+                  : pending
+                    ? "!border !border-[#333333] !bg-transparent !text-[#888888]"
+                    : "!border-0 !bg-[#E51937] !text-white hover:!bg-[#c41430]"
+              }
             >
               {joining
                 ? "Joining…"
@@ -285,15 +369,39 @@ export default function ClubDetails() {
           {/* Main Content */}
           <div className="space-y-8 col-span-full lg:col-span-2">
             {/* Description */}
-            <Card className="p-7">
-              <h2 className="mb-4 text-xl font-bold text-white">About</h2>
-              <div className="divider-gold mb-5" aria-hidden="true" />
-              <p className="text-base leading-7 text-muted">{club.longDescription ?? club.description}</p>
-            </Card>
+            <div
+              className="p-7"
+              style={{
+                backgroundColor: "#1a1a1a",
+                border: "1px solid #222222",
+                borderRadius: "8px" }}
+            >
+              <h2
+                className="mb-4"
+                style={{
+                  fontWeight: 600,
+                  fontSize: "15px",
+                  color: "#ffffff" }}
+              >
+                About
+              </h2>
+              <p
+                className="text-base leading-7"
+                style={{ color: "#cccccc", lineHeight: 1.6 }}
+              >
+                {club.longDescription ?? club.description}
+              </p>
+            </div>
 
             {/* Events */}
             <div>
-              <h2 className="mb-4 text-xl font-bold text-white">
+              <h2
+                className="mb-4"
+                style={{
+                  fontWeight: 600,
+                  fontSize: "15px",
+                  color: "#ffffff" }}
+              >
                 Upcoming Events
               </h2>
               {upcomingEvents.length > 0 ? (
@@ -302,24 +410,29 @@ export default function ClubDetails() {
                     const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
                     const myStatus = myRsvps[event.id];
                     return (
-                    <Card key={event.id} className="p-5">
+                    <div
+                      key={event.id}
+                      style={{
+                        backgroundColor: "#1a1a1a",
+                        border: "1px solid #242424",
+                        borderRadius: "8px",
+                        padding: "16px" }}
+                    >
                       <div className="flex items-start gap-4">
-                        {/* Date badge */}
-                        <div className="flex-shrink-0 rounded-xl bg-primary/10 px-3 py-2 text-center min-w-[3.5rem]">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                            {new Date(event.date).toLocaleDateString("en-US", {
-                              month: "short",
-                            })}
-                          </p>
-                          <p className="text-2xl font-extrabold leading-none text-primary">
-                            {new Date(event.date).getDate()}
-                          </p>
-                        </div>
+                        <EventDateBlock date={event.date} />
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-white">
+                          <h3
+                            style={{
+                              fontSize: "14px",
+                              fontWeight: 600,
+                              color: "#ffffff" }}
+                          >
                             {event.title}
                           </h3>
-                          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-muted">
+                          <p
+                            className="mt-1 flex flex-wrap items-center gap-x-2 text-sm"
+                            style={{ color: "#555555" }}
+                          >
                             <span className="flex items-center gap-1">
                               <svg
                                 className="h-3.5 w-3.5"
@@ -357,7 +470,12 @@ export default function ClubDetails() {
                             </span>
                           </p>
                           {event.description && (
-                            <p className="mt-2 text-sm text-muted">
+                            <p
+                              className="mt-2 text-sm"
+                              style={{
+                                color: "#cccccc",
+                                lineHeight: 1.6 }}
+                            >
                               {event.description}
                             </p>
                           )}
@@ -387,15 +505,10 @@ export default function ClubDetails() {
                                       ? removeRsvp(event.id)
                                       : setRsvp(event.id, opt.value)
                                   }
-                                  className={`cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
-                                    myStatus === opt.value
-                                      ? opt.value === "going"
-                                        ? "border-green-500 bg-green-500/20 text-green-400"
-                                        : opt.value === "maybe"
-                                          ? "border-yellow-500 bg-yellow-500/20 text-yellow-400"
-                                          : "border-red-500 bg-red-500/20 text-red-400"
-                                      : "border-border bg-surface text-muted hover:bg-surface-alt hover:text-white"
-                                  }`}
+                                  className={rsvpButtonClass(
+                                    opt.value,
+                                    myStatus === opt.value,
+                                  )}
                                 >
                                   {opt.label}
                                 </button>
@@ -404,7 +517,7 @@ export default function ClubDetails() {
                           )}
                         </div>
                       </div>
-                    </Card>
+                    </div>
                     );
                   })}
                 </div>
@@ -438,13 +551,25 @@ export default function ClubDetails() {
           {/* Sidebar */}
           <div className="col-span-full space-y-6 lg:col-span-1">
             {/* Details Card */}
-            <Card className="overflow-hidden shadow-elevated">
-              <div className="border-b border-border bg-surface-alt px-5 py-4">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-muted">
-                  Club Details
-                </h3>
-              </div>
-              <dl className="divide-y divide-border">
+            <div
+              style={{
+                backgroundColor: "#1a1a1a",
+                border: "1px solid #222222",
+                borderRadius: "8px",
+                padding: "16px" }}
+            >
+              <h3
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: "#555555",
+                  marginBottom: "12px" }}
+              >
+                Club Details
+              </h3>
+              <dl className="space-y-4">
                 {club.memberCount > 0 && (
                 <div className="flex items-start gap-3 px-5 py-3.5">
                   <svg
@@ -462,10 +587,10 @@ export default function ClubDetails() {
                     />
                   </svg>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    <dt className="uppercase" style={{ fontSize: "10px", color: "#555555", letterSpacing: "0.1em" }}>
                       Members
                     </dt>
-                    <dd className="mt-0.5 text-sm font-medium text-white">
+                    <dd className="mt-0.5 text-sm" style={{ color: "#d0d0d0", fontSize: "13px" }}>
                       {club.memberCount} members
                     </dd>
                   </div>
@@ -488,10 +613,10 @@ export default function ClubDetails() {
                     />
                   </svg>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    <dt className="uppercase" style={{ fontSize: "10px", color: "#555555", letterSpacing: "0.1em" }}>
                       Meeting Schedule
                     </dt>
-                    <dd className="mt-0.5 text-sm font-medium text-white">
+                    <dd className="mt-0.5 text-sm" style={{ color: "#d0d0d0", fontSize: "13px" }}>
                       {club.meetingSchedule}
                     </dd>
                   </div>
@@ -520,10 +645,10 @@ export default function ClubDetails() {
                     />
                   </svg>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    <dt className="uppercase" style={{ fontSize: "10px", color: "#555555", letterSpacing: "0.1em" }}>
                       Location
                     </dt>
-                    <dd className="mt-0.5 text-sm font-medium text-white">
+                    <dd className="mt-0.5 text-sm" style={{ color: "#d0d0d0", fontSize: "13px" }}>
                       {club.location}
                     </dd>
                   </div>
@@ -546,13 +671,13 @@ export default function ClubDetails() {
                     />
                   </svg>
                   <div>
-                    <dt className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    <dt className="uppercase" style={{ fontSize: "10px", color: "#555555", letterSpacing: "0.1em" }}>
                       Contact
                     </dt>
                     <dd className="mt-0.5 text-sm">
                       <a
                         href={`mailto:${club.contactEmail}`}
-                        className="font-medium text-primary hover:underline"
+                        className="font-medium hover:underline" style={{ color: "#E51937", fontSize: "13px" }}
                       >
                         {club.contactEmail}
                       </a>
@@ -561,7 +686,7 @@ export default function ClubDetails() {
                 </div>
                 )}
               </dl>
-            </Card>
+            </div>
 
             {/* Tags Card */}
             {normalizeTags(club.tags).length > 0 && (

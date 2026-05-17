@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -8,9 +8,100 @@ import {
   isPrivilegedClubRole,
   isTopClubModeratorRole,
 } from "../../lib/clubRoles";
-import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
+
+const inviteCardStyle: CSSProperties = {
+  backgroundColor: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "8px",
+  padding: "16px",
+};
+
+const memberCardStyle: CSSProperties = {
+  backgroundColor: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "8px",
+  padding: "14px 16px",
+};
+
+const avatarStyle: CSSProperties = {
+  width: "40px",
+  height: "40px",
+  borderRadius: "50%",
+  border: "2px solid #2a2a2a",
+};
+
+function roleBadgeStyle(role: MemberRole | string): CSSProperties {
+  const base: CSSProperties = {
+    borderRadius: "20px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    textTransform: "capitalize",
+    flexShrink: 0,
+  };
+  switch (role) {
+    case "owner":
+      return {
+        ...base,
+        backgroundColor: "#2a1500",
+        color: "#FFC429",
+        border: "1px solid #3a2500",
+      };
+    case "admin":
+      return {
+        ...base,
+        backgroundColor: "#2a0a0a",
+        color: "#E51937",
+        border: "1px solid #3a1a1a",
+      };
+    case "exec":
+      return {
+        ...base,
+        backgroundColor: "#1a1a2a",
+        color: "#6b7cff",
+        border: "1px solid #2a2a3a",
+      };
+    default:
+      return {
+        ...base,
+        backgroundColor: "#111111",
+        color: "#555555",
+        border: "1px solid #222222",
+      };
+  }
+}
+
+function MemberAvatar({
+  avatarUrl,
+  name,
+}: {
+  avatarUrl?: string | null;
+  name: string;
+}) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt=""
+        className="shrink-0 object-cover"
+        style={avatarStyle}
+      />
+    );
+  }
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center text-sm font-bold"
+      style={{
+        ...avatarStyle,
+        backgroundColor: "#1f1f1f",
+        color: "#E51937",
+      }}
+    >
+      {name.charAt(0).toUpperCase()}
+    </div>
+  );
+}
 
 export default function ClubMembersPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -33,13 +124,6 @@ export default function ClubMembersPage() {
   const sortedMembers = [...members].sort(
     (a, b) => roleOrder[a.role] - roleOrder[b.role],
   );
-
-  const roleColors: Record<string, string> = {
-    owner: "bg-violet-500/10 text-violet-400",
-    admin: "bg-primary/10 text-primary",
-    exec: "bg-yellow-500/10 text-yellow-400",
-    member: "bg-surface-alt text-muted",
-  };
 
   async function handlePromote(memberId: string) {
     setActionLoading(memberId);
@@ -175,10 +259,23 @@ export default function ClubMembersPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">Members</h1>
-        <p className="text-sm text-muted">
+        <h1
+          style={{
+            fontWeight: 700,
+            fontSize: "22px",
+            color: "#ffffff",
+          }}
+        >
+          Members
+        </h1>
+        <p
+          style={{
+            fontSize: "13px",
+            color: "#555555",
+          }}
+        >
           {members.length} member{members.length !== 1 ? "s" : ""} in{" "}
           {club?.name ?? "this club"}
         </p>
@@ -186,31 +283,57 @@ export default function ClubMembersPage() {
 
       {/* Join code section */}
       {club?.joinCode && (
-        <Card className="mb-6 p-4">
+        <div className="mb-6" style={inviteCardStyle}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-white">
+              <h3
+                style={{
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  color: "#ffffff",
+                }}
+              >
                 Invite Code
               </h3>
-              <p className="text-xs text-muted">
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "#555555",
+                }}
+              >
                 Share this code to invite new members
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="rounded-lg bg-surface-alt px-4 py-2 font-mono text-lg font-bold tracking-widest text-white">
+              <div
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  color: "#FFC429",
+                  letterSpacing: "0.15em",
+                }}
+              >
                 {club.joinCode}
               </div>
               <button
                 type="button"
                 onClick={handleCopyCode}
-                className="cursor-pointer rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-white"
+                className="cursor-pointer border-none transition-colors hover:bg-[#cc0020]"
+                style={{
+                  backgroundColor: "#E51937",
+                  color: "#ffffff",
+                  borderRadius: "6px",
+                  padding: "7px 16px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                }}
                 title="Copy to clipboard"
               >
                 {copied ? "✓ Copied" : "Copy"}
               </button>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* Feedback message */}
@@ -230,30 +353,43 @@ export default function ClubMembersPage() {
       {/* Pending requests section — admin/exec only */}
       {canUseMembershipQueue && pendingMembers.length > 0 && (
         <div className="mb-6">
-          <h2 className="mb-3 text-lg font-semibold text-white">
+          <h2
+            className="mb-3"
+            style={{
+              fontWeight: 600,
+              fontSize: "15px",
+              color: "#ffffff",
+            }}
+          >
             Pending Requests ({pendingMembers.length})
           </h2>
           <div className="space-y-2">
             {pendingMembers.map((member) => (
-              <Card key={member.id} className="p-4">
+              <div key={member.id} style={memberCardStyle}>
                 <div className="flex items-center gap-3">
-                  {member.avatarUrl ? (
-                    <img
-                      src={member.avatarUrl}
-                      alt=""
-                      className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-yellow-500/10 text-sm font-bold text-yellow-400">
-                      {(member.fullName ?? member.email ?? "U")[0].toUpperCase()}
-                    </div>
-                  )}
+                  <MemberAvatar
+                    avatarUrl={member.avatarUrl}
+                    name={member.fullName ?? member.email ?? "U"}
+                  />
                   <div className="min-w-0 flex-1">
-                    <span className="truncate font-medium text-white">
+                    <span
+                      className="block truncate"
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "14px",
+                        color: "#ffffff",
+                      }}
+                    >
                       {member.fullName ?? "Unknown"}
                     </span>
                     {member.program && (
-                      <p className="truncate text-xs text-muted">
+                      <p
+                        className="truncate"
+                        style={{
+                          fontSize: "12px",
+                          color: "#747676",
+                        }}
+                      >
                         {member.program}
                       </p>
                     )}
@@ -277,7 +413,7 @@ export default function ClubMembersPage() {
                     </Button>
                   </div>
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
         </div>
@@ -285,52 +421,72 @@ export default function ClubMembersPage() {
 
       {/* Members list */}
       {sortedMembers.length === 0 ? (
-        <Card className="p-8 text-center">
-          <p className="text-sm text-muted">
+        <div
+          className="p-8 text-center"
+          style={{
+            backgroundColor: "#1a1a1a",
+            border: "1px solid #242424",
+            borderRadius: "8px",
+          }}
+        >
+          <p style={{ fontSize: "14px", color: "#555555" }}>
             No members yet. Share the join code to invite people.
           </p>
-        </Card>
+        </div>
       ) : (
         <div className="space-y-2">
           {sortedMembers.map((member) => (
-            <Card key={member.id} className="p-4">
+            <div key={member.id} style={memberCardStyle}>
               <div className="flex items-center gap-3">
-                {/* Avatar */}
-                {member.avatarUrl ? (
-                  <img
-                    src={member.avatarUrl}
-                    alt=""
-                    className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                    {(member.fullName ?? member.email ?? "U")[0].toUpperCase()}
-                  </div>
-                )}
+                <MemberAvatar
+                  avatarUrl={member.avatarUrl}
+                  name={member.fullName ?? member.email ?? "U"}
+                />
 
-                {/* Member info */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate font-medium text-white">
+                    <span
+                      className="truncate"
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "14px",
+                        color: "#ffffff",
+                      }}
+                    >
                       {member.fullName ?? "Unknown"}
                     </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${roleColors[member.role]}`}
-                    >
-                      {member.role}
-                    </span>
+                    <span style={roleBadgeStyle(member.role)}>{member.role}</span>
                   </div>
-                  <p className="truncate text-xs text-muted">{member.email}</p>
+                  <p
+                    className="truncate"
+                    style={{
+                      fontSize: "12px",
+                      color: "#555555",
+                    }}
+                  >
+                    {member.email}
+                  </p>
                   {member.program && (
-                    <p className="truncate text-xs text-muted">
+                    <p
+                      className="truncate"
+                      style={{
+                        fontSize: "12px",
+                        color: "#747676",
+                      }}
+                    >
                       {member.program}
                     </p>
                   )}
                 </div>
 
-                {/* Admin actions or join date */}
                 {renderAdminActions(member.role, member.id, member.userId) ?? (
-                  <span className="flex-shrink-0 text-xs text-muted">
+                  <span
+                    className="ml-auto shrink-0 text-right"
+                    style={{
+                      fontSize: "11px",
+                      color: "#555555",
+                    }}
+                  >
                     Joined{" "}
                     {new Date(member.joinedAt).toLocaleDateString("en-US", {
                       month: "short",
@@ -339,7 +495,7 @@ export default function ClubMembersPage() {
                   </span>
                 )}
               </div>
-            </Card>
+            </div>
           ))}
         </div>
       )}

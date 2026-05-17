@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
@@ -10,23 +10,78 @@ import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 
-const priorityColors: Record<TaskPriority, string> = {
-  low: "bg-green-500/10 text-green-400",
-  medium: "bg-yellow-500/10 text-yellow-400",
-  high: "bg-red-500/10 text-red-400",
-};
 
 const statusLabels: Record<TaskStatus, string> = {
   todo: "To Do",
   in_progress: "In Progress",
-  done: "Done",
-};
+  done: "Done" };
 
-const statusColors: Record<TaskStatus, string> = {
-  todo: "bg-blue-500/10 text-blue-400",
-  in_progress: "bg-yellow-500/10 text-yellow-400",
-  done: "bg-green-500/10 text-green-400",
-};
+const statusAccent: Record<TaskStatus, string> = {
+  todo: "#747676",
+  in_progress: "#FFC429",
+  done: "#22c55e" };
+
+function priorityBadgeStyle(priority: TaskPriority): CSSProperties {
+  const base: CSSProperties = {
+    borderRadius: "20px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    textTransform: "capitalize" };
+  if (priority === "high") {
+    return {
+      ...base,
+      backgroundColor: "#2a0a0a",
+      color: "#E51937",
+      border: "1px solid #3a1a1a" };
+  }
+  if (priority === "low") {
+    return {
+      ...base,
+      backgroundColor: "#111111",
+      color: "#555555",
+      border: "1px solid #222222" };
+  }
+  return {
+    ...base,
+    backgroundColor: "#2a1f00",
+    color: "#FFC429",
+    border: "1px solid #3a2f00" };
+}
+
+function statusBadgeStyle(status: TaskStatus): CSSProperties {
+  const base: CSSProperties = {
+    borderRadius: "20px",
+    padding: "3px 10px",
+    fontSize: "11px" };
+  if (status === "todo") {
+    return {
+      ...base,
+      backgroundColor: "#1a1a2a",
+      color: "#6b7cff",
+      border: "1px solid #2a2a3a" };
+  }
+  if (status === "in_progress") {
+    return {
+      ...base,
+      backgroundColor: "#2a1f00",
+      color: "#FFC429",
+      border: "1px solid #3a2f00" };
+  }
+  return {
+    ...base,
+    backgroundColor: "#0d2b0d",
+    color: "#4ade80",
+    border: "1px solid #1a4a1a" };
+}
+
+function filterTabClass(isActive: boolean) {
+  const base =
+    "cursor-pointer rounded-md border px-[14px] py-1.5 text-[13px] transition-colors";
+  if (isActive) {
+    return `${base} border-[#E51937] bg-[#E51937] text-white`;
+  }
+  return `${base} border-[#222222] bg-[#1a1a1a] text-[#777777] hover:bg-[#242424] hover:text-[#cccccc]`;
+}
 
 export default function ClubTasksPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -37,8 +92,7 @@ export default function ClubTasksPage() {
     error: loadError,
     createTask,
     updateTask,
-    deleteTask,
-  } = useClubTasks(clubId);
+    deleteTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
 
   const role = getUserRole(clubId ?? "");
@@ -92,24 +146,21 @@ export default function ClubTasksPage() {
         description: description.trim(),
         priority,
         assignedTo: assignedTo || null,
-        dueDate: dueDate || null,
-      });
+        dueDate: dueDate || null });
     } else {
       ok = await createTask({
         title: title.trim(),
         description: description.trim(),
         priority,
         assignedTo: assignedTo || undefined,
-        dueDate: dueDate || undefined,
-      });
+        dueDate: dueDate || undefined });
     }
 
     setSaving(false);
     if (ok) {
       setFeedback({
         type: "success",
-        text: editingId ? "Task updated." : "Task created.",
-      });
+        text: editingId ? "Task updated." : "Task created." });
     } else {
       setFeedback({ type: "error", text: "Failed to save task." });
     }
@@ -163,11 +214,22 @@ export default function ClubTasksPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6">
+    <div className="p-4 sm:p-6" style={{ backgroundColor: "#0f0f0f" }}>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Tasks</h1>
-          <p className="text-sm text-muted">
+          <h1
+            style={{
+              fontWeight: 700,
+              fontSize: "22px",
+              color: "#ffffff" }}
+          >
+            Tasks
+          </h1>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#555555" }}
+          >
             {todoCt} to do · {inProgressCt} in progress · {doneCt} done
           </p>
         </div>
@@ -177,6 +239,8 @@ export default function ClubTasksPage() {
               if (showForm) resetForm();
               else setShowForm(true);
             }}
+            className="!border-0 !bg-[#E51937] !px-[18px] !py-[9px] !text-[13px] !font-medium !text-white hover:!bg-[#cc0020]"
+            style={{ borderRadius: "6px" }}
           >
             {showForm ? "Cancel" : "+ New Task"}
           </Button>
@@ -308,11 +372,8 @@ export default function ClubTasksPage() {
             key={s}
             type="button"
             onClick={() => setFilter(s)}
-            className={`cursor-pointer rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-              filter === s
-                ? "bg-primary text-white"
-                : "bg-surface text-muted hover:bg-surface-alt"
-            }`}
+            className={filterTabClass(filter === s)}
+            style={{ }}
           >
             {s === "all"
               ? `All (${tasks.length})`
@@ -347,32 +408,49 @@ export default function ClubTasksPage() {
               new Date(task.dueDate) < new Date();
 
             return (
-              <Card key={task.id} className="p-4">
+              <div
+                key={task.id}
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  border: "1px solid #242424",
+                  borderRadius: "8px",
+                  padding: "16px",
+                  borderLeft: `3px solid ${statusAccent[task.status]}` }}
+              >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3
-                        className={`font-medium ${task.status === "done" ? "text-muted line-through" : "text-white"}`}
+                        className={task.status === "done" ? "line-through" : ""}
+                        style={{
+                          fontWeight: 500,
+                          fontSize: "14px",
+                          color: task.status === "done" ? "#555555" : "#ffffff" }}
                       >
                         {task.title}
                       </h3>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityColors[task.priority]}`}
-                      >
+                      <span style={priorityBadgeStyle(task.priority)}>
                         {task.priority}
                       </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[task.status]}`}
-                      >
+                      <span style={statusBadgeStyle(task.status)}>
                         {statusLabels[task.status]}
                       </span>
                     </div>
                     {task.description && (
-                      <p className="mt-1 text-sm text-muted">
+                      <p
+                        className="mt-1"
+                        style={{
+                          fontSize: "13px",
+                          color: "#777777",
+                          lineHeight: 1.5 }}
+                      >
                         {task.description}
                       </p>
                     )}
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
+                    <div
+                      className="mt-2 flex flex-wrap items-center gap-3 text-xs"
+                      style={{ color: "#555555" }}
+                    >
                       {task.assigneeName && (
                         <span>👤 {task.assigneeName}</span>
                       )}
@@ -381,8 +459,7 @@ export default function ClubTasksPage() {
                           📅{" "}
                           {new Date(task.dueDate).toLocaleDateString("en-US", {
                             month: "short",
-                            day: "numeric",
-                          })}
+                            day: "numeric" })}
                           {isOverdue && " (overdue)"}
                         </span>
                       )}
@@ -397,7 +474,14 @@ export default function ClubTasksPage() {
                           e.target.value as TaskStatus,
                         )
                       }
-                      className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-white"
+                      className="cursor-pointer rounded-md border"
+                      style={{
+                        backgroundColor: "#111111",
+                        borderColor: "#333333",
+                        color: "#cccccc",
+                        borderRadius: "6px",
+                        padding: "6px 10px",
+                        fontSize: "12px" }}
                       aria-label="Change task status"
                     >
                       <option value="todo">To Do</option>
@@ -406,25 +490,35 @@ export default function ClubTasksPage() {
                     </select>
                     {isPrivileged && (
                       <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <button
+                          type="button"
                           onClick={() => startEdit(task)}
+                          className="cursor-pointer rounded-md border bg-transparent transition-colors hover:text-[#cccccc]"
+                          style={{
+                            borderColor: "#333333",
+                            color: "#888888",
+                            padding: "5px 12px",
+                            fontSize: "12px" }}
                         >
                           Edit
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleDelete(task.id)}
+                          className="cursor-pointer rounded-md border bg-transparent transition-colors hover:bg-[#2a0a0a]"
+                          style={{
+                            borderColor: "#3a1a1a",
+                            color: "#E51937",
+                            padding: "5px 12px",
+                            fontSize: "12px" }}
                         >
                           Delete
-                        </Button>
+                        </button>
                       </>
                     )}
                   </div>
                 </div>
-              </Card>
+              </div>
             );
           })}
         </div>

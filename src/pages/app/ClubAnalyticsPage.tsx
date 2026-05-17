@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubContext } from "../../context/useClubContext";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
-import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
 
 interface ClubAnalytics {
@@ -18,6 +26,81 @@ interface ClubAnalytics {
   eventRsvps: number;
 }
 
+interface MessageActivityPoint {
+  label: string;
+  count: number;
+}
+
+const PAGE_BG = "#0f0f0f";
+const CARD_BG = "#1a1a1a";
+const CARD_BORDER = "#242424";
+const MUTED = "#555555";
+const ACCENT_RED = "#E51937";
+const ACCENT_GOLD = "#FFC429";
+const ACCENT_GRAY = "#747676";
+const SECTION_ACCENTS = [ACCENT_RED, ACCENT_GOLD, ACCENT_GRAY] as const;
+
+const pageStyle: CSSProperties = {
+  backgroundColor: PAGE_BG,
+  minHeight: "100%",
+  padding: "16px 24px",
+};
+
+const sectionLabelStyle: CSSProperties = {
+  fontSize: "10px",
+  fontWeight: 600,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+  color: MUTED,
+  marginBottom: "12px",
+};
+
+const statCardStyle = (accentIndex: number): CSSProperties => ({
+  backgroundColor: CARD_BG,
+  border: `1px solid ${CARD_BORDER}`,
+  borderLeft: `3px solid ${SECTION_ACCENTS[accentIndex] ?? ACCENT_GRAY}`,
+  borderRadius: "8px",
+  padding: "12px 16px",
+});
+
+const chartCardStyle: CSSProperties = {
+  backgroundColor: CARD_BG,
+  border: `1px solid ${CARD_BORDER}`,
+  borderRadius: "8px",
+  overflow: "hidden",
+  marginTop: "32px",
+};
+
+function buildMessageActivity(
+  rows: { created_at: string }[],
+  days = 14,
+): MessageActivityPoint[] {
+  const buckets = new Map<string, number>();
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    buckets.set(d.toISOString().slice(0, 10), 0);
+  }
+
+  for (const row of rows) {
+    const key = row.created_at.slice(0, 10);
+    if (buckets.has(key)) {
+      buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+  }
+
+  return Array.from(buckets.entries()).map(([date, count]) => {
+    const d = new Date(`${date}T12:00:00`);
+    const label = d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+    return { label, count };
+  });
+}
+
 export default function ClubAnalyticsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { getUserRole } = useClubContext();
@@ -25,6 +108,9 @@ export default function ClubAnalyticsPage() {
   const isPrivileged = isPrivilegedClubRole(role);
 
   const [analytics, setAnalytics] = useState<ClubAnalytics | null>(null);
+  const [messageActivity, setMessageActivity] = useState<MessageActivityPoint[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,11 +123,12 @@ export default function ClubAnalyticsPage() {
       const sevenDaysAgo = new Date(
         Date.now() - 7 * 24 * 60 * 60 * 1000,
       ).toISOString();
-      // Use local date for upcoming events comparison
+      const fourteenDaysAgo = new Date(
+        Date.now() - 14 * 24 * 60 * 60 * 1000,
+      ).toISOString();
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-      // Fetch event IDs for this club first (needed for RSVP count)
       const { data: eventRows } = await supabase
         .from("events")
         .select("id")
@@ -57,6 +144,7 @@ export default function ClubAnalyticsPage() {
         upcomingEventsRes,
         postsRes,
         messagesRes,
+        messageTimelineRes,
         tasksRes,
         completedTasksRes,
         rsvpsRes,
@@ -90,6 +178,11 @@ export default function ClubAnalyticsPage() {
           .select("id", { count: "exact", head: true })
           .eq("club_id", clubId),
         supabase
+          .from("messages")
+          .select("created_at")
+          .eq("club_id", clubId)
+          .gte("created_at", fourteenDaysAgo),
+        supabase
           .from("tasks")
           .select("id", { count: "exact", head: true })
           .eq("club_id", clubId),
@@ -103,7 +196,10 @@ export default function ClubAnalyticsPage() {
               .from("event_rsvps")
               .select("id", { count: "exact", head: true })
               .in("event_id", eventIds)
-          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
+          : Promise.resolve({ count: 0, error: null } as {
+              count: number | null;
+              error: null;
+            }),
       ]);
 
       if (cancelled) return;
@@ -135,6 +231,15 @@ export default function ClubAnalyticsPage() {
         completedTasks: completedTasksRes.count ?? 0,
         eventRsvps: rsvpsRes.count ?? 0,
       });
+
+      if (!messageTimelineRes.error) {
+        setMessageActivity(
+          buildMessageActivity(
+            (messageTimelineRes.data ?? []) as { created_at: string }[],
+          ),
+        );
+      }
+
       setLoading(false);
     }
 
@@ -145,21 +250,34 @@ export default function ClubAnalyticsPage() {
     };
   }, [clubId]);
 
+  const taskCompletionRate = useMemo(() => {
+    if (!analytics || analytics.totalTasks === 0) return 0;
+    return Math.round(
+      (analytics.completedTasks / analytics.totalTasks) * 100,
+    );
+  }, [analytics]);
+
   if (!isPrivileged) {
     return (
-      <div className="p-6">
-        <Card className="p-8 text-center">
-          <p className="text-sm text-muted">
-            Only admins and execs can view analytics.
-          </p>
-        </Card>
+      <div style={pageStyle}>
+        <p style={{ fontSize: "13px", color: MUTED, textAlign: "center" }}>
+          Only admins and execs can view analytics.
+        </p>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
+      <div
+        style={{
+          ...pageStyle,
+          display: "flex",
+          minHeight: "40vh",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <Spinner label="Loading analytics…" />
       </div>
     );
@@ -167,26 +285,28 @@ export default function ClubAnalyticsPage() {
 
   if (!analytics) {
     return (
-      <div className="p-6">
-        <Card className="p-8 text-center">
-          <p className="text-sm text-red-400">
-            {error ?? "Failed to load analytics."}
-          </p>
-        </Card>
+      <div style={pageStyle}>
+        <p style={{ fontSize: "13px", color: ACCENT_RED, textAlign: "center" }}>
+          {error ?? "Failed to load analytics."}
+        </p>
       </div>
     );
   }
 
-  const taskCompletionRate =
-    analytics.totalTasks > 0
-      ? Math.round((analytics.completedTasks / analytics.totalTasks) * 100)
-      : 0;
-
   return (
-    <div className="p-4 sm:p-6">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">Club Analytics</h1>
-        <p className="text-sm text-muted">
+    <div style={pageStyle}>
+      <div style={{ marginBottom: "24px" }}>
+        <h1
+          style={{
+            fontWeight: 700,
+            fontSize: "22px",
+            color: "#ffffff",
+            margin: 0,
+          }}
+        >
+          Club Analytics
+        </h1>
+        <p style={{ fontSize: "13px", color: MUTED, margin: "4px 0 0" }}>
           Overview of your club&apos;s activity and growth.
         </p>
       </div>
@@ -194,125 +314,198 @@ export default function ClubAnalyticsPage() {
       {error && (
         <div
           role="alert"
-          className="mb-4 rounded-lg bg-primary/10 px-4 py-3 text-sm font-medium text-primary"
+          style={{
+            marginBottom: "16px",
+            borderRadius: "8px",
+            border: `1px solid ${ACCENT_RED}`,
+            backgroundColor: "rgba(229, 25, 55, 0.1)",
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: ACCENT_RED,
+          }}
         >
           {error}
         </div>
       )}
 
-      {/* Membership section */}
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-        Membership
-      </h2>
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <h2 style={sectionLabelStyle}>Membership</h2>
+      <div
+        className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        style={{ marginBottom: "32px" }}
+      >
         <StatCard
-          icon="👥"
+          accentIndex={0}
           label="Total Members"
           value={analytics.totalMembers}
         />
         <StatCard
-          icon="🆕"
+          accentIndex={1}
           label="New (Last 7 Days)"
           value={analytics.newMembersLast7Days}
-          highlight={analytics.newMembersLast7Days > 0}
+          valueColor="#4ade80"
         />
       </div>
 
-      {/* Events section */}
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-        Events
-      </h2>
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <h2 style={sectionLabelStyle}>Events</h2>
+      <div
+        className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        style={{ marginBottom: "32px" }}
+      >
         <StatCard
-          icon="📅"
+          accentIndex={0}
           label="Total Events"
           value={analytics.totalEvents}
         />
         <StatCard
-          icon="⏰"
+          accentIndex={1}
           label="Upcoming"
           value={analytics.upcomingEvents}
         />
         <StatCard
-          icon="✋"
+          accentIndex={2}
           label="Total RSVPs"
           value={analytics.eventRsvps}
         />
       </div>
 
-      {/* Activity section */}
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-        Activity
-      </h2>
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <h2 style={sectionLabelStyle}>Activity</h2>
+      <div
+        className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        style={{ marginBottom: "32px" }}
+      >
         <StatCard
-          icon="📢"
+          accentIndex={0}
           label="Announcements"
           value={analytics.totalPosts}
         />
         <StatCard
-          icon="💬"
+          accentIndex={1}
           label="Messages"
           value={analytics.totalMessages}
         />
       </div>
 
-      {/* Tasks section */}
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-        Tasks
-      </h2>
+      <h2 style={sectionLabelStyle}>Tasks</h2>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
-          icon="📋"
+          accentIndex={0}
           label="Total Tasks"
           value={analytics.totalTasks}
         />
         <StatCard
-          icon="✅"
+          accentIndex={1}
           label="Completed"
           value={analytics.completedTasks}
         />
         <StatCard
-          icon="📊"
+          accentIndex={2}
           label="Completion Rate"
           value={`${taskCompletionRate}%`}
-          highlight={taskCompletionRate >= 75}
+          valueColor={ACCENT_GOLD}
         />
+      </div>
+
+      <div style={chartCardStyle}>
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: 0,
+            padding: "16px 16px 0",
+          }}
+        >
+          Message Activity
+        </h3>
+        <div style={{ padding: "16px" }}>
+          <div
+            style={{
+              width: "100%",
+              height: "200px",
+              backgroundColor: PAGE_BG,
+              overflow: "hidden",
+            }}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={messageActivity}
+                margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                style={{ background: PAGE_BG }}
+              >
+                <CartesianGrid stroke="#1e1e1e" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: MUTED, fontSize: 11 }}
+                  axisLine={{ stroke: "#1e1e1e" }}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: MUTED, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: CARD_BG,
+                    border: `1px solid ${CARD_BORDER}`,
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    color: "#ffffff",
+                  }}
+                  labelStyle={{ color: MUTED }}
+                  cursor={{ fill: "rgba(229, 25, 55, 0.08)" }}
+                />
+                <Bar
+                  dataKey="count"
+                  fill={ACCENT_RED}
+                  radius={[4, 4, 0, 0]}
+                  barSize={20}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Stat Card
-// ---------------------------------------------------------------------------
-
 function StatCard({
-  icon,
   label,
   value,
-  highlight,
+  accentIndex,
+  valueColor = "#ffffff",
 }: {
-  icon: string;
   label: string;
   value: number | string;
-  highlight?: boolean;
+  accentIndex: number;
+  valueColor?: string;
 }) {
   return (
-    <Card className="p-5">
-      <div className="flex items-start gap-3">
-        <span className="text-2xl">{icon}</span>
-        <div>
-          <p className="text-sm text-muted">{label}</p>
-          <p
-            className={`mt-1 text-2xl font-bold ${
-              highlight ? "text-green-400" : "text-white"
-            }`}
-          >
-            {value}
-          </p>
-        </div>
-      </div>
-    </Card>
+    <div style={statCardStyle(accentIndex)}>
+      <p
+        style={{
+          fontSize: "28px",
+          fontWeight: 700,
+          color: valueColor,
+          margin: 0,
+          lineHeight: 1.2,
+        }}
+      >
+        {value}
+      </p>
+      <p
+        style={{
+          fontSize: "12px",
+          color: MUTED,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          margin: "8px 0 0",
+        }}
+      >
+        {label}
+      </p>
+    </div>
   );
 }

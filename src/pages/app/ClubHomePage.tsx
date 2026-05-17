@@ -1,10 +1,145 @@
+import type { CSSProperties } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useClubPosts } from "../../hooks/useClubPosts";
-import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
+
+
+const sectionHeading: CSSProperties = {
+  fontWeight: 600,
+  fontSize: "15px",
+  color: "#ffffff" };
+
+function ClubStatCard({
+  label,
+  value,
+  sublabel,
+  accentColor,
+  valueIsText }: {
+  label: string;
+  value: string | number;
+  sublabel: string;
+  accentColor: string;
+  valueIsText?: boolean;
+}) {
+  return (
+    <div
+      className="relative rounded-lg px-4 py-3"
+      style={{
+        backgroundColor: "#1a1a1a",
+        borderLeft: `3px solid ${accentColor}` }}
+    >
+      <p
+        className="uppercase"
+        style={{
+          fontSize: "10px",
+          letterSpacing: "0.1em",
+          color: "#555555" }}
+      >
+        {label}
+      </p>
+      <p
+        className="mt-2"
+        style={{
+          fontSize: valueIsText ? "1.125rem" : "2rem",
+          fontWeight: 700,
+          color: "#ffffff",
+          lineHeight: 1.15 }}
+      >
+        {value}
+      </p>
+      <p
+        className="mt-0.5"
+        style={{
+          fontSize: "11px",
+          color: "#555555" }}
+      >
+        {sublabel}
+      </p>
+    </div>
+  );
+}
+
+function ClubEventCard({
+  title,
+  date,
+  time,
+  location }: {
+  title: string;
+  date: string;
+  time?: string;
+  location?: string;
+}) {
+  const parsedDate = new Date(date);
+  const monthLabel = Number.isNaN(parsedDate.getTime())
+    ? "---"
+    : parsedDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const dayLabel = Number.isNaN(parsedDate.getTime())
+    ? "?"
+    : String(parsedDate.getDate());
+  const meta = [time, location].filter(Boolean).join(" · ");
+
+  return (
+    <div
+      className="flex gap-3.5"
+      style={{
+        backgroundColor: "#1a1a1a",
+        border: "1px solid #242424",
+        borderRadius: "8px",
+        padding: "14px" }}
+    >
+      <div
+        className="flex shrink-0 flex-col items-center justify-center"
+        style={{
+          width: "40px",
+          height: "40px",
+          backgroundColor: "#E51937",
+          borderRadius: "6px" }}
+      >
+        <span
+          style={{
+            fontSize: "9px",
+            textTransform: "uppercase",
+            color: "#ffffff",
+            lineHeight: 1.1 }}
+        >
+          {monthLabel}
+        </span>
+        <span
+          style={{
+            fontSize: "16px",
+            fontWeight: 700,
+            color: "#ffffff",
+            lineHeight: 1.1 }}
+        >
+          {dayLabel}
+        </span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3
+          style={{
+            fontSize: "13px",
+            fontWeight: 500,
+            color: "#e0e0e0" }}
+        >
+          {title}
+        </h3>
+        {meta ? (
+          <p
+            className="mt-1"
+            style={{
+              fontSize: "11px",
+              color: "#555555" }}
+          >
+            {meta}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 export default function ClubHomePage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -17,8 +152,13 @@ export default function ClubHomePage() {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <div className="text-center">
-          <p className="text-lg font-semibold text-white">Club not found</p>
-          <p className="mt-1 text-sm text-muted">
+          <p
+            className="text-lg font-semibold"
+            style={{ color: "#ffffff" }}
+          >
+            Club not found
+          </p>
+          <p className="mt-1 text-sm" style={{ color: "#555555" }}>
             This club may have been removed or you don&apos;t have access.
           </p>
         </div>
@@ -31,74 +171,102 @@ export default function ClubHomePage() {
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   return (
-    <div className="p-6">
-      <h1 className="mb-1 text-xl font-bold text-white">{club.name}</h1>
-      <p className="mb-6 text-sm text-muted">{club.description}</p>
+    <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
+      <h1
+        className="mb-1"
+        style={{
+          fontWeight: 700,
+          fontSize: "1.25rem",
+          color: "#ffffff" }}
+      >
+        {club.name}
+      </h1>
+      <p className="mb-6 text-sm" style={{ color: "#747676" }}>
+        {club.description}
+      </p>
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Quick Stats */}
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">
-            Members
-          </h3>
-          <p className="text-3xl font-bold text-primary">
-            {club.memberCount}
-          </p>
-          <p className="mt-1 text-xs text-muted">Active members</p>
-        </Card>
-
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">
-            Upcoming Events
-          </h3>
-          <p className="text-3xl font-bold text-primary">
-            {eventsLoading ? "…" : upcomingEvents.length}
-          </p>
-          <p className="mt-1 text-xs text-muted">Scheduled events</p>
-        </Card>
-
-        <Card className="p-5">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">
-            Meeting
-          </h3>
-          <p className="text-lg font-semibold text-white">
-            {club.meetingSchedule || "Not set"}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            {club.location || "Location TBD"}
-          </p>
-        </Card>
+        <ClubStatCard
+          label="Members"
+          value={club.memberCount}
+          sublabel="Active members"
+          accentColor="#E51937"
+        />
+        <ClubStatCard
+          label="Upcoming Events"
+          value={eventsLoading ? "…" : upcomingEvents.length}
+          sublabel="Scheduled events"
+          accentColor="#FFC429"
+        />
+        <ClubStatCard
+          label="Meeting"
+          value={club.meetingSchedule || "Not set"}
+          sublabel={club.location || "Location TBD"}
+          accentColor="#747676"
+          valueIsText
+        />
       </div>
 
-      {/* Recent Activity — real data from announcements */}
       <div className="mt-8">
-        <h2 className="mb-4 text-lg font-bold text-white">Recent Announcements</h2>
+        <h2 className="mb-4" style={sectionHeading}>
+          Recent Announcements
+        </h2>
         {postsLoading ? (
           <div className="flex justify-center py-8">
             <Spinner label="Loading announcements…" />
           </div>
         ) : posts.length === 0 ? (
-          <Card className="p-6 text-center">
-            <p className="text-sm text-muted">
+          <div
+            className="p-6 text-center"
+            style={{
+              backgroundColor: "#1a1a1a",
+              border: "1px solid #222222",
+              borderRadius: "8px" }}
+          >
+            <p className="text-sm" style={{ color: "#555555" }}>
               No announcements yet. Check back soon!
             </p>
-          </Card>
+          </div>
         ) : (
           <div className="space-y-3">
             {posts.slice(0, 3).map((post) => (
-              <Card key={post.id} className="p-4">
-                <h3 className="font-semibold text-white">{post.title}</h3>
-                <p className="mt-1 text-xs text-muted">
+              <article
+                key={post.id}
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  border: "1px solid #242424",
+                  borderRadius: "8px",
+                  padding: "16px" }}
+              >
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#ffffff" }}
+                >
+                  {post.title}
+                </h3>
+                <p
+                  className="mt-1"
+                  style={{
+                    fontSize: "11px",
+                    color: "#555555" }}
+                >
                   {post.authorName ?? "Unknown"} ·{" "}
                   {new Date(post.createdAt).toLocaleDateString("en-US", {
                     month: "short",
-                    day: "numeric",
-                  })}
+                    day: "numeric" })}
                 </p>
-                <p className="mt-2 line-clamp-2 text-sm text-white/80">
+                <p
+                  className="mt-2 line-clamp-2"
+                  style={{
+                    fontSize: "13px",
+                    color: "#cccccc",
+                    lineHeight: 1.6 }}
+                >
                   {post.content}
                 </p>
-              </Card>
+              </article>
             ))}
             {posts.length > 3 && (
               <Link to="announcements">
@@ -111,41 +279,37 @@ export default function ClubHomePage() {
         )}
       </div>
 
-      {/* Upcoming Events */}
       <div className="mt-8">
-        <h2 className="mb-4 text-lg font-bold text-white">
+        <h2 className="mb-4" style={sectionHeading}>
           Upcoming Events
         </h2>
         {upcomingEvents.length === 0 ? (
-          <Card className="p-6 text-center">
-            <p className="text-sm text-muted">No upcoming events scheduled.</p>
+          <div
+            className="p-6 text-center"
+            style={{
+              backgroundColor: "#1a1a1a",
+              border: "1px solid #222222",
+              borderRadius: "8px" }}
+          >
+            <p className="text-sm" style={{ color: "#555555" }}>
+              No upcoming events scheduled.
+            </p>
             <Link to="events" className="mt-3 inline-block">
               <Button variant="ghost" size="sm">
                 View Events Page →
               </Button>
             </Link>
-          </Card>
+          </div>
         ) : (
           <div className="space-y-3">
             {upcomingEvents.slice(0, 3).map((event) => (
-              <Card key={event.id} className="flex items-center gap-4 p-4">
-                <div className="flex-shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-center">
-                  <p className="text-xs font-medium text-primary">
-                    {new Date(event.date).toLocaleDateString("en-US", {
-                      month: "short",
-                    })}
-                  </p>
-                  <p className="text-lg font-bold text-primary">
-                    {new Date(event.date).getDate()}
-                  </p>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-white">{event.title}</h3>
-                  <p className="text-xs text-muted">
-                    {event.time} · {event.location}
-                  </p>
-                </div>
-              </Card>
+              <ClubEventCard
+                key={event.id}
+                title={event.title}
+                date={event.date}
+                time={event.time}
+                location={event.location}
+              />
             ))}
             {upcomingEvents.length > 3 && (
               <Link to="events">

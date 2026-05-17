@@ -43,10 +43,11 @@
 /* ── Base ── */
 html {
   scroll-behavior: smooth;
+  font-family: var(--font-sans);
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.6;
   color: var(--text-1);

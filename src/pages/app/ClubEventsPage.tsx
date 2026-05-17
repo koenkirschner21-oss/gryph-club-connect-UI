@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -10,11 +10,100 @@ import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 
+
 const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
   { value: "going", label: "Going" },
   { value: "maybe", label: "Maybe" },
   { value: "not_going", label: "Not Going" },
 ];
+
+function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
+  const parsedDate = new Date(date);
+  const monthLabel = Number.isNaN(parsedDate.getTime())
+    ? "---"
+    : parsedDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const dayLabel = Number.isNaN(parsedDate.getTime())
+    ? "?"
+    : String(parsedDate.getDate());
+
+  return (
+    <div
+      className="flex shrink-0 flex-col items-center justify-center"
+      style={{
+        width: "44px",
+        height: "44px",
+        backgroundColor: muted ? "#333333" : "#E51937",
+        borderRadius: "6px" }}
+    >
+      <span
+        style={{
+          fontSize: "9px",
+          textTransform: "uppercase",
+          color: "#ffffff",
+          lineHeight: 1.1 }}
+      >
+        {monthLabel}
+      </span>
+      <span
+        style={{
+          fontSize: "18px",
+          fontWeight: 700,
+          color: "#ffffff",
+          lineHeight: 1.1 }}
+      >
+        {dayLabel}
+      </span>
+    </div>
+  );
+}
+
+function rsvpButtonStyle(value: RsvpStatus, active: boolean): CSSProperties {
+  const base: CSSProperties = {
+    borderRadius: "6px",
+    padding: "6px 14px",
+    fontSize: "12px",
+    fontWeight: 500,
+    cursor: "pointer" };
+  if (!active) {
+    return {
+      ...base,
+      backgroundColor: "#111111",
+      color: "#555555",
+      border: "1px solid #222222" };
+  }
+  if (value === "going") {
+    return {
+      ...base,
+      backgroundColor: "#0d2b0d",
+      color: "#4ade80",
+      border: "1px solid #1a4a1a" };
+  }
+  if (value === "maybe") {
+    return {
+      ...base,
+      backgroundColor: "#2a2a0d",
+      color: "#FFC429",
+      border: "1px solid #3a3a1a" };
+  }
+  return {
+    ...base,
+    backgroundColor: "#1a1a1a",
+    color: "#555555",
+    border: "1px solid #2a2a2a" };
+}
+
+const eventCardStyle: CSSProperties = {
+  backgroundColor: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "8px",
+  padding: "16px",
+  borderLeft: "3px solid #E51937" };
+
+const sectionHeadingStyle: CSSProperties = {
+  fontWeight: 600,
+  fontSize: "15px",
+  color: "#ffffff",
+  marginBottom: "12px" };
 
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -72,8 +161,7 @@ export default function ClubEventsPage() {
       description: description.trim(),
       date,
       time: time || "TBD",
-      location: location.trim() || "TBD",
-    };
+      location: location.trim() || "TBD" };
 
     let ok: boolean;
     if (editingId) {
@@ -137,11 +225,22 @@ export default function ClubEventsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Events</h1>
-          <p className="text-sm text-muted">
+          <h1
+            style={{
+              fontWeight: 700,
+              fontSize: "22px",
+              color: "#ffffff" }}
+          >
+            Events
+          </h1>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#555555" }}
+          >
             {upcomingEvents.length} upcoming event
             {upcomingEvents.length !== 1 ? "s" : ""}
           </p>
@@ -152,6 +251,8 @@ export default function ClubEventsPage() {
               if (showForm) resetForm();
               else setShowForm(true);
             }}
+            className="!border-0 !bg-[#E51937] !px-[18px] !py-[9px] !text-[13px] !font-medium !text-white hover:!bg-[#cc0020]"
+            style={{ borderRadius: "6px" }}
           >
             {showForm ? "Cancel" : "+ New Event"}
           </Button>
@@ -253,55 +354,113 @@ export default function ClubEventsPage() {
       )}
 
       {/* Upcoming Events */}
-      <h2 className="mb-3 text-lg font-bold text-white">Upcoming</h2>
+      <h2 style={sectionHeadingStyle}>Upcoming</h2>
       {upcomingEvents.length === 0 ? (
-        <Card className="mb-8 p-8 text-center">
-          <p className="text-sm text-muted">
-            No upcoming events.{" "}
-            {isPrivileged ? "Create one to get started!" : "Check back soon!"}
+        <div className="mb-8 py-12 text-center">
+          <p style={{ fontSize: "14px", color: "#555555" }}>
+            No upcoming events.
+            {isPrivileged ? (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setShowForm(true)}
+                  className="cursor-pointer border-none bg-transparent p-0 underline-offset-2 hover:underline"
+                  style={{ color: "#E51937", fontSize: "14px" }}
+                >
+                  Create your first event
+                </button>
+              </>
+            ) : (
+              " Check back soon!"
+            )}
           </p>
-        </Card>
+        </div>
       ) : (
         <div className="mb-8 space-y-3">
           {upcomingEvents.map((event) => {
             const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
             const myStatus = myRsvps[event.id];
             return (
-            <Card key={event.id} className="p-4">
+            <div key={event.id} style={eventCardStyle}>
               <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-center">
-                  <p className="text-xs font-medium text-primary">
-                    {new Date(event.date).toLocaleDateString("en-US", {
-                      month: "short",
-                    })}
-                  </p>
-                  <p className="text-xl font-bold text-primary">
-                    {new Date(event.date).getDate()}
-                  </p>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-white">{event.title}</h3>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {event.time} · {event.location}
-                  </p>
+                <EventDateBlock date={event.date} />
+                <div className="min-w-0 flex-1">
+                  <h3
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "15px",
+                      color: "#ffffff" }}
+                  >
+                    {event.title}
+                  </h3>
+                  <div
+                    className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
+                    style={{
+                      fontSize: "12px",
+                      color: "#555555" }}
+                  >
+                    <span className="flex items-center gap-1">
+                      <svg
+                        className="h-3.5 w-3.5 shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      {event.time}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <svg
+                        className="h-3.5 w-3.5 shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                      {event.location}
+                    </span>
+                  </div>
                   {event.description && (
-                    <p className="mt-2 text-sm text-muted">
+                    <p
+                      className="mt-2"
+                      style={{
+                        fontSize: "13px",
+                        color: "#777777",
+                        lineHeight: 1.5 }}
+                    >
                       {event.description}
                     </p>
                   )}
 
                   {/* RSVP counts */}
-                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
-                    <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-green-400">
-                      {c.going} going
-                    </span>
-                    <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-yellow-400">
-                      {c.maybe} maybe
-                    </span>
-                    <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-red-400">
-                      {c.not_going} not going
-                    </span>
-                  </div>
+                  <p className="mt-3" style={{ fontSize: "12px" }}>
+                    <span style={{ color: "#4ade80" }}>{c.going} going</span>
+                    <span style={{ color: "#555555" }}> · </span>
+                    <span style={{ color: "#FFC429" }}>{c.maybe} maybe</span>
+                    <span style={{ color: "#555555" }}> · </span>
+                    <span style={{ color: "#555555" }}>{c.not_going} not going</span>
+                  </p>
 
                   {/* RSVP buttons */}
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -310,15 +469,7 @@ export default function ClubEventsPage() {
                         key={opt.value}
                         type="button"
                         onClick={() => handleRsvp(event.id, opt.value)}
-                        className={`cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
-                          myStatus === opt.value
-                            ? opt.value === "going"
-                              ? "border-green-500 bg-green-500/20 text-green-400"
-                              : opt.value === "maybe"
-                                ? "border-yellow-500 bg-yellow-500/20 text-yellow-400"
-                                : "border-red-500 bg-red-500/20 text-red-400"
-                            : "border-border bg-surface text-muted hover:bg-surface-alt hover:text-white"
-                        }`}
+                        style={rsvpButtonStyle(opt.value, myStatus === opt.value)}
                       >
                         {opt.label}
                       </button>
@@ -406,7 +557,7 @@ export default function ClubEventsPage() {
                   </div>
                 )}
               </div>
-            </Card>
+            </div>
             );
           })}
         </div>
@@ -415,26 +566,68 @@ export default function ClubEventsPage() {
       {/* Past Events */}
       {pastEvents.length > 0 && (
         <>
-          <h2 className="mb-3 text-lg font-bold text-white">Past Events</h2>
+          <h2 style={sectionHeadingStyle}>Past Events</h2>
           <div className="space-y-3 opacity-60">
             {pastEvents.map((event) => (
-              <Card key={event.id} className="p-4">
+              <div key={event.id} style={eventCardStyle}>
                 <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 rounded-lg bg-surface-alt px-3 py-2 text-center">
-                    <p className="text-xs font-medium text-muted">
-                      {new Date(event.date).toLocaleDateString("en-US", {
-                        month: "short",
-                      })}
-                    </p>
-                    <p className="text-xl font-bold text-muted">
-                      {new Date(event.date).getDate()}
-                    </p>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-white">{event.title}</h3>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {event.time} · {event.location}
-                    </p>
+                  <EventDateBlock date={event.date} muted />
+                  <div className="min-w-0 flex-1">
+                    <h3
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "15px",
+                        color: "#ffffff" }}
+                    >
+                      {event.title}
+                    </h3>
+                    <div
+                      className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
+                      style={{
+                        fontSize: "12px",
+                        color: "#555555" }}
+                    >
+                      <span className="flex items-center gap-1">
+                        <svg
+                          className="h-3.5 w-3.5 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        {event.time}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <svg
+                          className="h-3.5 w-3.5 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                        {event.location}
+                      </span>
+                    </div>
                   </div>
                   {isPrivileged && (
                     <Button
@@ -446,7 +639,7 @@ export default function ClubEventsPage() {
                     </Button>
                   )}
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
         </>

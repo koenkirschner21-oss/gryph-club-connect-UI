@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubPosts } from "../../hooks/useClubPosts";
@@ -7,6 +7,59 @@ import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
+
+const PAGE_BG = "#0f0f0f";
+const CARD_BG = "#1a1a1a";
+const CARD_BORDER = "#242424";
+const MUTED = "#555555";
+const ACCENT_RED = "#E51937";
+
+const pageStyle: CSSProperties = {
+  backgroundColor: PAGE_BG,
+  minHeight: "100%",
+  padding: "24px",
+};
+
+const newPostButtonStyle: CSSProperties = {
+  backgroundColor: ACCENT_RED,
+  color: "#ffffff",
+  border: "none",
+  borderRadius: "6px",
+  padding: "9px 18px",
+  fontWeight: 500,
+  fontSize: "14px",
+  cursor: "pointer",
+};
+
+const cancelButtonStyle: CSSProperties = {
+  backgroundColor: "transparent",
+  border: "1px solid #333333",
+  color: "#888888",
+  borderRadius: "6px",
+  padding: "9px 18px",
+  fontWeight: 500,
+  fontSize: "14px",
+  cursor: "pointer",
+};
+
+const postCardStyle: CSSProperties = {
+  backgroundColor: CARD_BG,
+  border: `1px solid ${CARD_BORDER}`,
+  borderLeft: `3px solid ${ACCENT_RED}`,
+  borderRadius: "8px",
+  padding: "20px",
+};
+
+const deleteButtonStyle: CSSProperties = {
+  backgroundColor: "transparent",
+  border: "1px solid #3a1a1a",
+  color: ACCENT_RED,
+  borderRadius: "6px",
+  padding: "5px 12px",
+  fontSize: "12px",
+  cursor: "pointer",
+  flexShrink: 0,
+};
 
 export default function ClubAnnouncementsPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -58,30 +111,57 @@ export default function ClubAnnouncementsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
+      <div
+        style={{
+          ...pageStyle,
+          display: "flex",
+          minHeight: "40vh",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <Spinner label="Loading announcements…" />
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div style={pageStyle}>
+      <div
+        style={{
+          marginBottom: "24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "16px",
+        }}
+      >
         <div>
-          <h1 className="text-xl font-bold text-white">Announcements</h1>
-          <p className="text-sm text-muted">
+          <h1
+            style={{
+              fontWeight: 700,
+              fontSize: "22px",
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
+            Announcements
+          </h1>
+          <p style={{ fontSize: "13px", color: MUTED, margin: "4px 0 0" }}>
             {posts.length} post{posts.length !== 1 ? "s" : ""}
           </p>
         </div>
         {isPrivileged && (
-          <Button
+          <button
+            type="button"
+            style={showForm ? cancelButtonStyle : newPostButtonStyle}
             onClick={() => {
               if (showForm) resetForm();
               else setShowForm(true);
             }}
           >
             {showForm ? "Cancel" : "+ New Post"}
-          </Button>
+          </button>
         )}
       </div>
 
@@ -144,45 +224,86 @@ export default function ClubAnnouncementsPage() {
 
       {/* Posts list */}
       {posts.length === 0 ? (
-        <Card className="p-8 text-center">
-          <p className="text-sm text-muted">
-            No announcements yet.{" "}
-            {isPrivileged
-              ? "Create one to keep your members informed!"
-              : "Check back soon!"}
-          </p>
-        </Card>
+        <p
+          style={{
+            textAlign: "center",
+            color: MUTED,
+            fontSize: "14px",
+            padding: "48px 16px",
+          }}
+        >
+          No announcements yet.{" "}
+          {isPrivileged ? (
+            <span style={{ color: ACCENT_RED }}>Create your first announcement</span>
+          ) : (
+            "Check back soon!"
+          )}
+        </p>
       ) : (
-        <div className="space-y-3">
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {posts.map((post) => (
-            <Card key={post.id} className="p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-white">{post.title}</h3>
-                  <p className="mt-1 text-xs text-muted">
-                    {post.authorName ?? "Unknown"} ·{" "}
+            <article key={post.id} style={postCardStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "16px",
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h3
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "16px",
+                      color: "#ffffff",
+                      margin: 0,
+                    }}
+                  >
+                    {post.title}
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: MUTED,
+                      marginTop: "4px",
+                      marginBottom: 0,
+                    }}
+                  >
+                    <span style={{ color: "#888888", fontWeight: 500 }}>
+                      {post.authorName ?? "Unknown"}
+                    </span>
+                    {" · "}
                     {new Date(post.createdAt).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
                     })}
                   </p>
-                  <p className="mt-3 whitespace-pre-wrap text-sm text-white/80">
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      color: "#cccccc",
+                      lineHeight: 1.6,
+                      marginTop: "12px",
+                      marginBottom: 0,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
                     {post.content}
                   </p>
                 </div>
                 {isPrivileged && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex-shrink-0 text-red-400 hover:text-red-300"
+                  <button
+                    type="button"
+                    style={deleteButtonStyle}
                     onClick={() => handleDelete(post.id)}
                   >
                     Delete
-                  </Button>
+                  </button>
                 )}
               </div>
-            </Card>
+            </article>
           ))}
         </div>
       )}

@@ -4,6 +4,7 @@ import { useClubContext } from "../../context/useClubContext";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import Spinner from "../ui/Spinner";
 
+
 const workspaceLinks = [
   { to: "", label: "Dashboard", end: true },
   { to: "announcements", label: "Announcements", end: false },
@@ -12,6 +13,16 @@ const workspaceLinks = [
   { to: "events", label: "Events", end: false },
   { to: "members", label: "Members", end: false },
 ];
+
+function workspaceNavClass(isActive: boolean) {
+  const base =
+    "flex items-center gap-2 rounded-md border-l-[3px] py-[10px] pr-4 text-[13px] font-normal transition-colors";
+  if (isActive) {
+    return `${base} border-l-[#E51937] bg-[#1f1f1f] pl-[13px] text-white`;
+  }
+  return `${base} border-l-transparent pl-4 text-[#777777] hover:bg-[#1a1a1a] hover:text-[#cccccc]`;
+}
+
 
 export default function WorkspaceLayout() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -43,39 +54,50 @@ export default function WorkspaceLayout() {
   return (
     <div className="flex min-h-[calc(100vh-4rem)]">
       {/* Sidebar */}
-      <aside className="hidden w-64 flex-shrink-0 border-r border-border bg-card md:block">
+      <aside
+        className="hidden w-64 flex-shrink-0 border-r md:block"
+        style={{ backgroundColor: "#111111", borderColor: "#1e1e1e" }}
+      >
         <div className="flex h-full flex-col">
           {/* Club header */}
-          <div className="border-b border-border p-4">
+          <div className="border-b p-4" style={{ borderColor: "#1e1e1e" }}>
             <div className="flex items-center gap-3">
               <img
                 src={club.imageUrl}
                 alt=""
-                className="h-10 w-10 rounded-lg bg-surface-alt object-cover"
+                className="h-10 w-10 object-cover"
+                style={{ borderRadius: "8px", backgroundColor: "#1a1a1a" }}
               />
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-sm font-bold text-white">
+                <h2
+                  className="truncate"
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "14px",
+                    color: "#ffffff" }}
+                >
                   {club.name}
                 </h2>
-                <p className="truncate text-xs text-muted">{club.category}</p>
+                <p
+                  className="truncate"
+                  style={{
+                    fontSize: "12px",
+                    color: "#555555" }}
+                >
+                  {club.category}
+                </p>
               </div>
             </div>
           </div>
 
           {/* Nav links */}
-          <nav className="flex-1 space-y-1 p-3" aria-label="Workspace navigation">
+          <nav className="flex-1 space-y-0.5 p-3" aria-label="Workspace navigation">
             {workspaceLinks.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
                 end={link.end}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted hover:bg-surface-alt hover:text-white"
-                  }`
-                }
+                className={({ isActive }) => workspaceNavClass(isActive)}
               >
                 {link.label}
               </NavLink>
@@ -84,25 +106,13 @@ export default function WorkspaceLayout() {
               <>
                 <NavLink
                   to="analytics"
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted hover:bg-surface-alt hover:text-white"
-                    }`
-                  }
+                  className={({ isActive }) => workspaceNavClass(isActive)}
                 >
                   Analytics
                 </NavLink>
                 <NavLink
                   to="settings"
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted hover:bg-surface-alt hover:text-white"
-                    }`
-                  }
+                  className={({ isActive }) => workspaceNavClass(isActive)}
                 >
                   Settings
                 </NavLink>
@@ -111,13 +121,16 @@ export default function WorkspaceLayout() {
           </nav>
 
           {/* Public profile link */}
-          <div className="border-t border-border p-3">
+          <div className="border-t p-3" style={{ borderColor: "#1e1e1e" }}>
             <NavLink
               to={`/clubs/${club.slug}`}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-white"
+              className="flex items-center gap-2 rounded-md px-4 py-2 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
+              style={{
+                fontSize: "12px",
+                color: "#555555" }}
             >
               <svg
-                className="h-4 w-4"
+                className="h-4 w-4 shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
