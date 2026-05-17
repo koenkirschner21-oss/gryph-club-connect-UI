@@ -1,9 +1,18 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import Button from "../components/ui/Button";
-import FormInput from "../components/ui/FormInput";
 import { useAuthContext } from "../context/useAuthContext";
 import { showToast } from "../components/ui/Toast";
+import {
+  AuthField,
+  AUTH_RED,
+  AUTH_RED_HOVER,
+  cardStyle,
+  footerTextStyle,
+  headingStyle,
+  linkClassName,
+  pageStyle,
+  primaryButtonStyle,
+} from "./authPageStyles";
 
 export default function Login() {
   const { signIn } = useAuthContext();
@@ -27,61 +36,68 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8">
-        <h1 className="mb-6 text-center text-2xl font-extrabold text-white">
-          Log In
-        </h1>
+    <div style={pageStyle}>
+      <div style={cardStyle}>
+        <h1 style={headingStyle}>Log In</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <fieldset disabled={loading} className="space-y-4">
-          <FormInput
-            id="email"
-            label="Email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-          />
+        <form onSubmit={handleSubmit} noValidate>
+          <fieldset
+            disabled={loading}
+            style={{ border: "none", margin: 0, padding: 0 }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <AuthField
+                id="email"
+                label="Email"
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
 
-          <FormInput
-            id="password"
-            label="Password"
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-          />
+              <AuthField
+                id="password"
+                label="Password"
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
           </fieldset>
 
-          <Button
+          <button
             type="submit"
             disabled={loading}
-            className="w-full"
+            style={{
+              ...primaryButtonStyle,
+              marginTop: "20px",
+              opacity: loading ? 0.7 : 1,
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) e.currentTarget.style.backgroundColor = AUTH_RED_HOVER;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = AUTH_RED;
+            }}
           >
             {loading ? "Logging in…" : "Log In"}
-          </Button>
+          </button>
         </form>
 
-        <p className="mt-3 text-center text-sm text-muted">
-          <Link
-            to="/forgot-password"
-            className="font-medium text-primary hover:text-primary-dark"
-          >
+        <p style={{ ...footerTextStyle, marginTop: "12px" }}>
+          <Link to="/forgot-password" className={linkClassName}>
             Forgot password?
           </Link>
         </p>
 
-        <p className="mt-6 text-center text-sm text-muted">
+        <p style={{ ...footerTextStyle, marginTop: "24px" }}>
           Don&apos;t have an account?{" "}
-          <Link
-            to="/signup"
-            className="font-medium text-primary hover:text-primary-dark"
-          >
+          <Link to="/signup" className={linkClassName}>
             Sign Up
           </Link>
         </p>

@@ -12,17 +12,13 @@ export default function Home() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-page-bg">
-        <div className="hero-overlay absolute inset-0" aria-hidden="true" />
-        <div className="hero-glow absolute inset-0" aria-hidden="true" />
-        <div className="hero-focal-glow absolute inset-0" aria-hidden="true" />
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-8"
-          style={{
-            backgroundImage:
-              "url(/assets/placeholders/hero-placeholder.jpg)",
-          }}
-        />
+      <section
+        className="relative overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(135deg, #1a0505 0%, #2d0808 60%, #1a0505 100%)",
+        }}
+      >
         <div className="relative mx-auto max-w-7xl px-4 py-28 sm:px-6 sm:py-36 lg:px-8">
           <div className="flex items-center gap-12 lg:gap-16">
             {/* Left: text content */}
@@ -34,7 +30,15 @@ export default function Home() {
                   alt="Gryph Club Connect"
                   className="h-11 w-auto sm:h-12"
                 />
-                <span className="text-sm font-bold uppercase tracking-[0.15em] text-secondary">
+                <span
+                  style={{
+                    color: "#E51937",
+                    fontSize: "11px",
+                    letterSpacing: "0.15em",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                  }}
+                >
                   University of Guelph
                 </span>
               </div>
@@ -48,13 +52,45 @@ export default function Home() {
                 like-minded Gryphons. Your university experience starts here.
               </p>
               <div className="mt-10 flex flex-wrap gap-4">
-                <Link to="/explore">
-                  <Button size="lg">Explore Clubs</Button>
+                <Link
+                  to="/explore"
+                  style={{
+                    display: "inline-block",
+                    backgroundColor: "#E51937",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "12px 28px",
+                    fontWeight: 600,
+                    fontSize: "15px",
+                    textDecoration: "none",
+                  }}
+                >
+                  Explore Clubs
                 </Link>
-                <Link to="/explore">
-                  <Button variant="outline" size="lg">
-                    Learn More
-                  </Button>
+                <Link
+                  to="/explore"
+                  style={{
+                    display: "inline-block",
+                    backgroundColor: "transparent",
+                    border: "2px solid #E51937",
+                    color: "#E51937",
+                    borderRadius: "6px",
+                    padding: "12px 28px",
+                    fontWeight: 600,
+                    fontSize: "15px",
+                    textDecoration: "none",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "#E51937";
+                    e.currentTarget.style.color = "#ffffff";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                    e.currentTarget.style.color = "#E51937";
+                  }}
+                >
+                  Learn More
                 </Link>
               </div>
             </div>
@@ -99,17 +135,27 @@ export default function Home() {
       </section>
 
       {/* Stats Section */}
-      <section className="border-t border-b border-border bg-card shadow-elevated">
+      <section style={{ backgroundColor: "#0f0f0f" }}>
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 py-14 sm:px-6 lg:grid-cols-4 lg:px-8">
           {[
             { value: "200+", label: "Active Clubs" },
             { value: "5,000+", label: "Student Members" },
             { value: "50+", label: "Categories" },
             { value: "100+", label: "Events Monthly" },
-          ].map((stat) => (
+          ].map((stat, index) => (
             <div key={stat.label} className="text-center">
-              <p className="text-4xl font-extrabold text-primary">{stat.value}</p>
-              <p className="mt-2 text-sm font-medium text-muted">{stat.label}</p>
+              <p
+                className="text-4xl font-extrabold"
+                style={{ color: index % 2 === 0 ? "#E51937" : "#FFC429" }}
+              >
+                {stat.value}
+              </p>
+              <p
+                className="mt-2 text-sm font-medium"
+                style={{ color: "#747676" }}
+              >
+                {stat.label}
+              </p>
             </div>
           ))}
         </div>

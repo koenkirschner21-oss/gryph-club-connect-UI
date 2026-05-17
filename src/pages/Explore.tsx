@@ -1,13 +1,133 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, type CSSProperties } from "react";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { useUserInterests } from "../hooks/useUserInterests";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
-import SearchBar from "../components/ui/SearchBar";
 import ClubCard from "../components/ui/ClubCard";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
+
+const PAGE_BG = "#0f0f0f";
+const ACCENT_RED = "#E51937";
+const ACCENT_GOLD = "#FFC429";
+const MUTED = "#555555";
+
+function ExploreSearchBar({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative w-full">
+      <svg
+        className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2"
+        style={{ color: MUTED }}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+        />
+      </svg>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        style={{
+          backgroundColor: "#1a1a1a",
+          border: "1px solid #2a2a2a",
+          borderRadius: "8px",
+          padding: "12px 16px 12px 44px",
+          color: "#ffffff",
+          fontSize: "14px",
+          width: "100%",
+          boxSizing: "border-box",
+          outline: "none",
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = ACCENT_RED;
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = "#2a2a2a";
+        }}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer rounded-full p-1"
+          style={{ color: MUTED, background: "transparent", border: "none" }}
+          aria-label="Clear search"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function categoryTabStyle(active: boolean): CSSProperties {
+  return active
+    ? {
+        backgroundColor: ACCENT_RED,
+        color: "#ffffff",
+        border: `1px solid ${ACCENT_RED}`,
+        borderRadius: "6px",
+        padding: "6px 14px",
+        fontSize: "13px",
+        cursor: "pointer",
+      }
+    : {
+        backgroundColor: "#1a1a1a",
+        border: "1px solid #222222",
+        color: "#777777",
+        borderRadius: "6px",
+        padding: "6px 14px",
+        fontSize: "13px",
+        cursor: "pointer",
+      };
+}
+
+function FeaturedSectionHeading({ title }: { title: string }) {
+  return (
+    <div className="mb-8 flex items-center gap-2">
+      <svg
+        style={{ width: 20, height: 20, color: ACCENT_GOLD, flexShrink: 0 }}
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+      </svg>
+      <h2
+        style={{
+          fontWeight: 700,
+          fontSize: "20px",
+          color: "#ffffff",
+          margin: 0,
+          borderLeft: `3px solid ${ACCENT_GOLD}`,
+          paddingLeft: "12px",
+        }}
+      >
+        {title}
+      </h2>
+    </div>
+  );
+}
 
 /** Pick a contrasting text class for an arbitrary hex background. */
 function contrastText(hex: string | undefined): string {
@@ -210,12 +330,12 @@ export default function Explore() {
   return (
     <>
       {/* ──────────── Hero Section ──────────── */}
-      <section className="relative overflow-hidden bg-page-bg">
-        {/* Layered warm gradient */}
-        <div className="hero-overlay absolute inset-0" aria-hidden="true" />
-        <div className="hero-glow absolute inset-0" aria-hidden="true" />
-        <div className="hero-focal-glow absolute inset-0" aria-hidden="true" />
-
+      <section
+        className="relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #1a0505 0%, #2d0808 50%, #1a0505 100%)",
+        }}
+      >
         <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-36">
           <div className="flex items-center gap-12 lg:gap-16">
             {/* Left: text content */}
@@ -227,11 +347,17 @@ export default function Explore() {
                   className="h-10 w-auto sm:h-11"
                 />
               </div>
-              <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]">
+              <h1
+                className="text-5xl tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]"
+                style={{ fontWeight: 700 }}
+              >
                 <span className="text-white/60">Discover Your</span>{" "}
-                <span className="text-[var(--gold)]">Club</span>
+                <span style={{ color: ACCENT_GOLD }}>Club</span>
               </h1>
-              <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
+              <p
+                className="mt-6 max-w-xl leading-relaxed"
+                style={{ color: "#cccccc", fontSize: "16px" }}
+              >
                 Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
                 organizations — from academics and athletics to arts and culture.
                 Find your people and get involved.
@@ -274,7 +400,7 @@ export default function Explore() {
 
           {/* Search bar — more prominent */}
           <div className="mt-10 max-w-2xl">
-            <SearchBar
+            <ExploreSearchBar
               value={search}
               onChange={setSearch}
               placeholder="Search clubs by name, tag, or keyword…"
@@ -284,18 +410,24 @@ export default function Explore() {
           {/* Quick stats */}
           {clubs.length > 0 && (
             <div className="mt-8 flex flex-wrap gap-8 text-sm">
-              <span className="text-muted">
-                <strong className="text-2xl font-bold text-white">{clubs.length}</strong>{" "}
-                <span className="ml-1">clubs</span>
+              <span>
+                <strong style={{ fontWeight: 700, color: "#ffffff", fontSize: "1.5rem" }}>
+                  {clubs.length}
+                </strong>{" "}
+                <span style={{ color: "#747676", marginLeft: "4px" }}>clubs</span>
               </span>
-              <span className="text-muted">
-                <strong className="text-2xl font-bold text-white">{categories.length - 1}</strong>{" "}
-                <span className="ml-1">categories</span>
+              <span>
+                <strong style={{ fontWeight: 700, color: "#ffffff", fontSize: "1.5rem" }}>
+                  {categories.length - 1}
+                </strong>{" "}
+                <span style={{ color: "#747676", marginLeft: "4px" }}>categories</span>
               </span>
               {featuredClubs.length > 0 && (
-                <span className="text-muted">
-                  <strong className="text-2xl font-bold text-white">{featuredClubs.length}</strong>{" "}
-                  <span className="ml-1">featured</span>
+                <span>
+                  <strong style={{ fontWeight: 700, color: "#ffffff", fontSize: "1.5rem" }}>
+                    {featuredClubs.length}
+                  </strong>{" "}
+                  <span style={{ color: "#747676", marginLeft: "4px" }}>featured</span>
                 </span>
               )}
             </div>
@@ -306,23 +438,12 @@ export default function Explore() {
 
       {/* ──────────── Featured Clubs ──────────── */}
       {!loading && featuredClubs.length > 0 && !hasActiveFilters && (
-        <section className="border-t border-border bg-surface-alt/50">
+        <section style={{ backgroundColor: PAGE_BG, borderTop: "1px solid #222222" }}>
           <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-            <div className="mb-8 flex items-center gap-3">
-              <svg
-                className="h-5 w-5 text-secondary"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              <h2 className="text-xl font-bold text-white">Featured Clubs</h2>
-              <div className="divider-gold ml-2" aria-hidden="true" />
-            </div>
+            <FeaturedSectionHeading title="Featured Clubs" />
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {featuredClubs.map((club) => (
-                <ClubCard key={club.id} club={club} variant="compact" />
+                <ClubCard key={club.id} club={club} variant="explore" featured />
               ))}
             </div>
           </div>
@@ -331,7 +452,7 @@ export default function Explore() {
 
       {/* ──────────── Verified Clubs ──────────── */}
       {!loading && spotlightClubs.length > 0 && !hasActiveFilters && (
-        <section className="border-t border-border bg-card">
+        <section style={{ backgroundColor: PAGE_BG, borderTop: "1px solid #222222" }}>
           <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
             <div className="mb-8 flex items-center gap-3">
               <svg
@@ -361,7 +482,13 @@ export default function Explore() {
       )}
 
       {/* ──────────── Filter Bar ──────────── */}
-      <section className="sticky top-16 z-30 border-t border-b border-border bg-page-bg/95 backdrop-blur supports-[backdrop-filter]:bg-page-bg/80">
+      <section
+        className="sticky top-16 z-30 border-t border-b backdrop-blur supports-[backdrop-filter]"
+        style={{
+          borderColor: "#222222",
+          backgroundColor: "rgba(15, 15, 15, 0.95)",
+        }}
+      >
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -371,11 +498,7 @@ export default function Explore() {
                     key={cat}
                     type="button"
                     onClick={() => setActiveCategory(cat)}
-                    className={`filter-chip ${
-                      activeCategory === cat
-                        ? "filter-chip-active"
-                        : "filter-chip-inactive"
-                    }`}
+                    style={categoryTabStyle(activeCategory === cat)}
                   >
                     {cat}
                   </button>
@@ -417,7 +540,10 @@ export default function Explore() {
 
       {/* ──────────── Discovery Sections ──────────── */}
       {!loading && !hasActiveFilters && (
-        <div className="mx-auto max-w-7xl px-4 pt-10 sm:px-6 lg:px-8">
+        <div
+          className="mx-auto max-w-7xl px-4 pt-10 sm:px-6 lg:px-8"
+          style={{ backgroundColor: PAGE_BG }}
+        >
           {/* Recommended for You */}
           {recommendedClubs.length > 0 && (
             <section className="mb-12">
@@ -430,7 +556,7 @@ export default function Explore() {
               </div>
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {recommendedClubs.map((club) => (
-                  <ClubCard key={club.id} club={club} variant="compact" />
+                  <ClubCard key={club.id} club={club} variant="explore" />
                 ))}
               </div>
             </section>
@@ -448,7 +574,7 @@ export default function Explore() {
               </div>
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {trendingClubs.map((club) => (
-                  <ClubCard key={club.id} club={club} variant="compact" />
+                  <ClubCard key={club.id} club={club} variant="explore" />
                 ))}
               </div>
             </section>
@@ -466,7 +592,7 @@ export default function Explore() {
               </div>
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {newClubs.map((club) => (
-                  <ClubCard key={club.id} club={club} variant="compact" />
+                  <ClubCard key={club.id} club={club} variant="explore" />
                 ))}
               </div>
             </section>
@@ -475,7 +601,10 @@ export default function Explore() {
       )}
 
       {/* ──────────── Main Results ──────────── */}
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <div
+        className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8"
+        style={{ backgroundColor: PAGE_BG }}
+      >
         {/* Error banner */}
         {error && (
           <div
@@ -525,7 +654,7 @@ export default function Explore() {
             {/* Grid */}
             <div className="grid items-stretch gap-7 sm:grid-cols-2 lg:grid-cols-3">
               {filteredClubs.map((club) => (
-                <ClubCard key={club.id} club={club} />
+                <ClubCard key={club.id} club={club} variant="explore" />
               ))}
             </div>
           </>

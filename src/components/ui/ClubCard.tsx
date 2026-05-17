@@ -7,10 +7,18 @@ import { useClubContext } from "../../context/useClubContext";
 interface ClubCardProps {
   club: Club;
   /** When true, renders a wider horizontal layout for spotlight/featured sections. */
-  variant?: "default" | "compact";
+  variant?: "default" | "compact" | "explore";
+  /** Explore featured row: red top border */
+  featured?: boolean;
 }
 
-export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
+const EXPLORE_RED = "#E51937";
+
+export default function ClubCard({
+  club,
+  variant = "default",
+  featured = false,
+}: ClubCardProps) {
   const { isSaved, toggleSaveClub, isJoined } = useClubContext();
   const saved = isSaved(club.id);
   const joined = isJoined(club.id);
@@ -18,6 +26,163 @@ export default function ClubCard({ club, variant = "default" }: ClubCardProps) {
   const accent = club.brandColor ?? "var(--color-primary)";
   const displayDescription = club.shortDescription || club.description;
   const tags = normalizeTags(club.tags);
+
+  if (variant === "explore") {
+    return (
+      <Link to={`/clubs/${club.slug}`} className="group block h-full focus:outline-none">
+        <div
+          style={{
+            backgroundColor: "#1a1a1a",
+            border: "1px solid #242424",
+            borderRadius: "10px",
+            padding: "16px",
+            borderTop: featured ? `2px solid ${EXPLORE_RED}` : "1px solid #242424",
+            height: "100%",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "8px",
+                backgroundColor: "#2a2a2a",
+                color: "#888888",
+                fontSize: "14px",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                overflow: "hidden",
+              }}
+            >
+              {club.logoUrl ? (
+                <img
+                  src={club.logoUrl}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: "8px",
+                  }}
+                />
+              ) : (
+                <span aria-hidden="true">{getClubInitials(club)}</span>
+              )}
+            </div>
+
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <h3
+                  style={{
+                    fontWeight: 600,
+                    fontSize: "14px",
+                    color: "#ffffff",
+                    margin: 0,
+                    lineHeight: 1.3,
+                  }}
+                  className="line-clamp-2"
+                >
+                  {club.name}
+                </h3>
+                {club.isVerified && (
+                  <svg
+                    style={{ width: 16, height: 16, flexShrink: 0, color: EXPLORE_RED }}
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-label="Verified club"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                )}
+              </div>
+              <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    backgroundColor: "#111111",
+                    border: "1px solid #222222",
+                    color: "#747676",
+                    borderRadius: "20px",
+                    padding: "3px 10px",
+                    fontSize: "11px",
+                  }}
+                >
+                  {club.category}
+                </span>
+                {club.memberCount > 0 && (
+                  <span style={{ fontSize: "11px", color: "#555555" }}>
+                    {club.memberCount} members
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleSaveClub(club.id);
+              }}
+              aria-label={saved ? "Unsave club" : "Save club"}
+              className="flex-shrink-0 cursor-pointer rounded-full p-1.5 transition-colors hover:text-[#FFC429]"
+              style={{ color: "#555555", background: "transparent", border: "none" }}
+            >
+              <svg
+                className="h-4 w-4"
+                fill={saved ? "currentColor" : "none"}
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <p
+            className="line-clamp-2"
+            style={{
+              fontSize: "12px",
+              color: "#555555",
+              lineHeight: 1.5,
+              marginTop: "12px",
+              marginBottom: 0,
+              flex: 1,
+            }}
+          >
+            {displayDescription}
+          </p>
+
+          {joined && (
+            <span
+              style={{
+                marginTop: "10px",
+                alignSelf: "flex-start",
+                fontSize: "11px",
+                color: "#4ade80",
+              }}
+            >
+              Joined
+            </span>
+          )}
+        </div>
+      </Link>
+    );
+  }
 
   return (
     <Link to={`/clubs/${club.slug}`} className="group block focus:outline-none">

@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
-import FormInput from "../../components/ui/FormInput";
-import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
 import { showToast } from "../../components/ui/Toast";
 
@@ -22,6 +20,113 @@ const EMPTY_PROFILE: ProfileData = {
   program: "",
   avatar_url: "",
 };
+
+const PAGE_BG = "#0f0f0f";
+const CARD_BG = "#1a1a1a";
+const CARD_BORDER = "#242424";
+const MUTED = "#555555";
+const ACCENT_RED = "#E51937";
+
+const pageStyle: CSSProperties = {
+  backgroundColor: PAGE_BG,
+  minHeight: "100%",
+  padding: "40px 24px",
+  maxWidth: "72rem",
+  margin: "0 auto",
+};
+
+const cardStyle: CSSProperties = {
+  backgroundColor: CARD_BG,
+  border: `1px solid ${CARD_BORDER}`,
+  borderRadius: "12px",
+  padding: "32px",
+  marginTop: "32px",
+  display: "grid",
+  gap: "24px",
+};
+
+const labelStyle: CSSProperties = {
+  fontSize: "12px",
+  fontWeight: 500,
+  color: "#888888",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  marginBottom: "6px",
+  display: "block",
+};
+
+const inputStyle: CSSProperties = {
+  backgroundColor: "#111111",
+  border: "1px solid #2a2a2a",
+  borderRadius: "6px",
+  padding: "10px 14px",
+  color: "#ffffff",
+  fontSize: "14px",
+  width: "100%",
+  boxSizing: "border-box",
+  outline: "none",
+};
+
+const saveButtonStyle: CSSProperties = {
+  backgroundColor: ACCENT_RED,
+  color: "#ffffff",
+  border: "none",
+  borderRadius: "6px",
+  padding: "10px 24px",
+  fontWeight: 500,
+  fontSize: "14px",
+  cursor: "pointer",
+};
+
+const cancelButtonStyle: CSSProperties = {
+  backgroundColor: "transparent",
+  border: "1px solid #333333",
+  color: "#888888",
+  borderRadius: "6px",
+  padding: "10px 24px",
+  fontWeight: 500,
+  fontSize: "14px",
+  cursor: "pointer",
+};
+
+const verifiedBadgeStyle: CSSProperties = {
+  backgroundColor: "#0d2b0d",
+  color: "#4ade80",
+  border: "1px solid #1a4a1a",
+  borderRadius: "20px",
+  padding: "3px 10px",
+  fontSize: "11px",
+  flexShrink: 0,
+  textTransform: "lowercase",
+};
+
+function setInputFocus(el: HTMLInputElement, focused: boolean) {
+  el.style.borderColor = focused ? ACCENT_RED : "#2a2a2a";
+}
+
+function ProfileField({
+  label,
+  id,
+  ...inputProps
+}: {
+  label: string;
+  id: string;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div>
+      <label htmlFor={id} style={labelStyle}>
+        {label}
+      </label>
+      <input
+        id={id}
+        style={inputStyle}
+        onFocus={(e) => setInputFocus(e.currentTarget, true)}
+        onBlur={(e) => setInputFocus(e.currentTarget, false)}
+        {...inputProps}
+      />
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const { user } = useAuthContext();
@@ -121,19 +226,52 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div
+        style={{
+          ...pageStyle,
+          display: "flex",
+          minHeight: "60vh",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <Spinner label="Loading profile…" />
       </div>
     );
   }
 
   return (
-    <div className="page-root mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-      <h1 className="text-[26px] font-semibold tracking-[-0.5px] text-[var(--text-1)]">Profile settings</h1>
-      <p className="mt-1 text-sm text-[var(--text-2)]">Manage your personal information</p>
+    <div style={pageStyle}>
+      <h1
+        style={{
+          fontWeight: 700,
+          fontSize: "22px",
+          color: "#ffffff",
+          margin: 0,
+        }}
+      >
+        Profile settings
+      </h1>
+      <p style={{ fontSize: "13px", color: MUTED, margin: "4px 0 0" }}>
+        Manage your personal information
+      </p>
 
-      <form onSubmit={handleSave} noValidate className="mt-8 grid gap-6 rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-2)] p-6 md:grid-cols-[280px_1fr]">
-        <aside className="space-y-4 border-b border-[var(--border)] pb-6 md:border-b-0 md:border-r md:pb-0 md:pr-6">
+      <form
+        onSubmit={handleSave}
+        noValidate
+        style={cardStyle}
+        className="grid gap-6 md:grid-cols-[280px_1fr]"
+      >
+        <aside
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            borderBottom: "1px solid #2a2a2a",
+            paddingBottom: "24px",
+          }}
+          className="md:border-b-0 md:border-r md:border-[#2a2a2a] md:pb-0 md:pr-6"
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -147,28 +285,96 @@ export default function ProfilePage() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="group relative h-24 w-24 overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-3)]"
+            className="group relative overflow-hidden"
+            style={{
+              width: "80px",
+              height: "80px",
+              borderRadius: "50%",
+              border: "3px solid #E51937",
+              backgroundColor: "#111111",
+              padding: 0,
+              cursor: "pointer",
+              outline: "1px dashed #333333",
+              outlineOffset: "-4px",
+            }}
           >
             {profile.avatar_url ? (
-              <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+              <img
+                src={profile.avatar_url}
+                alt=""
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  borderRadius: "50%",
+                }}
+              />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-xl font-medium text-[var(--text-1)]">
-                {(profile.full_name || profile.email || "GC").slice(0, 2).toUpperCase()}
+              <div
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  height: "100%",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "20px",
+                  fontWeight: 500,
+                  color: "#ffffff",
+                }}
+              >
+                {(profile.full_name || profile.email || "GC")
+                  .slice(0, 2)
+                  .toUpperCase()}
               </div>
             )}
-            <span className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.55)] text-xs text-[var(--text-1)] opacity-0 transition-opacity group-hover:opacity-100">
+            <span
+              className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100"
+              style={{
+                backgroundColor: "rgba(0, 0, 0, 0.55)",
+                fontSize: "11px",
+                color: "#ffffff",
+              }}
+            >
               {uploading ? "Uploading..." : "Change photo"}
             </span>
           </button>
           <div>
-            <p className="text-base font-medium text-[var(--text-1)]">{profile.full_name || "Set your name"}</p>
-            <p className="mt-1 text-sm text-[var(--text-2)]">{profile.email}</p>
-            <p className="mt-1 text-sm text-[var(--text-2)]">{profile.program || "No program set"}</p>
+            <p
+              style={{
+                fontWeight: 700,
+                fontSize: "18px",
+                color: "#ffffff",
+                marginTop: "12px",
+                marginBottom: 0,
+              }}
+            >
+              {profile.full_name || "Set your name"}
+            </p>
+            <p
+              style={{
+                fontSize: "13px",
+                color: MUTED,
+                marginTop: "4px",
+                marginBottom: 0,
+              }}
+            >
+              {profile.email}
+            </p>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#747676",
+                marginTop: "4px",
+                marginBottom: 0,
+              }}
+            >
+              {profile.program || "No program set"}
+            </p>
           </div>
         </aside>
 
-        <section className="space-y-4">
-          <FormInput
+        <section style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <ProfileField
             label="Full Name"
             id="full_name"
             type="text"
@@ -178,23 +384,25 @@ export default function ProfilePage() {
             onChange={(e) => handleChange("full_name", e.target.value)}
           />
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-[var(--text-1)]">
+            <label htmlFor="email" style={labelStyle}>
               Email
             </label>
-            <div className="flex items-center gap-2">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <input
                 id="email"
                 type="email"
                 value={profile.email}
                 readOnly
-                className="h-[38px] w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-3 text-sm text-[var(--text-2)] opacity-60"
+                style={{
+                  ...inputStyle,
+                  opacity: 0.7,
+                  cursor: "default",
+                }}
               />
-              <span className="rounded-[var(--r-full)] border border-[var(--green)] bg-[var(--green-dim)] px-2 py-1 text-xs text-[var(--green)]">
-                verified
-              </span>
+              <span style={verifiedBadgeStyle}>verified</span>
             </div>
           </div>
-          <FormInput
+          <ProfileField
             label="University"
             id="university"
             type="text"
@@ -202,7 +410,7 @@ export default function ProfilePage() {
             value={profile.university}
             onChange={(e) => handleChange("university", e.target.value)}
           />
-          <FormInput
+          <ProfileField
             label="Program"
             id="program"
             type="text"
@@ -211,13 +419,20 @@ export default function ProfilePage() {
             onChange={(e) => handleChange("program", e.target.value)}
           />
 
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="ghost">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: "12px",
+              paddingTop: "8px",
+            }}
+          >
+            <button type="button" style={cancelButtonStyle}>
               Cancel
-            </Button>
-            <Button type="submit" disabled={saving} className="h-9 bg-[var(--red)] hover:bg-[var(--red-hover)]">
+            </button>
+            <button type="submit" disabled={saving} style={saveButtonStyle}>
               {saving ? "Saving…" : "Save changes"}
-            </Button>
+            </button>
           </div>
         </section>
       </form>
