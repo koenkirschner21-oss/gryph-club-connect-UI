@@ -1,4 +1,4 @@
-import { useState, useMemo, type CSSProperties } from "react";
+import { useState, useMemo, type CSSProperties, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -9,6 +9,172 @@ import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
+
+type EventVisibility = "public" | "members_only" | "featured";
+
+const VISIBILITY_OPTIONS: {
+  value: EventVisibility;
+  label: string;
+  description: string;
+  Icon: () => ReactNode;
+}[] = [
+  {
+    value: "members_only",
+    label: "Members Only",
+    description: "Only visible to club members",
+    Icon: LockIcon,
+  },
+  {
+    value: "public",
+    label: "Public",
+    description: "Anyone can attend, not shown on campus feed",
+    Icon: GlobeIcon,
+  },
+  {
+    value: "featured",
+    label: "Featured on Campus",
+    description: "Promoted on the home page for all students",
+    Icon: StarIcon,
+  },
+];
+
+function GlobeIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#E51937"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+      <path d="M2 12h20" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#E51937"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+function StarIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#E51937"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+
+const visibilityCardBase: CSSProperties = {
+  background: "#111111",
+  border: "1px solid #2a2a2a",
+  borderRadius: 8,
+  padding: "12px 16px",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  width: "100%",
+};
+
+function visibilityCardSelected(base: CSSProperties): CSSProperties {
+  return {
+    ...base,
+    border: "1px solid #E51937",
+    background: "#1f0a0a",
+  };
+}
+
+function VisibilitySelector({
+  value,
+  onChange,
+}: {
+  value: EventVisibility;
+  onChange: (value: EventVisibility) => void;
+}) {
+  return (
+    <div>
+      <p
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: "#ffffff",
+          marginBottom: 10,
+        }}
+      >
+        Who can see this event?
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {VISIBILITY_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            style={
+              value === option.value
+                ? visibilityCardSelected(visibilityCardBase)
+                : visibilityCardBase
+            }
+          >
+            <option.Icon />
+            <span style={{ textAlign: "left" }}>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#ffffff",
+                }}
+              >
+                {option.label}
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 11,
+                  color: "#555555",
+                  marginTop: 2,
+                }}
+              >
+                {option.description}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 
 const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
@@ -130,6 +296,7 @@ export default function ClubEventsPage() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
+  const [visibility, setVisibility] = useState<EventVisibility>("public");
 
   function resetForm() {
     setTitle("");
@@ -137,6 +304,7 @@ export default function ClubEventsPage() {
     setDate("");
     setTime("");
     setLocation("");
+    setVisibility("public");
     setEditingId(null);
     setShowForm(false);
   }
@@ -148,6 +316,12 @@ export default function ClubEventsPage() {
     setDate(event.date);
     setTime(event.time);
     setLocation(event.location);
+    const eventVisibility = event.visibility;
+    setVisibility(
+      eventVisibility === "members_only" || eventVisibility === "featured"
+        ? eventVisibility
+        : "public",
+    );
     setShowForm(true);
   }
 
@@ -161,7 +335,9 @@ export default function ClubEventsPage() {
       description: description.trim(),
       date,
       time: time || "TBD",
-      location: location.trim() || "TBD" };
+      location: location.trim() || "TBD",
+      visibility,
+    };
 
     let ok: boolean;
     if (editingId) {
@@ -304,6 +480,7 @@ export default function ClubEventsPage() {
                 className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
               />
             </div>
+            <VisibilitySelector value={visibility} onChange={setVisibility} />
             <div className="flex gap-4">
               <div className="flex-1">
                 <FormInput

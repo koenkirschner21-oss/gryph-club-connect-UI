@@ -14,6 +14,8 @@ import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 import DashboardPage from "./pages/app/DashboardPage";
 import CreateClubPage from "./pages/app/CreateClubPage";
 import JoinClubPage from "./pages/app/JoinClubPage";
@@ -54,6 +56,8 @@ export default function App() {
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
 
                 {/* Legacy route — redirect old explore/:id links */}
                 <Route path="/explore/:slug" element={<ClubDetails />} />

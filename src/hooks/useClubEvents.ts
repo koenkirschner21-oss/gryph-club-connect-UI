@@ -20,6 +20,10 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
     creatorName: (creator?.full_name as string) ?? undefined,
     creatorAvatar: (creator?.avatar_url as string) ?? undefined,
     createdAt: (row.created_at as string) ?? "",
+    visibility:
+      row.visibility === "members_only" || row.visibility === "featured"
+        ? row.visibility
+        : "public",
   };
 }
 
@@ -28,11 +32,15 @@ export interface UseClubEventsReturn {
   loading: boolean;
   error: string | null;
   createEvent: (
-    fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location">,
+    fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location"> & {
+      visibility?: ClubEvent["visibility"];
+    },
   ) => Promise<boolean>;
   updateEvent: (
     eventId: string,
-    fields: Partial<Pick<ClubEvent, "title" | "description" | "date" | "time" | "location">>,
+    fields: Partial<
+      Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility">
+    >,
   ) => Promise<boolean>;
   deleteEvent: (eventId: string) => Promise<boolean>;
   refresh: () => void;
@@ -68,6 +76,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
         date,
         time,
         location,
+        visibility,
         created_at,
         created_by,
         creator:profiles!events_creator_profile_fkey (
@@ -130,7 +139,9 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
 
   const createEvent = useCallback(
     async (
-      fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location">,
+      fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location"> & {
+        visibility?: ClubEvent["visibility"];
+      },
     ): Promise<boolean> => {
       if (!clubId || !user) return false;
 
@@ -143,6 +154,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           date: fields.date,
           time: fields.time,
           location: fields.location,
+          visibility: fields.visibility ?? "public",
           created_by: user.id,
         })
         .select(`
@@ -153,6 +165,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           date,
           time,
           location,
+          visibility,
           created_at,
           created_by,
           creator:profiles!events_creator_profile_fkey (
@@ -208,7 +221,9 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
   const updateEvent = useCallback(
     async (
       eventId: string,
-      fields: Partial<Pick<ClubEvent, "title" | "description" | "date" | "time" | "location">>,
+      fields: Partial<
+        Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility">
+      >,
     ): Promise<boolean> => {
       const row: Record<string, unknown> = {};
       if (fields.title !== undefined) row.title = fields.title;
@@ -216,6 +231,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
       if (fields.date !== undefined) row.date = fields.date;
       if (fields.time !== undefined) row.time = fields.time;
       if (fields.location !== undefined) row.location = fields.location;
+      if (fields.visibility !== undefined) row.visibility = fields.visibility;
 
       const { data, error: err } = await supabase
         .from("events")
@@ -229,6 +245,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           date,
           time,
           location,
+          visibility,
           created_at,
           created_by,
           creator:profiles!events_creator_profile_fkey (

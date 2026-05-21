@@ -48,6 +48,7 @@ export interface ClubEvent {
   startAt?: string;
   endAt?: string;
   location: string;
+  visibility?: "public" | "members_only" | "featured";
   /** Event author (auth user id). */
   createdBy?: string;
   createdAt?: string;

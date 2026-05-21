@@ -376,7 +376,12 @@ function OverviewTab({
                   <Link
                     key={club.id}
                     to={`/app/clubs/${club.id}`}
-                    className="card-interactive flex items-center gap-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] p-3 transition-colors hover:bg-[var(--bg-4)]"
+                    className="flex items-center gap-3 p-3 transition-[border-color] duration-150 ease-in-out hover:border-[#333333]"
+                    style={{
+                      background: "#191919",
+                      border: "1px solid #242424",
+                      borderRadius: 7,
+                    }}
                   >
                     <ClubBadge
                       abbreviation={club.abbreviation}

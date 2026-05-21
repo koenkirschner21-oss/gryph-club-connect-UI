@@ -2,6 +2,9 @@ import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
 import { useClubContext } from "../context/useClubContext";
 import ClubCard from "../components/ui/ClubCard";
+import HeroMockup from "../components/ui/HeroMockup";
+import BrandLogo from "../components/ui/BrandLogo";
+import UpcomingEventsSection from "../components/ui/UpcomingEventsSection";
 import Spinner from "../components/ui/Spinner";
 
 export default function Home() {
@@ -25,11 +28,7 @@ export default function Home() {
             <div className="max-w-3xl flex-1">
               {/* Brand lockup */}
               <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                <img
-                  src="/assets/gryph-club-connect-logo.png"
-                  alt="Gryph Club Connect"
-                  className="h-11 w-auto sm:h-12"
-                />
+                <BrandLogo variant="hero" />
                 <span
                   style={{
                     color: "#E51937",
@@ -68,67 +67,11 @@ export default function Home() {
                 >
                   Explore Clubs
                 </Link>
-                <Link
-                  to="/explore"
-                  style={{
-                    display: "inline-block",
-                    backgroundColor: "transparent",
-                    border: "2px solid #E51937",
-                    color: "#E51937",
-                    borderRadius: "6px",
-                    padding: "12px 28px",
-                    fontWeight: 600,
-                    fontSize: "15px",
-                    textDecoration: "none",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#E51937";
-                    e.currentTarget.style.color = "#ffffff";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                    e.currentTarget.style.color = "#E51937";
-                  }}
-                >
-                  Learn More
-                </Link>
               </div>
             </div>
 
-            {/* Right: visual anchor — decorative blurred panel */}
-            <div className="hidden flex-shrink-0 lg:block" aria-hidden="true">
-              <div className="relative w-72 xl:w-80">
-                <div className="absolute -inset-4 rounded-3xl bg-primary/5 blur-2xl" />
-                <div className="relative rounded-2xl border border-border/60 bg-card/80 p-6 backdrop-blur-sm shadow-elevated">
-                  <div className="mb-4 flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-primary/20" />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="h-3 w-24 rounded-full bg-white/15" />
-                      <div className="h-2 w-16 rounded-full bg-white/8" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="h-2 w-full rounded-full bg-white/8" />
-                    <div className="h-2 w-5/6 rounded-full bg-white/6" />
-                    <div className="h-2 w-4/6 rounded-full bg-white/5" />
-                  </div>
-                  <div className="mt-5 flex gap-2">
-                    <div className="h-6 w-16 rounded-full bg-primary/15" />
-                    <div className="h-6 w-12 rounded-full bg-secondary/10" />
-                  </div>
-                  <div className="mt-5 h-8 w-full rounded-lg bg-primary/20" />
-                </div>
-                {/* Second stacked card for depth */}
-                <div className="relative -mt-2 ml-4 rounded-2xl border border-border/40 bg-surface-alt/60 p-5 backdrop-blur-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-secondary/15" />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="h-2.5 w-20 rounded-full bg-white/12" />
-                      <div className="h-2 w-14 rounded-full bg-white/6" />
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="hidden w-[520px] max-w-[42vw] shrink-0 lg:block">
+              <HeroMockup />
             </div>
           </div>
         </div>
@@ -187,6 +130,19 @@ export default function Home() {
         </div>
       </section>
 
+      <div
+        style={{
+          paddingTop: 60,
+          paddingBottom: 60,
+          maxWidth: 1100,
+          margin: "0 auto",
+          paddingLeft: 24,
+          paddingRight: 24,
+        }}
+      >
+        <UpcomingEventsSection />
+      </div>
+
       {/* Saved Clubs */}
       {savedClubList.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8">
@@ -201,27 +157,55 @@ export default function Home() {
               <ClubCard key={club.id} club={club} />
             ))}
           </div>
+          {savedClubList.length < 3 && (
+            <p className="text-center" style={{ marginTop: 16 }}>
+              <Link
+                to="/explore"
+                style={{
+                  color: "#E51937",
+                  fontSize: 13,
+                  textDecoration: "none",
+                }}
+              >
+                Explore 200+ clubs →
+              </Link>
+            </p>
+          )}
         </section>
       )}
 
       {/* CTA Section */}
-      <section className="bg-primary">
+      <section
+        style={{
+          background:
+            "linear-gradient(135deg, #1a0505 0%, #2d0808 60%, #1a0505 100%)",
+          borderTop: "1px solid #3a1010",
+        }}
+      >
         <div className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-extrabold text-white">
+          <h2
+            style={{
+              color: "#ffffff",
+              fontWeight: 700,
+              fontSize: "30px",
+              margin: 0,
+            }}
+          >
             Ready to Get Involved?
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-white/80">
+          <p
+            className="mx-auto mt-4 max-w-xl"
+            style={{ color: "#cccccc", lineHeight: 1.6 }}
+          >
             Whether you&apos;re looking to build skills, make friends, or pursue
             a passion, there&apos;s a club for you at Guelph.
           </p>
           <div className="mt-8">
-            <Link to="/explore">
-              <Button
-                variant="secondary"
-                size="lg"
-              >
-                Find Your Club
-              </Button>
+            <Link
+              to="/explore"
+              className="inline-block rounded-md bg-secondary px-8 py-3.5 text-[15px] font-semibold text-page-bg no-underline transition-colors hover:bg-secondary-dark"
+            >
+              Find Your Club
             </Link>
           </div>
         </div>

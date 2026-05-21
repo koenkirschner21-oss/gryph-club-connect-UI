@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
+import BrandLogo from "../ui/BrandLogo";
 import NotificationBell from "../ui/NotificationBell";
 
 const navLinks = [
@@ -35,19 +36,15 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-[100] border-b border-[var(--border)] bg-[rgba(10,10,10,0.85)] backdrop-blur-[12px]">
       <nav
-        className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
+        className="mx-auto flex h-[4.25rem] max-w-7xl items-center justify-between px-4 sm:px-6 lg:h-[4.5rem] lg:px-8"
         aria-label="Main navigation"
       >
-        {/* Official logo — home (larger tap target + clearer wordmark) */}
         <Link
           to="/"
-          className="group flex shrink-0 items-center rounded-md px-2 py-1.5 -my-0.5 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(10,10,10,0.85)]"
+          aria-label="Gryph Club Connect home"
+          className="group flex shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(10,10,10,0.85)]"
         >
-          <img
-            src="/assets/gryph-club-connect-logo.png"
-            alt="Gryph Club Connect"
-            className="h-11 w-auto sm:h-12 md:h-14"
-          />
+          <BrandLogo variant="nav" />
         </Link>
 
         {/* Desktop Nav */}

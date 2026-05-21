@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import type { Club } from "../../types";
 import { normalizeTags } from "../../lib/normalizeTags";
@@ -8,22 +9,42 @@ interface ClubCardProps {
   club: Club;
   /** When true, renders a wider horizontal layout for spotlight/featured sections. */
   variant?: "default" | "compact" | "explore";
-  /** Explore featured row: red top border */
-  featured?: boolean;
 }
 
 const EXPLORE_RED = "#E51937";
 
+const CARD_SURFACE = {
+  backgroundColor: "#1a1a1a",
+  border: "1px solid #242424",
+  borderTop: "2px solid #E51937",
+  borderRadius: "10px",
+  transition: "box-shadow 0.15s ease, border-color 0.15s ease",
+} as const;
+
+const AVATAR_STYLE: CSSProperties = {
+  backgroundColor: "#2a2a2a",
+  color: "#888888",
+  border: "1px solid #333",
+  borderRadius: "8px",
+};
+
+const CATEGORY_BADGE_STYLE: CSSProperties = {
+  backgroundColor: "#111111",
+  color: "#747676",
+  border: "1px solid #222222",
+  borderRadius: "20px",
+  padding: "3px 12px",
+  fontSize: "11px",
+};
+
 export default function ClubCard({
   club,
   variant = "default",
-  featured = false,
 }: ClubCardProps) {
   const { isSaved, toggleSaveClub, isJoined } = useClubContext();
   const saved = isSaved(club.id);
   const joined = isJoined(club.id);
 
-  const accent = club.brandColor ?? "var(--color-primary)";
   const displayDescription = club.shortDescription || club.description;
   const tags = normalizeTags(club.tags);
 
@@ -31,12 +52,10 @@ export default function ClubCard({
     return (
       <Link to={`/clubs/${club.slug}`} className="group block h-full focus:outline-none">
         <div
+          className="h-full group-hover:border-[#333333] group-hover:shadow-[0_0_0_1px_#2a2a2a]"
           style={{
-            backgroundColor: "#1a1a1a",
-            border: "1px solid #242424",
-            borderRadius: "10px",
+            ...CARD_SURFACE,
             padding: "16px",
-            borderTop: featured ? `2px solid ${EXPLORE_RED}` : "1px solid #242424",
             height: "100%",
             display: "flex",
             flexDirection: "column",
@@ -45,11 +64,9 @@ export default function ClubCard({
           <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
             <div
               style={{
+                ...AVATAR_STYLE,
                 width: "40px",
                 height: "40px",
-                borderRadius: "8px",
-                backgroundColor: "#2a2a2a",
-                color: "#888888",
                 fontSize: "14px",
                 fontWeight: 600,
                 display: "flex",
@@ -105,18 +122,7 @@ export default function ClubCard({
                 )}
               </div>
               <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    backgroundColor: "#111111",
-                    border: "1px solid #222222",
-                    color: "#747676",
-                    borderRadius: "20px",
-                    padding: "3px 10px",
-                    fontSize: "11px",
-                  }}
-                >
-                  {club.category}
-                </span>
+                <span style={CATEGORY_BADGE_STYLE}>{club.category}</span>
                 {club.memberCount > 0 && (
                   <span style={{ fontSize: "11px", color: "#555555" }}>
                     {club.memberCount} members
@@ -185,25 +191,24 @@ export default function ClubCard({
   }
 
   return (
-    <Link to={`/clubs/${club.slug}`} className="group block focus:outline-none">
-      <div className="card-interactive relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card group-hover:border-border-light group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-page-bg">
-        {/* Accent top bar */}
-        <div className="h-1 w-full" style={{ backgroundColor: accent }} />
-
-        {/* Card body */}
+    <Link to={`/clubs/${club.slug}`} className="group block h-full focus:outline-none">
+      <div
+        className="relative flex h-full flex-col overflow-hidden group-hover:border-[#333333] group-hover:shadow-[0_0_0_1px_#2a2a2a] group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-page-bg"
+        style={CARD_SURFACE}
+      >
         <div className={`flex flex-1 flex-col ${variant === "compact" ? "p-5" : "p-6"}`}>
           {/* Top row: logo/initials + meta */}
           <div className="mb-5 flex items-start gap-4">
             {/* Logo or initials */}
             <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-elevated"
-              style={{ backgroundColor: accent }}
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center text-sm font-semibold"
+              style={AVATAR_STYLE}
             >
               {club.logoUrl ? (
                 <img
                   src={club.logoUrl}
                   alt=""
-                  className="h-full w-full rounded-xl object-cover"
+                  className="h-full w-full rounded-lg object-cover"
                 />
               ) : (
                 <span aria-hidden="true">{getClubInitials(club)}</span>
@@ -234,9 +239,7 @@ export default function ClubCard({
 
               {/* Category + member count */}
               <div className="mt-2 flex items-center gap-2.5 text-xs">
-                <span className="inline-block rounded-[var(--r-full)] bg-[var(--red-dim)] px-2 py-0.5 text-[11px] font-medium text-[var(--red)]">
-                  {club.category}
-                </span>
+                <span style={CATEGORY_BADGE_STYLE}>{club.category}</span>
                 {club.memberCount > 0 && (
                   <span className="flex items-center gap-1 text-muted">
                     <svg

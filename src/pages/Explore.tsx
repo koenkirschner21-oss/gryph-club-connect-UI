@@ -129,39 +129,43 @@ function FeaturedSectionHeading({ title }: { title: string }) {
   );
 }
 
-/** Pick a contrasting text class for an arbitrary hex background. */
-function contrastText(hex: string | undefined): string {
-  if (!hex) return "text-white";
-  const c = hex.replace("#", "");
-  const r = parseInt(c.substring(0, 2), 16);
-  const g = parseInt(c.substring(2, 4), 16);
-  const b = parseInt(c.substring(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.6 ? "text-black" : "text-white";
-}
+const CATEGORY_BADGE_STYLE: CSSProperties = {
+  backgroundColor: "#111111",
+  color: "#747676",
+  border: "1px solid #222222",
+  borderRadius: "20px",
+  padding: "3px 12px",
+  fontSize: "11px",
+};
 
 // ─── Spotlight card (horizontal, larger) ────────────────────────────────────
 function SpotlightCard({ club }: { club: Club }) {
-  const accent = club.brandColor ?? "var(--color-primary)";
   return (
     <a
       href={`/clubs/${club.slug}`}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card card-glow-hover hover:border-border-light sm:flex-row"
     >
-      {/* Left accent */}
       <div
         className="flex w-full items-center justify-center p-8 sm:w-52 sm:flex-shrink-0"
-        style={{ backgroundColor: accent }}
+        style={{
+          backgroundColor: "#2a2a2a",
+          borderRight: "1px solid #333",
+        }}
       >
         {club.logoUrl ? (
           <img
             src={club.logoUrl}
             alt=""
-            className="h-20 w-20 rounded-xl object-cover shadow"
+            className="h-20 w-20 rounded-lg object-cover"
+            style={{ border: "1px solid #333" }}
           />
         ) : (
           <span
-            className={`text-3xl font-extrabold ${contrastText(club.brandColor)}`}
+            style={{
+              fontSize: "28px",
+              fontWeight: 700,
+              color: "#888888",
+            }}
             aria-hidden="true"
           >
             {getClubInitials(club)}
@@ -194,9 +198,7 @@ function SpotlightCard({ club }: { club: Club }) {
           {club.shortDescription || club.description}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-          <span className="rounded-full bg-primary/15 px-2.5 py-0.5 font-semibold text-primary-light">
-            {club.category}
-          </span>
+          <span style={CATEGORY_BADGE_STYLE}>{club.category}</span>
           {club.memberCount > 0 && (
             <span className="text-muted">{club.memberCount} members</span>
           )}
@@ -443,7 +445,7 @@ export default function Explore() {
             <FeaturedSectionHeading title="Featured Clubs" />
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {featuredClubs.map((club) => (
-                <ClubCard key={club.id} club={club} variant="explore" featured />
+                <ClubCard key={club.id} club={club} variant="explore" />
               ))}
             </div>
           </div>
