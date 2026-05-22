@@ -515,7 +515,11 @@ function EventCard({ event }: { event: CampusEvent }) {
         </h4>
         <p style={{ fontSize: 12, color: "#555555", margin: 0 }}>
           {formatEventTime(event.time)}
-          {event.location ? ` · ${event.location}` : ""}
+          {(() => {
+            const location = event.location?.trim();
+            if (!location || location === "TBD") return null;
+            return ` · ${location}`;
+          })()}
         </p>
       </div>
     </article>

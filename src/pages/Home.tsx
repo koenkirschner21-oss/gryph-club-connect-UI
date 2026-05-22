@@ -203,7 +203,22 @@ export default function Home() {
           <div className="mt-8">
             <Link
               to="/explore"
-              className="inline-block rounded-md bg-secondary px-8 py-3.5 text-[15px] font-semibold text-page-bg no-underline transition-colors hover:bg-secondary-dark"
+              className="inline-block no-underline"
+              style={{
+                background: "#ffffff",
+                color: "#E51937",
+                border: "none",
+                borderRadius: "6px",
+                padding: "14px 32px",
+                fontWeight: 600,
+                fontSize: "15px",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#f0f0f0";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#ffffff";
+              }}
             >
               Find Your Club
             </Link>

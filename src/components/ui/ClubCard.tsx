@@ -21,14 +21,50 @@ const CARD_SURFACE = {
   transition: "box-shadow 0.15s ease, border-color 0.15s ease",
 } as const;
 
-const AVATAR_STYLE: CSSProperties = {
+export const CLUB_AVATAR_STYLE: CSSProperties = {
   backgroundColor: "#2a2a2a",
   color: "#888888",
   border: "1px solid #333",
   borderRadius: "8px",
 };
 
-const CATEGORY_BADGE_STYLE: CSSProperties = {
+const CLUB_AVATAR_INITIALS_STYLE: CSSProperties = {
+  color: "#888888",
+};
+
+/** Neutral club avatar — never uses brandColor or logo_url. */
+export function ClubAvatar({
+  club,
+  size = "md",
+}: {
+  club: Pick<Club, "abbreviation" | "name">;
+  size?: "sm" | "md";
+}) {
+  const dimensions =
+    size === "sm"
+      ? { width: "40px", height: "40px", fontSize: "14px" }
+      : { width: "48px", height: "48px", fontSize: "14px" };
+
+  return (
+    <div
+      style={{
+        ...CLUB_AVATAR_STYLE,
+        ...dimensions,
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <span style={CLUB_AVATAR_INITIALS_STYLE} aria-hidden="true">
+        {getClubInitials(club)}
+      </span>
+    </div>
+  );
+}
+
+export const CLUB_CATEGORY_BADGE_STYLE: CSSProperties = {
   backgroundColor: "#111111",
   color: "#747676",
   border: "1px solid #222222",
@@ -62,35 +98,7 @@ export default function ClubCard({
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
-            <div
-              style={{
-                ...AVATAR_STYLE,
-                width: "40px",
-                height: "40px",
-                fontSize: "14px",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                overflow: "hidden",
-              }}
-            >
-              {club.logoUrl ? (
-                <img
-                  src={club.logoUrl}
-                  alt=""
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    borderRadius: "8px",
-                  }}
-                />
-              ) : (
-                <span aria-hidden="true">{getClubInitials(club)}</span>
-              )}
-            </div>
+            <ClubAvatar club={club} size="sm" />
 
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -122,7 +130,7 @@ export default function ClubCard({
                 )}
               </div>
               <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <span style={CATEGORY_BADGE_STYLE}>{club.category}</span>
+                <span style={CLUB_CATEGORY_BADGE_STYLE}>{club.category}</span>
                 {club.memberCount > 0 && (
                   <span style={{ fontSize: "11px", color: "#555555" }}>
                     {club.memberCount} members
@@ -199,21 +207,7 @@ export default function ClubCard({
         <div className={`flex flex-1 flex-col ${variant === "compact" ? "p-5" : "p-6"}`}>
           {/* Top row: logo/initials + meta */}
           <div className="mb-5 flex items-start gap-4">
-            {/* Logo or initials */}
-            <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center text-sm font-semibold"
-              style={AVATAR_STYLE}
-            >
-              {club.logoUrl ? (
-                <img
-                  src={club.logoUrl}
-                  alt=""
-                  className="h-full w-full rounded-lg object-cover"
-                />
-              ) : (
-                <span aria-hidden="true">{getClubInitials(club)}</span>
-              )}
-            </div>
+            <ClubAvatar club={club} />
 
             <div className="min-w-0 flex-1">
               {/* Name + verified */}
@@ -239,7 +233,7 @@ export default function ClubCard({
 
               {/* Category + member count */}
               <div className="mt-2 flex items-center gap-2.5 text-xs">
-                <span style={CATEGORY_BADGE_STYLE}>{club.category}</span>
+                <span style={CLUB_CATEGORY_BADGE_STYLE}>{club.category}</span>
                 {club.memberCount > 0 && (
                   <span className="flex items-center gap-1 text-muted">
                     <svg

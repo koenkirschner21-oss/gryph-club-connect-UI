@@ -386,7 +386,6 @@ function OverviewTab({
                     <ClubBadge
                       abbreviation={club.abbreviation}
                       name={club.name}
-                      brandColor={club.brandColor}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-white">
@@ -431,7 +430,6 @@ function OverviewTab({
                     <ClubBadge
                       abbreviation={club.abbreviation}
                       name={club.name}
-                      brandColor={club.brandColor}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-white">
@@ -685,23 +683,24 @@ function StatCard({
 function ClubBadge({
   abbreviation,
   name,
-  brandColor,
   size = "md",
 }: {
   abbreviation?: string;
   name: string;
-  brandColor?: string;
   size?: "sm" | "md";
 }) {
   const abbr = abbreviation || deriveAbbreviation(name);
-
-  const bg = brandColor || "#C20430";
   const sizeClass = size === "sm" ? "h-8 w-8 text-[10px]" : "h-10 w-10 text-xs";
 
   return (
     <div
-      className={`${sizeClass} flex shrink-0 items-center justify-center rounded-full font-bold text-white`}
-      style={{ backgroundColor: bg }}
+      className={`${sizeClass} flex shrink-0 items-center justify-center font-bold`}
+      style={{
+        backgroundColor: "#2a2a2a",
+        color: "#888888",
+        border: "1px solid #333",
+        borderRadius: "8px",
+      }}
     >
       {abbr}
     </div>
@@ -850,7 +849,6 @@ function EventCard({
         <ClubBadge
           abbreviation={event.clubAbbreviation}
           name={event.clubName}
-          brandColor={event.clubBrandColor}
           size="md"
         />
       </div>

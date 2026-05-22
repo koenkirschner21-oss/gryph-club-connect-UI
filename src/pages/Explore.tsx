@@ -4,7 +4,10 @@ import { useAuthContext } from "../context/useAuthContext";
 import { useUserInterests } from "../hooks/useUserInterests";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
-import ClubCard from "../components/ui/ClubCard";
+import ClubCard, {
+  CLUB_AVATAR_STYLE,
+  CLUB_CATEGORY_BADGE_STYLE,
+} from "../components/ui/ClubCard";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
 
@@ -129,15 +132,6 @@ function FeaturedSectionHeading({ title }: { title: string }) {
   );
 }
 
-const CATEGORY_BADGE_STYLE: CSSProperties = {
-  backgroundColor: "#111111",
-  color: "#747676",
-  border: "1px solid #222222",
-  borderRadius: "20px",
-  padding: "3px 12px",
-  fontSize: "11px",
-};
-
 // ─── Spotlight card (horizontal, larger) ────────────────────────────────────
 function SpotlightCard({ club }: { club: Club }) {
   return (
@@ -147,30 +141,18 @@ function SpotlightCard({ club }: { club: Club }) {
     >
       <div
         className="flex w-full items-center justify-center p-8 sm:w-52 sm:flex-shrink-0"
-        style={{
-          backgroundColor: "#2a2a2a",
-          borderRight: "1px solid #333",
-        }}
+        style={CLUB_AVATAR_STYLE}
       >
-        {club.logoUrl ? (
-          <img
-            src={club.logoUrl}
-            alt=""
-            className="h-20 w-20 rounded-lg object-cover"
-            style={{ border: "1px solid #333" }}
-          />
-        ) : (
-          <span
-            style={{
-              fontSize: "28px",
-              fontWeight: 700,
-              color: "#888888",
-            }}
-            aria-hidden="true"
-          >
-            {getClubInitials(club)}
-          </span>
-        )}
+        <span
+          style={{
+            fontSize: "28px",
+            fontWeight: 700,
+            color: "#888888",
+          }}
+          aria-hidden="true"
+        >
+          {getClubInitials(club)}
+        </span>
       </div>
 
       {/* Right content */}
@@ -198,7 +180,7 @@ function SpotlightCard({ club }: { club: Club }) {
           {club.shortDescription || club.description}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-          <span style={CATEGORY_BADGE_STYLE}>{club.category}</span>
+          <span style={CLUB_CATEGORY_BADGE_STYLE}>{club.category}</span>
           {club.memberCount > 0 && (
             <span className="text-muted">{club.memberCount} members</span>
           )}

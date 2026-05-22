@@ -173,8 +173,12 @@ export default function ClubDetails() {
             <div
               className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border-4 shadow-elevated sm:h-32 sm:w-32"
               style={{
-                backgroundColor: club.brandColor ?? "#E51937",
-                borderColor: "#1a1a1a" }}
+                backgroundColor: "#2a2a2a",
+                color: "#888888",
+                border: "1px solid #333",
+                borderRadius: "8px",
+                borderColor: "#1a1a1a",
+              }}
             >
               {club.logoUrl ? (
                 <img
@@ -183,7 +187,11 @@ export default function ClubDetails() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <span className="text-2xl font-extrabold text-white sm:text-3xl" aria-hidden="true">
+                <span
+                  className="text-2xl font-extrabold sm:text-3xl"
+                  style={{ color: "#888888" }}
+                  aria-hidden="true"
+                >
                   {getClubInitials(club)}
                 </span>
               )}
@@ -196,12 +204,13 @@ export default function ClubDetails() {
               <span
                 className="inline-block"
                 style={{
-                  backgroundColor: "#1a1a1a",
-                  border: "1px solid #333333",
-                  color: "#888888",
+                  backgroundColor: "#111111",
+                  border: "1px solid #222222",
+                  color: "#747676",
                   borderRadius: "20px",
-                  padding: "4px 12px",
-                  fontSize: "12px" }}
+                  padding: "3px 12px",
+                  fontSize: "11px",
+                }}
               >
                 {club.category}
               </span>
