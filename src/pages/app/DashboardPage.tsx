@@ -33,7 +33,7 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
 // Main Dashboard
 // ---------------------------------------------------------------------------
 export default function DashboardPage() {
-  const { user } = useAuthContext();
+  const { user, loading: authLoading } = useAuthContext();
   const { clubs, joinedClubs, savedClubs, loading, getUserRole } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [profile, setProfile] = useState<{
@@ -94,33 +94,31 @@ export default function DashboardPage() {
       return;
     }
 
-    const { count, error: countError } = await supabase
+    const { data, error } = await supabase
       .from("notifications")
-      .select("id", { count: "exact", head: true })
+      .select("id")
       .eq("user_id", user.id)
       .eq("read", false);
 
-    console.log("Unread count result:", count);
-    console.log("Unread count error:", countError);
-
-    if (countError) {
-      console.error("Failed to load unread notification count:", countError.message);
+    if (error) {
+      console.error("Failed to load unread notification count:", error.message);
       return;
     }
 
-    setUnreadNotificationCount(count ?? 0);
+    setUnreadNotificationCount(data?.length ?? 0);
   }, [user?.id]);
 
   useEffect(() => {
-    fetchUnreadNotificationCount();
-  }, [fetchUnreadNotificationCount]);
+    if (authLoading) return;
+    void fetchUnreadNotificationCount();
+  }, [authLoading, fetchUnreadNotificationCount]);
 
   useEffect(() => {
     return registerUnreadCountRefresh(fetchUnreadNotificationCount);
   }, [fetchUnreadNotificationCount]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (authLoading || !user?.id) return;
 
     const channel = supabase
       .channel(`dashboard-notifications-count:${user.id}`)
@@ -133,15 +131,19 @@ export default function DashboardPage() {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          fetchUnreadNotificationCount();
+          void fetchUnreadNotificationCount();
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          void fetchUnreadNotificationCount();
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchUnreadNotificationCount, user?.id]);
+  }, [authLoading, fetchUnreadNotificationCount, user?.id]);
 
   function handleUnreadStatClick() {
     setActiveTab("overview");
@@ -459,7 +461,6 @@ function OverviewTab({
       .order("due_date", { ascending: true })
       .limit(3)
       .then(({ data, error }) => {
-        console.log("Dashboard tasks query result:", { data, error });
         if (cancelled) return;
         if (error) {
           console.error("Failed to load dashboard tasks:", error.message);

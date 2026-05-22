@@ -118,10 +118,6 @@ export default function NotificationsDropdown() {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    console.log("Notifications fetch result:", data);
-    console.log("Notifications fetch error:", error);
-    console.log("Current user:", user);
-
     if (error) {
       console.error("Failed to load notifications:", error.message);
       return;
