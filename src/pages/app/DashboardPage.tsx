@@ -290,6 +290,32 @@ function formatTaskDueDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+type OverviewAnnouncement = {
+  id: string;
+  clubId: string;
+  title: string;
+  clubName: string;
+  createdAt: string;
+};
+
+function formatTimeAgo(iso: string): string {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "";
+
+  const diffMs = Date.now() - then.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  if (diffDay >= 2) return `${diffDay} days ago`;
+  if (diffDay === 1) return "yesterday";
+  if (diffHr >= 2) return `${diffHr} hours ago`;
+  if (diffHr === 1) return "1 hour ago";
+  if (diffMin >= 2) return `${diffMin} minutes ago`;
+  if (diffMin === 1) return "1 minute ago";
+  return "just now";
+}
+
 function OverviewTab({
   myClubs,
   mySavedClubs,
@@ -325,6 +351,10 @@ function OverviewTab({
 }) {
   const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
+  const [recentAnnouncements, setRecentAnnouncements] = useState<OverviewAnnouncement[]>(
+    [],
+  );
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
 
   const previewEvents = useMemo(
     () => upcomingEvents.slice(0, 3),
@@ -393,6 +423,60 @@ function OverviewTab({
       cancelled = true;
     };
   }, [userId, joinedClubIds]);
+
+  useEffect(() => {
+    if (joinedClubIds.length === 0) {
+      queueMicrotask(() => {
+        setRecentAnnouncements([]);
+        setAnnouncementsLoading(false);
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("posts")
+      .select(`
+        id,
+        club_id,
+        title,
+        created_at,
+        clubs:club_id ( name )
+      `)
+      .in("club_id", joinedClubIds)
+      .order("created_at", { ascending: false })
+      .limit(3)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load dashboard announcements:", error.message);
+          setRecentAnnouncements([]);
+        } else {
+          setRecentAnnouncements(
+            (data ?? []).map((row) => {
+              const clubRaw = row.clubs as unknown;
+              const club = (
+                Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
+              ) as Record<string, unknown>;
+              return {
+                id: row.id as string,
+                clubId: row.club_id as string,
+                title: (row.title as string) ?? "",
+                clubName: (club.name as string) ?? "",
+                createdAt: (row.created_at as string) ?? "",
+              };
+            }),
+          );
+        }
+        setAnnouncementsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [joinedClubIds]);
+
   return (
     <>
       {/* ── Stat Cards ── */}
@@ -623,6 +707,87 @@ function OverviewTab({
               </svg>
               Explore {totalClubs}+ clubs at U of G
             </Link>
+          </Card>
+
+          {/* Recent Announcements */}
+          <Card className="p-5">
+            <h3 className="mb-4 text-base font-bold text-white">
+              Recent Announcements
+            </h3>
+            {announcementsLoading ? (
+              <div className="flex justify-center py-6">
+                <Spinner label="Loading announcements…" />
+              </div>
+            ) : recentAnnouncements.length === 0 ? (
+              <p
+                style={{
+                  color: "#555555",
+                  fontSize: "12px",
+                  padding: "10px 12px",
+                  margin: 0,
+                }}
+              >
+                No announcements yet
+              </p>
+            ) : (
+              <div>
+                {recentAnnouncements.map((announcement) => (
+                  <Link
+                    key={announcement.id}
+                    to={`/app/clubs/${announcement.clubId}/announcements`}
+                    className="block no-underline"
+                    style={{
+                      background: "#191919",
+                      border: "1px solid #222",
+                      borderRadius: 7,
+                      padding: "10px 12px",
+                      marginBottom: 8,
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#333";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "#222";
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "10px",
+                        color: "#E51937",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        margin: "0 0 3px",
+                      }}
+                    >
+                      {announcement.clubName}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        color: "#d0d0d0",
+                        margin: "0 0 4px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {announcement.title}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "11px",
+                        color: "#555555",
+                        margin: 0,
+                      }}
+                    >
+                      {formatTimeAgo(announcement.createdAt)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
           </Card>
 
           {/* Saved Clubs */}
