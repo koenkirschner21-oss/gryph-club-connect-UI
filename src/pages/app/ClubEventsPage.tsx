@@ -310,18 +310,20 @@ export default function ClubEventsPage() {
   }
 
   function startEdit(event: ClubEvent) {
-    setEditingId(event.id);
-    setTitle(event.title);
-    setDescription(event.description);
-    setDate(event.date);
-    setTime(event.time);
-    setLocation(event.location);
-    const eventVisibility = event.visibility;
-    setVisibility(
-      eventVisibility === "members_only" || eventVisibility === "featured"
-        ? eventVisibility
-        : "public",
-    );
+    const current = events.find((e) => e.id === event.id) ?? event;
+    setEditingId(current.id);
+    setTitle(current.title);
+    setDescription(current.description);
+    setDate(current.date);
+    setTime(current.time);
+    setLocation(current.location);
+    if (current.visibility === "members_only") {
+      setVisibility("members_only");
+    } else if (current.visibility === "featured") {
+      setVisibility("featured");
+    } else {
+      setVisibility("public");
+    }
     setShowForm(true);
   }
 
@@ -480,7 +482,11 @@ export default function ClubEventsPage() {
                 className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
               />
             </div>
-            <VisibilitySelector value={visibility} onChange={setVisibility} />
+            <VisibilitySelector
+              key={editingId ?? "create"}
+              value={visibility}
+              onChange={setVisibility}
+            />
             <div className="flex gap-4">
               <div className="flex-1">
                 <FormInput

@@ -492,12 +492,13 @@ function EventCard({ event }: { event: CampusEvent }) {
           </span>
           <span
             style={{
-              background: "#2a1a0a",
+              background: "#2a1500",
               color: "#FFC429",
-              border: "1px solid #3a2a1a",
-              borderRadius: 20,
-              padding: "2px 8px",
-              fontSize: 10,
+              border: "1px solid #3a2500",
+              borderRadius: "20px",
+              padding: "3px 10px",
+              fontSize: "11px",
+              fontWeight: 500,
             }}
           >
             Featured
