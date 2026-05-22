@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
 import BrandLogo from "../ui/BrandLogo";
-import NotificationBell from "../ui/NotificationBell";
+import NotificationsDropdown from "../ui/NotificationsDropdown";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -69,7 +69,7 @@ export default function Navbar() {
 
           {user ? (
             <div className="ml-3 flex items-center gap-3">
-              <NotificationBell />
+              <NotificationsDropdown />
               <div className="relative">
                 <button
                   type="button"

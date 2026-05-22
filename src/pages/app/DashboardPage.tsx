@@ -1,14 +1,17 @@
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
 import { useDashboardEvents, type DashboardEvent } from "../../hooks/useDashboardEvents";
 import { useDashboardTasks } from "../../hooks/useDashboardTasks";
-import { useNotifications } from "../../context/NotificationsProvider";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
+import {
+  registerUnreadCountRefresh,
+  requestOpenNotificationsDropdown,
+} from "../../components/ui/NotificationsDropdown";
 
 // ---------------------------------------------------------------------------
 // Tab types
@@ -83,7 +86,67 @@ export default function DashboardPage() {
   const { events: upcomingEvents, loading: eventsLoading } =
     useDashboardEvents(joinedClubs);
   const { activeCount: taskCount } = useDashboardTasks(joinedClubs);
-  const { unreadCount } = useNotifications();
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+
+  const fetchUnreadNotificationCount = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    const { count, error: countError } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("read", false);
+
+    console.log("Unread count result:", count);
+    console.log("Unread count error:", countError);
+
+    if (countError) {
+      console.error("Failed to load unread notification count:", countError.message);
+      return;
+    }
+
+    setUnreadNotificationCount(count ?? 0);
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchUnreadNotificationCount();
+  }, [fetchUnreadNotificationCount]);
+
+  useEffect(() => {
+    return registerUnreadCountRefresh(fetchUnreadNotificationCount);
+  }, [fetchUnreadNotificationCount]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`dashboard-notifications-count:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchUnreadNotificationCount();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchUnreadNotificationCount, user?.id]);
+
+  function handleUnreadStatClick() {
+    setActiveTab("overview");
+    requestOpenNotificationsDropdown();
+  }
 
   // RSVP data for upcoming events
   const eventIds = useMemo(
@@ -161,7 +224,7 @@ export default function DashboardPage() {
         <TabButton
           label="Overview"
           active={activeTab === "overview"}
-          badge={unreadCount > 0 ? unreadCount : undefined}
+          badge={unreadNotificationCount > 0 ? unreadNotificationCount : undefined}
           onClick={() => setActiveTab("overview")}
         />
         <TabButton
@@ -185,7 +248,8 @@ export default function DashboardPage() {
           eventsLoading={eventsLoading}
           eventsThisMonth={eventsThisMonth}
           taskCount={taskCount}
-          unreadCount={unreadCount}
+          unreadNotificationCount={unreadNotificationCount}
+          onUnreadStatClick={handleUnreadStatClick}
           totalClubs={clubs.length}
           myRsvps={myRsvps}
           rsvpCounts={rsvpCounts}
@@ -323,7 +387,8 @@ function OverviewTab({
   eventsLoading,
   eventsThisMonth,
   taskCount,
-  unreadCount,
+  unreadNotificationCount,
+  onUnreadStatClick,
   totalClubs,
   myRsvps,
   rsvpCounts,
@@ -339,7 +404,8 @@ function OverviewTab({
   eventsLoading: boolean;
   eventsThisMonth: number;
   taskCount: number;
-  unreadCount: number;
+  unreadNotificationCount: number;
+  onUnreadStatClick: () => void;
   totalClubs: number;
   myRsvps: Record<string, string>;
   rsvpCounts: Record<string, import("../../types").RsvpCounts>;
@@ -517,8 +583,9 @@ function OverviewTab({
         <StatCard
           label="UNREAD"
           accentColor="#747676"
-          value={unreadCount}
+          value={unreadNotificationCount}
           sublabel="Notifications"
+          onClick={onUnreadStatClick}
           icon={
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
@@ -997,6 +1064,63 @@ function StatCard({
   sublabel,
   icon,
   accentColor,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  sublabel: string;
+  icon: React.ReactNode;
+  accentColor: string;
+  onClick?: () => void;
+}) {
+  const style = {
+    background: "#1a1a1a",
+    borderRadius: "8px",
+    padding: "12px 16px",
+    borderLeft: `3px solid ${accentColor}`,
+    position: "relative" as const,
+    width: "100%",
+    textAlign: "left" as const,
+    border: "none",
+    borderLeftWidth: 3,
+    borderLeftStyle: "solid" as const,
+    borderLeftColor: accentColor,
+    cursor: onClick ? "pointer" : undefined,
+  };
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} style={style}>
+        <StatCardContent
+          label={label}
+          value={value}
+          sublabel={sublabel}
+          icon={icon}
+          accentColor={accentColor}
+        />
+      </button>
+    );
+  }
+
+  return (
+    <div style={style}>
+      <StatCardContent
+        label={label}
+        value={value}
+        sublabel={sublabel}
+        icon={icon}
+        accentColor={accentColor}
+      />
+    </div>
+  );
+}
+
+function StatCardContent({
+  label,
+  value,
+  sublabel,
+  icon,
+  accentColor,
 }: {
   label: string;
   value: number;
@@ -1005,15 +1129,7 @@ function StatCard({
   accentColor: string;
 }) {
   return (
-    <div
-      style={{
-        background: "#1a1a1a",
-        borderRadius: "8px",
-        padding: "12px 16px",
-        borderLeft: `3px solid ${accentColor}`,
-        position: "relative",
-      }}
-    >
+    <>
       <span
         className="[&_svg]:h-[18px] [&_svg]:w-[18px]"
         style={{
@@ -1052,7 +1168,7 @@ function StatCard({
         {value}
       </p>
       <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>{sublabel}</p>
-    </div>
+    </>
   );
 }
 
