@@ -190,6 +190,10 @@ export default function DashboardPage() {
           myRsvps={myRsvps}
           rsvpCounts={rsvpCounts}
           getUserRole={getUserRole}
+          userId={user?.id}
+          joinedClubIds={joinedClubs}
+          onViewAllEvents={() => setActiveTab("events")}
+          onViewAllTasks={() => setActiveTab("tasks")}
         />
       )}
       {activeTab === "events" && (
@@ -241,6 +245,51 @@ function TabButton({
 // ---------------------------------------------------------------------------
 // Overview Tab
 // ---------------------------------------------------------------------------
+const viewAllLinkStyle = {
+  color: "#E51937",
+  fontSize: "13px",
+  fontWeight: 500,
+  textDecoration: "none",
+  cursor: "pointer",
+  background: "none",
+  border: "none",
+  padding: 0,
+} as const;
+
+const overviewEmptyTextStyle = {
+  color: "#555555",
+  fontSize: "13px",
+  margin: 0,
+} as const;
+
+type OverviewTask = {
+  id: string;
+  title: string;
+  status: string;
+  clubName: string;
+  clubId: string;
+  dueDate?: string;
+};
+
+function taskStatusAccent(status: string): string {
+  if (status === "in_progress") return "#FFC429";
+  return "#747676";
+}
+
+function hasEventLocation(location: string | null | undefined): boolean {
+  const trimmed = location?.trim();
+  return !!trimmed && trimmed !== "TBD";
+}
+
+function formatTaskDueDate(dateStr: string): string {
+  const trimmed = dateStr.trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T12:00:00`)
+    : new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return trimmed;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function OverviewTab({
   myClubs,
   mySavedClubs,
@@ -253,6 +302,10 @@ function OverviewTab({
   myRsvps,
   rsvpCounts,
   getUserRole,
+  userId,
+  joinedClubIds,
+  onViewAllEvents,
+  onViewAllTasks,
 }: {
   myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
@@ -265,7 +318,81 @@ function OverviewTab({
   myRsvps: Record<string, string>;
   rsvpCounts: Record<string, import("../../types").RsvpCounts>;
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
+  userId?: string;
+  joinedClubIds: string[];
+  onViewAllEvents: () => void;
+  onViewAllTasks: () => void;
 }) {
+  const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+
+  const previewEvents = useMemo(
+    () => upcomingEvents.slice(0, 3),
+    [upcomingEvents],
+  );
+
+  useEffect(() => {
+    if (!userId || joinedClubIds.length === 0) {
+      queueMicrotask(() => {
+        setMyTasks([]);
+        setTasksLoading(false);
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("tasks")
+      .select(`
+        id,
+        club_id,
+        title,
+        description,
+        status,
+        priority,
+        assigned_to,
+        due_date,
+        created_by,
+        created_at,
+        clubs:club_id ( name )
+      `)
+      .in("club_id", joinedClubIds)
+      .or(`assigned_to.eq.${userId},created_by.eq.${userId}`)
+      .neq("status", "done")
+      .order("due_date", { ascending: true })
+      .limit(3)
+      .then(({ data, error }) => {
+        console.log("Dashboard tasks query result:", { data, error });
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load dashboard tasks:", error.message);
+          setMyTasks([]);
+        } else {
+          setMyTasks(
+            (data ?? []).map((row) => {
+              const clubRaw = row.clubs as unknown;
+              const club = (
+                Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
+              ) as Record<string, unknown>;
+              return {
+                id: row.id as string,
+                title: (row.title as string) ?? "",
+                status: (row.status as string) ?? "todo",
+                clubName: (club.name as string) ?? "",
+                clubId: row.club_id as string,
+                dueDate: (row.due_date as string) ?? undefined,
+              };
+            }),
+          );
+        }
+        setTasksLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, joinedClubIds]);
   return (
     <>
       {/* ── Stat Cards ── */}
@@ -318,30 +445,105 @@ function OverviewTab({
 
       {/* ── Two-column layout ── */}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-        {/* Left: Upcoming Events */}
-        <div>
+        {/* Left: My Tasks + Upcoming Events */}
+        <div className="space-y-6">
           <Card className="p-6">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">Upcoming Events</h2>
-              <Link
-                to="/explore"
-                className="text-sm font-medium text-primary hover:text-primary-light"
-              >
-                View All →
-              </Link>
-            </div>
+            <h2 className="mb-5 text-lg font-bold text-white">My Tasks</h2>
+
+            {tasksLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner label="Loading tasks…" />
+              </div>
+            ) : myTasks.length === 0 ? (
+              <p style={overviewEmptyTextStyle}>No active tasks</p>
+            ) : (
+              <div className="space-y-3">
+                {myTasks.map((task) => (
+                  <Link
+                    key={task.id}
+                    to={`/app/clubs/${task.clubId}/tasks`}
+                    className="block no-underline"
+                  >
+                    <div
+                      style={{
+                        background: "#1a1a1a",
+                        borderTop: "1px solid #242424",
+                        borderRight: "1px solid #242424",
+                        borderBottom: "1px solid #242424",
+                        borderLeft: `3px solid ${taskStatusAccent(task.status)}`,
+                        borderRadius: "8px",
+                        padding: "14px 16px",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p
+                          style={{
+                            fontSize: "14px",
+                            fontWeight: 500,
+                            color: "#ffffff",
+                            margin: "0 0 4px",
+                          }}
+                        >
+                          {task.title}
+                        </p>
+                        <p
+                          style={{
+                            fontSize: "11px",
+                            color: "#555555",
+                            margin: 0,
+                          }}
+                        >
+                          {task.clubName}
+                        </p>
+                      </div>
+                      {task.dueDate?.trim() ? (
+                        <span
+                          style={{
+                            color: "#E51937",
+                            fontSize: "11px",
+                            fontWeight: 500,
+                            flexShrink: 0,
+                            alignSelf: "flex-start",
+                          }}
+                        >
+                          {formatTaskDueDate(task.dueDate)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {!tasksLoading && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onViewAllTasks}
+                  style={viewAllLinkStyle}
+                >
+                  View All Tasks
+                </button>
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-6">
+            <h2 className="mb-5 text-lg font-bold text-white">Upcoming Events</h2>
 
             {eventsLoading ? (
               <div className="flex justify-center py-8">
                 <Spinner label="Loading events…" />
               </div>
-            ) : upcomingEvents.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted">
-                No upcoming events from your clubs.
-              </p>
+            ) : previewEvents.length === 0 ? (
+              <p style={overviewEmptyTextStyle}>No upcoming events</p>
             ) : (
               <div className="space-y-3">
-                {upcomingEvents.slice(0, 6).map((event) => (
+                {previewEvents.map((event) => (
                   <EventCard
                     key={event.id}
                     event={event}
@@ -349,6 +551,18 @@ function OverviewTab({
                     counts={rsvpCounts[event.id]}
                   />
                 ))}
+              </div>
+            )}
+
+            {!eventsLoading && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onViewAllEvents}
+                  style={viewAllLinkStyle}
+                >
+                  View All Events
+                </button>
               </div>
             )}
           </Card>
@@ -812,10 +1026,10 @@ function EventCard({
               {event.date}
               {event.time ? ` · ${event.time}` : ""}
             </span>
-            {event.location && (
+            {hasEventLocation(event.location) && (
               <>
                 <span>·</span>
-                <span>{event.location}</span>
+                <span>{event.location.trim()}</span>
               </>
             )}
           </div>
