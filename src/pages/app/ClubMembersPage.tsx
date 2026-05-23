@@ -48,17 +48,10 @@ function roleBadgeStyle(role: MemberRole | string): CSSProperties {
         color: "#FFC429",
         border: "1px solid #3a2500",
       };
-    case "admin":
+    case "executive":
       return {
         ...base,
-        backgroundColor: "#2a0a0a",
-        color: "#E51937",
-        border: "1px solid #3a1a1a",
-      };
-    case "exec":
-      return {
-        ...base,
-        backgroundColor: "#1a1a2a",
+        background: "#1a1a2a",
         color: "#6b7cff",
         border: "1px solid #2a2a3a",
       };
@@ -70,6 +63,17 @@ function roleBadgeStyle(role: MemberRole | string): CSSProperties {
         border: "1px solid #222222",
       };
   }
+}
+
+function normalizeMemberRole(role: string): MemberRole {
+  if (role === "executive" || role === "exec") return "executive";
+  if (role === "owner") return "owner";
+  return "member";
+}
+
+function formatRoleLabel(role: MemberRole | string): string {
+  if (role === "executive" || role === "exec") return "Executive";
+  return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
 function MemberAvatar({
@@ -120,31 +124,24 @@ export default function ClubMembersPage() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const roleOrder = { owner: 0, admin: 1, exec: 2, member: 3 } as const;
+  const roleOrder: Record<MemberRole, number> = {
+    owner: 0,
+    executive: 1,
+    member: 2,
+  };
   const sortedMembers = [...members].sort(
-    (a, b) => roleOrder[a.role] - roleOrder[b.role],
+    (a, b) =>
+      (roleOrder[a.role] ?? 99) - (roleOrder[b.role] ?? 99),
   );
 
-  async function handlePromote(memberId: string) {
+  async function handleRoleChange(memberId: string, newRole: MemberRole) {
     setActionLoading(memberId);
     setFeedback(null);
-    const ok = await updateRole(memberId, "exec");
+    const ok = await updateRole(memberId, newRole);
     if (ok) {
-      setFeedback({ type: "success", text: "Member promoted to exec." });
+      setFeedback({ type: "success", text: `Role updated to ${formatRoleLabel(newRole)}.` });
     } else {
-      setFeedback({ type: "error", text: "Failed to promote member." });
-    }
-    setActionLoading(null);
-  }
-
-  async function handleDemote(memberId: string) {
-    setActionLoading(memberId);
-    setFeedback(null);
-    const ok = await updateRole(memberId, "member");
-    if (ok) {
-      setFeedback({ type: "success", text: "Member demoted to regular member." });
-    } else {
-      setFeedback({ type: "error", text: "Failed to demote member." });
+      setFeedback({ type: "error", text: "Failed to update member role." });
     }
     setActionLoading(null);
   }
@@ -205,47 +202,62 @@ export default function ClubMembersPage() {
     memberId: string,
     memberUserId: string,
   ) {
-    // Owners/admins cannot modify themselves or other top moderators (owner/admin).
-    if (
-      !canReorderRoster
-      || isTopClubModeratorRole(memberRole)
-      || memberUserId === user?.id
-    ) {
+    const isOwner = role === "owner";
+    const isSelf = memberUserId === user?.id;
+    const isOtherOwner = memberRole === "owner";
+
+    if (isSelf) {
+      return null;
+    }
+
+    if (!canReorderRoster && !isOwner) {
       return null;
     }
 
     const busy = actionLoading === memberId;
+    const canChangeRole = isOwner && !isOtherOwner;
+    const canRemove =
+      canReorderRoster && !isTopClubModeratorRole(memberRole);
+
+    if (!canChangeRole && !canRemove) {
+      return null;
+    }
 
     return (
-      <div className="flex flex-shrink-0 flex-wrap gap-2">
-        {memberRole === "member" ? (
+      <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+        {canChangeRole ? (
+          <select
+            value={normalizeMemberRole(memberRole)}
+            disabled={busy}
+            onChange={(event) =>
+              handleRoleChange(memberId, event.target.value as MemberRole)
+            }
+            style={{
+              backgroundColor: "#111111",
+              color: "#ffffff",
+              border: "1px solid #333333",
+              borderRadius: "6px",
+              padding: "6px 10px",
+              fontSize: "12px",
+            }}
+            aria-label="Change member role"
+          >
+            <option value="owner">Owner</option>
+            <option value="executive">Executive</option>
+            <option value="member">Member</option>
+          </select>
+        ) : null}
+        {canRemove ? (
           <Button
             variant="ghost"
             size="sm"
             disabled={busy}
-            onClick={() => handlePromote(memberId)}
+            className="text-red-400 hover:text-red-300"
+            onClick={() => handleRemove(memberId)}
           >
-            Promote to Exec
+            Remove
           </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => handleDemote(memberId)}
-          >
-            Demote to Member
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          className="text-red-400 hover:text-red-300"
-          onClick={() => handleRemove(memberId)}
-        >
-          Remove
-        </Button>
+        ) : null}
       </div>
     );
   }
@@ -455,7 +467,9 @@ export default function ClubMembersPage() {
                     >
                       {member.fullName ?? "Unknown"}
                     </span>
-                    <span style={roleBadgeStyle(member.role)}>{member.role}</span>
+                    <span style={roleBadgeStyle(normalizeMemberRole(member.role))}>
+                      {formatRoleLabel(member.role)}
+                    </span>
                   </div>
                   <p
                     className="truncate"

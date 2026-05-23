@@ -1,28 +1,48 @@
-import { useEffect } from "react";
+import { useEffect, type ReactElement } from "react";
 import { NavLink, Outlet, useParams, Navigate } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Megaphone,
+  MessageSquare,
+  CheckSquare,
+  Calendar,
+  Users,
+  BarChart2,
+  Settings,
+  ExternalLink,
+  type IconProps,
+} from "../icons/WorkspaceIcons";
 import { useClubContext } from "../../context/useClubContext";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import Spinner from "../ui/Spinner";
 
+const workspaceLinks: {
+  to: string;
+  label: string;
+  end: boolean;
+  Icon: (props: IconProps) => ReactElement;
+}[] = [
+  { to: "", label: "Dashboard", end: true, Icon: LayoutDashboard },
+  { to: "announcements", label: "Announcements", end: false, Icon: Megaphone },
+  { to: "chat", label: "Chat", end: false, Icon: MessageSquare },
+  { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare },
+  { to: "events", label: "Events", end: false, Icon: Calendar },
+  { to: "members", label: "Members", end: false, Icon: Users },
+];
 
-const workspaceLinks = [
-  { to: "", label: "Dashboard", end: true },
-  { to: "announcements", label: "Announcements", end: false },
-  { to: "chat", label: "Chat", end: false },
-  { to: "tasks", label: "Tasks", end: false },
-  { to: "events", label: "Events", end: false },
-  { to: "members", label: "Members", end: false },
+const privilegedLinks: { to: string; label: string; Icon: (props: IconProps) => ReactElement }[] = [
+  { to: "analytics", label: "Analytics", Icon: BarChart2 },
+  { to: "settings", label: "Settings", Icon: Settings },
 ];
 
 function workspaceNavClass(isActive: boolean) {
   const base =
-    "flex items-center gap-2 rounded-md border-l-[3px] py-[10px] pr-4 text-[13px] font-normal transition-colors";
+    "flex items-center gap-2 rounded-[6px] border-l-[3px] py-[9px] pr-[14px] text-[13px] font-normal transition-colors";
   if (isActive) {
-    return `${base} border-l-[#E51937] bg-[#1f1f1f] pl-[13px] text-white`;
+    return `${base} border-l-[#E51937] bg-[#1f1f1f] pl-[11px] text-white`;
   }
-  return `${base} border-l-transparent pl-4 text-[#777777] hover:bg-[#1a1a1a] hover:text-[#cccccc]`;
+  return `${base} border-l-transparent pl-[14px] text-[#777777] hover:bg-[#1a1a1a] hover:text-[#cccccc]`;
 }
-
 
 export default function WorkspaceLayout() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -55,7 +75,7 @@ export default function WorkspaceLayout() {
     <div className="flex min-h-[calc(100vh-4rem)]">
       {/* Sidebar */}
       <aside
-        className="hidden w-64 flex-shrink-0 border-r md:block"
+        className="hidden w-52 flex-shrink-0 border-r md:block"
         style={{ backgroundColor: "#111111", borderColor: "#1e1e1e" }}
       >
         <div className="flex h-full flex-col">
@@ -65,7 +85,7 @@ export default function WorkspaceLayout() {
               <img
                 src={club.imageUrl}
                 alt=""
-                className="h-10 w-10 object-cover"
+                className="h-10 w-10 shrink-0 object-cover"
                 style={{ borderRadius: "8px", backgroundColor: "#1a1a1a" }}
               />
               <div className="min-w-0 flex-1">
@@ -73,16 +93,18 @@ export default function WorkspaceLayout() {
                   className="truncate"
                   style={{
                     fontWeight: 600,
-                    fontSize: "14px",
-                    color: "#ffffff" }}
+                    fontSize: "13px",
+                    color: "#ffffff",
+                  }}
                 >
                   {club.name}
                 </h2>
                 <p
                   className="truncate"
                   style={{
-                    fontSize: "12px",
-                    color: "#555555" }}
+                    fontSize: "11px",
+                    color: "#555555",
+                  }}
                 >
                   {club.category}
                 </p>
@@ -92,57 +114,41 @@ export default function WorkspaceLayout() {
 
           {/* Nav links */}
           <nav className="flex-1 space-y-0.5 p-3" aria-label="Workspace navigation">
-            {workspaceLinks.map((link) => (
+            {workspaceLinks.map(({ to, label, end, Icon }) => (
               <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.end}
+                key={to}
+                to={to}
+                end={end}
                 className={({ isActive }) => workspaceNavClass(isActive)}
               >
-                {link.label}
+                <Icon size={16} strokeWidth={2} aria-hidden />
+                {label}
               </NavLink>
             ))}
-            {isPrivileged && (
-              <>
+            {isPrivileged &&
+              privilegedLinks.map(({ to, label, Icon }) => (
                 <NavLink
-                  to="analytics"
+                  key={to}
+                  to={to}
                   className={({ isActive }) => workspaceNavClass(isActive)}
                 >
-                  Analytics
+                  <Icon size={16} strokeWidth={2} aria-hidden />
+                  {label}
                 </NavLink>
-                <NavLink
-                  to="settings"
-                  className={({ isActive }) => workspaceNavClass(isActive)}
-                >
-                  Settings
-                </NavLink>
-              </>
-            )}
+              ))}
           </nav>
 
           {/* Public profile link */}
           <div className="border-t p-3" style={{ borderColor: "#1e1e1e" }}>
             <NavLink
               to={`/clubs/${club.slug}`}
-              className="flex items-center gap-2 rounded-md px-4 py-2 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
+              className="flex items-center gap-1.5 rounded-[6px] px-[14px] py-2 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
               style={{
                 fontSize: "12px",
-                color: "#555555" }}
+                color: "#555555",
+              }}
             >
-              <svg
-                className="h-4 w-4 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                />
-              </svg>
+              <ExternalLink size={14} strokeWidth={2} aria-hidden />
               View Public Profile
             </NavLink>
           </div>
@@ -168,10 +174,11 @@ export default function WorkspaceLayout() {
               {link.label}
             </NavLink>
           ))}
-          {isPrivileged && (
-            <>
+          {isPrivileged &&
+            privilegedLinks.map((link) => (
               <NavLink
-                to="analytics"
+                key={link.to}
+                to={link.to}
                 className={({ isActive }) =>
                   `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     isActive
@@ -180,22 +187,9 @@ export default function WorkspaceLayout() {
                   }`
                 }
               >
-                Analytics
+                {link.label}
               </NavLink>
-              <NavLink
-                to="settings"
-                className={({ isActive }) =>
-                  `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted hover:bg-surface-alt"
-                  }`
-                }
-              >
-                Settings
-              </NavLink>
-            </>
-          )}
+            ))}
         </nav>
 
         {/* Workspace content */}

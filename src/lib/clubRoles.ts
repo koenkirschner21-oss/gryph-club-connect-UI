@@ -4,12 +4,12 @@ import type { MemberRole } from "../types";
 export function isPrivilegedClubRole(
   role: MemberRole | null | undefined,
 ): boolean {
-  return role === "owner" || role === "admin" || role === "exec";
+  return role === "owner" || role === "executive";
 }
 
-/** Owner or admin — top moderators protected from junior admins / exec actions. */
+/** Top moderators protected from role changes / removal by other members. */
 export function isTopClubModeratorRole(
   role: MemberRole | null | undefined,
 ): boolean {
-  return role === "owner" || role === "admin";
+  return role === "owner";
 }
