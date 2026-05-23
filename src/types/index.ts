@@ -168,6 +168,8 @@ export interface Post {
   content: string;
   createdAt: string;
   authorName?: string;
+  attachmentUrl?: string | null;
+  attachmentType?: string | null;
 }
 
 // ---------------------------------------------------------------------------

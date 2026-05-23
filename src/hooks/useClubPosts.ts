@@ -4,7 +4,21 @@ import { useAuthContext } from "../context/useAuthContext";
 import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import type { Post } from "../types";
 
-/** Map a Supabase `posts` row (joined with profiles) to our Post type. */
+const POST_SELECT = `
+  id,
+  club_id,
+  author_id,
+  title,
+  content,
+  created_at,
+  attachment_url,
+  attachment_type,
+  author:profiles!posts_author_profile_fkey (
+    full_name
+  )
+`;
+
+/** Map a Supabase \`posts\` row (joined with profiles) to our Post type. */
 function mapPostRow(row: Record<string, unknown>): Post {
   const profile = (row.author ?? {}) as Record<string, unknown>;
   return {
@@ -15,16 +29,22 @@ function mapPostRow(row: Record<string, unknown>): Post {
     content: (row.content as string) ?? "",
     createdAt: (row.created_at as string) ?? "",
     authorName: (profile.full_name as string) ?? undefined,
+    attachmentUrl: (row.attachment_url as string | null) ?? null,
+    attachmentType: (row.attachment_type as string | null) ?? null,
   };
 }
+
+export type PostWriteFields = Pick<Post, "title" | "content"> & {
+  attachmentUrl?: string | null;
+  attachmentType?: string | null;
+};
 
 export interface UseClubPostsReturn {
   posts: Post[];
   loading: boolean;
   error: string | null;
-  createPost: (
-    fields: Pick<Post, "title" | "content">,
-  ) => Promise<boolean>;
+  createPost: (fields: PostWriteFields) => Promise<boolean>;
+  updatePost: (postId: string, fields: PostWriteFields) => Promise<boolean>;
   deletePost: (postId: string) => Promise<boolean>;
   refresh: () => void;
 }
@@ -42,24 +62,13 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Fetch posts for this club (joined with author profile)
   useEffect(() => {
     if (!clubId) return;
     let cancelled = false;
 
     supabase
       .from("posts")
-      .select(`
-        id,
-        club_id,
-        author_id,
-        title,
-        content,
-        created_at,
-        author:profiles!posts_author_profile_fkey (
-          full_name
-        )
-      `)
+      .select(POST_SELECT)
       .eq("club_id", clubId)
       .order("created_at", { ascending: false })
       .then(({ data, error: err }) => {
@@ -79,9 +88,8 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
     };
   }, [clubId, refreshKey]);
 
-  /** Create a new announcement post and notify club members. */
   const createPost = useCallback(
-    async (fields: Pick<Post, "title" | "content">): Promise<boolean> => {
+    async (fields: PostWriteFields): Promise<boolean> => {
       if (!clubId || !user) return false;
 
       const { data, error: err } = await supabase
@@ -91,18 +99,10 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           author_id: user.id,
           title: fields.title,
           content: fields.content,
+          attachment_url: fields.attachmentUrl ?? null,
+          attachment_type: fields.attachmentType ?? null,
         })
-        .select(`
-          id,
-          club_id,
-          author_id,
-          title,
-          content,
-          created_at,
-          author:profiles!posts_author_profile_fkey (
-            full_name
-          )
-        `)
+        .select(POST_SELECT)
         .single();
 
       if (err || !data) {
@@ -112,7 +112,6 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
 
       setPosts((prev) => [mapPostRow(data), ...prev]);
 
-      // Notify club members about the new announcement (fire-and-forget)
       Promise.resolve(
         supabase
           .from("club_members")
@@ -121,9 +120,7 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           .eq("status", "active")
           .then(({ data: members }) => {
             if (!members || members.length === 0) return;
-            const recipients = members.filter(
-              (m) => m.user_id !== user.id,
-            );
+            const recipients = members.filter((m) => m.user_id !== user.id);
             if (recipients.length === 0) return;
             const rows: NotificationRequest[] = recipients.map((m) => ({
               user_id: m.user_id,
@@ -147,24 +144,43 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
     [clubId, user],
   );
 
-  /** Delete a post by id. */
-  const deletePost = useCallback(
-    async (postId: string): Promise<boolean> => {
-      const { error: err } = await supabase
+  const updatePost = useCallback(
+    async (postId: string, fields: PostWriteFields): Promise<boolean> => {
+      const { data, error: err } = await supabase
         .from("posts")
-        .delete()
-        .eq("id", postId);
+        .update({
+          title: fields.title,
+          content: fields.content,
+          attachment_url: fields.attachmentUrl ?? null,
+          attachment_type: fields.attachmentType ?? null,
+        })
+        .eq("id", postId)
+        .select(POST_SELECT)
+        .single();
 
-      if (err) {
-        console.error("Failed to delete post:", err.message);
+      if (err || !data) {
+        console.error("Failed to update post:", err?.message);
         return false;
       }
 
-      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      const updated = mapPostRow(data);
+      setPosts((prev) => prev.map((p) => (p.id === postId ? updated : p)));
       return true;
     },
     [],
   );
 
-  return { posts, loading, error, createPost, deletePost, refresh };
+  const deletePost = useCallback(async (postId: string): Promise<boolean> => {
+    const { error: err } = await supabase.from("posts").delete().eq("id", postId);
+
+    if (err) {
+      console.error("Failed to delete post:", err.message);
+      return false;
+    }
+
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    return true;
+  }, []);
+
+  return { posts, loading, error, createPost, updatePost, deletePost, refresh };
 }
