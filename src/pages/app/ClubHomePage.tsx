@@ -43,6 +43,7 @@ const quickActionButton: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: "8px",
+  background: "#E51937",
   backgroundColor: "#E51937",
   color: "#ffffff",
   borderRadius: "6px",
@@ -52,11 +53,19 @@ const quickActionButton: CSSProperties = {
   textDecoration: "none",
 };
 
-const inviteCardStyle: CSSProperties = {
-  background: "#1a1a1a",
-  border: "1px solid #242424",
-  borderRadius: "8px",
-  padding: "10px 16px",
+const quickActionOutlineButton: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  background: "transparent",
+  backgroundColor: "transparent",
+  border: "1px solid #E51937",
+  color: "#E51937",
+  borderRadius: "6px",
+  padding: "8px 16px",
+  fontSize: "13px",
+  fontWeight: 500,
+  textDecoration: "none",
 };
 
 function normalizeUserRole(role: MemberRole | string | null | undefined): MemberRole {
@@ -81,23 +90,30 @@ function ClubStatCard({
   value,
   sublabel,
   accentColor,
+  to,
+  valueFontSize = "2rem",
 }: {
   label: string;
   value: string | number;
   sublabel: string;
   accentColor: string;
+  to?: string;
+  valueFontSize?: string;
 }) {
-  return (
+  const [hovered, setHovered] = useState(false);
+
+  const card = (
     <div
       className="flex h-full min-h-[120px] flex-col justify-center"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        backgroundColor: "#1a1a1a",
-        borderTop: "1px solid #242424",
-        borderRight: "1px solid #242424",
-        borderBottom: "1px solid #242424",
+        background: "#1a1a1a",
+        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
         borderLeft: `3px solid ${accentColor}`,
         borderRadius: "8px",
         padding: "16px",
+        cursor: to ? "pointer" : undefined,
       }}
     >
       <p
@@ -107,13 +123,14 @@ function ClubStatCard({
           letterSpacing: "0.1em",
           color: "#747676",
           margin: 0,
+          textTransform: "uppercase",
         }}
       >
         {label}
       </p>
       <p
         style={{
-          fontSize: "2rem",
+          fontSize: valueFontSize,
           fontWeight: 700,
           color: "#ffffff",
           lineHeight: 1.15,
@@ -135,6 +152,16 @@ function ClubStatCard({
       ) : null}
     </div>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="block h-full no-underline">
+        {card}
+      </Link>
+    );
+  }
+
+  return card;
 }
 
 function ClubEventCard({
@@ -312,7 +339,6 @@ export default function ClubHomePage() {
   const { events, loading: eventsLoading } = useClubEvents(clubId);
   const { posts, loading: postsLoading } = useClubPosts(clubId);
   const { tasks, loading: tasksLoading } = useClubTasks(clubId);
-  const [copied, setCopied] = useState(false);
 
   const upcomingEvents = useMemo(
     () =>
@@ -344,19 +370,6 @@ export default function ClubHomePage() {
   const tasksSectionTitle =
     userRole === "owner" ? "Club Tasks" : "My Tasks";
 
-  function handleCopyCode() {
-    if (!club?.joinCode) return;
-    navigator.clipboard.writeText(club.joinCode).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      },
-      () => {
-        /* clipboard unavailable */
-      },
-    );
-  }
-
   if (!club) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -377,74 +390,26 @@ export default function ClubHomePage() {
 
   return (
     <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <h1
-            style={{
-              fontWeight: 700,
-              fontSize: "24px",
-              color: "#ffffff",
-              margin: 0,
-            }}
-          >
-            {club.name}
-          </h1>
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#555555",
-              margin: "6px 0 0",
-            }}
-          >
-            {club.description}
-          </p>
-        </div>
-
-        {userRole === "owner" && club.joinCode ? (
-          <div
-            className="flex shrink-0 flex-wrap items-center gap-2"
-            style={inviteCardStyle}
-          >
-            <div>
-              <p
-                style={{
-                  fontSize: "10px",
-                  color: "#555555",
-                  margin: "0 0 4px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                }}
-              >
-                Invite code
-              </p>
-              <span
-                style={{
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  color: "#FFC429",
-                  letterSpacing: "0.15em",
-                }}
-              >
-                {club.joinCode}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleCopyCode}
-              className="cursor-pointer border-none transition-colors hover:bg-[#cc0020]"
-              style={{
-                backgroundColor: "#E51937",
-                color: "#ffffff",
-                borderRadius: "6px",
-                padding: "6px 12px",
-                fontSize: "12px",
-                fontWeight: 500,
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-        ) : null}
+      <div className="mb-6">
+        <h1
+          style={{
+            fontWeight: 700,
+            fontSize: "22px",
+            color: "#ffffff",
+            margin: 0,
+          }}
+        >
+          {club.name}
+        </h1>
+        <p
+          style={{
+            fontSize: "13px",
+            color: "#555555",
+            margin: "6px 0 0",
+          }}
+        >
+          {club.description}
+        </p>
       </div>
 
       {userRole === "owner" ? (
@@ -457,7 +422,7 @@ export default function ClubHomePage() {
             <Calendar size={16} strokeWidth={2} aria-hidden />
             New Event
           </Link>
-          <Link to="members" style={quickActionButton}>
+          <Link to="members" style={quickActionOutlineButton}>
             <Users size={16} strokeWidth={2} aria-hidden />
             Invite Member
           </Link>
@@ -478,7 +443,7 @@ export default function ClubHomePage() {
       ) : null}
 
       <div
-        className={`grid grid-cols-1 gap-4 ${
+        className={`grid grid-cols-1 items-stretch gap-4 ${
           userRole === "member" ? "sm:grid-cols-2" : "sm:grid-cols-3"
         }`}
       >
@@ -488,6 +453,7 @@ export default function ClubHomePage() {
             value={club.memberCount}
             sublabel="Active members"
             accentColor="#E51937"
+            to="members"
           />
         ) : null}
         <ClubStatCard
@@ -495,12 +461,15 @@ export default function ClubHomePage() {
           value={eventsLoading ? "…" : upcomingEvents.length}
           sublabel="Scheduled events"
           accentColor="#FFC429"
+          to="events"
         />
         <ClubStatCard
           label="Meeting"
           value={club.meetingSchedule || "Not set"}
           sublabel={meetingSublabel}
           accentColor="#747676"
+          to="events"
+          valueFontSize="1.2rem"
         />
       </div>
 
@@ -519,14 +488,15 @@ export default function ClubHomePage() {
           </div>
         ) : previewTasks.length === 0 ? (
           <div
-            className="p-6 text-center"
+            className="text-center"
             style={{
-              backgroundColor: "#1a1a1a",
+              background: "#1a1a1a",
               border: "1px solid #242424",
               borderRadius: "8px",
+              padding: "16px",
             }}
           >
-            <p className="text-sm" style={{ color: "#555555" }}>
+            <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
               {userRole === "owner"
                 ? "No active tasks in this club."
                 : "No active tasks assigned to you."}
