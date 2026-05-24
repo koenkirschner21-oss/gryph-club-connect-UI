@@ -56,6 +56,38 @@ function mapMessageRow(row: Record<string, unknown>): DirectMessage {
   };
 }
 
+function isTempMessageId(id: string): boolean {
+  return id.startsWith("temp-");
+}
+
+function mergeConfirmedMessage(
+  prev: DirectMessage[],
+  confirmed: DirectMessage,
+  tempId?: string,
+): DirectMessage[] {
+  if (prev.some((m) => m.id === confirmed.id)) {
+    return prev.filter((m) => !isTempMessageId(m.id));
+  }
+
+  if (tempId) {
+    const tempIndex = prev.findIndex((m) => m.id === tempId);
+    if (tempIndex !== -1) {
+      const next = [...prev];
+      next[tempIndex] = confirmed;
+      return next;
+    }
+  }
+
+  const optimisticIndex = prev.findIndex((m) => isTempMessageId(m.id));
+  if (optimisticIndex !== -1) {
+    const next = [...prev];
+    next[optimisticIndex] = confirmed;
+    return next;
+  }
+
+  return [...prev, confirmed];
+}
+
 function mapMemberRow(row: Record<string, unknown>): ConversationMember {
   const profile = (row.member_profile ?? {}) as Record<string, unknown>;
   return {
@@ -123,6 +155,11 @@ export interface UseConversationsReturn {
     file: File,
     conversationId: string,
   ) => Promise<{ url: string; type: string } | null>;
+  uploadGroupAvatar: (file: File, conversationId: string) => Promise<string | null>;
+  updateGroupConversation: (
+    conversationId: string,
+    fields: { name?: string; avatarUrl?: string | null },
+  ) => Promise<boolean>;
   refresh: () => void;
 }
 
@@ -420,10 +457,7 @@ export function useConversations(
 
           if (data) {
             const mapped = mapMessageRow(data as Record<string, unknown>);
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === mapped.id)) return prev;
-              return [...prev, mapped];
-            });
+            setMessages((prev) => mergeConfirmedMessage(prev, mapped));
             if (user?.id && mapped.senderId !== user.id) {
               await supabase
                 .from("direct_messages")
@@ -571,6 +605,62 @@ export function useConversations(
     [clubId],
   );
 
+  const uploadGroupAvatar = useCallback(
+    async (file: File, conversationId: string): Promise<string | null> => {
+      if (!clubId) return null;
+      if (file.size > MAX_FILE_BYTES) {
+        console.error("Avatar exceeds 20MB limit");
+        return null;
+      }
+      const path = `group-avatars/${clubId}/${conversationId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+      return uploadImage(STORAGE_BUCKET, path, file);
+    },
+    [clubId],
+  );
+
+  const updateGroupConversation = useCallback(
+    async (
+      conversationId: string,
+      fields: { name?: string; avatarUrl?: string | null },
+    ): Promise<boolean> => {
+      const payload: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (fields.name !== undefined) {
+        payload.name = fields.name.trim() || null;
+      }
+      if (fields.avatarUrl !== undefined) {
+        payload.avatar_url = fields.avatarUrl;
+      }
+
+      const { data, error } = await supabase
+        .from("conversations")
+        .update(payload)
+        .eq("id", conversationId)
+        .select("id, club_id, type, name, avatar_url, created_at, updated_at")
+        .single();
+
+      if (error || !data) {
+        console.error("Failed to update conversation:", error?.message);
+        return false;
+      }
+
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== conversationId) return c;
+          return {
+            ...c,
+            name: (data.name as string) || c.name,
+            avatarUrl: (data.avatar_url as string | null) ?? null,
+            updatedAt: data.updated_at as string,
+          };
+        }),
+      );
+      return true;
+    },
+    [],
+  );
+
   const sendMessage = useCallback(
     async (
       conversationId: string,
@@ -581,6 +671,30 @@ export function useConversations(
 
       const trimmed = content.trim();
       if (!trimmed && !attachment) return false;
+
+      const tempId = `temp-${Date.now()}`;
+      const metadata = user.user_metadata as Record<string, unknown> | undefined;
+      const currentUserName =
+        (metadata?.full_name as string | undefined) ??
+        user.email?.split("@")[0] ??
+        "You";
+      const currentUserAvatar =
+        (metadata?.avatar_url as string | undefined) ?? undefined;
+
+      const optimisticMessage: DirectMessage = {
+        id: tempId,
+        conversationId,
+        senderId: user.id,
+        content: trimmed || null,
+        attachmentUrl: attachment?.url ?? null,
+        attachmentType: attachment?.type ?? null,
+        readBy: [user.id],
+        createdAt: new Date().toISOString(),
+        senderName: currentUserName,
+        senderAvatar: currentUserAvatar,
+      };
+
+      setMessages((prev) => [...prev, optimisticMessage]);
 
       const { data, error } = await supabase
         .from("direct_messages")
@@ -597,14 +711,12 @@ export function useConversations(
 
       if (error || !data) {
         console.error("Failed to send message:", error?.message);
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
         return false;
       }
 
       const mapped = mapMessageRow(data as Record<string, unknown>);
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === mapped.id)) return prev;
-        return [...prev, mapped];
-      });
+      setMessages((prev) => mergeConfirmedMessage(prev, mapped, tempId));
 
       await supabase
         .from("conversations")
@@ -614,7 +726,7 @@ export function useConversations(
       await loadConversations();
       return true;
     },
-    [user?.id, loadConversations],
+    [user, loadConversations],
   );
 
   return {
@@ -633,6 +745,8 @@ export function useConversations(
     createGroupChat,
     sendMessage,
     uploadAttachment,
+    uploadGroupAvatar,
+    updateGroupConversation,
     refresh,
   };
 }

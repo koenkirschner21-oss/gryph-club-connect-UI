@@ -157,6 +157,45 @@ function DownloadIcon() {
   );
 }
 
+function formatMemberCount(count: number): string {
+  return count === 1 ? "1 member" : `${count} members`;
+}
+
+function isSystemGroupChat(name: string): boolean {
+  const normalized = name.trim().toLowerCase();
+  return normalized === "general" || normalized === "executive team";
+}
+
+function canEditGroupChat(
+  convo: Conversation,
+  role: "owner" | "executive" | "member",
+): boolean {
+  if (convo.type !== "group") return false;
+  if (isSystemGroupChat(convo.name)) {
+    return role === "owner";
+  }
+  return role === "owner" || role === "executive";
+}
+
+function PencilIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
 function MessageAttachment({ msg }: { msg: DirectMessage }) {
   if (!msg.attachmentUrl || !msg.attachmentType) return null;
   if (msg.attachmentType.startsWith("image/")) {
@@ -167,7 +206,9 @@ function MessageAttachment({ msg }: { msg: DirectMessage }) {
         style={{
           display: "block",
           maxWidth: "200px",
+          maxHeight: "200px",
           borderRadius: "12px",
+          objectFit: "cover",
           marginTop: "6px",
         }}
       />
@@ -280,9 +321,15 @@ export default function ClubChatPage() {
     createGroupChat,
     sendMessage,
     uploadAttachment,
+    uploadGroupAvatar,
+    updateGroupConversation,
   } = useConversations(clubId);
 
   const [showModal, setShowModal] = useState(false);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupAvatarFile, setEditGroupAvatarFile] = useState<File | null>(null);
+  const [savingGroupEdit, setSavingGroupEdit] = useState(false);
   const [modalStep, setModalStep] = useState<ModalStep>("type");
   const [chatType, setChatType] = useState<"direct" | "group">("direct");
   const [memberSearch, setMemberSearch] = useState("");
@@ -298,6 +345,7 @@ export default function ClubChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const groupAvatarEditRef = useRef<HTMLInputElement>(null);
 
   const isPrivileged = userRole === "owner" || userRole === "executive";
 
@@ -433,6 +481,61 @@ export default function ClubChatPage() {
     return msg.content ?? "";
   }
 
+  function openEditGroupModal() {
+    if (!activeConversation || activeConversation.type !== "group") return;
+    setEditGroupName(activeConversation.name);
+    setEditGroupAvatarFile(null);
+    setShowEditGroupModal(true);
+  }
+
+  function closeEditGroupModal() {
+    setShowEditGroupModal(false);
+    setEditGroupName("");
+    setEditGroupAvatarFile(null);
+    if (groupAvatarEditRef.current) {
+      groupAvatarEditRef.current.value = "";
+    }
+  }
+
+  async function handleSaveGroupEdit() {
+    if (!activeConversation || activeConversation.type !== "group") return;
+    if (!editGroupName.trim()) return;
+
+    setSavingGroupEdit(true);
+    let avatarUrl: string | null | undefined = undefined;
+    if (editGroupAvatarFile) {
+      const uploaded = await uploadGroupAvatar(
+        editGroupAvatarFile,
+        activeConversation.id,
+      );
+      if (!uploaded) {
+        setSavingGroupEdit(false);
+        setSendError(true);
+        return;
+      }
+      avatarUrl = uploaded;
+    }
+
+    const ok = await updateGroupConversation(activeConversation.id, {
+      name: editGroupName.trim(),
+      ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+    });
+
+    setSavingGroupEdit(false);
+    if (ok) {
+      closeEditGroupModal();
+    } else {
+      setSendError(true);
+    }
+  }
+
+  function listConversationAvatar(convo: Conversation): string | null {
+    if (convo.type === "group") {
+      return convo.avatarUrl ?? null;
+    }
+    return displayConversationAvatar(convo);
+  }
+
   if (loading) {
     return (
       <div
@@ -512,7 +615,8 @@ export default function ClubChatPage() {
             conversations.map((convo) => {
               const isActive = convo.id === activeConversationId;
               const name = displayConversationName(convo);
-              const avatar = displayConversationAvatar(convo);
+              const avatar = listConversationAvatar(convo);
+              const hasGroupAvatar = convo.type === "group" && Boolean(convo.avatarUrl);
               return (
                 <button
                   key={convo.id}
@@ -547,7 +651,11 @@ export default function ClubChatPage() {
                     url={avatar}
                     name={name}
                     size={40}
-                    rounded={convo.type === "group" ? "group" : "full"}
+                    rounded={
+                      convo.type === "group" && !hasGroupAvatar
+                        ? "group"
+                        : "full"
+                    }
                   />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div
@@ -689,24 +797,64 @@ export default function ClubChatPage() {
               }}
             >
               <Avatar
-                url={displayConversationAvatar(activeConversation)}
+                url={
+                  activeConversation.type === "group"
+                    ? activeConversation.avatarUrl
+                    : displayConversationAvatar(activeConversation)
+                }
                 name={displayConversationName(activeConversation)}
                 size={40}
                 rounded={
-                  activeConversation.type === "group" ? "group" : "full"
+                  activeConversation.type === "group" &&
+                  !activeConversation.avatarUrl
+                    ? "group"
+                    : "full"
                 }
               />
-              <div>
-                <h3
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
                   style={{
-                    margin: 0,
-                    fontSize: "15px",
-                    fontWeight: 600,
-                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
                   }}
                 >
-                  {displayConversationName(activeConversation)}
-                </h3>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: "15px",
+                      fontWeight: 600,
+                      color: "#ffffff",
+                    }}
+                  >
+                    {displayConversationName(activeConversation)}
+                  </h3>
+                  {activeConversation.type === "group" &&
+                  canEditGroupChat(activeConversation, userRole) ? (
+                    <button
+                      type="button"
+                      onClick={openEditGroupModal}
+                      aria-label="Edit group"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#888888",
+                        cursor: "pointer",
+                        padding: "2px",
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "#E51937";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = "#888888";
+                      }}
+                    >
+                      <PencilIcon size={14} />
+                    </button>
+                  ) : null}
+                </div>
                 {activeConversation.type === "group" ? (
                   <p
                     style={{
@@ -715,7 +863,7 @@ export default function ClubChatPage() {
                       color: "#555555",
                     }}
                   >
-                    {activeConversation.members.length} members
+                    {formatMemberCount(activeConversation.members.length)}
                   </p>
                 ) : null}
               </div>
@@ -1119,6 +1267,182 @@ export default function ClubChatPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {showEditGroupModal && activeConversation?.type === "group" ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-group-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: "16px",
+          }}
+          onClick={closeEditGroupModal}
+        >
+          <div
+            style={{
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "360px",
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="edit-group-title"
+              style={{
+                fontWeight: 700,
+                fontSize: "16px",
+                color: "#ffffff",
+                margin: "0 0 20px",
+              }}
+            >
+              Edit Group
+            </h3>
+
+            <label
+              htmlFor="edit-group-name"
+              style={{
+                display: "block",
+                fontSize: "12px",
+                color: "#888888",
+                marginBottom: "8px",
+              }}
+            >
+              Group name
+            </label>
+            <input
+              id="edit-group-name"
+              type="text"
+              value={editGroupName}
+              onChange={(e) => setEditGroupName(e.target.value)}
+              style={{
+                width: "100%",
+                background: "#111111",
+                border: "1px solid #2a2a2a",
+                borderRadius: "6px",
+                padding: "8px 12px",
+                color: "#ffffff",
+                fontSize: "14px",
+                boxSizing: "border-box",
+                marginBottom: "16px",
+              }}
+            />
+
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#888888",
+                margin: "0 0 8px",
+              }}
+            >
+              Group avatar
+            </p>
+            <input
+              ref={groupAvatarEditRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              style={{ display: "none" }}
+              onChange={(e) =>
+                setEditGroupAvatarFile(e.target.files?.[0] ?? null)
+              }
+            />
+            <button
+              type="button"
+              onClick={() => groupAvatarEditRef.current?.click()}
+              style={{
+                width: "60px",
+                height: "60px",
+                borderRadius: "50%",
+                background: "#2a2a2a",
+                border: "2px dashed #333333",
+                padding: 0,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                marginBottom: "20px",
+              }}
+            >
+              {editGroupAvatarFile ? (
+                <img
+                  src={URL.createObjectURL(editGroupAvatarFile)}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : activeConversation.avatarUrl ? (
+                <img
+                  src={activeConversation.avatarUrl}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : (
+                <span style={{ fontSize: "10px", color: "#888888" }}>Upload</span>
+              )}
+            </button>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeEditGroupModal}
+                disabled={savingGroupEdit}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "10px 20px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveGroupEdit}
+                disabled={savingGroupEdit || !editGroupName.trim()}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "10px 24px",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  opacity: savingGroupEdit || !editGroupName.trim() ? 0.5 : 1,
+                }}
+              >
+                {savingGroupEdit ? "Saving…" : "Save"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
