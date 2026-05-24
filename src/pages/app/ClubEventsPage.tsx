@@ -1,4 +1,11 @@
-import { useEffect, useState, useMemo, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useMemo,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -11,6 +18,116 @@ import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 
 type EventVisibility = "public" | "members_only" | "featured";
+
+const EVENT_CATEGORIES = [
+  { value: "general", label: "General" },
+  { value: "weekly_meeting", label: "Weekly Meeting" },
+  { value: "team_social", label: "Team Social" },
+  { value: "conference", label: "Conference" },
+  { value: "workshop", label: "Workshop" },
+  { value: "public_event", label: "Public Event" },
+  { value: "fundraiser", label: "Fundraiser" },
+] as const;
+
+type EventCategory = (typeof EVENT_CATEGORIES)[number]["value"];
+
+const DEFAULT_EVENT_CATEGORY: EventCategory = "general";
+
+function normalizeEventCategory(value: string | null | undefined): EventCategory {
+  const match = EVENT_CATEGORIES.find((c) => c.value === value);
+  return match?.value ?? DEFAULT_EVENT_CATEGORY;
+}
+
+function eventCategoryLabel(value: string): string {
+  return (
+    EVENT_CATEGORIES.find((c) => c.value === value)?.label ?? "General"
+  );
+}
+
+function categoryBadgeStyle(category: string): CSSProperties {
+  const base: CSSProperties = {
+    background: "#111111",
+    border: "1px solid #222222",
+    color: "#747676",
+    borderRadius: "20px",
+    padding: "2px 10px",
+    fontSize: "11px",
+    display: "inline-block",
+    flexShrink: 0,
+  };
+
+  switch (category) {
+    case "weekly_meeting":
+      return { ...base, borderColor: "#2a2a3a", color: "#6b7cff" };
+    case "team_social":
+      return { ...base, borderColor: "#1a2a1a", color: "#4ade80" };
+    case "conference":
+    case "workshop":
+      return { ...base, borderColor: "#2a1f00", color: "#FFC429" };
+    case "public_event":
+      return { ...base, borderColor: "#1a1a2a", color: "#E51937" };
+    case "fundraiser":
+      return { ...base, borderColor: "#2a1a2a", color: "#a78bfa" };
+    default:
+      return base;
+  }
+}
+
+function CategorySelector({
+  value,
+  onChange,
+}: {
+  value: EventCategory;
+  onChange: (value: EventCategory) => void;
+}) {
+  return (
+    <div>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#888888",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          marginBottom: "10px",
+        }}
+      >
+        Event Type
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {EVENT_CATEGORIES.map((option) => {
+          const selected = value === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              style={{
+                background: selected ? "#E51937" : "#1a1a1a",
+                border: selected ? "1px solid #E51937" : "1px solid #333333",
+                color: selected ? "#ffffff" : "#777777",
+                borderRadius: "20px",
+                padding: "6px 16px",
+                fontSize: "12px",
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EventCategoryBadge({ category }: { category: string }) {
+  return (
+    <span style={categoryBadgeStyle(category)}>
+      {eventCategoryLabel(category)}
+    </span>
+  );
+}
 
 const VISIBILITY_OPTIONS: {
   value: EventVisibility;
@@ -280,7 +397,7 @@ function normalizeUserRole(role: string): MemberRole {
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
-  const { events, loading, createEvent, updateEvent, deleteEvent } =
+  const { events, loading, createEvent, updateEvent, deleteEvent, refresh } =
     useClubEvents(clubId);
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
@@ -319,6 +436,78 @@ export default function ClubEventsPage() {
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
   const [visibility, setVisibility] = useState<EventVisibility>("public");
+  const [category, setCategory] = useState<EventCategory>(DEFAULT_EVENT_CATEGORY);
+  const [categoryColumnReady, setCategoryColumnReady] = useState(false);
+  const [eventCategories, setEventCategories] = useState<
+    Record<string, EventCategory>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkCategoryColumn() {
+      const { error } = await supabase.from("events").select("category").limit(1);
+      if (cancelled) return;
+      if (error) {
+        console.warn(
+          "events.category column missing — run: ALTER TABLE events ADD COLUMN IF NOT EXISTS category text DEFAULT 'general';",
+          error.message,
+        );
+        setCategoryColumnReady(false);
+        return;
+      }
+      setCategoryColumnReady(true);
+    }
+
+    void checkCategoryColumn();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadEventCategories = useCallback(async () => {
+    if (!clubId || !categoryColumnReady) return;
+    const { data, error } = await supabase
+      .from("events")
+      .select("id, category")
+      .eq("club_id", clubId);
+
+    if (error) {
+      console.error("Failed to load event categories:", error.message);
+      return;
+    }
+
+    const map: Record<string, EventCategory> = {};
+    (data ?? []).forEach((row) => {
+      map[row.id as string] = normalizeEventCategory(row.category as string);
+    });
+    setEventCategories(map);
+  }, [clubId, categoryColumnReady]);
+
+  useEffect(() => {
+    if (!loading && categoryColumnReady) {
+      void loadEventCategories();
+    }
+  }, [loading, events, categoryColumnReady, loadEventCategories]);
+
+  async function saveEventCategory(
+    eventId: string,
+    nextCategory: EventCategory,
+  ): Promise<boolean> {
+    if (!categoryColumnReady) return true;
+    const { error } = await supabase
+      .from("events")
+      .update({ category: nextCategory })
+      .eq("id", eventId);
+
+    if (error) {
+      console.error("Failed to save event category:", error.message);
+      return false;
+    }
+
+    setEventCategories((prev) => ({ ...prev, [eventId]: nextCategory }));
+    return true;
+  }
 
   function resetForm() {
     setTitle("");
@@ -327,6 +516,7 @@ export default function ClubEventsPage() {
     setTime("");
     setLocation("");
     setVisibility("public");
+    setCategory(DEFAULT_EVENT_CATEGORY);
     setEditingId(null);
     setShowForm(false);
   }
@@ -346,7 +536,14 @@ export default function ClubEventsPage() {
     } else {
       setVisibility("public");
     }
+    setCategory(
+      eventCategories[current.id] ?? DEFAULT_EVENT_CATEGORY,
+    );
     setShowForm(true);
+  }
+
+  function getEventCategory(eventId: string): EventCategory {
+    return eventCategories[eventId] ?? DEFAULT_EVENT_CATEGORY;
   }
 
   async function handleSubmit() {
@@ -366,8 +563,32 @@ export default function ClubEventsPage() {
     let ok: boolean;
     if (editingId) {
       ok = !!(await updateEvent(editingId, fields));
+      if (ok) {
+        const categorySaved = await saveEventCategory(editingId, category);
+        ok = categorySaved;
+      }
     } else {
       ok = !!(await createEvent(fields));
+      if (ok && categoryColumnReady) {
+        const { data, error } = await supabase
+          .from("events")
+          .select("id")
+          .eq("club_id", clubId!)
+          .eq("title", fields.title)
+          .eq("date", fields.date)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error || !data?.id) {
+          ok = false;
+        } else {
+          ok = await saveEventCategory(data.id as string, category);
+        }
+      }
+      if (ok) {
+        refresh();
+      }
     }
 
     setSaving(false);
@@ -504,6 +725,11 @@ export default function ClubEventsPage() {
                 className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
               />
             </div>
+            <CategorySelector
+              key={`${editingId ?? "create"}-category`}
+              value={category}
+              onChange={setCategory}
+            />
             <VisibilitySelector
               key={editingId ?? "create"}
               value={visibility}
@@ -591,14 +817,18 @@ export default function ClubEventsPage() {
               <div className="flex items-start gap-4">
                 <EventDateBlock date={event.date} />
                 <div className="min-w-0 flex-1">
-                  <h3
-                    style={{
-                      fontWeight: 600,
-                      fontSize: "15px",
-                      color: "#ffffff" }}
-                  >
-                    {event.title}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "15px",
+                        color: "#ffffff",
+                      }}
+                    >
+                      {event.title}
+                    </h3>
+                    <EventCategoryBadge category={getEventCategory(event.id)} />
+                  </div>
                   <div
                     className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
                     style={{
@@ -784,19 +1014,24 @@ export default function ClubEventsPage() {
                 <div className="flex items-start gap-4">
                   <EventDateBlock date={event.date} muted />
                   <div className="min-w-0 flex-1">
-                    <h3
-                      style={{
-                        fontWeight: 600,
-                        fontSize: "15px",
-                        color: "#ffffff" }}
-                    >
-                      {event.title}
-                    </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "15px",
+                          color: "#ffffff",
+                        }}
+                      >
+                        {event.title}
+                      </h3>
+                      <EventCategoryBadge category={getEventCategory(event.id)} />
+                    </div>
                     <div
                       className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
                       style={{
                         fontSize: "12px",
-                        color: "#555555" }}
+                        color: "#555555",
+                      }}
                     >
                       <span className="flex items-center gap-1">
                         <svg
