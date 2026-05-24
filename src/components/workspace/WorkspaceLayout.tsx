@@ -12,7 +12,7 @@ import {
   ExternalLink,
   type IconProps,
 } from "../icons/WorkspaceIcons";
-import { FileText } from "lucide-react";
+import { Briefcase, FileText } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
@@ -38,6 +38,14 @@ const workspaceLinks: {
     ),
   },
   { to: "events", label: "Events", end: false, Icon: Calendar },
+  {
+    to: "recruiting",
+    label: "Recruiting",
+    end: false,
+    Icon: ({ size = 16, strokeWidth = 2, "aria-hidden": ariaHidden = true }) => (
+      <Briefcase size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
+    ),
+  },
   { to: "members", label: "Members", end: false, Icon: Users },
   { to: "settings", label: "Settings", end: false, Icon: Settings },
 ];
