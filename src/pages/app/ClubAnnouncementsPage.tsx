@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Pin } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubPosts } from "../../hooks/useClubPosts";
@@ -12,6 +13,7 @@ const CARD_BG = "#1a1a1a";
 const CARD_BORDER = "#242424";
 const MUTED = "#555555";
 const ACCENT_RED = "#E51937";
+const PIN_GOLD = "#FFC429";
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const ACCEPTED_FILE_TYPES =
   "image/jpeg,image/png,image/gif,image/webp,application/pdf";
@@ -127,6 +129,31 @@ const deleteButtonStyle: CSSProperties = {
   fontSize: "12px",
   cursor: "pointer",
   flexShrink: 0,
+};
+
+const pinButtonStyle: CSSProperties = {
+  backgroundColor: "transparent",
+  border: "1px solid #333333",
+  borderRadius: "6px",
+  padding: "5px 10px",
+  cursor: "pointer",
+  flexShrink: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const pinnedBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "4px",
+  background: "#1a0a00",
+  border: `1px solid ${PIN_GOLD}`,
+  color: PIN_GOLD,
+  borderRadius: "20px",
+  padding: "2px 10px",
+  fontSize: "11px",
+  fontWeight: 500,
 };
 
 const pdfLinkStyle: CSSProperties = {
@@ -325,6 +352,7 @@ export default function ClubAnnouncementsPage() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const [pinnedById, setPinnedById] = useState<Record<string, boolean>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -359,6 +387,51 @@ export default function ClubAnnouncementsPage() {
       cancelled = true;
     };
   }, [clubId, user?.id]);
+
+  useEffect(() => {
+    if (!clubId) {
+      setPinnedById({});
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("posts")
+      .select(
+        "id, club_id, author_id, title, content, created_at, attachment_url, attachment_type, pinned",
+      )
+      .eq("club_id", clubId)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load pinned state:", error.message);
+          return;
+        }
+        const map: Record<string, boolean> = {};
+        (data ?? []).forEach((row) => {
+          map[row.id as string] = Boolean(row.pinned);
+        });
+        setPinnedById(map);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, posts]);
+
+  const sortedPosts = useMemo(() => {
+    return [...posts].sort((a, b) => {
+      const aPinned = pinnedById[a.id] ?? false;
+      const bPinned = pinnedById[b.id] ?? false;
+      if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+      }
+      return (
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    });
+  }, [posts, pinnedById]);
 
   const isPrivileged = isPrivilegedRole(userRole);
 
@@ -496,6 +569,32 @@ export default function ClubAnnouncementsPage() {
           : "Failed to post announcement.",
       });
     }
+  }
+
+  async function handleTogglePin(postId: string) {
+    const currentlyPinned = pinnedById[postId] ?? false;
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("posts")
+      .update({ pinned: !currentlyPinned })
+      .eq("id", postId);
+
+    if (error) {
+      console.error("Failed to toggle pin:", error.message);
+      setFeedback({
+        type: "error",
+        text: currentlyPinned
+          ? "Failed to unpin announcement."
+          : "Failed to pin announcement.",
+      });
+      return;
+    }
+
+    setPinnedById((prev) => ({
+      ...prev,
+      [postId]: !currentlyPinned,
+    }));
   }
 
   async function handleDelete(postId: string) {
@@ -719,7 +818,9 @@ export default function ClubAnnouncementsPage() {
         </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {posts.map((post) => (
+          {sortedPosts.map((post) => {
+            const isPinned = pinnedById[post.id] ?? false;
+            return (
             <article key={post.id} style={postCardStyle}>
               <div
                 style={{
@@ -730,16 +831,31 @@ export default function ClubAnnouncementsPage() {
                 }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <h3
+                  <div
                     style={{
-                      fontWeight: 600,
-                      fontSize: "16px",
-                      color: "#ffffff",
-                      margin: 0,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: "8px",
                     }}
                   >
-                    {post.title}
-                  </h3>
+                    <h3
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "16px",
+                        color: "#ffffff",
+                        margin: 0,
+                      }}
+                    >
+                      {post.title}
+                    </h3>
+                    {isPinned ? (
+                      <span style={pinnedBadgeStyle}>
+                        <Pin size={12} color={PIN_GOLD} aria-hidden />
+                        Pinned
+                      </span>
+                    ) : null}
+                  </div>
                   <p
                     style={{
                       fontSize: "12px",
@@ -788,6 +904,20 @@ export default function ClubAnnouncementsPage() {
                   >
                     <button
                       type="button"
+                      style={pinButtonStyle}
+                      title={isPinned ? "Unpin" : "Pin"}
+                      aria-label={isPinned ? "Unpin" : "Pin"}
+                      onClick={() => handleTogglePin(post.id)}
+                    >
+                      <Pin
+                        size={16}
+                        color={isPinned ? PIN_GOLD : MUTED}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                    </button>
+                    <button
+                      type="button"
                       style={editButtonStyle}
                       onClick={() => openEditForm(post)}
                     >
@@ -805,7 +935,8 @@ export default function ClubAnnouncementsPage() {
                 )}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
