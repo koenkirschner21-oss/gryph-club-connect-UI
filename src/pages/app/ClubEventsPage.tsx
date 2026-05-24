@@ -1,14 +1,14 @@
-import { useState, useMemo, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, useMemo, type CSSProperties, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import { useClubContext } from "../../context/useClubContext";
+import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
-import type { ClubEvent, RsvpStatus } from "../../types";
+import { supabase } from "../../lib/supabaseClient";
+import type { ClubEvent, MemberRole, RsvpStatus } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
-import { isPrivilegedClubRole } from "../../lib/clubRoles";
 
 type EventVisibility = "public" | "members_only" | "featured";
 
@@ -271,14 +271,36 @@ const sectionHeadingStyle: CSSProperties = {
   color: "#ffffff",
   marginBottom: "12px" };
 
+function normalizeUserRole(role: string): MemberRole {
+  if (role === "owner") return "owner";
+  if (role === "executive" || role === "exec") return "executive";
+  return "member";
+}
+
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
-  const { getUserRole } = useClubContext();
+  const { user } = useAuthContext();
   const { events, loading, createEvent, updateEvent, deleteEvent } =
     useClubEvents(clubId);
 
-  const role = getUserRole(clubId ?? "");
-  const isPrivileged = isPrivilegedClubRole(role);
+  const [userRole, setUserRole] = useState<MemberRole>("member");
+  const isPrivileged = userRole === "owner" || userRole === "executive";
+
+  useEffect(() => {
+    const fetchRole = async () => {
+      if (!user?.id || !clubId) return;
+      const { data } = await supabase
+        .from("club_members")
+        .select("role")
+        .eq("club_id", clubId)
+        .eq("user_id", user.id)
+        .single();
+      if (data?.role) {
+        setUserRole(normalizeUserRole(data.role));
+      }
+    };
+    fetchRole();
+  }, [clubId, user?.id]);
 
   const eventIds = useMemo(() => events.map((e) => e.id), [events]);
   const { myRsvps, counts, attendees, setRsvp, removeRsvp, loadAttendees } =
@@ -636,13 +658,19 @@ export default function ClubEventsPage() {
                     </p>
                   )}
 
-                  {/* RSVP counts */}
+                  {/* RSVP counts — all members see aggregate counts */}
                   <p className="mt-3" style={{ fontSize: "12px" }}>
                     <span style={{ color: "#4ade80" }}>{c.going} going</span>
-                    <span style={{ color: "#555555" }}> · </span>
-                    <span style={{ color: "#FFC429" }}>{c.maybe} maybe</span>
-                    <span style={{ color: "#555555" }}> · </span>
-                    <span style={{ color: "#555555" }}>{c.not_going} not going</span>
+                    {isPrivileged ? (
+                      <>
+                        <span style={{ color: "#555555" }}> · </span>
+                        <span style={{ color: "#FFC429" }}>{c.maybe} maybe</span>
+                        <span style={{ color: "#555555" }}> · </span>
+                        <span style={{ color: "#555555" }}>
+                          {c.not_going} not going
+                        </span>
+                      </>
+                    ) : null}
                   </p>
 
                   {/* RSVP buttons */}

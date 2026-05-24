@@ -1,14 +1,14 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
-import { useClubContext } from "../../context/useClubContext";
+import { useAuthContext } from "../../context/useAuthContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
 import { useClubMembers } from "../../hooks/useClubMembers";
-import type { Task, TaskStatus, TaskPriority } from "../../types";
+import { supabase } from "../../lib/supabaseClient";
+import type { MemberRole, Task, TaskStatus, TaskPriority } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
-import { isPrivilegedClubRole } from "../../lib/clubRoles";
 
 
 const statusLabels: Record<TaskStatus, string> = {
@@ -83,9 +83,15 @@ function filterTabClass(isActive: boolean) {
   return `${base} border-[#222222] bg-[#1a1a1a] text-[#777777] hover:bg-[#242424] hover:text-[#cccccc]`;
 }
 
+function normalizeUserRole(role: string): MemberRole {
+  if (role === "owner") return "owner";
+  if (role === "executive" || role === "exec") return "executive";
+  return "member";
+}
+
 export default function ClubTasksPage() {
   const { clubId } = useParams<{ clubId: string }>();
-  const { getUserRole } = useClubContext();
+  const { user } = useAuthContext();
   const {
     tasks,
     loading,
@@ -95,8 +101,29 @@ export default function ClubTasksPage() {
     deleteTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
 
-  const role = getUserRole(clubId ?? "");
-  const isPrivileged = isPrivilegedClubRole(role);
+  const [userRole, setUserRole] = useState<MemberRole>("member");
+  const isPrivileged = userRole === "owner" || userRole === "executive";
+
+  useEffect(() => {
+    const fetchRole = async () => {
+      if (!user?.id || !clubId) return;
+      const { data } = await supabase
+        .from("club_members")
+        .select("role")
+        .eq("club_id", clubId)
+        .eq("user_id", user.id)
+        .single();
+      if (data?.role) {
+        setUserRole(normalizeUserRole(data.role));
+      }
+    };
+    fetchRole();
+  }, [clubId, user?.id]);
+
+  const visibleTasks = useMemo(() => {
+    if (isPrivileged) return tasks;
+    return tasks.filter((t) => t.assignedTo === user?.id);
+  }, [tasks, isPrivileged, user?.id]);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -186,12 +213,13 @@ export default function ClubTasksPage() {
   }
 
   const filteredTasks =
-    filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
+    filter === "all"
+      ? visibleTasks
+      : visibleTasks.filter((t) => t.status === filter);
 
-  // Count tasks by status
-  const todoCt = tasks.filter((t) => t.status === "todo").length;
-  const inProgressCt = tasks.filter((t) => t.status === "in_progress").length;
-  const doneCt = tasks.filter((t) => t.status === "done").length;
+  const todoCt = visibleTasks.filter((t) => t.status === "todo").length;
+  const inProgressCt = visibleTasks.filter((t) => t.status === "in_progress").length;
+  const doneCt = visibleTasks.filter((t) => t.status === "done").length;
 
   if (loading) {
     return (
@@ -328,7 +356,7 @@ export default function ClubTasksPage() {
                 htmlFor="taskAssignee"
                 className="mb-1 block text-sm font-medium text-white"
               >
-                Assign To
+                Assigned To
               </label>
               <select
                 id="taskAssignee"
@@ -376,8 +404,8 @@ export default function ClubTasksPage() {
             style={{ }}
           >
             {s === "all"
-              ? `All (${tasks.length})`
-              : `${statusLabels[s]} (${tasks.filter((t) => t.status === s).length})`}
+              ? `All (${visibleTasks.length})`
+              : `${statusLabels[s]} (${visibleTasks.filter((t) => t.status === s).length})`}
           </button>
         ))}
       </div>
@@ -387,15 +415,15 @@ export default function ClubTasksPage() {
         <Card className="p-8 text-center">
           <div className="mx-auto mb-3 text-3xl">📋</div>
           <p className="font-medium text-white">
-            {tasks.length === 0
+            {visibleTasks.length === 0
               ? "No tasks yet"
               : "No tasks match this filter"}
           </p>
           <p className="mt-1 text-sm text-muted">
-            {tasks.length === 0
+            {visibleTasks.length === 0
               ? isPrivileged
                 ? "Create a task to get your team organized."
-                : "Your team hasn't created any tasks yet."
+                : "You have no tasks assigned to you yet."
               : "Try a different filter to see more tasks."}
           </p>
         </Card>
@@ -406,6 +434,8 @@ export default function ClubTasksPage() {
               task.dueDate &&
               task.status !== "done" &&
               new Date(task.dueDate) < new Date();
+            const canChangeStatus =
+              isPrivileged || task.assignedTo === user?.id;
 
             return (
               <div
@@ -466,28 +496,30 @@ export default function ClubTasksPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <select
-                      value={task.status}
-                      onChange={(e) =>
-                        handleStatusChange(
-                          task.id,
-                          e.target.value as TaskStatus,
-                        )
-                      }
-                      className="cursor-pointer rounded-md border"
-                      style={{
-                        backgroundColor: "#111111",
-                        borderColor: "#333333",
-                        color: "#cccccc",
-                        borderRadius: "6px",
-                        padding: "6px 10px",
-                        fontSize: "12px" }}
-                      aria-label="Change task status"
-                    >
-                      <option value="todo">To Do</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="done">Done</option>
-                    </select>
+                    {canChangeStatus ? (
+                      <select
+                        value={task.status}
+                        onChange={(e) =>
+                          handleStatusChange(
+                            task.id,
+                            e.target.value as TaskStatus,
+                          )
+                        }
+                        className="cursor-pointer rounded-md border"
+                        style={{
+                          backgroundColor: "#111111",
+                          borderColor: "#333333",
+                          color: "#cccccc",
+                          borderRadius: "6px",
+                          padding: "6px 10px",
+                          fontSize: "12px" }}
+                        aria-label="Change task status"
+                      >
+                        <option value="todo">To Do</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
+                      </select>
+                    ) : null}
                     {isPrivileged && (
                       <>
                         <button

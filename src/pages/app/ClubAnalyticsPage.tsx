@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
+import { useAuthContext } from "../../context/useAuthContext";
 import {
   Bar,
   BarChart,
@@ -10,9 +11,8 @@ import {
   YAxis,
 } from "recharts";
 import { supabase } from "../../lib/supabaseClient";
-import { useClubContext } from "../../context/useClubContext";
-import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import Spinner from "../../components/ui/Spinner";
+import type { MemberRole } from "../../types";
 
 interface ClubAnalytics {
   totalMembers: number;
@@ -101,11 +101,52 @@ function buildMessageActivity(
   });
 }
 
+function normalizeUserRole(role: string): MemberRole {
+  if (role === "owner") return "owner";
+  if (role === "executive" || role === "exec") return "executive";
+  return "member";
+}
+
+function AnalyticsRestrictedIcon() {
+  return (
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#555555"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 export default function ClubAnalyticsPage() {
   const { clubId } = useParams<{ clubId: string }>();
-  const { getUserRole } = useClubContext();
-  const role = getUserRole(clubId ?? "");
-  const isPrivileged = isPrivilegedClubRole(role);
+  const { user } = useAuthContext();
+  const [userRole, setUserRole] = useState<MemberRole>("member");
+  const isPrivileged = userRole === "owner" || userRole === "executive";
+
+  useEffect(() => {
+    const fetchRole = async () => {
+      if (!user?.id || !clubId) return;
+      const { data } = await supabase
+        .from("club_members")
+        .select("role")
+        .eq("club_id", clubId)
+        .eq("user_id", user.id)
+        .single();
+      if (data?.role) {
+        setUserRole(normalizeUserRole(data.role));
+      }
+    };
+    fetchRole();
+  }, [clubId, user?.id]);
 
   const [analytics, setAnalytics] = useState<ClubAnalytics | null>(null);
   const [messageActivity, setMessageActivity] = useState<MessageActivityPoint[]>(
@@ -115,7 +156,10 @@ export default function ClubAnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!clubId) return;
+    if (!clubId || !isPrivileged) {
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -248,7 +292,7 @@ export default function ClubAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [clubId]);
+  }, [clubId, isPrivileged]);
 
   const taskCompletionRate = useMemo(() => {
     if (!analytics || analytics.totalTasks === 0) return 0;
@@ -260,9 +304,24 @@ export default function ClubAnalyticsPage() {
   if (!isPrivileged) {
     return (
       <div style={pageStyle}>
-        <p style={{ fontSize: "13px", color: MUTED, textAlign: "center" }}>
-          Only admins and execs can view analytics.
-        </p>
+        <div
+          style={{
+            background: "#1a1a1a",
+            border: "1px solid #242424",
+            borderRadius: "8px",
+            padding: "40px",
+            textAlign: "center",
+            maxWidth: "480px",
+            margin: "48px auto",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
+            <AnalyticsRestrictedIcon />
+          </div>
+          <p style={{ color: "#555555", fontSize: "14px", margin: 0 }}>
+            Analytics are available to club executives and presidents only
+          </p>
+        </div>
       </div>
     );
   }

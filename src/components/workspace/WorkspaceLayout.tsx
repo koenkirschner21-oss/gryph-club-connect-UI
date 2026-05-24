@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { NavLink, Outlet, useParams, Navigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -12,8 +12,10 @@ import {
   ExternalLink,
   type IconProps,
 } from "../icons/WorkspaceIcons";
+import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
-import { isPrivilegedClubRole } from "../../lib/clubRoles";
+import { supabase } from "../../lib/supabaseClient";
+import type { MemberRole } from "../../types";
 import Spinner from "../ui/Spinner";
 
 const workspaceLinks: {
@@ -28,12 +30,20 @@ const workspaceLinks: {
   { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare },
   { to: "events", label: "Events", end: false, Icon: Calendar },
   { to: "members", label: "Members", end: false, Icon: Users },
+  { to: "settings", label: "Settings", end: false, Icon: Settings },
 ];
 
-const privilegedLinks: { to: string; label: string; Icon: (props: IconProps) => ReactElement }[] = [
-  { to: "analytics", label: "Analytics", Icon: BarChart2 },
-  { to: "settings", label: "Settings", Icon: Settings },
-];
+const analyticsLink = {
+  to: "analytics",
+  label: "Analytics",
+  Icon: BarChart2,
+} as const;
+
+function normalizeUserRole(role: string): MemberRole {
+  if (role === "owner") return "owner";
+  if (role === "executive" || role === "exec") return "executive";
+  return "member";
+}
 
 function workspaceNavClass(isActive: boolean) {
   const base =
@@ -46,8 +56,12 @@ function workspaceNavClass(isActive: boolean) {
 
 export default function WorkspaceLayout() {
   const { clubId } = useParams<{ clubId: string }>();
-  const { getClubById, loading, getUserRole, activeClubId, switchClub } = useClubContext();
+  const { user } = useAuthContext();
+  const { getClubById, loading, activeClubId, switchClub } = useClubContext();
   const resolvedClubId = clubId ?? activeClubId ?? "";
+  const [userRole, setUserRole] = useState<MemberRole>("member");
+  const showAnalytics =
+    userRole === "owner" || userRole === "executive";
 
   useEffect(() => {
     if (clubId && clubId !== activeClubId) {
@@ -55,9 +69,23 @@ export default function WorkspaceLayout() {
     }
   }, [activeClubId, clubId, switchClub]);
 
+  useEffect(() => {
+    const fetchRole = async () => {
+      if (!user?.id || !resolvedClubId) return;
+      const { data } = await supabase
+        .from("club_members")
+        .select("role")
+        .eq("club_id", resolvedClubId)
+        .eq("user_id", user.id)
+        .single();
+      if (data?.role) {
+        setUserRole(normalizeUserRole(data.role));
+      }
+    };
+    fetchRole();
+  }, [resolvedClubId, user?.id]);
+
   const club = getClubById(resolvedClubId);
-  const role = getUserRole(resolvedClubId);
-  const isPrivileged = isPrivilegedClubRole(role);
 
   if (loading) {
     return (
@@ -125,17 +153,15 @@ export default function WorkspaceLayout() {
                 {label}
               </NavLink>
             ))}
-            {isPrivileged &&
-              privilegedLinks.map(({ to, label, Icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  className={({ isActive }) => workspaceNavClass(isActive)}
-                >
-                  <Icon size={16} strokeWidth={2} aria-hidden />
-                  {label}
-                </NavLink>
-              ))}
+            {showAnalytics && (
+              <NavLink
+                to={analyticsLink.to}
+                className={({ isActive }) => workspaceNavClass(isActive)}
+              >
+                <analyticsLink.Icon size={16} strokeWidth={2} aria-hidden />
+                {analyticsLink.label}
+              </NavLink>
+            )}
           </nav>
 
           {/* Public profile link */}
@@ -174,22 +200,20 @@ export default function WorkspaceLayout() {
               {link.label}
             </NavLink>
           ))}
-          {isPrivileged &&
-            privilegedLinks.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={({ isActive }) =>
-                  `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted hover:bg-surface-alt"
-                  }`
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
+          {showAnalytics && (
+            <NavLink
+              to={analyticsLink.to}
+              className={({ isActive }) =>
+                `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted hover:bg-surface-alt"
+                }`
+              }
+            >
+              {analyticsLink.label}
+            </NavLink>
+          )}
         </nav>
 
         {/* Workspace content */}
