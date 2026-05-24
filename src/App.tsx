@@ -33,6 +33,7 @@ import ProfilePage from "./pages/app/ProfilePage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminClubs from "./pages/admin/AdminClubs";
 import AdminUsers from "./pages/admin/AdminUsers";
+import EventRSVPPage from "./pages/public/EventRSVPPage";
 
 export default function App() {
   return (
@@ -48,6 +49,7 @@ export default function App() {
               Skip to main content
             </a>
             <Routes>
+              <Route path="/events/:eventId/rsvp" element={<EventRSVPPage />} />
               <Route element={<AppShell />}>
                 {/* ───── Public routes ───── */}
                 <Route path="/" element={<Home />} />

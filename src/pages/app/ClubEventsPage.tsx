@@ -776,6 +776,7 @@ export default function ClubEventsPage() {
   const [responsesByUser, setResponsesByUser] = useState<RespondentAnswers[]>(
     [],
   );
+  const [copiedEventId, setCopiedEventId] = useState<string | null>(null);
 
   const loadAllEventQuestions = useCallback(async () => {
     if (eventIds.length === 0) {
@@ -914,6 +915,26 @@ export default function ClubEventsPage() {
 
     setEventCategories((prev) => ({ ...prev, [eventId]: nextCategory }));
     return true;
+  }
+
+  async function copyRsvpLink(eventId: string) {
+    const url = `${window.location.origin}/events/${eventId}/rsvp`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+    setCopiedEventId(eventId);
+    window.setTimeout(() => {
+      setCopiedEventId((current) => (current === eventId ? null : current));
+    }, 2000);
   }
 
   function resetForm() {
@@ -1498,23 +1519,41 @@ export default function ClubEventsPage() {
                         </>
                       ) : null}
                     </p>
-                    {isPrivileged &&
-                    (eventQuestionsMap[event.id]?.length ?? 0) > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => void openResponsesModal(event)}
-                        style={{
-                          background: "transparent",
-                          border: "1px solid #333333",
-                          color: "#cccccc",
-                          borderRadius: "6px",
-                          padding: "4px 10px",
-                          fontSize: "11px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        View Responses
-                      </button>
+                    {isPrivileged ? (
+                      <>
+                        {(eventQuestionsMap[event.id]?.length ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => void openResponsesModal(event)}
+                            style={{
+                              background: "transparent",
+                              border: "1px solid #333333",
+                              color: "#cccccc",
+                              borderRadius: "6px",
+                              padding: "4px 10px",
+                              fontSize: "11px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            View Responses
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void copyRsvpLink(event.id)}
+                          style={{
+                            background: "transparent",
+                            border: "1px solid #333333",
+                            color: "#747676",
+                            borderRadius: "6px",
+                            padding: "5px 12px",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {copiedEventId === event.id ? "Copied!" : "Copy RSVP Link"}
+                        </button>
+                      </>
                     ) : null}
                   </div>
 
