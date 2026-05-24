@@ -26,13 +26,6 @@ const memberCardStyle: CSSProperties = {
   padding: "14px 16px",
 };
 
-const avatarStyle: CSSProperties = {
-  width: "40px",
-  height: "40px",
-  borderRadius: "50%",
-  border: "2px solid #2a2a2a",
-};
-
 function roleBadgeStyle(role: MemberRole | string): CSSProperties {
   const base: CSSProperties = {
     borderRadius: "20px",
@@ -143,30 +136,371 @@ function RoleSelector({
 function MemberAvatar({
   avatarUrl,
   name,
+  size = 40,
+  borderWidth = 2,
+  borderColor = "#2a2a2a",
 }: {
   avatarUrl?: string | null;
   name: string;
+  size?: number;
+  borderWidth?: number;
+  borderColor?: string;
 }) {
+  const style: CSSProperties = {
+    width: `${size}px`,
+    height: `${size}px`,
+    borderRadius: "50%",
+    border: `${borderWidth}px solid ${borderColor}`,
+  };
   if (avatarUrl) {
     return (
       <img
         src={avatarUrl}
         alt=""
         className="shrink-0 object-cover"
-        style={avatarStyle}
+        style={style}
       />
     );
   }
   return (
     <div
-      className="flex shrink-0 items-center justify-center text-sm font-bold"
+      className="flex shrink-0 items-center justify-center font-bold"
       style={{
-        ...avatarStyle,
+        ...style,
         backgroundColor: "#1f1f1f",
         color: "#E51937",
+        fontSize: size <= 36 ? "12px" : "14px",
       }}
     >
       {name.charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+type ViewMode = "list" | "orgChart";
+
+interface OrgChartMember {
+  id: string;
+  userId: string;
+  role: MemberRole;
+  title: string | null;
+  reportsTo: string | null;
+  fullName: string;
+  avatarUrl?: string | null;
+}
+
+const orgCardBase: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "10px",
+  padding: "16px 12px",
+  textAlign: "center",
+  minWidth: "140px",
+  maxWidth: "160px",
+  boxSizing: "border-box",
+};
+
+const connectorLine: CSSProperties = {
+  width: "1px",
+  background: "#333",
+  height: "32px",
+};
+
+function OrgChartCard({
+  member,
+  tier,
+}: {
+  member: OrgChartMember;
+  tier: "president" | "executive" | "team";
+}) {
+  const [hovered, setHovered] = useState(false);
+  const displayName = member.fullName || "Unknown";
+
+  if (tier === "president") {
+    return (
+      <div
+        style={{
+          ...orgCardBase,
+          borderColor: hovered ? "#333" : "#242424",
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <div className="mb-2 flex justify-center">
+          <MemberAvatar
+            avatarUrl={member.avatarUrl}
+            name={displayName}
+            size={60}
+            borderWidth={3}
+            borderColor="#E51937"
+          />
+        </div>
+        <p
+          style={{
+            fontWeight: 700,
+            fontSize: "14px",
+            color: "#ffffff",
+            margin: "0 0 6px",
+          }}
+        >
+          {displayName}
+        </p>
+        <span style={roleBadgeStyle("owner")}>President</span>
+        {member.title ? (
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#747676",
+              fontStyle: "italic",
+              margin: "8px 0 0",
+            }}
+          >
+            {member.title}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (tier === "executive") {
+    return (
+      <div
+        style={{
+          ...orgCardBase,
+          borderColor: hovered ? "#333" : "#242424",
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <div className="mb-2 flex justify-center">
+          <MemberAvatar
+            avatarUrl={member.avatarUrl}
+            name={displayName}
+            size={48}
+            borderWidth={2}
+            borderColor="#6b7cff"
+          />
+        </div>
+        <p
+          style={{
+            fontWeight: 600,
+            fontSize: "13px",
+            color: "#ffffff",
+            margin: "0 0 6px",
+          }}
+        >
+          {displayName}
+        </p>
+        <span style={roleBadgeStyle("executive")}>Executive</span>
+        {member.title ? (
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#747676",
+              fontStyle: "italic",
+              margin: "8px 0 0",
+            }}
+          >
+            {member.title}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        ...orgCardBase,
+        minWidth: "120px",
+        maxWidth: "140px",
+        padding: "12px 10px",
+        borderColor: hovered ? "#333" : "#242424",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="mb-2 flex justify-center">
+        <MemberAvatar
+          avatarUrl={member.avatarUrl}
+          name={displayName}
+          size={36}
+          borderWidth={1}
+          borderColor="#333"
+        />
+      </div>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#cccccc",
+          margin: "0 0 4px",
+          fontWeight: 500,
+        }}
+      >
+        {displayName}
+      </p>
+      {member.title ? (
+        <p
+          style={{
+            fontSize: "11px",
+            color: "#747676",
+            margin: 0,
+          }}
+        >
+          {member.title}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function OrgChartView({ members }: { members: OrgChartMember[] }) {
+  const presidents = members.filter((m) => m.role === "owner");
+  const executives = members.filter((m) => m.role === "executive");
+  const leaderIds = new Set([
+    ...presidents.map((m) => m.userId),
+    ...executives.map((m) => m.userId),
+  ]);
+
+  const teamMembers = members.filter(
+    (m) =>
+      m.role !== "owner" &&
+      m.role !== "executive" &&
+      m.reportsTo &&
+      leaderIds.has(m.reportsTo),
+  );
+
+  const teamByLeader = new Map<string, OrgChartMember[]>();
+  for (const member of teamMembers) {
+    if (!member.reportsTo) continue;
+    const list = teamByLeader.get(member.reportsTo) ?? [];
+    list.push(member);
+    teamByLeader.set(member.reportsTo, list);
+  }
+
+  const hasChart =
+    presidents.length > 0 || executives.length > 0 || teamMembers.length > 0;
+
+  if (!hasChart) {
+    return (
+      <div
+        className="p-8 text-center"
+        style={{
+          backgroundColor: "#1a1a1a",
+          border: "1px solid #242424",
+          borderRadius: "8px",
+        }}
+      >
+        <p style={{ fontSize: "14px", color: "#555555" }}>
+          No org chart to display yet. Assign presidents and executives, then
+          set &quot;Reports To&quot; for team members.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingBottom: "24px" }}>
+      {presidents.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: "16px",
+            }}
+          >
+            {presidents.map((president) => {
+              const directReports = teamByLeader.get(president.userId) ?? [];
+              return (
+                <div
+                  key={president.id}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                  }}
+                >
+                  <OrgChartCard member={president} tier="president" />
+                  {directReports.length > 0 ? (
+                    <>
+                      <div style={connectorLine} />
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          justifyContent: "center",
+                          gap: "12px",
+                        }}
+                      >
+                        {directReports.map((m) => (
+                          <OrgChartCard key={m.id} member={m} tier="team" />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          {executives.length > 0 ? <div style={connectorLine} /> : null}
+        </div>
+      ) : null}
+
+      {executives.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            marginTop: presidents.length > 0 ? 0 : undefined,
+          }}
+        >
+          {!presidents.length ? null : null}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: "16px",
+            }}
+          >
+            {executives.map((executive) => {
+              const directReports = teamByLeader.get(executive.userId) ?? [];
+              return (
+                <div
+                  key={executive.id}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                  }}
+                >
+                  <OrgChartCard member={executive} tier="executive" />
+                  {directReports.length > 0 ? (
+                    <>
+                      <div style={connectorLine} />
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          justifyContent: "center",
+                          gap: "12px",
+                        }}
+                      >
+                        {directReports.map((m) => (
+                          <OrgChartCard key={m.id} member={m} tier="team" />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -178,6 +512,7 @@ export default function ClubMembersPage() {
   const club = getClubById(clubId ?? "");
 
   const role = getUserRole(clubId ?? "");
+  const isOwner = role === "owner";
   /** Admin or owner may change member roles / remove members; exec sees queue only. */
   const canReorderRoster = isTopClubModeratorRole(role);
   const canUseMembershipQueue = isPrivilegedClubRole(role);
@@ -185,10 +520,17 @@ export default function ClubMembersPage() {
   const { members, pendingMembers, loading, removeMember, approveRequest, rejectRequest, refresh } =
     useClubMembers(clubId);
 
+  const [viewMode, setViewMode] = useState<ViewMode>("orgChart");
+  const [orgChartMembers, setOrgChartMembers] = useState<OrgChartMember[]>([]);
+  const [orgChartLoading, setOrgChartLoading] = useState(true);
   const [memberTitles, setMemberTitles] = useState<Record<string, string | null>>({});
+  const [memberReportsTo, setMemberReportsTo] = useState<
+    Record<string, string | null>
+  >({});
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<MemberRole>("member");
   const [editTitle, setEditTitle] = useState("");
+  const [editReportsTo, setEditReportsTo] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -203,40 +545,108 @@ export default function ClubMembersPage() {
       (roleOrder[a.role] ?? 99) - (roleOrder[b.role] ?? 99),
   );
 
-  const loadMemberTitles = useCallback(async () => {
+  const loadMemberMeta = useCallback(async () => {
     if (!clubId) return;
     const { data, error } = await supabase
       .from("club_members")
-      .select("id, title")
+      .select("id, title, reports_to")
       .eq("club_id", clubId);
 
     if (error) {
-      console.error("Failed to load member titles:", error.message);
+      console.error("Failed to load member metadata:", error.message);
       return;
     }
 
-    const map: Record<string, string | null> = {};
+    const titleMap: Record<string, string | null> = {};
+    const reportsMap: Record<string, string | null> = {};
     (data ?? []).forEach((row) => {
-      map[row.id as string] = (row.title as string | null) ?? null;
+      const id = row.id as string;
+      titleMap[id] = (row.title as string | null) ?? null;
+      reportsMap[id] = (row.reports_to as string | null) ?? null;
     });
-    setMemberTitles(map);
+    setMemberTitles(titleMap);
+    setMemberReportsTo(reportsMap);
+  }, [clubId]);
+
+  const loadOrgChartMembers = useCallback(async () => {
+    if (!clubId) return;
+    setOrgChartLoading(true);
+    const { data, error } = await supabase
+      .from("club_members")
+      .select(
+        `
+          id,
+          user_id,
+          role,
+          title,
+          reports_to,
+          member_profile:profiles!club_members_user_profile_fkey (
+            full_name,
+            avatar_url
+          )
+        `,
+      )
+      .eq("club_id", clubId)
+      .eq("status", "active");
+
+    if (error) {
+      console.error("Failed to load org chart:", error.message);
+      setOrgChartMembers([]);
+      setOrgChartLoading(false);
+      return;
+    }
+
+    const mapped: OrgChartMember[] = [];
+    for (const row of data ?? []) {
+      const rawProfile = row.member_profile;
+      const profile = (
+        Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
+      ) as Record<string, unknown> | null | undefined;
+      const normalizedRole = normalizeMemberRole(row.role as string);
+      const reportsTo = (row.reports_to as string | null) ?? null;
+      if (normalizedRole === "member" && !reportsTo) {
+        continue;
+      }
+      mapped.push({
+        id: row.id as string,
+        userId: row.user_id as string,
+        role: normalizedRole,
+        title: (row.title as string | null) ?? null,
+        reportsTo,
+        fullName: (profile?.full_name as string) ?? "Unknown",
+        avatarUrl: (profile?.avatar_url as string | null) ?? null,
+      });
+    }
+
+    setOrgChartMembers(mapped);
+    setOrgChartLoading(false);
   }, [clubId]);
 
   useEffect(() => {
     if (!loading) {
-      loadMemberTitles();
+      void loadMemberMeta();
+      void loadOrgChartMembers();
     }
-  }, [loading, members, loadMemberTitles]);
+  }, [loading, members, loadMemberMeta, loadOrgChartMembers]);
+
+  const reportsToOptions = members.filter(
+    (m) =>
+      m.status === "active" &&
+      (normalizeMemberRole(m.role) === "owner" ||
+        normalizeMemberRole(m.role) === "executive"),
+  );
 
   function openEditRole(member: ClubMember) {
     setEditingMemberId(member.id);
     setEditRole(normalizeMemberRole(member.role));
     setEditTitle(memberTitles[member.id] ?? "");
+    setEditReportsTo(memberReportsTo[member.id] ?? "");
   }
 
   function closeEditRole() {
     setEditingMemberId(null);
     setEditTitle("");
+    setEditReportsTo("");
   }
 
   async function handleSaveRoleAndTitle(memberId: string) {
@@ -244,12 +654,25 @@ export default function ClubMembersPage() {
     setFeedback(null);
 
     const trimmedTitle = editTitle.trim();
+    const updatePayload: {
+      role: MemberRole;
+      title: string | null;
+      reports_to?: string | null;
+    } = {
+      role: editRole,
+      title: trimmedTitle || null,
+    };
+
+    if (
+      isOwner &&
+      (editRole === "member" || editRole === "executive")
+    ) {
+      updatePayload.reports_to = editReportsTo.trim() || null;
+    }
+
     const { error } = await supabase
       .from("club_members")
-      .update({
-        role: editRole,
-        title: trimmedTitle || null,
-      })
+      .update(updatePayload)
       .eq("id", memberId);
 
     if (error) {
@@ -263,8 +686,15 @@ export default function ClubMembersPage() {
       ...prev,
       [memberId]: trimmedTitle || null,
     }));
+    if (isOwner && (editRole === "member" || editRole === "executive")) {
+      setMemberReportsTo((prev) => ({
+        ...prev,
+        [memberId]: editReportsTo.trim() || null,
+      }));
+    }
     closeEditRole();
     refresh();
+    void loadOrgChartMembers();
     setFeedback({
       type: "success",
       text: `Updated to ${formatRoleLabel(editRole)}${trimmedTitle ? ` · ${trimmedTitle}` : ""}.`,
@@ -393,27 +823,55 @@ export default function ClubMembersPage() {
     );
   }
 
+  const viewToggleButton = (mode: ViewMode, label: string) => {
+    const active = viewMode === mode;
+    return (
+      <button
+        type="button"
+        onClick={() => setViewMode(mode)}
+        style={{
+          background: active ? "#E51937" : "#1a1a1a",
+          border: active ? "1px solid #E51937" : "1px solid #333",
+          color: active ? "#ffffff" : "#777777",
+          borderRadius: "6px",
+          padding: "6px 16px",
+          fontSize: "13px",
+          fontWeight: 500,
+          cursor: "pointer",
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
   return (
     <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="mb-6">
-        <h1
-          style={{
-            fontWeight: 700,
-            fontSize: "22px",
-            color: "#ffffff",
-          }}
-        >
-          Members
-        </h1>
-        <p
-          style={{
-            fontSize: "13px",
-            color: "#555555",
-          }}
-        >
-          {members.length} member{members.length !== 1 ? "s" : ""} in{" "}
-          {club?.name ?? "this club"}
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1
+            style={{
+              fontWeight: 700,
+              fontSize: "22px",
+              color: "#ffffff",
+            }}
+          >
+            Members
+          </h1>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#555555",
+            }}
+          >
+            {members.length} member{members.length !== 1 ? "s" : ""} in{" "}
+            {club?.name ?? "this club"}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: "8px" }}>
+          {viewToggleButton("list", "List")}
+          {viewToggleButton("orgChart", "Org Chart")}
+        </div>
       </div>
 
       {/* Join code section */}
@@ -554,8 +1012,19 @@ export default function ClubMembersPage() {
         </div>
       )}
 
+      {/* Org chart */}
+      {viewMode === "orgChart" ? (
+        orgChartLoading ? (
+          <div className="flex min-h-[200px] items-center justify-center">
+            <Spinner label="Loading org chart…" />
+          </div>
+        ) : (
+          <OrgChartView members={orgChartMembers} />
+        )
+      ) : null}
+
       {/* Members list */}
-      {sortedMembers.length === 0 ? (
+      {viewMode === "list" && sortedMembers.length === 0 ? (
         <div
           className="p-8 text-center"
           style={{
@@ -568,7 +1037,7 @@ export default function ClubMembersPage() {
             No members yet. Share the join code to invite people.
           </p>
         </div>
-      ) : (
+      ) : viewMode === "list" ? (
         <div className="space-y-2">
           {sortedMembers.map((member) => {
             const memberTitle = memberTitles[member.id] ?? null;
@@ -703,6 +1172,45 @@ export default function ClubMembersPage() {
                       boxSizing: "border-box",
                     }}
                   />
+                  {isOwner &&
+                  (editRole === "member" || editRole === "executive") ? (
+                    <>
+                      <label
+                        htmlFor={`member-reports-to-${member.id}`}
+                        style={{
+                          display: "block",
+                          fontSize: "12px",
+                          color: "#888888",
+                          margin: "14px 0 8px",
+                        }}
+                      >
+                        Reports To (optional)
+                      </label>
+                      <select
+                        id={`member-reports-to-${member.id}`}
+                        value={editReportsTo}
+                        onChange={(e) => setEditReportsTo(e.target.value)}
+                        style={{
+                          width: "100%",
+                          background: "#111111",
+                          border: "1px solid #2a2a2a",
+                          borderRadius: "6px",
+                          padding: "8px 12px",
+                          color: "#ffffff",
+                          fontSize: "13px",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <option value="">No manager</option>
+                        {reportsToOptions.map((leader) => (
+                          <option key={leader.userId} value={leader.userId}>
+                            {leader.fullName ?? leader.email ?? "Unknown"} —{" "}
+                            {formatRoleLabel(normalizeMemberRole(leader.role))}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : null}
                   <div
                     style={{
                       display: "flex",
@@ -751,7 +1259,7 @@ export default function ClubMembersPage() {
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
