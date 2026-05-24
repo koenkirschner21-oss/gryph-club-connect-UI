@@ -13,6 +13,8 @@ import {
   type Conversation,
   type DirectMessage,
 } from "../../hooks/useConversations";
+import { notifyUnreadCountRefresh } from "../../components/ui/NotificationsDropdown";
+import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
 import Spinner from "../../components/ui/Spinner";
 
@@ -360,6 +362,28 @@ export default function ClubChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, activeConversationId]);
+
+  useEffect(() => {
+    if (!activeConversationId || !user?.id || !clubId) return;
+
+    void supabase
+      .from("notifications")
+      .update({ read: true })
+      .eq("user_id", user.id)
+      .eq("type", "direct_message")
+      .eq("club_id", clubId)
+      .eq("read", false)
+      .then(({ error }) => {
+        if (error) {
+          console.error(
+            "Failed to mark direct message notifications as read:",
+            error.message,
+          );
+          return;
+        }
+        notifyUnreadCountRefresh();
+      });
+  }, [activeConversationId, user?.id, clubId]);
 
   function resetModal() {
     setShowModal(false);

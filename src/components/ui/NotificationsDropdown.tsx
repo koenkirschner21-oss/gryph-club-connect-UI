@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { MessageSquare } from "lucide-react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuthContext } from "../../context/useAuthContext";
@@ -21,7 +23,7 @@ export function registerUnreadCountRefresh(listener: () => void): () => void {
   return () => unreadRefreshListeners.delete(listener);
 }
 
-function notifyUnreadCountRefresh(): void {
+export function notifyUnreadCountRefresh(): void {
   unreadRefreshListeners.forEach((listener) => listener());
 }
 
@@ -75,6 +77,18 @@ function notificationIconColor(type: string): string {
 }
 
 function NotificationTypeIcon({ type }: { type: NotificationType | string }) {
+  if (type === "direct_message") {
+    return (
+      <MessageSquare
+        size={16}
+        color="#6b7cff"
+        strokeWidth={2}
+        aria-hidden
+        style={{ flexShrink: 0, marginTop: 2 }}
+      />
+    );
+  }
+
   return (
     <span
       aria-hidden="true"
@@ -93,6 +107,7 @@ function NotificationTypeIcon({ type }: { type: NotificationType | string }) {
 export default function NotificationsDropdown() {
   const { user } = useAuthContext();
   const userId = user?.id;
+  const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -147,6 +162,45 @@ export default function NotificationsDropdown() {
       notifyUnreadCountRefresh();
     }
   }, [fetchNotifications, userId]);
+
+  const markNotificationRead = useCallback(
+    async (notificationId: string) => {
+      setNotifications((prev) => {
+        const next = prev.map((n) =>
+          n.id === notificationId ? { ...n, read: true } : n,
+        );
+        syncUnreadCount(next);
+        return next;
+      });
+
+      const { error } = await supabase
+        .from("notifications")
+        .update({ read: true })
+        .eq("id", notificationId);
+
+      if (error) {
+        console.error("Failed to mark notification as read:", error.message);
+        await fetchNotifications();
+      } else {
+        notifyUnreadCountRefresh();
+      }
+    },
+    [fetchNotifications, syncUnreadCount],
+  );
+
+  const handleNotificationClick = useCallback(
+    async (notification: Notification) => {
+      if (!notification.read) {
+        await markNotificationRead(notification.id);
+      }
+
+      if ((notification.type as string) === "direct_message" && notification.clubId) {
+        setOpen(false);
+        navigate(`/app/clubs/${notification.clubId}/chat`);
+      }
+    },
+    [markNotificationRead, navigate],
+  );
 
   useEffect(() => {
     fetchNotifications();
@@ -370,6 +424,7 @@ export default function NotificationsDropdown() {
                   key={notification.id}
                   type="button"
                   role="menuitem"
+                  onClick={() => void handleNotificationClick(notification)}
                   style={{
                     display: "flex",
                     width: "100%",
@@ -387,16 +442,44 @@ export default function NotificationsDropdown() {
                 >
                   <NotificationTypeIcon type={notification.type} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <p
-                      style={{
-                        fontSize: 13,
-                        color: "#cccccc",
-                        margin: "0 0 4px",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {notification.message}
-                    </p>
+                    {(notification.type as string) === "direct_message" ? (
+                      <>
+                        <p
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: "#ffffff",
+                            margin: "0 0 4px",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          New Message
+                        </p>
+                        {notification.message ? (
+                          <p
+                            style={{
+                              fontSize: 13,
+                              color: "#cccccc",
+                              margin: "0 0 4px",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {notification.message}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p
+                        style={{
+                          fontSize: 13,
+                          color: "#cccccc",
+                          margin: "0 0 4px",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {notification.message}
+                      </p>
+                    )}
                     <p
                       style={{
                         fontSize: 11,
