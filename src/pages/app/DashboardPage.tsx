@@ -87,6 +87,39 @@ export default function DashboardPage() {
     useDashboardEvents(joinedClubs);
   const { activeCount: taskCount } = useDashboardTasks(joinedClubs);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (joinedClubs.length === 0) {
+      setClubLogos({});
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("clubs")
+      .select("id, logo_url")
+      .in("id", joinedClubs)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load club logos:", error.message);
+          setClubLogos({});
+          return;
+        }
+        const map: Record<string, string> = {};
+        (data ?? []).forEach((row) => {
+          const url = row.logo_url as string | null;
+          if (url) map[row.id as string] = url;
+        });
+        setClubLogos(map);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [joinedClubs]);
 
   const fetchUnreadNotificationCount = useCallback(async () => {
     if (!user?.id) {
@@ -258,6 +291,7 @@ export default function DashboardPage() {
           getUserRole={getUserRole}
           userId={user?.id}
           joinedClubIds={joinedClubs}
+          clubLogos={clubLogos}
           onViewAllEvents={() => setActiveTab("events")}
           onViewAllTasks={() => setActiveTab("tasks")}
         />
@@ -397,6 +431,7 @@ function OverviewTab({
   getUserRole,
   userId,
   joinedClubIds,
+  clubLogos,
   onViewAllEvents,
   onViewAllTasks,
 }: {
@@ -414,6 +449,7 @@ function OverviewTab({
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
   userId?: string;
   joinedClubIds: string[];
+  clubLogos: Record<string, string>;
   onViewAllEvents: () => void;
   onViewAllTasks: () => void;
 }) {
@@ -752,6 +788,7 @@ function OverviewTab({
                     <ClubBadge
                       abbreviation={club.abbreviation}
                       name={club.name}
+                      logoUrl={clubLogos[club.id] ?? club.logoUrl}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-white">
@@ -1180,13 +1217,31 @@ function ClubBadge({
   abbreviation,
   name,
   size = "md",
+  logoUrl,
 }: {
   abbreviation?: string;
   name: string;
   size?: "sm" | "md";
+  logoUrl?: string;
 }) {
   const abbr = abbreviation || deriveAbbreviation(name);
   const sizeClass = size === "sm" ? "h-8 w-8 text-[10px]" : "h-10 w-10 text-xs";
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        className="shrink-0"
+        style={{
+          width: "40px",
+          height: "40px",
+          borderRadius: "8px",
+          objectFit: "cover",
+        }}
+      />
+    );
+  }
 
   return (
     <div

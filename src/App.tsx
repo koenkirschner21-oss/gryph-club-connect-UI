@@ -9,6 +9,7 @@ import { ClubProvider } from "./context/ClubContext";
 import { NotificationsProvider } from "./context/NotificationsProvider";
 import Home from "./pages/Home";
 import Explore from "./pages/Explore";
+import ClubPublicProfilePage from "./pages/ClubPublicProfilePage";
 import ClubDetails from "./pages/ClubDetails";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -123,11 +124,13 @@ export default function App() {
             </a>
             <Routes>
               <Route path="/events/:eventId/rsvp" element={<EventRSVPPage />} />
+              {/* Public browsing — no auth guard */}
               <Route element={<AppShell />}>
-                {/* ───── Public routes ───── */}
-                <Route path="/" element={<Home />} />
                 <Route path="/explore" element={<Explore />} />
-                <Route path="/clubs/:slug" element={<ClubDetails />} />
+                <Route path="/clubs/:slug" element={<ClubPublicProfilePage />} />
+              </Route>
+              <Route element={<AppShell />}>
+                <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />

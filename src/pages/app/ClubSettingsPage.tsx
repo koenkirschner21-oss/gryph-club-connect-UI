@@ -94,6 +94,31 @@ export default function ClubSettingsPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
+  const [instagramUrl, setInstagramUrl] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [twitterUrl, setTwitterUrl] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+
+  const socialInputStyle: CSSProperties = {
+    background: "#111111",
+    border: "1px solid #2a2a2a",
+    borderRadius: "6px",
+    padding: "10px 14px",
+    color: "#ffffff",
+    fontSize: "14px",
+    width: "100%",
+    boxSizing: "border-box",
+  };
+
+  const socialLabelStyle: CSSProperties = {
+    fontSize: "12px",
+    color: "#888888",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    display: "block",
+    marginBottom: "6px",
+  };
+
   const isOwner = userRole === "owner";
 
   useEffect(() => {
@@ -128,6 +153,29 @@ export default function ClubSettingsPage() {
       cancelled = true;
     };
   }, [clubId, user?.id]);
+
+  useEffect(() => {
+    if (!clubId || !isOwner) return;
+
+    let cancelled = false;
+
+    supabase
+      .from("clubs")
+      .select("instagram_url, linkedin_url, twitter_url, website_url")
+      .eq("id", clubId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        setInstagramUrl((data.instagram_url as string) ?? "");
+        setLinkedinUrl((data.linkedin_url as string) ?? "");
+        setTwitterUrl((data.twitter_url as string) ?? "");
+        setWebsiteUrl((data.website_url as string) ?? "");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, isOwner]);
 
   async function handleLogoUpload(file: File) {
     if (!clubId) return;
@@ -192,6 +240,24 @@ export default function ClubSettingsPage() {
             category: category.trim(),
           },
     );
+
+    if (ok && isOwner) {
+      const { error: socialError } = await supabase
+        .from("clubs")
+        .update({
+          instagram_url: instagramUrl.trim() || null,
+          linkedin_url: linkedinUrl.trim() || null,
+          twitter_url: twitterUrl.trim() || null,
+          website_url: websiteUrl.trim() || null,
+        })
+        .eq("id", clubId);
+
+      if (socialError) {
+        setSaving(false);
+        setError("Failed to save social links. Please try again.");
+        return;
+      }
+    }
 
     setSaving(false);
 
@@ -656,6 +722,75 @@ export default function ClubSettingsPage() {
                 </button>
               </div>
             </>
+          ) : null}
+
+          {isOwner ? (
+            <div>
+              <h2
+                style={{
+                  fontWeight: 600,
+                  fontSize: "15px",
+                  color: "#ffffff",
+                  marginBottom: "16px",
+                }}
+              >
+                Social Links
+              </h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div>
+                  <label style={socialLabelStyle} htmlFor="instagram-url">
+                    Instagram URL
+                  </label>
+                  <input
+                    id="instagram-url"
+                    type="url"
+                    value={instagramUrl}
+                    onChange={(e) => setInstagramUrl(e.target.value)}
+                    placeholder="https://instagram.com/yourclub"
+                    style={socialInputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={socialLabelStyle} htmlFor="linkedin-url">
+                    LinkedIn URL
+                  </label>
+                  <input
+                    id="linkedin-url"
+                    type="url"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    placeholder="https://linkedin.com/company/yourclub"
+                    style={socialInputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={socialLabelStyle} htmlFor="twitter-url">
+                    Twitter/X URL
+                  </label>
+                  <input
+                    id="twitter-url"
+                    type="url"
+                    value={twitterUrl}
+                    onChange={(e) => setTwitterUrl(e.target.value)}
+                    placeholder="https://twitter.com/yourclub"
+                    style={socialInputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={socialLabelStyle} htmlFor="website-url">
+                    Website URL
+                  </label>
+                  <input
+                    id="website-url"
+                    type="url"
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder="https://yourclub.com"
+                    style={socialInputStyle}
+                  />
+                </div>
+              </div>
+            </div>
           ) : null}
 
           <div className="flex gap-4 pt-2">

@@ -1,9 +1,10 @@
-import { useState, useMemo, useCallback, type CSSProperties } from "react";
+import { useState, useMemo, useCallback, useEffect, type CSSProperties } from "react";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { useUserInterests } from "../hooks/useUserInterests";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
+import { supabase } from "../lib/supabaseClient";
 import ClubCard, {
   CLUB_AVATAR_STYLE,
   CLUB_CATEGORY_BADGE_STYLE,
@@ -209,11 +210,96 @@ function matchesSize(club: Club, filter: SizeFilter): boolean {
   return club.memberCount >= 50;
 }
 
+function mapPublicClubRow(row: Record<string, unknown>): Club {
+  return {
+    id: row.id as string,
+    name: (row.name as string) ?? "",
+    slug: (row.slug as string) ?? (row.id as string),
+    description: (row.description as string) ?? "",
+    shortDescription: (row.short_description as string) ?? undefined,
+    longDescription: (row.long_description as string) ?? undefined,
+    category: (row.category as string) ?? "",
+    memberCount: (row.member_count as number) ?? 0,
+    meetingSchedule: (row.meeting_schedule as string) ?? "",
+    meetingLocation: (row.meeting_location as string) ?? undefined,
+    location: (row.location as string) ?? "",
+    imageUrl:
+      (row.image_url as string) ??
+      (row.logo_url as string) ??
+      "/assets/placeholders/placeholder-rect.svg",
+    logoUrl: (row.logo_url as string) ?? undefined,
+    bannerUrl: (row.banner_url as string) ?? undefined,
+    brandColor: (row.brand_color as string) ?? undefined,
+    tags: normalizeTags(row.tags as string | string[] | null | undefined),
+    contactEmail: (row.contact_email as string) ?? "",
+    isPublic: (row.is_public as boolean) ?? true,
+    isFeatured: (row.is_featured as boolean) ?? false,
+    isVerified: (row.is_verified as boolean) ?? false,
+    abbreviation: (row.abbreviation as string) ?? undefined,
+    joinCode: (row.join_code as string) ?? undefined,
+    socialLinks: (row.social_links as Club["socialLinks"]) ?? undefined,
+    events: (row.events as Club["events"]) ?? [],
+    requiresApproval: (row.requires_approval as boolean) ?? false,
+    createdBy: (row.created_by as string) ?? undefined,
+    createdAt: (row.created_at as string) ?? undefined,
+  };
+}
+
 // ─── Main Explore page ──────────────────────────────────────────────────────
 export default function Explore() {
-  const { clubs, categories, loading, error } = useClubContext();
+  const { clubs: contextClubs, loading: contextLoading, error: contextError } =
+    useClubContext();
   const { user } = useAuthContext();
   const { interests } = useUserInterests();
+  const [guestClubs, setGuestClubs] = useState<Club[]>([]);
+  const [guestLoading, setGuestLoading] = useState(true);
+  const [guestError, setGuestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) return;
+
+    let cancelled = false;
+
+    async function loadPublicClubs() {
+      setGuestLoading(true);
+      setGuestError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from("clubs")
+        .select("*")
+        .eq("is_public", true)
+        .order("name");
+
+      if (cancelled) return;
+
+      if (fetchError) {
+        console.error("Failed to load public clubs:", fetchError.message);
+        setGuestError(fetchError.message);
+        setGuestClubs([]);
+      } else {
+        setGuestClubs(
+          (data ?? []).map((row) => mapPublicClubRow(row as Record<string, unknown>)),
+        );
+      }
+      setGuestLoading(false);
+    }
+
+    void loadPublicClubs();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const clubs = user ? contextClubs : guestClubs;
+  const loading = user ? contextLoading : guestLoading;
+  const error = user ? contextError : guestError;
+
+  const categories = useMemo(() => {
+    const cats = new Set(
+      clubs.map((club) => club.category).filter((value) => value.length > 0),
+    );
+    return ["All", ...Array.from(cats).sort((a, b) => a.localeCompare(b))];
+  }, [clubs]);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [sizeFilter, setSizeFilter] = useState<SizeFilter>("all");
