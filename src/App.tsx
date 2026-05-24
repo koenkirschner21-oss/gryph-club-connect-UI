@@ -27,6 +27,7 @@ import ClubMembersPage from "./pages/app/ClubMembersPage";
 import ClubSettingsPage from "./pages/app/ClubSettingsPage";
 import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
 import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
+import ClubDocumentsPage from "./pages/app/ClubDocumentsPage";
 import OnboardingPage from "./pages/app/OnboardingPage";
 import ProfilePage from "./pages/app/ProfilePage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -141,6 +142,7 @@ export default function App() {
                   <Route path="announcements" element={<ClubAnnouncementsPage />} />
                   <Route path="chat" element={<ClubChatPage />} />
                   <Route path="tasks" element={<ClubTasksPage />} />
+                  <Route path="documents" element={<ClubDocumentsPage />} />
                   <Route path="events" element={<ClubEventsPage />} />
                   <Route path="members" element={<ClubMembersPage />} />
                   <Route path="analytics" element={<ClubAnalyticsPage />} />

@@ -12,6 +12,7 @@ import {
   ExternalLink,
   type IconProps,
 } from "../icons/WorkspaceIcons";
+import { FileText } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
@@ -28,6 +29,14 @@ const workspaceLinks: {
   { to: "announcements", label: "Announcements", end: false, Icon: Megaphone },
   { to: "chat", label: "Chat", end: false, Icon: MessageSquare },
   { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare },
+  {
+    to: "documents",
+    label: "Documents",
+    end: false,
+    Icon: ({ size = 16, strokeWidth = 2, "aria-hidden": ariaHidden = true }) => (
+      <FileText size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
+    ),
+  },
   { to: "events", label: "Events", end: false, Icon: Calendar },
   { to: "members", label: "Members", end: false, Icon: Users },
   { to: "settings", label: "Settings", end: false, Icon: Settings },
