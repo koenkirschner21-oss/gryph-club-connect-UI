@@ -10,6 +10,8 @@ interface ProfileData {
   email: string;
   university: string;
   program: string;
+  bio: string;
+  year_of_study: string;
   avatar_url: string;
 }
 
@@ -18,8 +20,21 @@ const EMPTY_PROFILE: ProfileData = {
   email: "",
   university: "",
   program: "",
+  bio: "",
+  year_of_study: "",
   avatar_url: "",
 };
+
+const YEAR_OF_STUDY_OPTIONS = [
+  "1st Year",
+  "2nd Year",
+  "3rd Year",
+  "4th Year",
+  "Graduate",
+  "Alumni",
+] as const;
+
+const BIO_MAX_LENGTH = 150;
 
 const PAGE_BG = "#0f0f0f";
 const CARD_BG = "#1a1a1a";
@@ -100,7 +115,10 @@ const verifiedBadgeStyle: CSSProperties = {
   textTransform: "lowercase",
 };
 
-function setInputFocus(el: HTMLInputElement, focused: boolean) {
+function setFieldFocus(
+  el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  focused: boolean,
+) {
   el.style.borderColor = focused ? ACCENT_RED : "#2a2a2a";
 }
 
@@ -120,8 +138,8 @@ function ProfileField({
       <input
         id={id}
         style={inputStyle}
-        onFocus={(e) => setInputFocus(e.currentTarget, true)}
-        onBlur={(e) => setInputFocus(e.currentTarget, false)}
+        onFocus={(e) => setFieldFocus(e.currentTarget, true)}
+        onBlur={(e) => setFieldFocus(e.currentTarget, false)}
         {...inputProps}
       />
     </div>
@@ -143,7 +161,7 @@ export default function ProfilePage() {
     async function fetchProfile() {
       const { data, error } = await supabase
         .from("profiles")
-        .select("full_name, email, university, program, avatar_url")
+        .select("full_name, email, university, program, bio, year_of_study, avatar_url")
         .eq("id", user!.id)
         .single();
 
@@ -158,6 +176,8 @@ export default function ProfilePage() {
           email: data.email ?? user!.email ?? "",
           university: data.university ?? "",
           program: data.program ?? "",
+          bio: data.bio ?? "",
+          year_of_study: data.year_of_study ?? "",
           avatar_url: data.avatar_url ?? "",
         });
       } else {
@@ -209,6 +229,8 @@ export default function ProfilePage() {
         email: profile.email.trim(),
         university: profile.university.trim(),
         program: profile.program.trim(),
+        bio: profile.bio.trim().slice(0, BIO_MAX_LENGTH) || null,
+        year_of_study: profile.year_of_study.trim() || null,
         avatar_url: profile.avatar_url.trim(),
         updated_at: new Date().toISOString(),
       },
@@ -418,6 +440,63 @@ export default function ProfilePage() {
             value={profile.program}
             onChange={(e) => handleChange("program", e.target.value)}
           />
+
+          <div>
+            <label htmlFor="bio" style={labelStyle}>
+              Bio
+            </label>
+            <textarea
+              id="bio"
+              value={profile.bio}
+              onChange={(e) =>
+                handleChange("bio", e.target.value.slice(0, BIO_MAX_LENGTH))
+              }
+              placeholder="Tell people about yourself... (optional)"
+              maxLength={BIO_MAX_LENGTH}
+              rows={4}
+              style={{
+                ...inputStyle,
+                resize: "vertical",
+                minHeight: "96px",
+              }}
+              onFocus={(e) => setFieldFocus(e.currentTarget, true)}
+              onBlur={(e) => setFieldFocus(e.currentTarget, false)}
+            />
+            <p
+              style={{
+                fontSize: "11px",
+                color: MUTED,
+                textAlign: "right",
+                margin: "6px 0 0",
+              }}
+            >
+              {profile.bio.length}/{BIO_MAX_LENGTH}
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="year_of_study" style={labelStyle}>
+              Year of Study
+            </label>
+            <select
+              id="year_of_study"
+              value={profile.year_of_study}
+              onChange={(e) => handleChange("year_of_study", e.target.value)}
+              style={{
+                ...inputStyle,
+                cursor: "pointer",
+              }}
+              onFocus={(e) => setFieldFocus(e.currentTarget, true)}
+              onBlur={(e) => setFieldFocus(e.currentTarget, false)}
+            >
+              <option value="">Select year</option>
+              {YEAR_OF_STUDY_OPTIONS.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div
             style={{
