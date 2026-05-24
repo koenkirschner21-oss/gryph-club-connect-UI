@@ -32,6 +32,7 @@ import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
 import ClubDocumentsPage from "./pages/app/ClubDocumentsPage";
 import OnboardingPage from "./pages/app/OnboardingPage";
 import ProfilePage from "./pages/app/ProfilePage";
+import MemberProfilePage from "./pages/app/MemberProfilePage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminClubs from "./pages/admin/AdminClubs";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -165,6 +166,14 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <JoinClubPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/profile/:userId"
+                  element={
+                    <ProtectedRoute>
+                      <MemberProfilePage />
                     </ProtectedRoute>
                   }
                 />

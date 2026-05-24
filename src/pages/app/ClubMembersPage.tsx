@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
@@ -12,6 +12,34 @@ import {
 import Button from "../../components/ui/Button";
 import Spinner from "../../components/ui/Spinner";
 
+const memberProfileLinkStyle: CSSProperties = {
+  fontWeight: 600,
+  fontSize: "14px",
+  color: "#ffffff",
+  textDecoration: "none",
+};
+
+function MemberNameLink({
+  userId,
+  children,
+  className,
+  style,
+}: {
+  userId: string;
+  children: React.ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <Link
+      to={`/app/profile/${userId}`}
+      className={className}
+      style={{ ...memberProfileLinkStyle, ...style }}
+    >
+      {children}
+    </Link>
+  );
+}
 const inviteCardStyle: CSSProperties = {
   backgroundColor: "#1a1a1a",
   border: "1px solid #242424",
@@ -235,16 +263,9 @@ function OrgChartCard({
             borderColor="#E51937"
           />
         </div>
-        <p
-          style={{
-            fontWeight: 700,
-            fontSize: "14px",
-            color: "#ffffff",
-            margin: "0 0 6px",
-          }}
-        >
+        <MemberNameLink userId={member.userId}>
           {displayName}
-        </p>
+        </MemberNameLink>
         <span style={roleBadgeStyle("owner")}>President</span>
         {member.title ? (
           <p
@@ -281,16 +302,9 @@ function OrgChartCard({
             borderColor="#6b7cff"
           />
         </div>
-        <p
-          style={{
-            fontWeight: 600,
-            fontSize: "13px",
-            color: "#ffffff",
-            margin: "0 0 6px",
-          }}
-        >
+        <MemberNameLink userId={member.userId}>
           {displayName}
-        </p>
+        </MemberNameLink>
         <span style={roleBadgeStyle("executive")}>Executive</span>
         {member.title ? (
           <p
@@ -329,16 +343,13 @@ function OrgChartCard({
           borderColor="#333"
         />
       </div>
-      <p
-        style={{
-          fontSize: "12px",
-          color: "#cccccc",
-          margin: "0 0 4px",
-          fontWeight: 500,
-        }}
+      <MemberNameLink
+        userId={member.userId}
+        className="block"
+        style={{ fontSize: "12px", color: "#cccccc", margin: "0 0 4px", fontWeight: 500 }}
       >
         {displayName}
-      </p>
+      </MemberNameLink>
       {member.title ? (
         <p
           style={{
@@ -1054,16 +1065,12 @@ export default function ClubMembersPage() {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span
+                    <MemberNameLink
+                      userId={member.userId}
                       className="truncate"
-                      style={{
-                        fontWeight: 600,
-                        fontSize: "14px",
-                        color: "#ffffff",
-                      }}
                     >
                       {member.fullName ?? "Unknown"}
-                    </span>
+                    </MemberNameLink>
                     <span style={roleBadgeStyle(normalizedRole)}>
                       {roleBadgeLabel(normalizedRole, memberTitle)}
                     </span>

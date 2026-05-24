@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { MessageSquare, Send, X } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
 import { useClubMembers } from "../../hooks/useClubMembers";
@@ -929,7 +929,15 @@ export default function ClubTasksPage() {
                       className="mt-2 flex flex-wrap items-center gap-3 text-xs"
                       style={{ color: "#555555" }}
                     >
-                      {task.assigneeName && (
+                      {task.assigneeName && task.assignedTo && (
+                        <Link
+                          to={`/app/profile/${task.assignedTo}`}
+                          style={{ color: "#555555", textDecoration: "none" }}
+                        >
+                          👤 {task.assigneeName}
+                        </Link>
+                      )}
+                      {task.assigneeName && !task.assignedTo && (
                         <span>👤 {task.assigneeName}</span>
                       )}
                       {task.dueDate && (

@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ChangeEvent,
 } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
   useConversations,
@@ -238,6 +238,8 @@ function MessageBubble({
   msg: DirectMessage;
   isOwn: boolean;
 }) {
+  const profilePath = `/app/profile/${msg.senderId}`;
+
   return (
     <div
       style={{
@@ -248,11 +250,13 @@ function MessageBubble({
         alignItems: "flex-end",
       }}
     >
-      <Avatar
-        url={msg.senderAvatar}
-        name={msg.senderName ?? "User"}
-        size={32}
-      />
+      <Link to={profilePath} style={{ display: "flex", flexShrink: 0 }}>
+        <Avatar
+          url={msg.senderAvatar}
+          name={msg.senderName ?? "User"}
+          size={32}
+        />
+      </Link>
       <div
         style={{
           maxWidth: "70%",
@@ -262,15 +266,17 @@ function MessageBubble({
         }}
       >
         {!isOwn && (
-          <span
+          <Link
+            to={profilePath}
             style={{
               fontSize: "11px",
               color: "#555555",
               marginBottom: "2px",
+              textDecoration: "none",
             }}
           >
             {msg.senderName ?? "Unknown"}
-          </span>
+          </Link>
         )}
         <div
           style={{
