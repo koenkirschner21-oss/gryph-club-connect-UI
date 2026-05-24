@@ -1,9 +1,10 @@
-import { useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
-import type { MemberRole } from "../../types";
+import { supabase } from "../../lib/supabaseClient";
+import type { ClubMember, MemberRole } from "../../types";
 import {
   isPrivilegedClubRole,
   isTopClubModeratorRole,
@@ -73,7 +74,70 @@ function normalizeMemberRole(role: string): MemberRole {
 
 function formatRoleLabel(role: MemberRole | string): string {
   if (role === "executive" || role === "exec") return "Executive";
-  return role.charAt(0).toUpperCase() + role.slice(1);
+  if (role === "owner") return "Owner";
+  return "Member";
+}
+
+function roleBadgeLabel(role: MemberRole, title?: string | null): string {
+  const label = formatRoleLabel(role);
+  if (role === "executive" && title?.trim()) {
+    return `${label} · ${title.trim()}`;
+  }
+  return label;
+}
+
+const ROLE_OPTIONS: { value: MemberRole; label: string }[] = [
+  { value: "owner", label: "Owner" },
+  { value: "executive", label: "Executive" },
+  { value: "member", label: "Member" },
+];
+
+const roleOptionCardBase: CSSProperties = {
+  background: "#111111",
+  border: "1px solid #2a2a2a",
+  borderRadius: "8px",
+  padding: "10px 14px",
+  cursor: "pointer",
+  width: "100%",
+  textAlign: "left",
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "#ffffff",
+};
+
+function roleOptionCardSelected(base: CSSProperties): CSSProperties {
+  return {
+    ...base,
+    border: "1px solid #E51937",
+    background: "#1f0a0a",
+  };
+}
+
+function RoleSelector({
+  value,
+  onChange,
+}: {
+  value: MemberRole;
+  onChange: (value: MemberRole) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {ROLE_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          style={
+            value === option.value
+              ? roleOptionCardSelected(roleOptionCardBase)
+              : roleOptionCardBase
+          }
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function MemberAvatar({
@@ -118,8 +182,13 @@ export default function ClubMembersPage() {
   const canReorderRoster = isTopClubModeratorRole(role);
   const canUseMembershipQueue = isPrivilegedClubRole(role);
 
-  const { members, pendingMembers, loading, updateRole, removeMember, approveRequest, rejectRequest } = useClubMembers(clubId);
+  const { members, pendingMembers, loading, removeMember, approveRequest, rejectRequest, refresh } =
+    useClubMembers(clubId);
 
+  const [memberTitles, setMemberTitles] = useState<Record<string, string | null>>({});
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState<MemberRole>("member");
+  const [editTitle, setEditTitle] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -134,15 +203,72 @@ export default function ClubMembersPage() {
       (roleOrder[a.role] ?? 99) - (roleOrder[b.role] ?? 99),
   );
 
-  async function handleRoleChange(memberId: string, newRole: MemberRole) {
+  const loadMemberTitles = useCallback(async () => {
+    if (!clubId) return;
+    const { data, error } = await supabase
+      .from("club_members")
+      .select("id, title")
+      .eq("club_id", clubId);
+
+    if (error) {
+      console.error("Failed to load member titles:", error.message);
+      return;
+    }
+
+    const map: Record<string, string | null> = {};
+    (data ?? []).forEach((row) => {
+      map[row.id as string] = (row.title as string | null) ?? null;
+    });
+    setMemberTitles(map);
+  }, [clubId]);
+
+  useEffect(() => {
+    if (!loading) {
+      loadMemberTitles();
+    }
+  }, [loading, members, loadMemberTitles]);
+
+  function openEditRole(member: ClubMember) {
+    setEditingMemberId(member.id);
+    setEditRole(normalizeMemberRole(member.role));
+    setEditTitle(memberTitles[member.id] ?? "");
+  }
+
+  function closeEditRole() {
+    setEditingMemberId(null);
+    setEditTitle("");
+  }
+
+  async function handleSaveRoleAndTitle(memberId: string) {
     setActionLoading(memberId);
     setFeedback(null);
-    const ok = await updateRole(memberId, newRole);
-    if (ok) {
-      setFeedback({ type: "success", text: `Role updated to ${formatRoleLabel(newRole)}.` });
-    } else {
-      setFeedback({ type: "error", text: "Failed to update member role." });
+
+    const trimmedTitle = editTitle.trim();
+    const { error } = await supabase
+      .from("club_members")
+      .update({
+        role: editRole,
+        title: trimmedTitle || null,
+      })
+      .eq("id", memberId);
+
+    if (error) {
+      console.error("Failed to update member:", error.message);
+      setFeedback({ type: "error", text: "Failed to update member role and title." });
+      setActionLoading(null);
+      return;
     }
+
+    setMemberTitles((prev) => ({
+      ...prev,
+      [memberId]: trimmedTitle || null,
+    }));
+    closeEditRole();
+    refresh();
+    setFeedback({
+      type: "success",
+      text: `Updated to ${formatRoleLabel(editRole)}${trimmedTitle ? ` · ${trimmedTitle}` : ""}.`,
+    });
     setActionLoading(null);
   }
 
@@ -198,10 +324,11 @@ export default function ClubMembersPage() {
   }
 
   function renderAdminActions(
-    memberRole: MemberRole,
-    memberId: string,
-    memberUserId: string,
+    member: ClubMember,
   ) {
+    const memberRole = member.role;
+    const memberId = member.id;
+    const memberUserId = member.userId;
     const isOwner = role === "owner";
     const isSelf = memberUserId === user?.id;
     const isOtherOwner = memberRole === "owner";
@@ -215,37 +342,33 @@ export default function ClubMembersPage() {
     }
 
     const busy = actionLoading === memberId;
-    const canChangeRole = isOwner && !isOtherOwner;
+    const canEditRole = isOwner && !isOtherOwner;
     const canRemove =
       canReorderRoster && !isTopClubModeratorRole(memberRole);
 
-    if (!canChangeRole && !canRemove) {
+    if (!canEditRole && !canRemove) {
       return null;
     }
 
     return (
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-        {canChangeRole ? (
-          <select
-            value={normalizeMemberRole(memberRole)}
+        {canEditRole ? (
+          <button
+            type="button"
             disabled={busy}
-            onChange={(event) =>
-              handleRoleChange(memberId, event.target.value as MemberRole)
-            }
+            onClick={() => openEditRole(member)}
             style={{
-              backgroundColor: "#111111",
-              color: "#ffffff",
+              background: "transparent",
               border: "1px solid #333333",
+              color: "#888888",
               borderRadius: "6px",
-              padding: "6px 10px",
+              padding: "6px 12px",
               fontSize: "12px",
+              cursor: busy ? "not-allowed" : "pointer",
             }}
-            aria-label="Change member role"
           >
-            <option value="owner">Owner</option>
-            <option value="executive">Executive</option>
-            <option value="member">Member</option>
-          </select>
+            Edit Role
+          </button>
         ) : null}
         {canRemove ? (
           <Button
@@ -447,7 +570,12 @@ export default function ClubMembersPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {sortedMembers.map((member) => (
+          {sortedMembers.map((member) => {
+            const memberTitle = memberTitles[member.id] ?? null;
+            const normalizedRole = normalizeMemberRole(member.role);
+            const isEditing = editingMemberId === member.id;
+
+            return (
             <div key={member.id} style={memberCardStyle}>
               <div className="flex items-center gap-3">
                 <MemberAvatar
@@ -456,7 +584,7 @@ export default function ClubMembersPage() {
                 />
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span
                       className="truncate"
                       style={{
@@ -467,15 +595,30 @@ export default function ClubMembersPage() {
                     >
                       {member.fullName ?? "Unknown"}
                     </span>
-                    <span style={roleBadgeStyle(normalizeMemberRole(member.role))}>
-                      {formatRoleLabel(member.role)}
+                    <span style={roleBadgeStyle(normalizedRole)}>
+                      {roleBadgeLabel(normalizedRole, memberTitle)}
                     </span>
                   </div>
+                  {memberTitle ? (
+                    <p
+                      className="truncate"
+                      style={{
+                        fontSize: "11px",
+                        color: "#747676",
+                        fontStyle: "italic",
+                        marginTop: "2px",
+                        marginBottom: 0,
+                      }}
+                    >
+                      {memberTitle}
+                    </p>
+                  ) : null}
                   <p
                     className="truncate"
                     style={{
                       fontSize: "12px",
                       color: "#555555",
+                      marginTop: memberTitle ? "4px" : "2px",
                     }}
                   >
                     {member.email}
@@ -493,7 +636,7 @@ export default function ClubMembersPage() {
                   )}
                 </div>
 
-                {renderAdminActions(member.role, member.id, member.userId) ?? (
+                {renderAdminActions(member) ?? (
                   <span
                     className="ml-auto shrink-0 text-right"
                     style={{
@@ -509,8 +652,104 @@ export default function ClubMembersPage() {
                   </span>
                 )}
               </div>
+
+              {isEditing ? (
+                <div
+                  style={{
+                    marginTop: "14px",
+                    padding: "16px",
+                    background: "#111111",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#ffffff",
+                      margin: "0 0 10px",
+                    }}
+                  >
+                    Role
+                  </p>
+                  <RoleSelector value={editRole} onChange={setEditRole} />
+                  <label
+                    htmlFor={`member-title-${member.id}`}
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#ffffff",
+                      margin: "14px 0 8px",
+                    }}
+                  >
+                    Title
+                  </label>
+                  <input
+                    id={`member-title-${member.id}`}
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    placeholder="e.g. Marketing Manager, Events Lead"
+                    style={{
+                      width: "100%",
+                      background: "#111111",
+                      border: "1px solid #2a2a2a",
+                      borderRadius: "6px",
+                      padding: "8px 12px",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: "10px",
+                      marginTop: "14px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={closeEditRole}
+                      disabled={actionLoading === member.id}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #333333",
+                        color: "#888888",
+                        borderRadius: "6px",
+                        padding: "8px 16px",
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveRoleAndTitle(member.id)}
+                      disabled={actionLoading === member.id}
+                      style={{
+                        background: "#E51937",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "8px 16px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {actionLoading === member.id ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
