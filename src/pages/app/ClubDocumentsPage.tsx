@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { ExternalLink, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
@@ -40,6 +41,43 @@ interface ClubDocument {
   created_at: string;
   uploaderName?: string;
 }
+
+interface ResourceLink {
+  id: string;
+  club_id: string;
+  title: string;
+  url: string;
+  description: string | null;
+  added_by: string | null;
+  created_at: string;
+}
+
+const inputStyle: CSSProperties = {
+  width: "100%",
+  background: "#111111",
+  border: "1px solid #2a2a2a",
+  borderRadius: "6px",
+  padding: "8px 12px",
+  color: "#ffffff",
+  fontSize: "13px",
+  boxSizing: "border-box",
+};
+
+const labelStyle: CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  color: "#888888",
+  marginBottom: "8px",
+};
+
+const addLinkModalPanelStyle: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "12px",
+  padding: "24px",
+  maxWidth: "400px",
+  width: "100%",
+};
 
 const modalOverlayStyle: CSSProperties = {
   position: "fixed",
@@ -195,6 +233,107 @@ function Box({
   );
 }
 
+function ResourceLinkCard({
+  link,
+  canManage,
+  onDelete,
+  deleting,
+}: {
+  link: ResourceLink;
+  canManage: boolean;
+  onDelete: (link: ResourceLink) => void;
+  deleting: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  function openLink() {
+    window.open(link.url, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={openLink}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openLink();
+        }
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: "relative",
+        background: "#1a1a1a",
+        border: "1px solid #242424",
+        borderRadius: "10px",
+        padding: "14px 16px",
+        minWidth: "200px",
+        maxWidth: "220px",
+        flex: "0 0 auto",
+        cursor: "pointer",
+      }}
+    >
+      {canManage && hovered ? (
+        <button
+          type="button"
+          aria-label={`Delete ${link.title}`}
+          disabled={deleting}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(link);
+          }}
+          style={{
+            position: "absolute",
+            top: "8px",
+            right: "8px",
+            background: "transparent",
+            border: "none",
+            color: hovered ? "#E51937" : "#555555",
+            cursor: deleting ? "not-allowed" : "pointer",
+            padding: "2px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <X size={14} />
+        </button>
+      ) : null}
+      <ExternalLink size={16} color="#E51937" aria-hidden />
+      <p
+        style={{
+          fontSize: "13px",
+          fontWeight: 600,
+          color: "#ffffff",
+          margin: "6px 0 0",
+          paddingRight: canManage ? "18px" : 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {link.title}
+      </p>
+      {link.description ? (
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#555555",
+            margin: "4px 0 0",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {link.description}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function CategoryPills({
   value,
   onChange,
@@ -260,6 +399,15 @@ export default function ClubDocumentsPage() {
   } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [resourceLinks, setResourceLinks] = useState<ResourceLink[]>([]);
+  const [linksLoading, setLinksLoading] = useState(true);
+  const [showAddLinkModal, setShowAddLinkModal] = useState(false);
+  const [linkTitle, setLinkTitle] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkDescription, setLinkDescription] = useState("");
+  const [savingLink, setSavingLink] = useState(false);
+  const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchRole = async () => {
       if (!user?.id || !clubId) return;
@@ -275,6 +423,30 @@ export default function ClubDocumentsPage() {
     };
     void fetchRole();
   }, [clubId, user?.id]);
+
+  const loadResourceLinks = useCallback(async () => {
+    if (!clubId) return;
+    setLinksLoading(true);
+
+    const { data, error } = await supabase
+      .from("club_resource_links")
+      .select("*")
+      .eq("club_id", clubId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load resource links:", error.message);
+      setResourceLinks([]);
+    } else {
+      setResourceLinks((data ?? []) as ResourceLink[]);
+    }
+
+    setLinksLoading(false);
+  }, [clubId]);
+
+  useEffect(() => {
+    void loadResourceLinks();
+  }, [loadResourceLinks]);
 
   const loadDocuments = useCallback(async () => {
     if (!clubId) return;
@@ -344,6 +516,71 @@ export default function ClubDocumentsPage() {
     if (uploading) return;
     setShowUploadModal(false);
     resetUploadForm();
+  }
+
+  function resetLinkForm() {
+    setLinkTitle("");
+    setLinkUrl("");
+    setLinkDescription("");
+  }
+
+  function closeAddLinkModal() {
+    if (savingLink) return;
+    setShowAddLinkModal(false);
+    resetLinkForm();
+  }
+
+  async function handleSaveLink() {
+    if (!clubId || !user?.id || !linkTitle.trim() || !linkUrl.trim()) return;
+
+    setSavingLink(true);
+    setFeedback(null);
+
+    const { error } = await supabase.from("club_resource_links").insert({
+      club_id: clubId,
+      title: linkTitle.trim(),
+      url: linkUrl.trim(),
+      description: linkDescription.trim() || null,
+      added_by: user.id,
+    });
+
+    setSavingLink(false);
+
+    if (error) {
+      console.error("Failed to save resource link:", error.message);
+      setFeedback({ type: "error", text: "Failed to save resource link." });
+      return;
+    }
+
+    setFeedback({ type: "success", text: "Resource link added." });
+    closeAddLinkModal();
+    void loadResourceLinks();
+  }
+
+  async function handleDeleteLink(link: ResourceLink) {
+    if (
+      !window.confirm(`Delete "${link.title}"? This cannot be undone.`)
+    ) {
+      return;
+    }
+
+    setDeletingLinkId(link.id);
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("club_resource_links")
+      .delete()
+      .eq("id", link.id);
+
+    setDeletingLinkId(null);
+
+    if (error) {
+      setFeedback({ type: "error", text: "Failed to delete resource link." });
+      return;
+    }
+
+    setFeedback({ type: "success", text: "Resource link deleted." });
+    void loadResourceLinks();
   }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -525,6 +762,94 @@ export default function ClubDocumentsPage() {
         </div>
       ) : null}
 
+      <Box style={{ marginBottom: "24px" }}>
+        <Box
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            marginBottom: "12px",
+          }}
+        >
+          <h2
+            style={{
+              fontWeight: 600,
+              fontSize: "15px",
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
+            Resource Links
+          </h2>
+          {isPrivileged ? (
+            <button
+              type="button"
+              onClick={() => setShowAddLinkModal(true)}
+              style={{
+                background: "transparent",
+                border: "1px solid #333333",
+                color: "#cccccc",
+                borderRadius: "6px",
+                padding: "6px 14px",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              + Add Link
+            </button>
+          ) : null}
+        </Box>
+
+        {linksLoading ? (
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              overflowX: "auto",
+              paddingBottom: "4px",
+            }}
+          >
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #242424",
+                  borderRadius: "10px",
+                  minWidth: "200px",
+                  height: "88px",
+                  flex: "0 0 auto",
+                }}
+              />
+            ))}
+          </div>
+        ) : resourceLinks.length === 0 ? (
+          <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+            No resource links yet
+          </p>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              overflowX: "auto",
+              paddingBottom: "4px",
+            }}
+          >
+            {resourceLinks.map((link) => (
+              <ResourceLinkCard
+                key={link.id}
+                link={link}
+                canManage={isPrivileged}
+                deleting={deletingLinkId === link.id}
+                onDelete={(item) => void handleDeleteLink(item)}
+              />
+            ))}
+          </div>
+        )}
+      </Box>
+
       <Box style={{ marginBottom: "20px" }}>
         <CategoryPills
           value={filterCategory}
@@ -684,6 +1009,120 @@ export default function ClubDocumentsPage() {
           ))}
         </div>
       )}
+
+      {showAddLinkModal && isPrivileged ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={modalOverlayStyle}
+          onClick={closeAddLinkModal}
+        >
+          <div
+            style={addLinkModalPanelStyle}
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <h2
+              style={{
+                fontWeight: 600,
+                fontSize: "16px",
+                color: "#ffffff",
+                margin: "0 0 16px",
+              }}
+            >
+              Add Link
+            </h2>
+
+            <label htmlFor="link-title" style={labelStyle}>
+              Link Title
+            </label>
+            <input
+              id="link-title"
+              type="text"
+              required
+              value={linkTitle}
+              onChange={(e) => setLinkTitle(e.target.value)}
+              placeholder="e.g. Club Google Drive"
+              disabled={savingLink}
+              style={{ ...inputStyle, marginBottom: "16px" }}
+            />
+
+            <label htmlFor="link-url" style={labelStyle}>
+              URL
+            </label>
+            <input
+              id="link-url"
+              type="url"
+              required
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="https://..."
+              disabled={savingLink}
+              style={{ ...inputStyle, marginBottom: "16px" }}
+            />
+
+            <label htmlFor="link-description" style={labelStyle}>
+              Description (optional)
+            </label>
+            <input
+              id="link-description"
+              type="text"
+              value={linkDescription}
+              onChange={(e) => setLinkDescription(e.target.value)}
+              placeholder="What is this link for?"
+              disabled={savingLink}
+              style={{ ...inputStyle, marginBottom: "16px" }}
+            />
+
+            <Box
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+                marginTop: "4px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeAddLinkModal}
+                disabled={savingLink}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveLink()}
+                disabled={savingLink || !linkTitle.trim() || !linkUrl.trim()}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity:
+                    savingLink || !linkTitle.trim() || !linkUrl.trim()
+                      ? 0.5
+                      : 1,
+                }}
+              >
+                {savingLink ? "Saving…" : "Save"}
+              </button>
+            </Box>
+          </div>
+        </div>
+      ) : null}
 
       {showUploadModal && isPrivileged ? (
         <div
