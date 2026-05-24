@@ -394,6 +394,327 @@ function normalizeUserRole(role: string): MemberRole {
   return "member";
 }
 
+type QuestionType = "text" | "multiple_choice" | "yes_no";
+
+interface EventFormQuestion {
+  id: string;
+  event_id: string;
+  question: string;
+  question_type: QuestionType;
+  options: string[] | null;
+  required: boolean;
+  order_index: number;
+}
+
+interface FormQuestionDraft {
+  localId: string;
+  id?: string;
+  question: string;
+  question_type: QuestionType;
+  options: string[];
+  optionsText: string;
+  required: boolean;
+  order_index: number;
+}
+
+interface RespondentAnswers {
+  userId: string;
+  fullName: string;
+  avatarUrl?: string;
+  answers: { question: string; answer: string }[];
+}
+
+const modalOverlayStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.6)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 50,
+  padding: "16px",
+};
+
+const darkInputStyle: CSSProperties = {
+  background: "#111111",
+  border: "1px solid #2a2a2a",
+  borderRadius: "6px",
+  padding: "8px 12px",
+  color: "#ffffff",
+  fontSize: "13px",
+  boxSizing: "border-box",
+};
+
+function parseOptionsText(text: string): string[] {
+  return text
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function normalizeOptions(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((v) => String(v)).filter(Boolean);
+  }
+  return [];
+}
+
+function draftFromRow(row: Record<string, unknown>): FormQuestionDraft {
+  const opts = normalizeOptions(row.options);
+  return {
+    localId: row.id as string,
+    id: row.id as string,
+    question: row.question as string,
+    question_type: row.question_type as QuestionType,
+    options: opts,
+    optionsText: opts.join(", "),
+    required: Boolean(row.required),
+    order_index: (row.order_index as number) ?? 0,
+  };
+}
+
+function rowFromQuestion(
+  eventId: string,
+  q: FormQuestionDraft,
+  index: number,
+): Record<string, unknown> {
+  const options =
+    q.question_type === "multiple_choice"
+      ? parseOptionsText(q.optionsText)
+      : null;
+  return {
+    event_id: eventId,
+    question: q.question.trim(),
+    question_type: q.question_type,
+    options: options && options.length > 0 ? options : null,
+    required: q.required,
+    order_index: index,
+  };
+}
+
+function DragHandleIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#555555"
+      strokeWidth={2}
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <circle cx="9" cy="6" r="1" fill="#555555" />
+      <circle cx="15" cy="6" r="1" fill="#555555" />
+      <circle cx="9" cy="12" r="1" fill="#555555" />
+      <circle cx="15" cy="12" r="1" fill="#555555" />
+      <circle cx="9" cy="18" r="1" fill="#555555" />
+      <circle cx="15" cy="18" r="1" fill="#555555" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#E51937"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+function PillChoice({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: selected ? "#E51937" : "#1a1a1a",
+        border: selected ? "1px solid #E51937" : "1px solid #333333",
+        color: selected ? "#ffffff" : "#777777",
+        borderRadius: "20px",
+        padding: "6px 16px",
+        fontSize: "12px",
+        fontWeight: 500,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function FormQuestionBuilder({
+  questions,
+  onChange,
+}: {
+  questions: FormQuestionDraft[];
+  onChange: (questions: FormQuestionDraft[]) => void;
+}) {
+  const update = (localId: string, patch: Partial<FormQuestionDraft>) => {
+    onChange(
+      questions.map((q) => (q.localId === localId ? { ...q, ...patch } : q)),
+    );
+  };
+
+  const remove = (localId: string) => {
+    onChange(
+      questions
+        .filter((q) => q.localId !== localId)
+        .map((q, i) => ({ ...q, order_index: i })),
+    );
+  };
+
+  const add = () => {
+    onChange([
+      ...questions,
+      {
+        localId: crypto.randomUUID(),
+        question: "",
+        question_type: "text",
+        options: [],
+        optionsText: "",
+        required: false,
+        order_index: questions.length,
+      },
+    ]);
+  };
+
+  return (
+    <div>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#888888",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          marginBottom: "10px",
+        }}
+      >
+        RSVP Form Questions
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        {questions.map((q) => (
+          <div
+            key={q.localId}
+            style={{
+              background: "#111111",
+              border: "1px solid #2a2a2a",
+              borderRadius: "8px",
+              padding: "12px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+              <div style={{ paddingTop: "10px", cursor: "grab" }} title="Drag to reorder">
+                <DragHandleIcon />
+              </div>
+              <input
+                type="text"
+                value={q.question}
+                onChange={(e) => update(q.localId, { question: e.target.value })}
+                placeholder="Question text"
+                style={{ ...darkInputStyle, flex: 1 }}
+              />
+              <select
+                value={q.question_type}
+                onChange={(e) =>
+                  update(q.localId, {
+                    question_type: e.target.value as QuestionType,
+                  })
+                }
+                style={{ ...darkInputStyle, width: "160px" }}
+              >
+                <option value="text">Text</option>
+                <option value="multiple_choice">Multiple choice</option>
+                <option value="yes_no">Yes / No</option>
+              </select>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  color: "#888888",
+                  whiteSpace: "nowrap",
+                  paddingTop: "8px",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={q.required}
+                  onChange={(e) =>
+                    update(q.localId, { required: e.target.checked })
+                  }
+                />
+                Required
+              </label>
+              <button
+                type="button"
+                onClick={() => remove(q.localId)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "6px",
+                }}
+                aria-label="Delete question"
+              >
+                <TrashIcon />
+              </button>
+            </div>
+            {q.question_type === "multiple_choice" ? (
+              <input
+                type="text"
+                value={q.optionsText}
+                onChange={(e) =>
+                  update(q.localId, { optionsText: e.target.value })
+                }
+                placeholder="Options (comma-separated)"
+                style={{ ...darkInputStyle, width: "100%", marginTop: "10px" }}
+              />
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={add}
+        style={{
+          marginTop: "12px",
+          background: "transparent",
+          border: "1px solid #333333",
+          color: "#cccccc",
+          borderRadius: "6px",
+          padding: "6px 14px",
+          fontSize: "12px",
+          cursor: "pointer",
+        }}
+      >
+        + Add Question
+      </button>
+    </div>
+  );
+}
+
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
@@ -441,6 +762,92 @@ export default function ClubEventsPage() {
   const [eventCategories, setEventCategories] = useState<
     Record<string, EventCategory>
   >({});
+
+  const [formQuestions, setFormQuestions] = useState<FormQuestionDraft[]>([]);
+  const [eventQuestionsMap, setEventQuestionsMap] = useState<
+    Record<string, EventFormQuestion[]>
+  >({});
+  const [rsvpModalEvent, setRsvpModalEvent] = useState<ClubEvent | null>(null);
+  const [rsvpAnswers, setRsvpAnswers] = useState<Record<string, string>>({});
+  const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
+  const [responsesModalEvent, setResponsesModalEvent] =
+    useState<ClubEvent | null>(null);
+  const [responsesLoading, setResponsesLoading] = useState(false);
+  const [responsesByUser, setResponsesByUser] = useState<RespondentAnswers[]>(
+    [],
+  );
+
+  const loadAllEventQuestions = useCallback(async () => {
+    if (eventIds.length === 0) {
+      setEventQuestionsMap({});
+      return;
+    }
+    const { data, error } = await supabase
+      .from("event_form_questions")
+      .select("*")
+      .in("event_id", eventIds)
+      .order("order_index", { ascending: true });
+
+    if (error) {
+      console.error("Failed to load form questions:", error.message);
+      return;
+    }
+
+    const map: Record<string, EventFormQuestion[]> = {};
+    for (const row of data ?? []) {
+      const eventId = row.event_id as string;
+      if (!map[eventId]) map[eventId] = [];
+      map[eventId].push({
+        id: row.id as string,
+        event_id: eventId,
+        question: row.question as string,
+        question_type: row.question_type as QuestionType,
+        options: normalizeOptions(row.options),
+        required: Boolean(row.required),
+        order_index: (row.order_index as number) ?? 0,
+      });
+    }
+    setEventQuestionsMap(map);
+  }, [eventIds]);
+
+  useEffect(() => {
+    if (!loading) {
+      void loadAllEventQuestions();
+    }
+  }, [loading, eventIds, loadAllEventQuestions]);
+
+  const saveEventQuestions = useCallback(
+    async (eventId: string, questions: FormQuestionDraft[]): Promise<boolean> => {
+      const { error: deleteError } = await supabase
+        .from("event_form_questions")
+        .delete()
+        .eq("event_id", eventId);
+
+      if (deleteError) {
+        console.error("Failed to clear form questions:", deleteError.message);
+        return false;
+      }
+
+      const rows = questions
+        .map((q, index) => rowFromQuestion(eventId, q, index))
+        .filter((row) => (row.question as string).length > 0);
+
+      if (rows.length === 0) {
+        await loadAllEventQuestions();
+        return true;
+      }
+
+      const { error } = await supabase.from("event_form_questions").insert(rows);
+      if (error) {
+        console.error("Failed to save form questions:", error.message);
+        return false;
+      }
+
+      await loadAllEventQuestions();
+      return true;
+    },
+    [loadAllEventQuestions],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -517,6 +924,7 @@ export default function ClubEventsPage() {
     setLocation("");
     setVisibility("public");
     setCategory(DEFAULT_EVENT_CATEGORY);
+    setFormQuestions([]);
     setEditingId(null);
     setShowForm(false);
   }
@@ -538,6 +946,19 @@ export default function ClubEventsPage() {
     }
     setCategory(
       eventCategories[current.id] ?? DEFAULT_EVENT_CATEGORY,
+    );
+    const existing = eventQuestionsMap[current.id] ?? [];
+    setFormQuestions(
+      existing.map((q) =>
+        draftFromRow({
+          id: q.id,
+          question: q.question,
+          question_type: q.question_type,
+          options: q.options,
+          required: q.required,
+          order_index: q.order_index,
+        }),
+      ),
     );
     setShowForm(true);
   }
@@ -561,6 +982,8 @@ export default function ClubEventsPage() {
     };
 
     let ok: boolean;
+    let savedEventId = editingId;
+
     if (editingId) {
       ok = !!(await updateEvent(editingId, fields));
       if (ok) {
@@ -583,11 +1006,33 @@ export default function ClubEventsPage() {
         if (error || !data?.id) {
           ok = false;
         } else {
-          ok = await saveEventCategory(data.id as string, category);
+          savedEventId = data.id as string;
+          ok = await saveEventCategory(savedEventId, category);
         }
+      } else if (ok) {
+        const { data } = await supabase
+          .from("events")
+          .select("id")
+          .eq("club_id", clubId!)
+          .eq("title", fields.title)
+          .eq("date", fields.date)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        savedEventId = (data?.id as string) ?? null;
       }
       if (ok) {
         refresh();
+      }
+    }
+
+    if (ok && savedEventId) {
+      const questionsSaved = await saveEventQuestions(
+        savedEventId,
+        formQuestions,
+      );
+      if (!questionsSaved) {
+        ok = false;
       }
     }
 
@@ -614,9 +1059,151 @@ export default function ClubEventsPage() {
   async function handleRsvp(eventId: string, status: RsvpStatus) {
     if (myRsvps[eventId] === status) {
       await removeRsvp(eventId);
-    } else {
-      await setRsvp(eventId, status);
+      return;
     }
+
+    if (status === "going") {
+      const questions = eventQuestionsMap[eventId] ?? [];
+      if (questions.length > 0) {
+        const event = events.find((e) => e.id === eventId) ?? null;
+        setRsvpModalEvent(event);
+        setRsvpAnswers({});
+        return;
+      }
+    }
+
+    await setRsvp(eventId, status);
+  }
+
+  async function submitRsvpWithForm() {
+    if (!rsvpModalEvent || !user?.id) return;
+
+    const questions = eventQuestionsMap[rsvpModalEvent.id] ?? [];
+    for (const q of questions) {
+      if (q.required && !rsvpAnswers[q.id]?.trim()) {
+        setFeedback({
+          type: "error",
+          text: "Please answer all required questions.",
+        });
+        return;
+      }
+    }
+
+    setRsvpSubmitting(true);
+    setFeedback(null);
+
+    const rows = questions.map((q) => ({
+      event_id: rsvpModalEvent.id,
+      user_id: user.id,
+      question_id: q.id,
+      answer: rsvpAnswers[q.id]?.trim() ?? "",
+    }));
+
+    await supabase
+      .from("event_form_responses")
+      .delete()
+      .eq("event_id", rsvpModalEvent.id)
+      .eq("user_id", user.id);
+
+    const { error: responseError } = await supabase
+      .from("event_form_responses")
+      .insert(rows);
+
+    if (responseError) {
+      console.error("Failed to save RSVP responses:", responseError.message);
+      setFeedback({ type: "error", text: "Failed to save your responses." });
+      setRsvpSubmitting(false);
+      return;
+    }
+
+    const ok = await setRsvp(rsvpModalEvent.id, "going");
+    setRsvpSubmitting(false);
+
+    if (ok) {
+      setRsvpModalEvent(null);
+      setRsvpAnswers({});
+    } else {
+      setFeedback({ type: "error", text: "Failed to confirm RSVP." });
+    }
+  }
+
+  async function openResponsesModal(event: ClubEvent) {
+    setResponsesModalEvent(event);
+    setResponsesLoading(true);
+    setResponsesByUser([]);
+
+    const { data, error } = await supabase
+      .from("event_form_responses")
+      .select(
+        `
+        user_id,
+        answer,
+        question_id,
+        event_form_questions (
+          question,
+          order_index
+        )
+      `,
+      )
+      .eq("event_id", event.id);
+
+    if (error) {
+      console.error("Failed to load responses:", error.message);
+      setResponsesLoading(false);
+      return;
+    }
+
+    const userIds = [
+      ...new Set((data ?? []).map((r) => r.user_id as string)),
+    ];
+    let profileMap: Record<
+      string,
+      { fullName: string; avatarUrl?: string }
+    > = {};
+
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", userIds);
+      profileMap = Object.fromEntries(
+        (profiles ?? []).map((p) => [
+          p.id as string,
+          {
+            fullName: (p.full_name as string) ?? "Unknown",
+            avatarUrl: (p.avatar_url as string) ?? undefined,
+          },
+        ]),
+      );
+    }
+
+    const grouped = new Map<string, RespondentAnswers>();
+    for (const row of data ?? []) {
+      const userId = row.user_id as string;
+      const qMeta = row.event_form_questions as
+        | { question: string; order_index: number }
+        | { question: string; order_index: number }[]
+        | null;
+      const questionMeta = Array.isArray(qMeta) ? qMeta[0] : qMeta;
+      const questionText = questionMeta?.question ?? "Question";
+
+      if (!grouped.has(userId)) {
+        const profile = profileMap[userId];
+        grouped.set(userId, {
+          userId,
+          fullName: profile?.fullName ?? "Unknown",
+          avatarUrl: profile?.avatarUrl,
+          answers: [],
+        });
+      }
+      grouped.get(userId)!.answers.push({
+        question: questionText,
+        answer: (row.answer as string) ?? "",
+      });
+    }
+
+    setResponsesByUser(Array.from(grouped.values()));
+    setResponsesLoading(false);
   }
 
   async function toggleAttendees(eventId: string) {
@@ -670,7 +1257,11 @@ export default function ClubEventsPage() {
           <Button
             onClick={() => {
               if (showForm) resetForm();
-              else setShowForm(true);
+              else {
+                setFormQuestions([]);
+                setEditingId(null);
+                setShowForm(true);
+              }
             }}
             className="!border-0 !bg-[#E51937] !px-[18px] !py-[9px] !text-[13px] !font-medium !text-white hover:!bg-[#cc0020]"
             style={{ borderRadius: "6px" }}
@@ -762,6 +1353,10 @@ export default function ClubEventsPage() {
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="e.g. Thornbrough Building, Room 1307"
+            />
+            <FormQuestionBuilder
+              questions={formQuestions}
+              onChange={setFormQuestions}
             />
             <div className="flex justify-end gap-3 pt-2">
               {editingId && (
@@ -889,19 +1484,39 @@ export default function ClubEventsPage() {
                   )}
 
                   {/* RSVP counts — all members see aggregate counts */}
-                  <p className="mt-3" style={{ fontSize: "12px" }}>
-                    <span style={{ color: "#4ade80" }}>{c.going} going</span>
-                    {isPrivileged ? (
-                      <>
-                        <span style={{ color: "#555555" }}> · </span>
-                        <span style={{ color: "#FFC429" }}>{c.maybe} maybe</span>
-                        <span style={{ color: "#555555" }}> · </span>
-                        <span style={{ color: "#555555" }}>
-                          {c.not_going} not going
-                        </span>
-                      </>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <p style={{ fontSize: "12px", margin: 0 }}>
+                      <span style={{ color: "#4ade80" }}>{c.going} going</span>
+                      {isPrivileged ? (
+                        <>
+                          <span style={{ color: "#555555" }}> · </span>
+                          <span style={{ color: "#FFC429" }}>{c.maybe} maybe</span>
+                          <span style={{ color: "#555555" }}> · </span>
+                          <span style={{ color: "#555555" }}>
+                            {c.not_going} not going
+                          </span>
+                        </>
+                      ) : null}
+                    </p>
+                    {isPrivileged &&
+                    (eventQuestionsMap[event.id]?.length ?? 0) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void openResponsesModal(event)}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid #333333",
+                          color: "#cccccc",
+                          borderRadius: "6px",
+                          padding: "4px 10px",
+                          fontSize: "11px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        View Responses
+                      </button>
                     ) : null}
-                  </p>
+                  </div>
 
                   {/* RSVP buttons */}
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -1090,6 +1705,298 @@ export default function ClubEventsPage() {
           </div>
         </>
       )}
+
+      {rsvpModalEvent ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={modalOverlayStyle}
+          onClick={() => !rsvpSubmitting && setRsvpModalEvent(null)}
+        >
+          <div
+            style={{
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "480px",
+              width: "100%",
+              maxHeight: "90vh",
+              overflowY: "auto",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <h2
+              style={{
+                fontWeight: 700,
+                fontSize: "16px",
+                color: "#ffffff",
+                margin: "0 0 4px",
+              }}
+            >
+              {rsvpModalEvent.title}
+            </h2>
+            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 20px" }}>
+              RSVP to this event
+            </p>
+
+            {(eventQuestionsMap[rsvpModalEvent.id] ?? []).map((q) => (
+              <div key={q.id} style={{ marginBottom: "16px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    color: "#cccccc",
+                    marginBottom: "6px",
+                  }}
+                >
+                  {q.question}
+                  {q.required ? (
+                    <span style={{ color: "#E51937", marginLeft: "4px" }}>
+                      *
+                    </span>
+                  ) : null}
+                </label>
+                {q.question_type === "text" ? (
+                  <textarea
+                    value={rsvpAnswers[q.id] ?? ""}
+                    onChange={(e) =>
+                      setRsvpAnswers((prev) => ({
+                        ...prev,
+                        [q.id]: e.target.value,
+                      }))
+                    }
+                    rows={3}
+                    style={{ ...darkInputStyle, width: "100%", resize: "vertical" }}
+                  />
+                ) : null}
+                {q.question_type === "yes_no" ? (
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <PillChoice
+                      label="Yes"
+                      selected={rsvpAnswers[q.id] === "Yes"}
+                      onClick={() =>
+                        setRsvpAnswers((prev) => ({ ...prev, [q.id]: "Yes" }))
+                      }
+                    />
+                    <PillChoice
+                      label="No"
+                      selected={rsvpAnswers[q.id] === "No"}
+                      onClick={() =>
+                        setRsvpAnswers((prev) => ({ ...prev, [q.id]: "No" }))
+                      }
+                    />
+                  </div>
+                ) : null}
+                {q.question_type === "multiple_choice" ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    {(q.options ?? []).map((opt) => (
+                      <PillChoice
+                        key={opt}
+                        label={opt}
+                        selected={rsvpAnswers[q.id] === opt}
+                        onClick={() =>
+                          setRsvpAnswers((prev) => ({ ...prev, [q.id]: opt }))
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+                marginTop: "8px",
+              }}
+            >
+              <button
+                type="button"
+                disabled={rsvpSubmitting}
+                onClick={() => setRsvpModalEvent(null)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "10px 24px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={rsvpSubmitting}
+                onClick={() => void submitRsvpWithForm()}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "10px 24px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {rsvpSubmitting ? "Submitting…" : "Confirm RSVP"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {responsesModalEvent ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={modalOverlayStyle}
+          onClick={() => setResponsesModalEvent(null)}
+        >
+          <div
+            style={{
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "560px",
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              position: "relative",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <button
+              type="button"
+              onClick={() => setResponsesModalEvent(null)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "transparent",
+                border: "none",
+                color: "#888888",
+                fontSize: "20px",
+                cursor: "pointer",
+                lineHeight: 1,
+              }}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <h2
+              style={{
+                fontWeight: 700,
+                fontSize: "16px",
+                color: "#ffffff",
+                margin: "0 32px 16px 0",
+                paddingRight: "24px",
+              }}
+            >
+              RSVP Responses — {responsesModalEvent.title}
+            </h2>
+
+            {responsesLoading ? (
+              <p style={{ fontSize: "13px", color: "#555555" }}>Loading…</p>
+            ) : responsesByUser.length === 0 ? (
+              <p style={{ fontSize: "13px", color: "#555555" }}>
+                No responses yet.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {responsesByUser.map((respondent) => (
+                  <div
+                    key={respondent.userId}
+                    style={{
+                      borderTop: "1px solid #2a2a2a",
+                      paddingTop: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      {respondent.avatarUrl ? (
+                        <img
+                          src={respondent.avatarUrl}
+                          alt=""
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: "50%",
+                            background: "#242424",
+                            color: "#E51937",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {respondent.fullName.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          color: "#ffffff",
+                        }}
+                      >
+                        {respondent.fullName}
+                      </span>
+                    </div>
+                    {respondent.answers.map((a) => (
+                      <div key={`${respondent.userId}-${a.question}`} style={{ marginBottom: "8px" }}>
+                        <p
+                          style={{
+                            fontSize: "12px",
+                            color: "#888888",
+                            margin: "0 0 2px",
+                          }}
+                        >
+                          {a.question}
+                        </p>
+                        <p
+                          style={{
+                            fontSize: "13px",
+                            color: "#cccccc",
+                            margin: 0,
+                          }}
+                        >
+                          {a.answer || "—"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
