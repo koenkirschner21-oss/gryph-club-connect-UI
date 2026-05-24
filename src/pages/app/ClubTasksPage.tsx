@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { MessageSquare, Send, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
@@ -89,6 +90,399 @@ function normalizeUserRole(role: string): MemberRole {
   return "member";
 }
 
+interface TaskComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  authorName: string;
+  avatarUrl?: string;
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function formatCommentTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+async function fetchCommentsForTask(taskId: string): Promise<TaskComment[]> {
+  const { data: rows, error } = await supabase
+    .from("task_comments")
+    .select("id, task_id, user_id, content, created_at")
+    .eq("task_id", taskId)
+    .order("created_at", { ascending: true });
+
+  if (error || !rows?.length) {
+    if (error) console.error("Failed to load task comments:", error.message);
+    return [];
+  }
+
+  const userIds = [...new Set(rows.map((row) => row.user_id as string))];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url")
+    .in("id", userIds);
+
+  const profileMap = new Map(
+    (profiles ?? []).map((profile) => [
+      profile.id as string,
+      {
+        fullName: (profile.full_name as string) ?? "Member",
+        avatarUrl: (profile.avatar_url as string) ?? undefined,
+      },
+    ]),
+  );
+
+  return rows.map((row) => {
+    const profile = profileMap.get(row.user_id as string);
+    return {
+      id: row.id as string,
+      taskId: row.task_id as string,
+      userId: row.user_id as string,
+      content: (row.content as string) ?? "",
+      createdAt: (row.created_at as string) ?? "",
+      authorName: profile?.fullName ?? "Member",
+      avatarUrl: profile?.avatarUrl,
+    };
+  });
+}
+
+function CommentAvatar({
+  name,
+  avatarUrl,
+}: {
+  name: string;
+  avatarUrl?: string;
+}) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt=""
+        style={{
+          width: "28px",
+          height: "28px",
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "28px",
+        height: "28px",
+        borderRadius: "50%",
+        background: "#2a2a2a",
+        fontSize: "11px",
+        color: "#cccccc",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {getInitials(name)}
+    </div>
+  );
+}
+
+function TaskCommentsSection({
+  taskId,
+  userId,
+  expanded,
+  onToggle,
+  commentCount,
+  onCommentCountChange,
+  canComment,
+  canDeleteAnyComment,
+}: {
+  taskId: string;
+  userId?: string;
+  expanded: boolean;
+  onToggle: () => void;
+  commentCount: number;
+  onCommentCountChange: (taskId: string, count: number) => void;
+  canComment: boolean;
+  canDeleteAnyComment: boolean;
+}) {
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [hoveredDeleteId, setHoveredDeleteId] = useState<string | null>(null);
+
+  const loadComments = useCallback(async () => {
+    setLoadingComments(true);
+    const loaded = await fetchCommentsForTask(taskId);
+    setComments(loaded);
+    onCommentCountChange(taskId, loaded.length);
+    setLoadingComments(false);
+  }, [taskId, onCommentCountChange]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    void loadComments();
+  }, [expanded, loadComments]);
+
+  async function handleSend() {
+    const content = draft.trim();
+    if (!content || !userId || sending || !canComment) return;
+
+    setSending(true);
+    const { data, error } = await supabase
+      .from("task_comments")
+      .insert({
+        task_id: taskId,
+        user_id: userId,
+        content,
+      })
+      .select("id, task_id, user_id, content, created_at")
+      .single();
+
+    setSending(false);
+
+    if (error || !data) {
+      console.error("Failed to add comment:", error?.message);
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, avatar_url")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const newComment: TaskComment = {
+      id: data.id as string,
+      taskId: data.task_id as string,
+      userId: data.user_id as string,
+      content: data.content as string,
+      createdAt: (data.created_at as string) ?? new Date().toISOString(),
+      authorName: (profile?.full_name as string) ?? "Member",
+      avatarUrl: (profile?.avatar_url as string) ?? undefined,
+    };
+
+    setComments((prev) => {
+      const next = [...prev, newComment];
+      onCommentCountChange(taskId, next.length);
+      return next;
+    });
+    setDraft("");
+  }
+
+  async function handleDelete(commentId: string) {
+    const { error } = await supabase
+      .from("task_comments")
+      .delete()
+      .eq("id", commentId);
+
+    if (error) {
+      console.error("Failed to delete comment:", error.message);
+      return;
+    }
+
+    setComments((prev) => {
+      const next = prev.filter((comment) => comment.id !== commentId);
+      onCommentCountChange(taskId, next.length);
+      return next;
+    });
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="mt-3 flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 transition-colors hover:text-[#888888]"
+        style={{ color: "#555555", fontSize: "12px" }}
+      >
+        <MessageSquare size={14} strokeWidth={2} aria-hidden />
+        Comments
+        <span style={{ fontSize: "12px", color: "#555555" }}>({commentCount})</span>
+      </button>
+
+      {expanded ? (
+        <div
+          style={{
+            background: "#111111",
+            borderTop: "1px solid #1e1e1e",
+            padding: "12px 16px",
+            marginTop: "12px",
+            marginLeft: "-16px",
+            marginRight: "-16px",
+            marginBottom: "-16px",
+            borderBottomLeftRadius: "8px",
+            borderBottomRightRadius: "8px",
+          }}
+        >
+          {loadingComments ? (
+            <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+              Loading comments…
+            </p>
+          ) : comments.length === 0 ? (
+            <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+              No comments yet.
+            </p>
+          ) : (
+            comments.map((comment) => (
+              <div
+                key={comment.id}
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginBottom: "10px",
+                }}
+              >
+                <CommentAvatar
+                  name={comment.authorName}
+                  avatarUrl={comment.avatarUrl}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#cccccc",
+                      }}
+                    >
+                      {comment.authorName}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: "#555555",
+                        marginLeft: "auto",
+                      }}
+                    >
+                      {formatCommentTime(comment.createdAt)}
+                    </span>
+                    {canDeleteAnyComment || comment.userId === userId ? (
+                      <button
+                        type="button"
+                        title="Delete comment"
+                        aria-label="Delete comment"
+                        onClick={() => handleDelete(comment.id)}
+                        onMouseEnter={() => setHoveredDeleteId(comment.id)}
+                        onMouseLeave={() => setHoveredDeleteId(null)}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          padding: 0,
+                          cursor: "pointer",
+                          color:
+                            hoveredDeleteId === comment.id ? "#E51937" : "#555555",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <X size={14} strokeWidth={2} aria-hidden />
+                      </button>
+                    ) : null}
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#aaaaaa",
+                      marginTop: "2px",
+                      marginBottom: 0,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {comment.content}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+
+          {canComment ? (
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              marginTop: "8px",
+            }}
+          >
+            <input
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void handleSend();
+                }
+              }}
+              placeholder="Add a comment..."
+              disabled={!userId || sending}
+              style={{
+                background: "#1a1a1a",
+                border: "1px solid #2a2a2a",
+                borderRadius: "20px",
+                padding: "8px 14px",
+                color: "#ffffff",
+                fontSize: "13px",
+                flex: 1,
+                outline: "none",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={!draft.trim() || !userId || sending}
+              title="Send comment"
+              aria-label="Send comment"
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "50%",
+                width: "32px",
+                height: "32px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor:
+                  !draft.trim() || !userId || sending ? "not-allowed" : "pointer",
+                opacity: !draft.trim() || !userId || sending ? 0.5 : 1,
+                flexShrink: 0,
+              }}
+            >
+              <Send size={14} strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export default function ClubTasksPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
@@ -140,6 +534,56 @@ export default function ClubTasksPage() {
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [assignedTo, setAssignedTo] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+
+  const handleCommentCountChange = useCallback((taskId: string, count: number) => {
+    setCommentCounts((prev) => ({ ...prev, [taskId]: count }));
+  }, []);
+
+  useEffect(() => {
+    if (visibleTasks.length === 0) {
+      setCommentCounts({});
+      return;
+    }
+
+    let cancelled = false;
+    const taskIds = visibleTasks.map((task) => task.id);
+
+    supabase
+      .from("task_comments")
+      .select("task_id")
+      .in("task_id", taskIds)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load comment counts:", error.message);
+          return;
+        }
+        const counts: Record<string, number> = {};
+        taskIds.forEach((id) => {
+          counts[id] = 0;
+        });
+        (data ?? []).forEach((row) => {
+          const taskId = row.task_id as string;
+          counts[taskId] = (counts[taskId] ?? 0) + 1;
+        });
+        setCommentCounts(counts);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleTasks]);
+
+  function toggleComments(taskId: string) {
+    setExpandedComments((prev) => ({
+      ...prev,
+      [taskId]: !prev[taskId],
+    }));
+  }
 
   function resetForm() {
     setTitle("");
@@ -436,6 +880,10 @@ export default function ClubTasksPage() {
               new Date(task.dueDate) < new Date();
             const canChangeStatus =
               isPrivileged || task.assignedTo === user?.id;
+            const canViewComments =
+              isPrivileged || task.assignedTo === user?.id;
+            const canComment =
+              isPrivileged || task.assignedTo === user?.id;
 
             return (
               <div
@@ -550,6 +998,18 @@ export default function ClubTasksPage() {
                     )}
                   </div>
                 </div>
+                {canViewComments ? (
+                <TaskCommentsSection
+                  taskId={task.id}
+                  userId={user?.id}
+                  expanded={!!expandedComments[task.id]}
+                  onToggle={() => toggleComments(task.id)}
+                  commentCount={commentCounts[task.id] ?? 0}
+                  onCommentCountChange={handleCommentCountChange}
+                  canComment={canComment}
+                  canDeleteAnyComment={isPrivileged}
+                />
+                ) : null}
               </div>
             );
           })}
