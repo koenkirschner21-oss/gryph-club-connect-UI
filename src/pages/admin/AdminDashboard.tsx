@@ -14,7 +14,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from("clubs").select("id", { count: "exact", head: true }),
+      supabase.from("clubs").select("*", { count: "exact", head: true }),
       supabase.from("profiles").select("id", { count: "exact", head: true }),
       supabase.from("reports").select("id", { count: "exact", head: true }).eq("status", "open"),
     ]).then(([clubsRes, usersRes, reportsRes]) => {

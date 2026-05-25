@@ -16,7 +16,7 @@ export default function AdminClubs() {
   useEffect(() => {
     supabase
       .from("clubs")
-      .select("id,name,is_public")
+      .select("*")
       .order("created_at", { ascending: false })
       .then(({ data, error: loadError }) => {
         if (loadError) {

@@ -1,33 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import {
-  createLucideIcon,
-  Globe,
-  Heart,
-  Users,
-} from "lucide-react";
-
-const Linkedin = createLucideIcon("linkedin", [
-  ["path", { d: "M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z", key: "0" }],
-  ["rect", { width: "4", height: "12", x: "2", y: "9", key: "1" }],
-  ["circle", { cx: "4", cy: "4", r: "2", key: "2" }],
-]);
-
-const Twitter = createLucideIcon("twitter", [
-  [
-    "path",
-    {
-      d: "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z",
-      key: "0",
-    },
-  ],
-]);
+import { Globe, Users } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
-import { useEventRsvps } from "../hooks/useEventRsvps";
 import { getClubInitials } from "../lib/clubUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { supabase } from "../lib/supabaseClient";
-import type { Club, ClubEvent, RsvpStatus } from "../types";
+import type { Club, ClubEvent } from "../types";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
@@ -40,6 +18,7 @@ interface PublicClubProfile {
   longDescription: string;
   logoUrl?: string;
   bannerUrl?: string;
+  imageUrl?: string;
   category: string;
   instagramUrl?: string;
   linkedinUrl?: string;
@@ -54,11 +33,125 @@ interface ClubOwnerContact {
   avatarUrl?: string;
 }
 
-const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
-  { value: "going", label: "Going" },
-  { value: "maybe", label: "Maybe" },
-  { value: "not_going", label: "Not Going" },
-];
+function formatEventTime12h(timeStr: string): string {
+  const t = timeStr.trim();
+  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    const hour = parseInt(ampmMatch[1], 10);
+    const minute = ampmMatch[2];
+    if (hour >= 1 && hour <= 12) {
+      return `${hour}:${minute} ${ampmMatch[3].toUpperCase()}`;
+    }
+  }
+  const m24 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m24) {
+    let hour = parseInt(m24[1], 10);
+    const minute = m24[2];
+    if (hour <= 23) {
+      const period = hour >= 12 ? "PM" : "AM";
+      hour = hour % 12 || 12;
+      return `${hour}:${minute} ${period}`;
+    }
+  }
+  return t;
+}
+
+function formatEventDateLong(dateStr: string): string {
+  const trimmed = dateStr.trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T12:00:00`)
+    : new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return trimmed;
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatEventScheduleLine(
+  dateStr: string,
+  timeStr?: string | null,
+): string {
+  const datePart = formatEventDateLong(dateStr);
+  const time = timeStr?.trim();
+  if (!time) return datePart;
+  const formattedTime = formatEventTime12h(time);
+  return formattedTime ? `${datePart} · ${formattedTime}` : datePart;
+}
+
+const brandIconBox: CSSProperties = {
+  width: "28px",
+  height: "28px",
+  borderRadius: "6px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+function InstagramBrandIcon() {
+  return (
+    <div
+      style={{
+        ...brandIconBox,
+        background:
+          "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect
+          x="3"
+          y="3"
+          width="18"
+          height="18"
+          rx="5"
+          stroke="white"
+          strokeWidth="2"
+        />
+        <circle cx="12" cy="12" r="4" stroke="white" strokeWidth="2" />
+        <circle cx="17.2" cy="6.8" r="1.2" fill="white" />
+      </svg>
+    </div>
+  );
+}
+
+function LinkedInBrandIcon() {
+  return (
+    <div style={{ ...brandIconBox, background: "#0077B5", color: "#ffffff" }}>
+      <span style={{ fontWeight: 700, fontSize: "11px", lineHeight: 1 }}>in</span>
+    </div>
+  );
+}
+
+function TwitterBrandIcon() {
+  return (
+    <div style={{ ...brandIconBox, background: "#000000" }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="white" aria-hidden>
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+      </svg>
+    </div>
+  );
+}
+
+function WebsiteBrandIcon() {
+  return (
+    <div style={{ ...brandIconBox, background: "#E51937" }}>
+      <Globe size={16} color="#ffffff" strokeWidth={2} aria-hidden />
+    </div>
+  );
+}
+
+function connectHeadingStyle(): CSSProperties {
+  return {
+    fontSize: "10px",
+    fontWeight: 600,
+    letterSpacing: "0.1em",
+    textTransform: "uppercase",
+    color: "#555555",
+    marginBottom: "10px",
+  };
+}
 
 function formatMemberCount(count: number): string {
   if (count >= 100) return "100+ members";
@@ -72,26 +165,74 @@ function formatMemberCount(count: number): string {
 function categoryBadgeStyle(): CSSProperties {
   return {
     background: "#111111",
-    border: "1px solid #222222",
+    border: "1px solid #222",
     color: "#747676",
     borderRadius: "20px",
-    padding: "3px 12px",
-    fontSize: "11px",
+    padding: "4px 12px",
+    fontSize: "12px",
     display: "inline-block",
   };
 }
 
-function rsvpButtonClass(value: RsvpStatus, active: boolean): string {
-  const base =
-    "cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-colors";
-  if (!active) {
-    if (value === "going") return `${base} border-[#1a4a1a] bg-transparent text-[#4ade80]`;
-    if (value === "maybe") return `${base} border-[#3a3a1a] bg-transparent text-[#FFC429]`;
-    return `${base} border-[#333333] bg-transparent text-[#888888]`;
+const CLUB_EVENT_DATE_SIZE = 48;
+const CLUB_EVENT_LOGO_SIZE = 40;
+
+function ClubEventLogo({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr =
+    abbreviation?.trim() ||
+    name
+      .split(" ")
+      .filter((w) => w.length > 0)
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 3)
+      .toUpperCase();
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: `${CLUB_EVENT_LOGO_SIZE}px`,
+          height: `${CLUB_EVENT_LOGO_SIZE}px`,
+          borderRadius: "8px",
+          border: "1px solid #2a2a2a",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
   }
-  if (value === "going") return `${base} border-[#1a4a1a] bg-[#0d2b0d] text-[#4ade80]`;
-  if (value === "maybe") return `${base} border-[#3a3a1a] bg-[#2a2a0d] text-[#FFC429]`;
-  return `${base} border-[#333333] bg-[#1a1a1a] text-[#888888]`;
+
+  return (
+    <div
+      style={{
+        width: `${CLUB_EVENT_LOGO_SIZE}px`,
+        height: `${CLUB_EVENT_LOGO_SIZE}px`,
+        borderRadius: "8px",
+        border: "1px solid #2a2a2a",
+        background: "#2a2a2a",
+        color: "#888",
+        fontSize: "12px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
 }
 
 function EventDateBlock({ date }: { date: string }) {
@@ -107,10 +248,10 @@ function EventDateBlock({ date }: { date: string }) {
     <div
       className="flex shrink-0 flex-col items-center justify-center"
       style={{
-        width: "40px",
-        height: "40px",
+        width: `${CLUB_EVENT_DATE_SIZE}px`,
+        height: `${CLUB_EVENT_DATE_SIZE}px`,
         backgroundColor: "#E51937",
-        borderRadius: "6px",
+        borderRadius: "8px",
       }}
     >
       <span
@@ -118,17 +259,18 @@ function EventDateBlock({ date }: { date: string }) {
           fontSize: "9px",
           textTransform: "uppercase",
           color: "#ffffff",
-          lineHeight: 1.1,
+          lineHeight: 1,
+          letterSpacing: "0.08em",
         }}
       >
         {monthLabel}
       </span>
       <span
         style={{
-          fontSize: "16px",
+          fontSize: "20px",
           fontWeight: 700,
           color: "#ffffff",
-          lineHeight: 1.1,
+          lineHeight: 1,
         }}
       >
         {dayLabel}
@@ -153,14 +295,16 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
   };
 }
 
-function SocialPill({
+function SocialLinkRow({
   href,
   label,
   icon,
+  isLast,
 }: {
   href: string;
   label: string;
   icon: ReactNode;
+  isLast?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -172,20 +316,14 @@ function SocialPill({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: "#1a1a1a",
-        border: `1px solid ${hovered ? "#444444" : "#2a2a2a"}`,
-        borderRadius: "8px",
-        padding: "9px 14px",
         display: "flex",
         alignItems: "center",
         gap: "10px",
-        width: "100%",
-        marginBottom: "8px",
-        textDecoration: "none",
+        padding: "8px 0",
+        borderBottom: isLast ? "none" : "1px solid #1e1e1e",
         color: hovered ? "#ffffff" : "#cccccc",
         fontSize: "13px",
-        fontWeight: 500,
-        transition: "all 0.15s ease",
+        textDecoration: "none",
       }}
     >
       {icon}
@@ -221,14 +359,12 @@ export default function ClubPublicProfilePage() {
 
   const [joinError, setJoinError] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [bookmarkHovered, setBookmarkHovered] = useState(false);
 
   const clubId = profile?.id ?? contextClub?.id;
   const joined = clubId ? isJoined(clubId) : false;
   const pending = clubId ? isPending(clubId) : false;
   const saved = clubId ? isSaved(clubId) : false;
-
-  const eventIds = useMemo(() => events.map((e) => e.id), [events]);
-  const { myRsvps, counts, setRsvp, removeRsvp } = useEventRsvps(eventIds);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,9 +379,7 @@ export default function ClubPublicProfilePage() {
 
       let query = supabase
         .from("clubs")
-        .select(
-          "id, name, slug, short_description, long_description, logo_url, banner_url, category, instagram_url, linkedin_url, twitter_url, website_url, created_at",
-        );
+        .select("*");
 
       if (contextClub?.id) {
         query = query.eq("id", contextClub.id);
@@ -272,6 +406,7 @@ export default function ClubPublicProfilePage() {
         longDescription: (clubRow.long_description as string) ?? "",
         logoUrl: (clubRow.logo_url as string) ?? undefined,
         bannerUrl: (clubRow.banner_url as string) ?? undefined,
+        imageUrl: (clubRow.image_url as string) ?? undefined,
         category: (clubRow.category as string) ?? "",
         instagramUrl: (clubRow.instagram_url as string) ?? undefined,
         linkedinUrl: (clubRow.linkedin_url as string) ?? undefined,
@@ -414,14 +549,13 @@ export default function ClubPublicProfilePage() {
     longDescription: contextClub!.longDescription ?? contextClub!.description,
     logoUrl: contextClub!.logoUrl,
     bannerUrl: contextClub!.bannerUrl,
+    imageUrl: contextClub!.imageUrl,
     category: contextClub!.category,
     createdAt: contextClub!.createdAt,
   };
 
   const aboutText =
-    club.longDescription?.trim() ||
-    club.shortDescription?.trim() ||
-    "No description yet";
+    club.longDescription?.trim() || club.shortDescription?.trim() || "";
 
   const hasSocialLinks =
     !!club.instagramUrl ||
@@ -437,156 +571,259 @@ export default function ClubPublicProfilePage() {
   return (
     <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
       <div
-        style={
-          club.bannerUrl
-            ? {
-                width: "100%",
-                height: "220px",
-                backgroundImage: `url(${club.bannerUrl})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }
-            : {
-                width: "100%",
-                height: "220px",
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%)",
-              }
-        }
-      />
+        style={{
+          width: "100%",
+          height: "240px",
+          position: "relative",
+          overflow: "hidden",
+          backgroundColor: "#1a0505",
+        }}
+      >
+        {club.bannerUrl || club.imageUrl ? (
+          <img
+            src={club.bannerUrl || club.imageUrl}
+            alt="Club banner"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center",
+              display: "block",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background:
+                "linear-gradient(135deg, #2d0808 0%, #E51937 50%, #2d0808 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "48px",
+                fontWeight: 800,
+                color: "rgba(255,255,255,0.1)",
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {club.name}
+            </span>
+          </div>
+        )}
+      </div>
 
       <div
         className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
         style={{ paddingBottom: "64px" }}
       >
-        <div style={{ marginTop: "-45px", position: "relative", zIndex: 2 }}>
-          {club.logoUrl ? (
-            <img
-              src={club.logoUrl}
-              alt={club.name}
-              style={{
-                width: "90px",
-                height: "90px",
-                borderRadius: "12px",
-                border: "3px solid #0f0f0f",
-                background: "#1a1a1a",
-                objectFit: "cover",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: "90px",
-                height: "90px",
-                borderRadius: "12px",
-                border: "3px solid #0f0f0f",
-                background: "#1a1a1a",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#888888",
-                fontWeight: 800,
-                fontSize: "24px",
-              }}
-            >
-              {getClubInitials(initialsClub as Club)}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <h1
-              style={{
-                fontWeight: 800,
-                fontSize: "26px",
-                color: "#ffffff",
-                marginTop: "12px",
-                marginBottom: 0,
-              }}
-            >
-              {club.name}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span style={categoryBadgeStyle()}>{club.category || "Club"}</span>
-              <span style={{ fontSize: "13px", color: "#747676" }}>
-                {formatMemberCount(memberCount)}
-              </span>
-              {joined ? (
-                <span
-                  style={{
-                    backgroundColor: "#0d2b0d",
-                    color: "#4ade80",
-                    border: "1px solid #1a4a1a",
-                    borderRadius: "20px",
-                    padding: "4px 12px",
-                    fontSize: "12px",
-                  }}
-                >
-                  Joined
-                </span>
-              ) : null}
-              {pending ? (
-                <span className="rounded-full bg-yellow-500/20 px-3 py-0.5 text-xs font-semibold text-yellow-400">
-                  Pending Approval
-                </span>
-              ) : null}
-            </div>
+        <div className="relative mb-6">
+          <div
+            className="relative z-10 flex-shrink-0"
+            style={{ marginTop: "-36px", marginLeft: "24px" }}
+          >
+            {club.logoUrl ? (
+              <img
+                src={club.logoUrl}
+                alt={club.name}
+                style={{
+                  width: "72px",
+                  height: "72px",
+                  borderRadius: "12px",
+                  border: "3px solid #0f0f0f",
+                  background: "#1a1a1a",
+                  objectFit: "cover",
+                  display: "block",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "72px",
+                  height: "72px",
+                  borderRadius: "12px",
+                  border: "3px solid #0f0f0f",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                  background: "#1a1a1a",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#888888",
+                  fontWeight: 800,
+                  fontSize: "20px",
+                }}
+              >
+                {getClubInitials(initialsClub as Club)}
+              </div>
+            )}
           </div>
 
-          <div className="flex flex-shrink-0 flex-wrap items-center gap-3">
-            {user && joined && (
-              <Link to={`/app/clubs/${club.id}`}>
-                <Button
-                  size="lg"
-                  className="!border-0 !bg-[#E51937] !text-white hover:!bg-[#c41430]"
+          <div className="relative z-10" style={{ marginLeft: "24px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: "16px",
+                gap: "16px",
+              }}
+            >
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <span style={categoryBadgeStyle()}>{club.category || "Club"}</span>
+                  <span style={{ fontSize: "13px", color: "#747676" }}>
+                    {formatMemberCount(memberCount)}
+                  </span>
+                  {joined ? (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: "#1a0505",
+                        border: "1px solid #E51937",
+                        color: "#E51937",
+                        borderRadius: "20px",
+                        padding: "4px 12px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Joined
+                    </span>
+                  ) : null}
+                  {pending ? (
+                    <span className="rounded-full bg-yellow-500/20 px-3 py-0.5 text-xs font-semibold text-yellow-400">
+                      Pending Approval
+                    </span>
+                  ) : null}
+                </div>
+                <h1
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "28px",
+                    color: "#ffffff",
+                    lineHeight: 1.2,
+                    margin: 0,
+                  }}
                 >
-                  Open Workspace
-                </Button>
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={() => toggleSaveClub(club.id)}
-              aria-label={saved ? "Unsave club" : "Save club"}
-              className="cursor-pointer rounded-lg border-2 border-border bg-surface p-2.5 transition-colors hover:bg-surface-alt"
-            >
-              <svg
-                className={`h-5 w-5 transition-colors ${saved ? "fill-primary text-primary" : "fill-none text-muted"}`}
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
+                  {club.name}
+                </h1>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  gap: "12px",
+                  alignItems: "center",
+                  flexShrink: 0,
+                }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                />
-              </svg>
-            </button>
-            <Button
-              size="lg"
-              variant={joined ? "outline" : pending ? "outline" : "primary"}
-              disabled={joining}
-              onClick={() => void handleJoinOrLeave()}
-              className={
-                joined
-                  ? "!border !border-[#E51937] !bg-transparent !text-[#E51937] hover:!bg-[#E51937]/10"
-                  : pending
-                    ? "!border !border-[#333333] !bg-transparent !text-[#888888]"
-                    : "!border-0 !bg-[#E51937] !text-white hover:!bg-[#c41430]"
-              }
-            >
-              {joining
-                ? "Joining…"
-                : joined
-                  ? "Leave Club"
-                  : pending
-                    ? "Cancel Request"
-                    : "Join Club"}
-            </Button>
+                <button
+                  type="button"
+                  onClick={() => toggleSaveClub(club.id)}
+                  onMouseEnter={() => setBookmarkHovered(true)}
+                  onMouseLeave={() => setBookmarkHovered(false)}
+                  aria-label={saved ? "Unsave club" : "Save club"}
+                  style={{
+                    background: "#1a1a1a",
+                    border: "1px solid #333",
+                    borderRadius: "8px",
+                    padding: "10px",
+                    color: bookmarkHovered || saved ? "#FFC429" : "#747676",
+                    cursor: "pointer",
+                    transition: "color 0.15s ease",
+                  }}
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill={saved ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                    />
+                  </svg>
+                </button>
+                {user && joined && (
+                  <Link
+                    to={`/app/clubs/${club.id}`}
+                    style={{
+                      background: "#E51937",
+                      color: "#ffffff",
+                      borderRadius: "8px",
+                      padding: "10px 24px",
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Open Workspace
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  disabled={joining}
+                  onClick={() => void handleJoinOrLeave()}
+                  style={
+                    joined
+                      ? {
+                          background: "transparent",
+                          border: "1px solid #E51937",
+                          color: "#E51937",
+                          borderRadius: "8px",
+                          padding: "10px 24px",
+                          fontWeight: 600,
+                          fontSize: "14px",
+                          cursor: joining ? "wait" : "pointer",
+                          whiteSpace: "nowrap",
+                        }
+                      : pending
+                        ? {
+                            background: "transparent",
+                            border: "1px solid #333333",
+                            color: "#888888",
+                            borderRadius: "8px",
+                            padding: "10px 24px",
+                            fontWeight: 600,
+                            fontSize: "14px",
+                            cursor: joining ? "wait" : "pointer",
+                            whiteSpace: "nowrap",
+                          }
+                        : {
+                            background: "#E51937",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "10px 24px",
+                            fontWeight: 600,
+                            fontSize: "14px",
+                            cursor: joining ? "wait" : "pointer",
+                            whiteSpace: "nowrap",
+                          }
+                  }
+                >
+                  {joining
+                    ? "Joining…"
+                    : joined
+                      ? "Leave Club"
+                      : pending
+                        ? "Cancel Request"
+                        : "Join Club"}
+                </button>
+              </div>
+            </div>
             {joinError ? (
-              <p className="text-sm text-primary" role="alert">
+              <p className="mt-2 text-sm text-primary" role="alert">
                 Failed to join club. Please try again.
               </p>
             ) : null}
@@ -609,10 +846,11 @@ export default function ClubPublicProfilePage() {
             >
               <h2
                 style={{
+                  fontSize: "14px",
                   fontWeight: 600,
-                  fontSize: "15px",
                   color: "#ffffff",
-                  marginBottom: "12px",
+                  marginBottom: "10px",
+                  marginTop: 0,
                 }}
               >
                 About
@@ -620,23 +858,22 @@ export default function ClubPublicProfilePage() {
               <p
                 style={{
                   fontSize: "14px",
-                  color: "#aaaaaa",
-                  lineHeight: 1.6,
+                  color: aboutText ? "#cccccc" : "#555555",
+                  lineHeight: "1.6",
                   margin: 0,
                 }}
               >
-                {aboutText}
+                {aboutText || "No description provided yet."}
               </p>
             </div>
 
             <EventsSection
               events={events}
               joined={joined}
-              user={user}
-              counts={counts}
-              myRsvps={myRsvps}
-              setRsvp={setRsvp}
-              removeRsvp={removeRsvp}
+              clubId={club.id}
+              clubName={club.name}
+              clubLogoUrl={club.logoUrl}
+              clubAbbreviation={contextClub?.abbreviation}
             />
           </div>
 
@@ -684,20 +921,30 @@ export default function ClubPublicProfilePage() {
 function EventsSection({
   events,
   joined,
-  user,
-  counts,
-  myRsvps,
-  setRsvp,
-  removeRsvp,
+  clubId,
+  clubName,
+  clubLogoUrl,
+  clubAbbreviation,
 }: {
   events: ClubEvent[];
   joined: boolean;
-  user: ReturnType<typeof useAuthContext>["user"];
-  counts: Record<string, { going: number; maybe: number; not_going: number }>;
-  myRsvps: Record<string, RsvpStatus>;
-  setRsvp: (eventId: string, status: RsvpStatus) => void;
-  removeRsvp: (eventId: string) => void;
+  clubId: string;
+  clubName: string;
+  clubLogoUrl?: string;
+  clubAbbreviation?: string;
 }) {
+  const eventsUrl = `/app/clubs/${clubId}/events`;
+  const visibleEvents = events.slice(0, 4);
+  const cardStyle: CSSProperties = {
+    background: "#1a1a1a",
+    border: "1px solid #242424",
+    borderRadius: "10px",
+    padding: "16px 20px",
+    marginBottom: "10px",
+    display: "block",
+    textDecoration: "none",
+  };
+
   return (
     <div>
       <h2
@@ -712,92 +959,90 @@ function EventsSection({
       </h2>
       {events.length > 0 ? (
         <div className="space-y-4">
-          {events.map((event) => {
-            const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
-            const myStatus = myRsvps[event.id];
-            return (
+          {visibleEvents.map((event) => {
+            const inner = (
               <div
-                key={event.id}
                 style={{
-                  background: "#1a1a1a",
-                  border: "1px solid #242424",
-                  borderRadius: "8px",
-                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: "14px",
                 }}
               >
-                <div className="flex items-start gap-4">
-                  <EventDateBlock date={event.date} />
-                  <div className="min-w-0 flex-1">
-                    <h3
+                <EventDateBlock date={event.date} />
+                <ClubEventLogo
+                  name={clubName}
+                  abbreviation={clubAbbreviation}
+                  logoUrl={clubLogoUrl}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3
+                    style={{
+                      fontSize: "15px",
+                      fontWeight: 600,
+                      color: "#ffffff",
+                      margin: "0 0 4px",
+                    }}
+                  >
+                    {event.title}
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "#555555",
+                      margin: 0,
+                    }}
+                  >
+                    {formatEventScheduleLine(event.date, event.time)}
+                  </p>
+                  {event.location ? (
+                    <p
                       style={{
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: "#ffffff",
+                        fontSize: "12px",
+                        color: "#555555",
+                        margin: "4px 0 0",
                       }}
                     >
-                      {event.title}
-                    </h3>
-                    <p
-                      className="mt-1 flex flex-wrap items-center gap-x-2 text-sm"
-                      style={{ color: "#555555" }}
-                    >
-                      <span>{event.time}</span>
-                      {event.location ? (
-                        <>
-                          <span>·</span>
-                          <span>{event.location}</span>
-                        </>
-                      ) : null}
+                      {event.location}
                     </p>
-                    {event.description ? (
-                      <p
-                        className="mt-2 text-sm"
-                        style={{ color: "#cccccc", lineHeight: 1.6 }}
-                      >
-                        {event.description}
-                      </p>
-                    ) : null}
-
-                    {joined ? (
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs">
-                        <span style={{ color: "#4ade80" }}>{c.going} going</span>
-                        <span style={{ color: "#FFC429" }}>{c.maybe} maybe</span>
-                        <span style={{ color: "#888888" }}>
-                          {c.not_going} not going
-                        </span>
-                      </div>
-                    ) : null}
-
-                    {joined && user ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {RSVP_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() =>
-                              myStatus === opt.value
-                                ? removeRsvp(event.id)
-                                : setRsvp(event.id, opt.value)
-                            }
-                            className={rsvpButtonClass(
-                              opt.value,
-                              myStatus === opt.value,
-                            )}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-xs" style={{ color: "#555555" }}>
-                        Join to RSVP
-                      </p>
-                    )}
-                  </div>
+                  ) : null}
                 </div>
               </div>
             );
+
+            if (joined) {
+              return (
+                <Link
+                  key={event.id}
+                  to={eventsUrl}
+                  style={{ ...cardStyle, cursor: "pointer" }}
+                >
+                  {inner}
+                </Link>
+              );
+            }
+
+            return (
+              <div key={event.id} style={cardStyle}>
+                {inner}
+              </div>
+            );
           })}
+          {events.length > 4 ? (
+            <div style={{ textAlign: "right", marginTop: "4px" }}>
+              <Link
+                to={eventsUrl}
+                style={{
+                  color: "#E51937",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  textDecoration: "none",
+                }}
+              >
+                View All Events
+              </Link>
+            </div>
+          ) : null}
         </div>
       ) : (
         <Card className="p-8 text-center">
@@ -944,77 +1189,75 @@ function SidebarDetails({
 
       {hasSocialLinks ? (
         <div style={{ marginTop: "16px" }}>
-          <p
-            style={{
-              fontSize: "11px",
-              color: "#555555",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              marginBottom: "10px",
-            }}
-          >
-            Connect
-          </p>
-          {club.instagramUrl ? (
-            <SocialPill
-              href={club.instagramUrl}
-              label="Instagram"
-              icon={
-                <Heart size={16} color="#E1306C" className="shrink-0" aria-hidden />
-              }
+          <p style={connectHeadingStyle()}>Connect</p>
+          {(
+            [
+              club.instagramUrl && {
+                href: club.instagramUrl,
+                label: "Instagram",
+                icon: <InstagramBrandIcon />,
+              },
+              club.linkedinUrl && {
+                href: club.linkedinUrl,
+                label: "LinkedIn",
+                icon: <LinkedInBrandIcon />,
+              },
+              club.twitterUrl && {
+                href: club.twitterUrl,
+                label: "Twitter/X",
+                icon: <TwitterBrandIcon />,
+              },
+              club.websiteUrl && {
+                href: club.websiteUrl,
+                label: "Website",
+                icon: <WebsiteBrandIcon />,
+              },
+            ].filter(Boolean) as {
+              href: string;
+              label: string;
+              icon: ReactNode;
+            }[]
+          ).map((link, index, arr) => (
+            <SocialLinkRow
+              key={link.label}
+              href={link.href}
+              label={link.label}
+              icon={link.icon}
+              isLast={index === arr.length - 1}
             />
-          ) : null}
-          {club.linkedinUrl ? (
-            <SocialPill
-              href={club.linkedinUrl}
-              label="LinkedIn"
-              icon={
-                <Linkedin size={16} color="#0077b5" className="shrink-0" aria-hidden />
-              }
-            />
-          ) : null}
-          {club.twitterUrl ? (
-            <SocialPill
-              href={club.twitterUrl}
-              label="Twitter/X"
-              icon={
-                <Twitter size={16} color="#888888" className="shrink-0" aria-hidden />
-              }
-            />
-          ) : null}
-          {club.websiteUrl ? (
-            <SocialPill
-              href={club.websiteUrl}
-              label="Website"
-              icon={
-                <Globe size={16} color="#888888" className="shrink-0" aria-hidden />
-              }
-            />
-          ) : null}
+          ))}
         </div>
       ) : null}
 
       {openPositionsCount > 0 ? (
         <div
           style={{
-            background: "#1a0a0a",
-            border: "1px solid #3a1a1a",
-            borderRadius: "8px",
-            padding: "14px",
+            background: "#1a1a1a",
+            border: "1px solid #242424",
+            borderRadius: "10px",
+            padding: "16px",
             marginTop: "12px",
+            borderLeft: "3px solid #FFC429",
           }}
         >
           <p
             style={{
-              color: "#E51937",
-              fontWeight: 600,
-              fontSize: "13px",
-              margin: "0 0 4px",
+              color: "#FFC429",
+              fontWeight: 700,
+              fontSize: "15px",
+              margin: 0,
             }}
           >
             We&apos;re Hiring
           </p>
-          <p style={{ color: "#cccccc", fontSize: "12px", margin: 0 }}>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#555555",
+              marginTop: "4px",
+              marginBottom: 0,
+            }}
+          >
             {openPositionsCount} open position
             {openPositionsCount === 1 ? "" : "s"}
           </p>
@@ -1029,14 +1272,14 @@ function SidebarDetails({
             }
             style={{
               width: "100%",
-              marginTop: "8px",
+              marginTop: "12px",
               background: "#E51937",
               color: "#ffffff",
               border: "none",
               borderRadius: "6px",
-              padding: "6px 14px",
-              fontSize: "12px",
-              fontWeight: 600,
+              padding: "8px 16px",
+              fontSize: "13px",
+              fontWeight: 500,
               cursor: "pointer",
             }}
           >

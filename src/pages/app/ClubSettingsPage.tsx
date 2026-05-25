@@ -161,7 +161,7 @@ export default function ClubSettingsPage() {
 
     supabase
       .from("clubs")
-      .select("instagram_url, linkedin_url, twitter_url, website_url")
+      .select("*")
       .eq("id", clubId)
       .maybeSingle()
       .then(({ data, error }) => {

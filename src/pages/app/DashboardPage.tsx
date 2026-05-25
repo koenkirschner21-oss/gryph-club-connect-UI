@@ -99,7 +99,7 @@ export default function DashboardPage() {
 
     supabase
       .from("clubs")
-      .select("id, logo_url")
+      .select("*")
       .in("id", joinedClubs)
       .then(({ data, error }) => {
         if (cancelled) return;
@@ -377,6 +377,131 @@ type OverviewTask = {
   dueDate?: string;
 };
 
+function OverviewTaskCard({ task }: { task: OverviewTask }) {
+  const [hovered, setHovered] = useState(false);
+  const borderMuted = hovered ? "#333" : "#242424";
+
+  return (
+    <Link
+      to={`/app/clubs/${task.clubId}/tasks`}
+      className="block no-underline"
+      style={{ cursor: "pointer" }}
+    >
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          position: "relative",
+          background: "#1a1a1a",
+          borderTop: `1px solid ${borderMuted}`,
+          borderRight: `1px solid ${borderMuted}`,
+          borderBottom: `1px solid ${borderMuted}`,
+          borderLeft: `4px solid ${taskStatusBorder(task.status)}`,
+          borderRadius: "8px",
+          padding: "14px 16px",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "12px",
+          transition: "all 0.15s ease",
+          transform: hovered ? "translateY(-1px)" : undefined,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              margin: "0 0 4px",
+            }}
+          >
+            {task.title}
+          </p>
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#555555",
+              margin: 0,
+              maxWidth: "180px",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {task.clubName}
+          </p>
+          {task.dueDate?.trim() ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                marginTop: "6px",
+                fontSize: "11px",
+                color: isTaskOverdue(task.dueDate) ? "#E51937" : "#555555",
+              }}
+            >
+              <Calendar size={11} aria-hidden />
+              {formatTaskDueDate(task.dueDate)}
+            </span>
+          ) : null}
+        </div>
+        <span
+          style={{
+            ...taskStatusPillStyle(task.status),
+            alignSelf: "flex-start",
+          }}
+        >
+          {taskStatusLabel(task.status)}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function MyClubSidebarItem({
+  club,
+  logoUrl,
+  roleDisplay,
+}: {
+  club: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"][number];
+  logoUrl?: string;
+  roleDisplay: { label: string; color: string };
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <Link
+      to={`/app/clubs/${club.id}`}
+      className="flex items-center gap-3 p-3"
+      style={{
+        background: hovered ? "#1f1f1f" : "#191919",
+        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
+        borderRadius: 7,
+        cursor: "pointer",
+        transition: "all 0.15s ease",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <ClubBadge
+        abbreviation={club.abbreviation}
+        name={club.name}
+        logoUrl={logoUrl}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-white">{club.name}</p>
+        <p className="text-xs text-[var(--text-2)]">
+          {club.memberCount} members ·{" "}
+          <span style={{ color: roleDisplay.color }}>{roleDisplay.label}</span>
+        </p>
+      </div>
+      <span className="text-xs text-[var(--text-2)]">Open workspace →</span>
+    </Link>
+  );
+}
+
 function taskStatusBorder(status: string): string {
   if (status === "in_progress") return "#FFC429";
   if (status === "done") return "#E51937";
@@ -401,7 +526,7 @@ function taskStatusPillStyle(status: string): CSSProperties {
     return {
       ...base,
       background: "#2a1f00",
-      border: "1px solid #3a2f00",
+      border: "1px solid #FFC429",
       color: "#FFC429",
     };
   }
@@ -409,15 +534,15 @@ function taskStatusPillStyle(status: string): CSSProperties {
     return {
       ...base,
       background: "#1a0a0a",
-      border: "1px solid #3a1a1a",
+      border: "1px solid #E51937",
       color: "#E51937",
     };
   }
   return {
     ...base,
-    background: "#1a1a1a",
-    border: "1px solid #333",
-    color: "#747676",
+    background: "#222222",
+    border: "1px solid #444444",
+    color: "#888888",
   };
 }
 
@@ -779,79 +904,7 @@ function OverviewTab({
             ) : (
               <div className="space-y-3">
                 {myTasks.map((task) => (
-                  <Link
-                    key={task.id}
-                    to={`/app/clubs/${task.clubId}/tasks`}
-                    className="block no-underline"
-                  >
-                    <div
-                      style={{
-                        position: "relative",
-                        background: "#1a1a1a",
-                        borderTop: "1px solid #242424",
-                        borderRight: "1px solid #242424",
-                        borderBottom: "1px solid #242424",
-                        borderLeft: `3px solid ${taskStatusBorder(task.status)}`,
-                        borderRadius: "8px",
-                        padding: "14px 16px",
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <p
-                          style={{
-                            fontSize: "14px",
-                            fontWeight: 500,
-                            color: "#ffffff",
-                            margin: "0 0 4px",
-                          }}
-                        >
-                          {task.title}
-                        </p>
-                        <p
-                          style={{
-                            fontSize: "11px",
-                            color: "#555555",
-                            margin: 0,
-                            maxWidth: "180px",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {task.clubName}
-                        </p>
-                        {task.dueDate?.trim() ? (
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              marginTop: "6px",
-                              fontSize: "11px",
-                              color: isTaskOverdue(task.dueDate)
-                                ? "#E51937"
-                                : "#555555",
-                            }}
-                          >
-                            <Calendar size={11} aria-hidden />
-                            {formatTaskDueDate(task.dueDate)}
-                          </span>
-                        ) : null}
-                      </div>
-                      <span
-                        style={{
-                          ...taskStatusPillStyle(task.status),
-                          alignSelf: "flex-start",
-                        }}
-                      >
-                        {taskStatusLabel(task.status)}
-                      </span>
-                    </div>
-                  </Link>
+                  <OverviewTaskCard key={task.id} task={task} />
                 ))}
               </div>
             )}
@@ -932,39 +985,14 @@ function OverviewTab({
               </div>
             ) : (
               <div className="space-y-3">
-                {myClubs.map((club) => {
-                  const roleDisplay = formatClubRoleDisplay(getUserRole(club.id));
-                  return (
-                  <Link
+                {myClubs.map((club) => (
+                  <MyClubSidebarItem
                     key={club.id}
-                    to={`/app/clubs/${club.id}`}
-                    className="flex items-center gap-3 p-3 transition-[border-color] duration-150 ease-in-out hover:border-[#333333]"
-                    style={{
-                      background: "#191919",
-                      border: "1px solid #242424",
-                      borderRadius: 7,
-                    }}
-                  >
-                    <ClubBadge
-                      abbreviation={club.abbreviation}
-                      name={club.name}
-                      logoUrl={clubLogos[club.id] ?? club.logoUrl}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white">
-                        {club.name}
-                      </p>
-                      <p className="text-xs text-[var(--text-2)]">
-                        {club.memberCount} members ·{" "}
-                        <span style={{ color: roleDisplay.color }}>
-                          {roleDisplay.label}
-                        </span>
-                      </p>
-                    </div>
-                    <span className="text-xs text-[var(--text-2)]">Open workspace →</span>
-                  </Link>
-                  );
-                })}
+                    club={club}
+                    logoUrl={clubLogos[club.id] ?? club.logoUrl}
+                    roleDisplay={formatClubRoleDisplay(getUserRole(club.id))}
+                  />
+                ))}
               </div>
             )}
             <Link
@@ -1147,12 +1175,103 @@ function EventsTab({
 // ---------------------------------------------------------------------------
 // Tasks Tab
 // ---------------------------------------------------------------------------
+const TASK_TAB_LOGO_SIZE = 36;
+
+function TaskTabClubLogo({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr = abbreviation || deriveAbbreviation(name);
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: `${TASK_TAB_LOGO_SIZE}px`,
+          height: `${TASK_TAB_LOGO_SIZE}px`,
+          borderRadius: "6px",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: `${TASK_TAB_LOGO_SIZE}px`,
+        height: `${TASK_TAB_LOGO_SIZE}px`,
+        borderRadius: "6px",
+        background: "#2a2a2a",
+        color: "#888",
+        fontSize: "11px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
+}
+
+type TasksTabTask = {
+  id: string;
+  title: string;
+  status: string;
+  clubName: string;
+  clubId: string;
+  clubAbbreviation?: string;
+  clubLogoUrl?: string;
+};
+
 function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
   const { user } = useAuthContext();
-  const [tasks, setTasks] = useState<
-    { id: string; title: string; status: string; priority: string; clubName: string; clubId: string; dueDate?: string }[]
-  >([]);
+  const [tasks, setTasks] = useState<TasksTabTask[]>([]);
+  const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
   const [loadingTasks, setLoadingTasks] = useState(true);
+
+  useEffect(() => {
+    if (joinedClubs.length === 0) {
+      queueMicrotask(() => setClubLogos({}));
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("clubs")
+      .select("*")
+      .in("id", joinedClubs)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load task tab club logos:", error.message);
+          setClubLogos({});
+          return;
+        }
+        const map: Record<string, string> = {};
+        for (const row of data ?? []) {
+          const url = row.logo_url as string | null;
+          if (url) map[row.id as string] = url;
+        }
+        setClubLogos(map);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [joinedClubs]);
 
   useEffect(() => {
     if (joinedClubs.length === 0 || !user) {
@@ -1164,7 +1283,9 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
 
     supabase
       .from("tasks")
-      .select("id, title, status, priority, due_date, club_id, clubs:club_id ( name )")
+      .select(
+        "id, title, status, club_id, clubs:club_id ( name, logo_url, abbreviation )",
+      )
       .in("club_id", joinedClubs)
       .neq("status", "done")
       .order("created_at", { ascending: false })
@@ -1180,14 +1301,15 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
               const club = (
                 Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
               ) as Record<string, unknown>;
+              const clubLogoUrl = (club.logo_url as string | null) ?? undefined;
               return {
                 id: row.id as string,
                 title: (row.title as string) ?? "",
                 status: (row.status as string) ?? "todo",
-                priority: (row.priority as string) ?? "medium",
                 clubName: (club.name as string) ?? "",
                 clubId: row.club_id as string,
-                dueDate: (row.due_date as string) ?? undefined,
+                clubAbbreviation: (club.abbreviation as string) ?? undefined,
+                clubLogoUrl: clubLogoUrl || undefined,
               };
             }),
           );
@@ -1199,6 +1321,43 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
       cancelled = true;
     };
   }, [joinedClubs, user]);
+
+  useEffect(() => {
+    const missingClubIds = [
+      ...new Set(
+        tasks
+          .filter((t) => !t.clubLogoUrl && !clubLogos[t.clubId])
+          .map((t) => t.clubId),
+      ),
+    ];
+    if (missingClubIds.length === 0) return;
+
+    let cancelled = false;
+
+    supabase
+      .from("clubs")
+      .select("*")
+      .in("id", missingClubIds)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load missing task club logos:", error.message);
+          return;
+        }
+        setClubLogos((prev) => {
+          const next = { ...prev };
+          for (const row of data ?? []) {
+            const url = row.logo_url as string | null;
+            if (url) next[row.id as string] = url;
+          }
+          return next;
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tasks, clubLogos]);
 
   if (loadingTasks) {
     return (
@@ -1216,48 +1375,101 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     );
   }
 
-  const priorityColors: Record<string, string> = {
-    high: "text-red-400",
-    medium: "text-yellow-400",
-    low: "text-green-400",
-  };
+  return (
+    <div>
+      {tasks.map((task) => {
+        const logoUrl = task.clubLogoUrl ?? clubLogos[task.clubId];
+        return (
+          <TasksTabTaskCard
+            key={task.id}
+            task={task}
+            logoUrl={logoUrl}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
-  const statusLabels: Record<string, string> = {
-    todo: "To Do",
-    in_progress: "In Progress",
-  };
+function TasksTabTaskCard({
+  task,
+  logoUrl,
+}: {
+  task: TasksTabTask;
+  logoUrl?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const borderMuted = hovered ? "#333" : "#242424";
 
   return (
-    <div className="space-y-3">
-      {tasks.map((task) => (
-        <Link key={task.id} to={`/app/clubs/${task.clubId}/tasks`}>
-          <Card className="flex items-center gap-4 p-4 transition-colors hover:bg-surface-alt">
-            <div
-              className={`h-2 w-2 shrink-0 rounded-full ${
-                task.priority === "high"
-                  ? "bg-red-400"
-                  : task.priority === "medium"
-                    ? "bg-yellow-400"
-                    : "bg-green-400"
-              }`}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">{task.title}</p>
-              <p className="text-xs text-muted">
-                {task.clubName}
-                {task.dueDate && ` · Due ${task.dueDate}`}
-              </p>
-            </div>
-            <span className={`text-xs font-medium ${priorityColors[task.priority] ?? "text-muted"}`}>
-              {task.priority}
-            </span>
-            <span className="rounded-md bg-surface-alt px-2 py-0.5 text-xs text-muted">
-              {statusLabels[task.status] ?? task.status}
-            </span>
-          </Card>
-        </Link>
-      ))}
-    </div>
+    <Link
+      to={`/app/clubs/${task.clubId}/tasks`}
+      className="block"
+      style={{ cursor: "pointer" }}
+    >
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: "14px",
+          background: "#1a1a1a",
+          borderTop: `1px solid ${borderMuted}`,
+          borderRight: `1px solid ${borderMuted}`,
+          borderBottom: `1px solid ${borderMuted}`,
+          borderLeft: `4px solid ${taskStatusBorder(task.status)}`,
+          borderRadius: "10px",
+          padding: "14px 18px",
+          marginBottom: "8px",
+          transition: "all 0.15s ease",
+          transform: hovered ? "translateY(-1px)" : undefined,
+        }}
+      >
+              <TaskTabClubLogo
+                name={task.clubName}
+                abbreviation={task.clubAbbreviation}
+                logoUrl={logoUrl}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#ffffff",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {task.title}
+                </p>
+                <p
+                  style={{
+                    margin: "3px 0 0",
+                    fontSize: "12px",
+                    color: "#747676",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {task.clubName}
+                </p>
+              </div>
+              <span
+                style={{
+                  ...taskStatusPillStyle(task.status),
+                  padding: "3px 10px",
+                  flexShrink: 0,
+                }}
+              >
+                {taskStatusLabel(task.status)}
+              </span>
+      </div>
+    </Link>
   );
 }
 
@@ -1607,19 +1819,30 @@ function EventCard({
     rsvpLine = "Open to all students";
   }
 
+  const [hovered, setHovered] = useState(false);
+
   return (
-    <Link to={`/app/clubs/${event.clubId}/events`} className="block">
+    <Link
+      to={`/app/clubs/${event.clubId}/events`}
+      className="block"
+      style={{ cursor: "pointer" }}
+    >
       <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         style={{
           display: "flex",
           flexDirection: "row",
           alignItems: "center",
           gap: "14px",
           background: "#1a1a1a",
-          border: "1px solid #242424",
+          border: `1px solid ${hovered ? "#333333" : "#242424"}`,
           borderRadius: "10px",
           padding: "16px 20px",
           marginBottom: "10px",
+          transition: "all 0.15s ease",
+          transform: hovered ? "translateY(-1px)" : undefined,
+          boxShadow: hovered ? "0 4px 12px rgba(0,0,0,0.3)" : undefined,
         }}
       >
         <EventDateBlock date={event.date} />

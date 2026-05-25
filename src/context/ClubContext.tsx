@@ -414,7 +414,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase
         .from("clubs")
         .insert(row)
-        .select()
+        .select("*")
         .single();
 
       if (error || !data) {
@@ -457,7 +457,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         .from("clubs")
         .update(row)
         .eq("id", clubId)
-        .select()
+        .select("*")
         .single();
 
       if (error || !data) {

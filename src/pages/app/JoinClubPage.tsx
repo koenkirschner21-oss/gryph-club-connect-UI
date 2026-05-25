@@ -33,7 +33,7 @@ export default function JoinClubPage() {
       // works even if the club hasn't been loaded into the local context yet).
       const { data: clubRow, error: lookupErr } = await supabase
         .from("clubs")
-        .select("id, name, requires_approval")
+        .select("*")
         .eq("join_code", code.trim().toUpperCase())
         .maybeSingle();
 

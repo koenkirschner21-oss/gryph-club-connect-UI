@@ -250,7 +250,7 @@ export default function EventRSVPPage() {
 
       const { data: clubRow } = await supabase
         .from("clubs")
-        .select("name")
+        .select("*")
         .eq("id", loadedEvent.clubId)
         .maybeSingle();
 

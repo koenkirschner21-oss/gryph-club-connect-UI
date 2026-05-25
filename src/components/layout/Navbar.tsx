@@ -1,9 +1,15 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Star } from "lucide-react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
-import BrandLogo from "../ui/BrandLogo";
 import NotificationsDropdown from "../ui/NotificationsDropdown";
+
+const wordmarkFont: CSSProperties = {
+  fontFamily: "'Inter', sans-serif",
+  fontWeight: 800,
+  fontSize: "22px",
+  letterSpacing: "-0.02em",
+  lineHeight: 1,
+};
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -45,7 +51,19 @@ export default function Navbar() {
           aria-label="Gryph Club Connect home"
           className="group flex shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(10,10,10,0.85)]"
         >
-          <BrandLogo variant="nav" />
+          <span className="inline-flex items-center" style={{ gap: "6px" }}>
+            <img
+              src="/assets/gryph-icon.png"
+              alt=""
+              aria-hidden
+              className="shrink-0 object-contain"
+              style={{ height: "36px", width: "auto" }}
+            />
+            <span>
+              <span style={{ ...wordmarkFont, color: "#E51937" }}>Club</span>
+              <span style={{ ...wordmarkFont, color: "#FFC429" }}>Connect</span>
+            </span>
+          </span>
         </Link>
 
         {/* Desktop Nav */}
@@ -55,29 +73,13 @@ export default function Navbar() {
               <Link
                 to="/app"
                 aria-current={location.pathname === "/app" ? "page" : undefined}
-                className={`border-b-2 px-0 py-2 text-sm transition-all ${
+                className={`border-b-2 px-0 py-2 text-sm font-medium text-white transition-all ${
                   location.pathname === "/app"
-                    ? "border-[var(--red)] font-medium text-[var(--text-1)]"
-                    : "border-transparent text-[var(--text-2)] hover:text-[var(--text-1)]"
+                    ? "border-[#E51937]"
+                    : "border-transparent hover:border-[#E51937]"
                 }`}
               >
                 Dashboard
-              </Link>
-              <Link
-                to="/app/hiring"
-                aria-current={
-                  isNavLinkActive(location.pathname, "/app/hiring")
-                    ? "page"
-                    : undefined
-                }
-                className={`inline-flex items-center gap-1.5 border-b-2 px-0 py-2 text-sm font-semibold transition-all ${
-                  isNavLinkActive(location.pathname, "/app/hiring")
-                    ? "border-[#FFC429] text-[#FFC429]"
-                    : "border-transparent text-[#FFC429] hover:text-[#ffd54f]"
-                }`}
-              >
-                <Star size={12} fill="#FFC429" strokeWidth={2} aria-hidden />
-                Hiring
               </Link>
               <Link
                 to="/explore"
@@ -86,13 +88,28 @@ export default function Navbar() {
                     ? "page"
                     : undefined
                 }
-                className={`border-b-2 px-0 py-2 text-sm transition-all ${
+                className={`border-b-2 px-0 py-2 text-sm font-medium text-white transition-all ${
                   isNavLinkActive(location.pathname, "/explore")
-                    ? "border-[var(--red)] font-medium text-[var(--text-1)]"
-                    : "border-transparent text-[var(--text-2)] hover:text-[var(--text-1)]"
+                    ? "border-[#E51937]"
+                    : "border-transparent hover:border-[#E51937]"
                 }`}
               >
                 Explore
+              </Link>
+              <Link
+                to="/app/hiring"
+                aria-current={
+                  isNavLinkActive(location.pathname, "/app/hiring")
+                    ? "page"
+                    : undefined
+                }
+                className={`border-b-2 px-0 py-2 text-sm transition-all ${
+                  isNavLinkActive(location.pathname, "/app/hiring")
+                    ? "border-[#FFC429] font-semibold text-[#FFC429]"
+                    : "border-transparent font-semibold text-[#FFC429] hover:border-[#FFC429]"
+                }`}
+              >
+                Hiring
               </Link>
             </>
           ) : (
@@ -231,23 +248,6 @@ export default function Navbar() {
                   Dashboard
                 </Link>
                 <Link
-                  to="/app/hiring"
-                  onClick={() => setMobileOpen(false)}
-                  aria-current={
-                    isNavLinkActive(location.pathname, "/app/hiring")
-                      ? "page"
-                      : undefined
-                  }
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                    isNavLinkActive(location.pathname, "/app/hiring")
-                      ? "bg-[#FFC429]/15 text-[#FFC429]"
-                      : "text-[#FFC429] hover:bg-white/5"
-                  }`}
-                >
-                  <Star size={12} fill="#FFC429" strokeWidth={2} aria-hidden />
-                  Hiring
-                </Link>
-                <Link
                   to="/explore"
                   onClick={() => setMobileOpen(false)}
                   aria-current={
@@ -262,6 +262,22 @@ export default function Navbar() {
                   }`}
                 >
                   Explore
+                </Link>
+                <Link
+                  to="/app/hiring"
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={
+                    isNavLinkActive(location.pathname, "/app/hiring")
+                      ? "page"
+                      : undefined
+                  }
+                  className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    isNavLinkActive(location.pathname, "/app/hiring")
+                      ? "bg-[#FFC429]/15 text-[#FFC429]"
+                      : "text-[#FFC429] hover:bg-white/5"
+                  }`}
+                >
+                  Hiring
                 </Link>
               </>
             ) : (
