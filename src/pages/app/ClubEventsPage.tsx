@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { CalendarPlus } from "lucide-react";
+import { CalendarPlus, Repeat } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -222,6 +222,241 @@ function EventCategoryBadge({ category }: { category: string }) {
   return (
     <span style={categoryBadgeStyle(category)}>
       {eventCategoryLabel(category)}
+    </span>
+  );
+}
+
+type RecurrenceFrequency = "weekly" | "biweekly" | "monthly";
+
+const RECURRENCE_FREQUENCY_OPTIONS: {
+  value: RecurrenceFrequency;
+  label: string;
+}[] = [
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Every 2 Weeks" },
+  { value: "monthly", label: "Monthly" },
+];
+
+interface EventRecurringMeta {
+  isRecurring: boolean;
+  frequency: RecurrenceFrequency | null;
+  recurrenceEndDate: string | null;
+  parentEventId: string | null;
+}
+
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
+function formatDateYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function generateRecurringInstanceDates(
+  startDate: string,
+  frequency: RecurrenceFrequency,
+  endAtLocal: string,
+): string[] {
+  const interval =
+    frequency === "weekly" ? 7 : frequency === "biweekly" ? 14 : 30;
+  const base = new Date(`${startDate}T12:00:00`);
+  const end = endAtLocal.trim() ? new Date(endAtLocal) : null;
+  const dates: string[] = [];
+  let i = 1;
+
+  while (true) {
+    const next = new Date(base);
+    next.setDate(next.getDate() + interval * i);
+    if (end && next > end) break;
+    if (!end && i > 11) break;
+    dates.push(formatDateYmd(next));
+    i += 1;
+  }
+
+  return dates;
+}
+
+function RecurringToggle({
+  on,
+  onChange,
+}: {
+  on: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      style={{
+        width: 44,
+        height: 24,
+        borderRadius: 12,
+        border: "none",
+        background: on ? "#E51937" : "#333333",
+        padding: 2,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          background: "#ffffff",
+          transform: on ? "translateX(20px)" : "translateX(0)",
+          transition: "transform 0.15s ease",
+        }}
+      />
+    </button>
+  );
+}
+
+function RecurringEventFormSection({
+  isRecurring,
+  onRecurringChange,
+  frequency,
+  onFrequencyChange,
+  endDate,
+  onEndDateChange,
+}: {
+  isRecurring: boolean;
+  onRecurringChange: (value: boolean) => void;
+  frequency: RecurrenceFrequency;
+  onFrequencyChange: (value: RecurrenceFrequency) => void;
+  endDate: string;
+  onEndDateChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+        }}
+      >
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#888888",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            margin: 0,
+          }}
+        >
+          Recurring Event
+        </p>
+        <RecurringToggle on={isRecurring} onChange={onRecurringChange} />
+      </div>
+
+      {isRecurring ? (
+        <div style={{ marginTop: "14px" }}>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#888888",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              margin: "0 0 10px",
+            }}
+          >
+            Frequency
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {RECURRENCE_FREQUENCY_OPTIONS.map((option) => {
+              const selected = frequency === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onFrequencyChange(option.value)}
+                  style={{
+                    background: selected ? "#E51937" : "#1a1a1a",
+                    border: selected ? "1px solid #E51937" : "1px solid #333333",
+                    color: selected ? "#ffffff" : "#777777",
+                    borderRadius: "20px",
+                    padding: "6px 16px",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <label
+            htmlFor="recurrenceEndDate"
+            style={{
+              display: "block",
+              fontSize: "12px",
+              color: "#888888",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              margin: "14px 0 8px",
+            }}
+          >
+            Repeat until
+          </label>
+          <input
+            id="recurrenceEndDate"
+            type="datetime-local"
+            value={endDate}
+            onChange={(e) => onEndDateChange(e.target.value)}
+            style={{
+              width: "100%",
+              background: "#111111",
+              border: "1px solid #2a2a2a",
+              borderRadius: "6px",
+              padding: "10px 14px",
+              color: "#ffffff",
+              fontSize: "14px",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EventRecurringBadge() {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+        background: "#1a1a2a",
+        border: "1px solid #6b7cff",
+        color: "#6b7cff",
+        borderRadius: "20px",
+        padding: "2px 10px",
+        fontSize: "11px",
+        flexShrink: 0,
+      }}
+    >
+      <Repeat size={11} aria-hidden />
+      Recurring
     </span>
   );
 }
@@ -860,6 +1095,14 @@ export default function ClubEventsPage() {
   const [eventCategories, setEventCategories] = useState<
     Record<string, EventCategory>
   >({});
+  const [recurringColumnReady, setRecurringColumnReady] = useState(false);
+  const [eventRecurring, setEventRecurring] = useState<
+    Record<string, EventRecurringMeta>
+  >({});
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceFrequency, setRecurrenceFrequency] =
+    useState<RecurrenceFrequency>("weekly");
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
 
   const [formQuestions, setFormQuestions] = useState<FormQuestionDraft[]>([]);
   const [eventQuestionsMap, setEventQuestionsMap] = useState<
@@ -971,6 +1214,32 @@ export default function ClubEventsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkRecurringColumn() {
+      const { error } = await supabase
+        .from("events")
+        .select("is_recurring")
+        .limit(1);
+      if (cancelled) return;
+      if (error) {
+        console.warn(
+          "events recurring columns missing — run migration 20260524000012_recurring_events.sql",
+          error.message,
+        );
+        setRecurringColumnReady(false);
+        return;
+      }
+      setRecurringColumnReady(true);
+    }
+
+    void checkRecurringColumn();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadEventCategories = useCallback(async () => {
     if (!clubId || !categoryColumnReady) return;
     const { data, error } = await supabase
@@ -990,11 +1259,48 @@ export default function ClubEventsPage() {
     setEventCategories(map);
   }, [clubId, categoryColumnReady]);
 
+  const loadEventRecurring = useCallback(async () => {
+    if (!clubId || !recurringColumnReady) return;
+    const { data, error } = await supabase
+      .from("events")
+      .select(
+        "id, is_recurring, recurrence_frequency, recurrence_end_date, parent_event_id",
+      )
+      .eq("club_id", clubId);
+
+    if (error) {
+      console.error("Failed to load recurring event metadata:", error.message);
+      return;
+    }
+
+    const map: Record<string, EventRecurringMeta> = {};
+    (data ?? []).forEach((row) => {
+      const freq = row.recurrence_frequency as string | null;
+      const normalizedFreq =
+        freq === "weekly" || freq === "biweekly" || freq === "monthly"
+          ? freq
+          : null;
+      map[row.id as string] = {
+        isRecurring: Boolean(row.is_recurring),
+        frequency: normalizedFreq,
+        recurrenceEndDate: (row.recurrence_end_date as string | null) ?? null,
+        parentEventId: (row.parent_event_id as string | null) ?? null,
+      };
+    });
+    setEventRecurring(map);
+  }, [clubId, recurringColumnReady]);
+
   useEffect(() => {
     if (!loading && categoryColumnReady) {
       void loadEventCategories();
     }
   }, [loading, events, categoryColumnReady, loadEventCategories]);
+
+  useEffect(() => {
+    if (!loading && recurringColumnReady) {
+      void loadEventRecurring();
+    }
+  }, [loading, events, recurringColumnReady, loadEventRecurring]);
 
   async function saveEventCategory(
     eventId: string,
@@ -1013,6 +1319,129 @@ export default function ClubEventsPage() {
 
     setEventCategories((prev) => ({ ...prev, [eventId]: nextCategory }));
     return true;
+  }
+
+  async function saveEventRecurringMeta(
+    eventId: string,
+    meta: {
+      isRecurring: boolean;
+      frequency: RecurrenceFrequency | null;
+      recurrenceEndDate: string | null;
+      parentEventId?: string | null;
+    },
+  ): Promise<boolean> {
+    if (!recurringColumnReady) return true;
+
+    const endIso =
+      meta.isRecurring && meta.recurrenceEndDate
+        ? new Date(meta.recurrenceEndDate).toISOString()
+        : null;
+
+    const { error } = await supabase
+      .from("events")
+      .update({
+        is_recurring: meta.isRecurring,
+        recurrence_frequency: meta.isRecurring ? meta.frequency : null,
+        recurrence_end_date: endIso,
+        parent_event_id: meta.parentEventId ?? null,
+      })
+      .eq("id", eventId);
+
+    if (error) {
+      console.error("Failed to save recurring event metadata:", error.message);
+      return false;
+    }
+
+    setEventRecurring((prev) => ({
+      ...prev,
+      [eventId]: {
+        isRecurring: meta.isRecurring,
+        frequency: meta.frequency,
+        recurrenceEndDate: endIso,
+        parentEventId: meta.parentEventId ?? null,
+      },
+    }));
+    return true;
+  }
+
+  async function createRecurringInstances(
+    parentId: string,
+    baseFields: {
+      title: string;
+      description: string;
+      date: string;
+      time: string;
+      location: string;
+      visibility: EventVisibility;
+    },
+    instanceDates: string[],
+    recurring: {
+      frequency: RecurrenceFrequency;
+      recurrenceEndDate: string | null;
+    },
+  ): Promise<boolean> {
+    if (!clubId || !user?.id || instanceDates.length === 0) return true;
+
+    const endIso = recurring.recurrenceEndDate
+      ? new Date(recurring.recurrenceEndDate).toISOString()
+      : null;
+
+    const rows = instanceDates.map((instanceDate) => ({
+      club_id: clubId,
+      title: baseFields.title,
+      description: baseFields.description,
+      date: instanceDate,
+      time: baseFields.time,
+      location: baseFields.location,
+      visibility: baseFields.visibility,
+      created_by: user.id,
+      is_recurring: true,
+      recurrence_frequency: recurring.frequency,
+      recurrence_end_date: endIso,
+      parent_event_id: parentId,
+      ...(categoryColumnReady ? { category } : {}),
+    }));
+
+    const { data, error } = await supabase
+      .from("events")
+      .insert(rows)
+      .select("id");
+
+    if (error) {
+      console.error("Failed to create recurring event instances:", error.message);
+      return false;
+    }
+
+    if (categoryColumnReady) {
+      const ids = (data ?? []).map((row) => row.id as string);
+      setEventCategories((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          next[id] = category;
+        }
+        return next;
+      });
+    }
+
+    setEventRecurring((prev) => {
+      const next = { ...prev };
+      for (const row of data ?? []) {
+        const id = row.id as string;
+        next[id] = {
+          isRecurring: true,
+          frequency: recurring.frequency,
+          recurrenceEndDate: endIso,
+          parentEventId: parentId,
+        };
+      }
+      return next;
+    });
+
+    return true;
+  }
+
+  function isEventRecurring(eventId: string): boolean {
+    return eventRecurring[eventId]?.isRecurring ?? false;
   }
 
   async function copyRsvpLink(eventId: string) {
@@ -1043,6 +1472,9 @@ export default function ClubEventsPage() {
     setLocation("");
     setVisibility("public");
     setCategory(DEFAULT_EVENT_CATEGORY);
+    setIsRecurring(false);
+    setRecurrenceFrequency("weekly");
+    setRecurrenceEndDate("");
     setFormQuestions([]);
     setEditingId(null);
     setShowForm(false);
@@ -1065,6 +1497,12 @@ export default function ClubEventsPage() {
     }
     setCategory(
       eventCategories[current.id] ?? DEFAULT_EVENT_CATEGORY,
+    );
+    const recurringMeta = eventRecurring[current.id];
+    setIsRecurring(recurringMeta?.isRecurring ?? false);
+    setRecurrenceFrequency(recurringMeta?.frequency ?? "weekly");
+    setRecurrenceEndDate(
+      toDatetimeLocalValue(recurringMeta?.recurrenceEndDate ?? null),
     );
     const existing = eventQuestionsMap[current.id] ?? [];
     setFormQuestions(
@@ -1109,6 +1547,15 @@ export default function ClubEventsPage() {
         const categorySaved = await saveEventCategory(editingId, category);
         ok = categorySaved;
       }
+      if (ok && recurringColumnReady) {
+        const recurringSaved = await saveEventRecurringMeta(editingId, {
+          isRecurring,
+          frequency: isRecurring ? recurrenceFrequency : null,
+          recurrenceEndDate: isRecurring ? recurrenceEndDate : null,
+          parentEventId: eventRecurring[editingId]?.parentEventId ?? null,
+        });
+        ok = recurringSaved;
+      }
     } else {
       ok = !!(await createEvent(fields));
       if (ok && categoryColumnReady) {
@@ -1140,6 +1587,36 @@ export default function ClubEventsPage() {
           .maybeSingle();
         savedEventId = (data?.id as string) ?? null;
       }
+      if (ok && savedEventId && isRecurring && recurringColumnReady) {
+        const recurringSaved = await saveEventRecurringMeta(savedEventId, {
+          isRecurring: true,
+          frequency: recurrenceFrequency,
+          recurrenceEndDate: recurrenceEndDate,
+          parentEventId: null,
+        });
+        if (!recurringSaved) {
+          ok = false;
+        } else {
+          const instanceDates = generateRecurringInstanceDates(
+            date,
+            recurrenceFrequency,
+            recurrenceEndDate,
+          );
+          const instancesCreated = await createRecurringInstances(
+            savedEventId,
+            fields,
+            instanceDates,
+            {
+              frequency: recurrenceFrequency,
+              recurrenceEndDate: recurrenceEndDate,
+            },
+          );
+          if (!instancesCreated) {
+            ok = false;
+          }
+        }
+      }
+
       if (ok) {
         refresh();
       }
@@ -1440,6 +1917,14 @@ export default function ClubEventsPage() {
               value={category}
               onChange={setCategory}
             />
+            <RecurringEventFormSection
+              isRecurring={isRecurring}
+              onRecurringChange={setIsRecurring}
+              frequency={recurrenceFrequency}
+              onFrequencyChange={setRecurrenceFrequency}
+              endDate={recurrenceEndDate}
+              onEndDateChange={setRecurrenceEndDate}
+            />
             <VisibilitySelector
               key={editingId ?? "create"}
               value={visibility}
@@ -1542,6 +2027,7 @@ export default function ClubEventsPage() {
                       {event.title}
                     </h3>
                     <EventCategoryBadge category={getEventCategory(event.id)} />
+                    {isEventRecurring(event.id) ? <EventRecurringBadge /> : null}
                   </div>
                   <div
                     className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
@@ -1796,6 +2282,9 @@ export default function ClubEventsPage() {
                         {event.title}
                       </h3>
                       <EventCategoryBadge category={getEventCategory(event.id)} />
+                      {isEventRecurring(event.id) ? (
+                        <EventRecurringBadge />
+                      ) : null}
                     </div>
                     <div
                       className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
