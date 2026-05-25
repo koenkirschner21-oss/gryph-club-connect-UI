@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Star } from "lucide-react";
 import { useState } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
 import BrandLogo from "../ui/BrandLogo";
@@ -9,10 +10,10 @@ const navLinks = [
   { to: "/explore", label: "Explore Clubs" },
 ];
 
-const authNavLinks = [
-  { to: "/app", label: "Dashboard" },
-  { to: "/explore", label: "Explore" },
-];
+function isNavLinkActive(pathname: string, to: string): boolean {
+  if (to === "/app") return pathname === "/app";
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 export default function Navbar() {
   const location = useLocation();
@@ -49,23 +50,70 @@ export default function Navbar() {
 
         {/* Desktop Nav */}
         <div className="hidden items-center gap-6 md:flex">
-          {(user ? authNavLinks : navLinks).map((link) => {
-            const isActive = location.pathname === link.to;
-            return (
+          {user ? (
+            <>
               <Link
-                key={link.to}
-                to={link.to}
-                aria-current={isActive ? "page" : undefined}
+                to="/app"
+                aria-current={location.pathname === "/app" ? "page" : undefined}
                 className={`border-b-2 px-0 py-2 text-sm transition-all ${
-                  isActive
+                  location.pathname === "/app"
                     ? "border-[var(--red)] font-medium text-[var(--text-1)]"
                     : "border-transparent text-[var(--text-2)] hover:text-[var(--text-1)]"
                 }`}
               >
-                {link.label}
+                Dashboard
               </Link>
-            );
-          })}
+              <Link
+                to="/app/hiring"
+                aria-current={
+                  isNavLinkActive(location.pathname, "/app/hiring")
+                    ? "page"
+                    : undefined
+                }
+                className={`inline-flex items-center gap-1.5 border-b-2 px-0 py-2 text-sm font-semibold transition-all ${
+                  isNavLinkActive(location.pathname, "/app/hiring")
+                    ? "border-[#FFC429] text-[#FFC429]"
+                    : "border-transparent text-[#FFC429] hover:text-[#ffd54f]"
+                }`}
+              >
+                <Star size={12} fill="#FFC429" strokeWidth={2} aria-hidden />
+                Hiring
+              </Link>
+              <Link
+                to="/explore"
+                aria-current={
+                  isNavLinkActive(location.pathname, "/explore")
+                    ? "page"
+                    : undefined
+                }
+                className={`border-b-2 px-0 py-2 text-sm transition-all ${
+                  isNavLinkActive(location.pathname, "/explore")
+                    ? "border-[var(--red)] font-medium text-[var(--text-1)]"
+                    : "border-transparent text-[var(--text-2)] hover:text-[var(--text-1)]"
+                }`}
+              >
+                Explore
+              </Link>
+            </>
+          ) : (
+            navLinks.map((link) => {
+              const isActive = location.pathname === link.to;
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`border-b-2 px-0 py-2 text-sm transition-all ${
+                    isActive
+                      ? "border-[var(--red)] font-medium text-[var(--text-1)]"
+                      : "border-transparent text-[var(--text-2)] hover:text-[var(--text-1)]"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })
+          )}
 
           {user ? (
             <div className="ml-3 flex items-center gap-3">
@@ -168,24 +216,74 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="border-t border-border bg-page-bg md:hidden">
           <div className="space-y-1 px-4 py-3">
-            {(user ? authNavLinks : navLinks).map((link) => {
-              const isActive = location.pathname === link.to;
-              return (
+            {user ? (
+              <>
                 <Link
-                  key={link.to}
-                  to={link.to}
+                  to="/app"
                   onClick={() => setMobileOpen(false)}
-                  aria-current={isActive ? "page" : undefined}
+                  aria-current={location.pathname === "/app" ? "page" : undefined}
                   className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isActive
+                    location.pathname === "/app"
                       ? "bg-white/10 text-white"
                       : "text-muted hover:bg-white/5 hover:text-white"
                   }`}
                 >
-                  {link.label}
+                  Dashboard
                 </Link>
-              );
-            })}
+                <Link
+                  to="/app/hiring"
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={
+                    isNavLinkActive(location.pathname, "/app/hiring")
+                      ? "page"
+                      : undefined
+                  }
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    isNavLinkActive(location.pathname, "/app/hiring")
+                      ? "bg-[#FFC429]/15 text-[#FFC429]"
+                      : "text-[#FFC429] hover:bg-white/5"
+                  }`}
+                >
+                  <Star size={12} fill="#FFC429" strokeWidth={2} aria-hidden />
+                  Hiring
+                </Link>
+                <Link
+                  to="/explore"
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={
+                    isNavLinkActive(location.pathname, "/explore")
+                      ? "page"
+                      : undefined
+                  }
+                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    isNavLinkActive(location.pathname, "/explore")
+                      ? "bg-white/10 text-white"
+                      : "text-muted hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  Explore
+                </Link>
+              </>
+            ) : (
+              navLinks.map((link) => {
+                const isActive = location.pathname === link.to;
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    onClick={() => setMobileOpen(false)}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-white/10 text-white"
+                        : "text-muted hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })
+            )}
 
             <div className="my-2 border-t border-border" aria-hidden="true" />
 

@@ -1,7 +1,8 @@
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
-import { Link } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Calendar, CheckSquare } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
@@ -18,7 +19,6 @@ import {
 // ---------------------------------------------------------------------------
 type DashboardTab = "overview" | "events" | "tasks";
 
-/** Derive an abbreviation from a club name (e.g. "Guelph Marketing Association" → "GMA"). */
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
     .split(" ")
@@ -179,7 +179,6 @@ export default function DashboardPage() {
   }, [authLoading, fetchUnreadNotificationCount, user?.id]);
 
   function handleUnreadStatClick() {
-    setActiveTab("overview");
     requestOpenNotificationsDropdown();
   }
 
@@ -225,7 +224,7 @@ export default function DashboardPage() {
           <h1
             style={{
               fontWeight: 700,
-              fontSize: "22px",
+              fontSize: "24px",
               color: "#ffffff",
               margin: 0,
             }}
@@ -233,7 +232,13 @@ export default function DashboardPage() {
             Welcome back, {displayName}
           </h1>
           {subtitleParts.length > 0 && (
-            <p className="mt-1 text-sm text-muted">
+            <p
+              style={{
+                marginTop: "4px",
+                fontSize: "13px",
+                color: "#555555",
+              }}
+            >
               {subtitleParts.join(" · ")}
             </p>
           )}
@@ -302,6 +307,7 @@ export default function DashboardPage() {
           eventsLoading={eventsLoading}
           myRsvps={myRsvps}
           rsvpCounts={rsvpCounts}
+          clubLogos={clubLogos}
         />
       )}
       {activeTab === "tasks" && <TasksTab joinedClubs={joinedClubs} />}
@@ -371,14 +377,113 @@ type OverviewTask = {
   dueDate?: string;
 };
 
-function taskStatusAccent(status: string): string {
+function taskStatusBorder(status: string): string {
   if (status === "in_progress") return "#FFC429";
+  if (status === "done") return "#E51937";
   return "#747676";
+}
+
+function taskStatusLabel(status: string): string {
+  if (status === "in_progress") return "In Progress";
+  if (status === "done") return "Done";
+  return "To Do";
+}
+
+function taskStatusPillStyle(status: string): CSSProperties {
+  const base: CSSProperties = {
+    fontSize: "11px",
+    fontWeight: 500,
+    borderRadius: "20px",
+    padding: "2px 8px",
+    flexShrink: 0,
+  };
+  if (status === "in_progress") {
+    return {
+      ...base,
+      background: "#2a1f00",
+      border: "1px solid #3a2f00",
+      color: "#FFC429",
+    };
+  }
+  if (status === "done") {
+    return {
+      ...base,
+      background: "#1a0a0a",
+      border: "1px solid #3a1a1a",
+      color: "#E51937",
+    };
+  }
+  return {
+    ...base,
+    background: "#1a1a1a",
+    border: "1px solid #333",
+    color: "#747676",
+  };
+}
+
+function isTaskOverdue(dueDate: string): boolean {
+  const trimmed = dueDate.trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T23:59:59`)
+    : new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
+}
+
+function SectionHeadingWithIcon({
+  icon,
+  iconColor,
+  children,
+}: {
+  icon: React.ReactNode;
+  iconColor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <h2
+      className="mb-5 flex items-center gap-2"
+      style={{
+        fontSize: "15px",
+        fontWeight: 600,
+        color: "#ffffff",
+      }}
+    >
+      <span style={{ color: iconColor, display: "flex" }}>{icon}</span>
+      {children}
+    </h2>
+  );
 }
 
 function hasEventLocation(location: string | null | undefined): boolean {
   const trimmed = location?.trim();
   return !!trimmed && trimmed !== "TBD";
+}
+
+function formatEventDateShort(dateStr: string): string {
+  const trimmedDate = dateStr.trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)
+    ? new Date(`${trimmedDate}T12:00:00`)
+    : new Date(trimmedDate);
+
+  if (Number.isNaN(d.getTime())) return trimmedDate;
+
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatClubRoleDisplay(
+  role: import("../../types").MemberRole | null | undefined,
+): { label: string; color: string } {
+  if (role === "owner") {
+    return { label: "President", color: "#FFC429" };
+  }
+  if (role === "executive") {
+    return { label: "Executive", color: "#E51937" };
+  }
+  return { label: "Member", color: "#747676" };
 }
 
 function formatTaskDueDate(dateStr: string): string {
@@ -414,6 +519,12 @@ function formatTimeAgo(iso: string): string {
   if (diffMin >= 2) return `${diffMin} minutes ago`;
   if (diffMin === 1) return "1 minute ago";
   return "just now";
+}
+
+function scrollToDashboardMyClubs() {
+  document
+    .getElementById("dashboard-my-clubs")
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function OverviewTab({
@@ -453,6 +564,15 @@ function OverviewTab({
   onViewAllEvents: () => void;
   onViewAllTasks: () => void;
 }) {
+  const navigate = useNavigate();
+
+  const handleMyClubsStatClick = () => {
+    navigate("/app");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToDashboardMyClubs);
+    });
+  };
+
   const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [recentAnnouncements, setRecentAnnouncements] = useState<OverviewAnnouncement[]>(
@@ -587,8 +707,10 @@ function OverviewTab({
         <StatCard
           label="MY CLUBS"
           accentColor="#E51937"
+          iconColor="#E51937"
           value={myClubs.length}
           sublabel="Active memberships"
+          onClick={handleMyClubsStatClick}
           icon={
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
@@ -598,8 +720,10 @@ function OverviewTab({
         <StatCard
           label="UPCOMING"
           accentColor="#FFC429"
+          iconColor="#FFC429"
           value={eventsThisMonth}
           sublabel="Events this month"
+          onClick={onViewAllEvents}
           icon={
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
@@ -609,8 +733,10 @@ function OverviewTab({
         <StatCard
           label="TASKS"
           accentColor="#E51937"
+          iconColor="#E51937"
           value={taskCount}
           sublabel="Active tasks"
+          onClick={onViewAllTasks}
           icon={
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -620,6 +746,7 @@ function OverviewTab({
         <StatCard
           label="UNREAD"
           accentColor="#747676"
+          iconColor="#747676"
           value={unreadNotificationCount}
           sublabel="Notifications"
           onClick={onUnreadStatClick}
@@ -636,7 +763,12 @@ function OverviewTab({
         {/* Left: My Tasks + Upcoming Events */}
         <div className="space-y-6">
           <Card className="p-6">
-            <h2 className="mb-5 text-lg font-bold text-white">My Tasks</h2>
+            <SectionHeadingWithIcon
+              icon={<CheckSquare size={15} aria-hidden />}
+              iconColor="#555555"
+            >
+              My Tasks
+            </SectionHeadingWithIcon>
 
             {tasksLoading ? (
               <div className="flex justify-center py-8">
@@ -654,11 +786,12 @@ function OverviewTab({
                   >
                     <div
                       style={{
+                        position: "relative",
                         background: "#1a1a1a",
                         borderTop: "1px solid #242424",
                         borderRight: "1px solid #242424",
                         borderBottom: "1px solid #242424",
-                        borderLeft: `3px solid ${taskStatusAccent(task.status)}`,
+                        borderLeft: `3px solid ${taskStatusBorder(task.status)}`,
                         borderRadius: "8px",
                         padding: "14px 16px",
                         display: "flex",
@@ -683,24 +816,40 @@ function OverviewTab({
                             fontSize: "11px",
                             color: "#555555",
                             margin: 0,
+                            maxWidth: "180px",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
                           }}
                         >
                           {task.clubName}
                         </p>
+                        {task.dueDate?.trim() ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              marginTop: "6px",
+                              fontSize: "11px",
+                              color: isTaskOverdue(task.dueDate)
+                                ? "#E51937"
+                                : "#555555",
+                            }}
+                          >
+                            <Calendar size={11} aria-hidden />
+                            {formatTaskDueDate(task.dueDate)}
+                          </span>
+                        ) : null}
                       </div>
-                      {task.dueDate?.trim() ? (
-                        <span
-                          style={{
-                            color: "#E51937",
-                            fontSize: "11px",
-                            fontWeight: 500,
-                            flexShrink: 0,
-                            alignSelf: "flex-start",
-                          }}
-                        >
-                          {formatTaskDueDate(task.dueDate)}
-                        </span>
-                      ) : null}
+                      <span
+                        style={{
+                          ...taskStatusPillStyle(task.status),
+                          alignSelf: "flex-start",
+                        }}
+                      >
+                        {taskStatusLabel(task.status)}
+                      </span>
                     </div>
                   </Link>
                 ))}
@@ -721,7 +870,12 @@ function OverviewTab({
           </Card>
 
           <Card className="p-6">
-            <h2 className="mb-5 text-lg font-bold text-white">Upcoming Events</h2>
+            <SectionHeadingWithIcon
+              icon={<Calendar size={15} aria-hidden />}
+              iconColor="#555555"
+            >
+              Upcoming Events
+            </SectionHeadingWithIcon>
 
             {eventsLoading ? (
               <div className="flex justify-center py-8">
@@ -730,13 +884,16 @@ function OverviewTab({
             ) : previewEvents.length === 0 ? (
               <p style={overviewEmptyTextStyle}>No upcoming events</p>
             ) : (
-              <div className="space-y-3">
+              <div>
                 {previewEvents.map((event) => (
                   <EventCard
                     key={event.id}
                     event={event}
                     rsvpStatus={myRsvps[event.id]}
                     counts={rsvpCounts[event.id]}
+                    logoUrl={
+                      event.clubId ? clubLogos[event.clubId] : undefined
+                    }
                   />
                 ))}
               </div>
@@ -759,6 +916,7 @@ function OverviewTab({
         {/* Right: My Clubs + Saved Clubs */}
         <div className="space-y-6">
           {/* My Clubs */}
+          <div id="dashboard-my-clubs">
           <Card className="p-5">
             <h3 className="mb-4 text-base font-bold text-white">My Clubs</h3>
             {myClubs.length === 0 ? (
@@ -774,7 +932,9 @@ function OverviewTab({
               </div>
             ) : (
               <div className="space-y-3">
-                {myClubs.map((club) => (
+                {myClubs.map((club) => {
+                  const roleDisplay = formatClubRoleDisplay(getUserRole(club.id));
+                  return (
                   <Link
                     key={club.id}
                     to={`/app/clubs/${club.id}`}
@@ -795,12 +955,16 @@ function OverviewTab({
                         {club.name}
                       </p>
                       <p className="text-xs text-[var(--text-2)]">
-                        {club.memberCount} members · <span className="rounded-[var(--r-full)] bg-[var(--red-dim)] px-1.5 py-0.5 text-[var(--red)]">{getUserRole(club.id) ?? "member"}</span>
+                        {club.memberCount} members ·{" "}
+                        <span style={{ color: roleDisplay.color }}>
+                          {roleDisplay.label}
+                        </span>
                       </p>
                     </div>
                     <span className="text-xs text-[var(--text-2)]">Open workspace →</span>
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             )}
             <Link
@@ -813,6 +977,7 @@ function OverviewTab({
               Explore {totalClubs}+ clubs at U of G
             </Link>
           </Card>
+          </div>
 
           {/* Recent Announcements */}
           <Card className="p-5">
@@ -940,11 +1105,13 @@ function EventsTab({
   eventsLoading,
   myRsvps,
   rsvpCounts,
+  clubLogos,
 }: {
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
   myRsvps: Record<string, string>;
   rsvpCounts: Record<string, import("../../types").RsvpCounts>;
+  clubLogos: Record<string, string>;
 }) {
   if (eventsLoading) {
     return (
@@ -963,13 +1130,14 @@ function EventsTab({
   }
 
   return (
-    <div className="space-y-3">
+    <div>
       {upcomingEvents.map((event) => (
         <EventCard
           key={event.id}
           event={event}
           rsvpStatus={myRsvps[event.id]}
           counts={rsvpCounts[event.id]}
+          logoUrl={event.clubId ? clubLogos[event.clubId] : undefined}
         />
       ))}
     </div>
@@ -1102,6 +1270,7 @@ function StatCard({
   sublabel,
   icon,
   accentColor,
+  iconColor,
   onClick,
 }: {
   label: string;
@@ -1109,32 +1278,43 @@ function StatCard({
   sublabel: string;
   icon: React.ReactNode;
   accentColor: string;
+  iconColor?: string;
   onClick?: () => void;
 }) {
-  const style = {
+  const [hovered, setHovered] = useState(false);
+  const resolvedIconColor = iconColor ?? accentColor;
+  const borderColor = hovered ? "#2a2a2a" : "transparent";
+  const style: CSSProperties = {
     background: "#1a1a1a",
     borderRadius: "8px",
     padding: "12px 16px",
-    borderLeft: `3px solid ${accentColor}`,
-    position: "relative" as const,
+    position: "relative",
     width: "100%",
-    textAlign: "left" as const,
-    border: "none",
-    borderLeftWidth: 3,
-    borderLeftStyle: "solid" as const,
-    borderLeftColor: accentColor,
+    textAlign: "left",
+    borderTop: `1px solid ${borderColor}`,
+    borderRight: `1px solid ${borderColor}`,
+    borderBottom: `1px solid ${borderColor}`,
+    borderLeft: `3px solid ${accentColor}`,
     cursor: onClick ? "pointer" : undefined,
+    transition: "all 0.15s ease",
+    transform: hovered ? "translateY(-1px)" : undefined,
   };
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} style={style}>
+      <button
+        type="button"
+        onClick={onClick}
+        style={style}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
         <StatCardContent
           label={label}
           value={value}
           sublabel={sublabel}
           icon={icon}
-          accentColor={accentColor}
+          iconColor={resolvedIconColor}
         />
       </button>
     );
@@ -1147,7 +1327,7 @@ function StatCard({
         value={value}
         sublabel={sublabel}
         icon={icon}
-        accentColor={accentColor}
+        iconColor={resolvedIconColor}
       />
     </div>
   );
@@ -1158,13 +1338,13 @@ function StatCardContent({
   value,
   sublabel,
   icon,
-  accentColor,
+  iconColor,
 }: {
   label: string;
   value: number;
   sublabel: string;
   icon: React.ReactNode;
-  accentColor: string;
+  iconColor: string;
 }) {
   return (
     <>
@@ -1174,7 +1354,7 @@ function StatCardContent({
           position: "absolute",
           top: "12px",
           right: "12px",
-          color: accentColor,
+          color: iconColor,
           fontSize: "18px",
           display: "flex",
           alignItems: "center",
@@ -1261,11 +1441,21 @@ function ClubBadge({
 // ---------------------------------------------------------------------------
 // Event Card
 // ---------------------------------------------------------------------------
+const EVENT_DATE_BLOCK_SIZE = 48;
+const EVENT_CLUB_LOGO_SIZE = 40;
+
+const eventCardTextEllipsis: CSSProperties = {
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  margin: 0,
+};
+
 const eventDateBlockStyle = {
   backgroundColor: "#E51937",
-  borderRadius: "6px",
-  width: "40px",
-  height: "40px",
+  borderRadius: "8px",
+  width: `${EVENT_DATE_BLOCK_SIZE}px`,
+  height: `${EVENT_DATE_BLOCK_SIZE}px`,
   flexShrink: 0,
   display: "flex",
   flexDirection: "column",
@@ -1305,17 +1495,18 @@ function EventDateBlock({ date }: { date: string }) {
               fontSize: "9px",
               textTransform: "uppercase",
               color: "#ffffff",
-              lineHeight: 1.1,
+              lineHeight: 1,
+              letterSpacing: "0.08em",
             }}
           >
             {parsed.month}
           </span>
           <span
             style={{
-              fontSize: "16px",
+              fontSize: "20px",
               fontWeight: 700,
               color: "#ffffff",
-              lineHeight: 1.1,
+              lineHeight: 1,
             }}
           >
             {parsed.day}
@@ -1337,71 +1528,148 @@ function EventDateBlock({ date }: { date: string }) {
   );
 }
 
+function EventClubLogo({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr = abbreviation || deriveAbbreviation(name);
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: `${EVENT_CLUB_LOGO_SIZE}px`,
+          height: `${EVENT_CLUB_LOGO_SIZE}px`,
+          borderRadius: "8px",
+          border: "1px solid #2a2a2a",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: `${EVENT_CLUB_LOGO_SIZE}px`,
+        height: `${EVENT_CLUB_LOGO_SIZE}px`,
+        borderRadius: "8px",
+        border: "1px solid #2a2a2a",
+        background: "#2a2a2a",
+        color: "#888",
+        fontSize: "12px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
+}
+
 function EventCard({
   event,
   rsvpStatus,
   counts,
+  logoUrl,
 }: {
   event: DashboardEvent;
   rsvpStatus?: string;
   counts?: import("../../types").RsvpCounts;
+  logoUrl?: string;
 }) {
   const goingCount = counts?.going ?? 0;
   const maybeCount = counts?.maybe ?? 0;
 
+  const dateLine = hasEventLocation(event.location)
+    ? `${formatEventDateShort(event.date)} · ${event.location.trim()}`
+    : formatEventDateShort(event.date);
+
+  let rsvpLine: string | null = null;
+  if (rsvpStatus === "going") {
+    rsvpLine = "Going";
+  } else if (rsvpStatus === "maybe") {
+    rsvpLine = "Maybe";
+  } else if (goingCount > 0 || maybeCount > 0) {
+    rsvpLine = `${goingCount} going${maybeCount > 0 ? ` · ${maybeCount} maybe` : ""}`;
+  } else if (!rsvpStatus) {
+    rsvpLine = "Open to all students";
+  }
+
   return (
-    <Link to={`/app/clubs/${event.clubId}/events`}>
-      <div className="flex items-start gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-alt">
+    <Link to={`/app/clubs/${event.clubId}/events`} className="block">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: "14px",
+          background: "#1a1a1a",
+          border: "1px solid #242424",
+          borderRadius: "10px",
+          padding: "16px 20px",
+          marginBottom: "10px",
+        }}
+      >
         <EventDateBlock date={event.date} />
-        <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-semibold text-white">{event.title}</h4>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
-            <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>
-              {event.date}
-              {event.time ? ` · ${event.time}` : ""}
-            </span>
-            {hasEventLocation(event.location) && (
-              <>
-                <span>·</span>
-                <span>{event.location.trim()}</span>
-              </>
-            )}
-          </div>
-
-          {/* RSVP info */}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {rsvpStatus === "going" && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-400">
-                ✓ Going
-              </span>
-            )}
-            {rsvpStatus === "maybe" && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-400">
-                Maybe
-              </span>
-            )}
-            {(goingCount > 0 || maybeCount > 0) ? (
-              <span className="text-xs text-muted">
-                {goingCount} going
-                {maybeCount > 0 ? ` · ${maybeCount} maybe` : ""}
-              </span>
-            ) : !rsvpStatus ? (
-              <span className="text-xs text-muted">
-                👥 Open to all students
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Club badge */}
-        <ClubBadge
-          abbreviation={event.clubAbbreviation}
+        <EventClubLogo
           name={event.clubName}
-          size="md"
+          abbreviation={event.clubAbbreviation}
+          logoUrl={logoUrl}
         />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              ...eventCardTextEllipsis,
+              fontSize: "15px",
+              fontWeight: 600,
+              color: "#ffffff",
+              marginBottom: "4px",
+            }}
+          >
+            {event.title}
+          </p>
+          <p
+            style={{
+              ...eventCardTextEllipsis,
+              fontSize: "12px",
+              color: "#555555",
+            }}
+          >
+            {dateLine}
+          </p>
+          <p
+            style={{
+              ...eventCardTextEllipsis,
+              fontSize: "12px",
+              color: "#555555",
+            }}
+          >
+            {event.clubName}
+          </p>
+          {rsvpLine ? (
+            <p
+              style={{
+                ...eventCardTextEllipsis,
+                fontSize: "12px",
+                color: "#555555",
+              }}
+            >
+              {rsvpLine}
+            </p>
+          ) : null}
+        </div>
       </div>
     </Link>
   );

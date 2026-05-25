@@ -49,6 +49,16 @@ function appSidebarNavClass(isActive: boolean) {
   return `${base} border-l-transparent pl-[14px] text-[#777777] hover:bg-[#1a1a1a] hover:text-[#cccccc]`;
 }
 
+function AppMainLayoutPlain() {
+  return (
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col">
+      <main className="flex-1 overflow-auto">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
 function AppMainSidebarLayout() {
   return (
     <div className="flex min-h-[calc(100vh-4rem)]">
@@ -146,11 +156,19 @@ export default function App() {
                 <Route
                   element={
                     <ProtectedRoute>
-                      <AppMainSidebarLayout />
+                      <AppMainLayoutPlain />
                     </ProtectedRoute>
                   }
                 >
                   <Route path="/app" element={<DashboardPage />} />
+                </Route>
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <AppMainSidebarLayout />
+                    </ProtectedRoute>
+                  }
+                >
                   <Route path="/app/hiring" element={<HiringBoardPage />} />
                 </Route>
                 <Route
