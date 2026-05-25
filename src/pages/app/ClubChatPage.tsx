@@ -6,10 +6,13 @@ import {
   type CSSProperties,
   type ChangeEvent,
 } from "react";
+import { BarChart2, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
   useConversations,
+  getUserVoteOptionIndex,
+  type ChatPoll,
   type Conversation,
   type DirectMessage,
 } from "../../hooks/useConversations";
@@ -198,6 +201,320 @@ function PencilIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+const pollInputStyle: CSSProperties = {
+  width: "100%",
+  background: "#111111",
+  border: "1px solid #2a2a2a",
+  borderRadius: "6px",
+  padding: "10px 14px",
+  color: "#ffffff",
+  fontSize: "14px",
+  boxSizing: "border-box",
+};
+
+const pollModalStyle: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "12px",
+  padding: "24px",
+  maxWidth: "420px",
+  width: "100%",
+};
+
+function isPollEnded(poll: ChatPoll): boolean {
+  if (!poll.endsAt) return false;
+  return new Date(poll.endsAt).getTime() < Date.now();
+}
+
+function pollTotalVotes(votes: Record<string, string[]>): number {
+  const unique = new Set<string>();
+  for (const voterIds of Object.values(votes)) {
+    for (const id of voterIds) unique.add(id);
+  }
+  return unique.size;
+}
+
+const POLL_TYPE_TAG = /^\[gryph-poll:(general|meeting_time|team_social|other)\]\n?/;
+
+type PollType = "general" | "meeting_time" | "team_social" | "other";
+
+const POLL_TYPE_OPTIONS: { value: PollType; label: string }[] = [
+  { value: "general", label: "General" },
+  { value: "meeting_time", label: "Meeting Time" },
+  { value: "team_social", label: "Team Social" },
+  { value: "other", label: "Other" },
+];
+
+function encodePollQuestion(pollType: PollType, question: string): string {
+  return `[gryph-poll:${pollType}]\n${question.trim()}`;
+}
+
+function decodePollQuestion(raw: string): { pollType: PollType; question: string } {
+  const match = raw.match(POLL_TYPE_TAG);
+  if (match) {
+    return {
+      pollType: match[1] as PollType,
+      question: raw.replace(POLL_TYPE_TAG, "").trim(),
+    };
+  }
+  return { pollType: "general", question: raw };
+}
+
+function pollTypeLabel(pollType: PollType): string {
+  return POLL_TYPE_OPTIONS.find((o) => o.value === pollType)?.label ?? "General";
+}
+
+function pollTypeBadgeStyle(pollType: PollType): CSSProperties {
+  const base: CSSProperties = {
+    background: "#111111",
+    border: "1px solid #222222",
+    color: "#747676",
+    borderRadius: "20px",
+    padding: "2px 10px",
+    fontSize: "11px",
+    display: "inline-block",
+    flexShrink: 0,
+  };
+
+  switch (pollType) {
+    case "meeting_time":
+      return { ...base, borderColor: "#2a2a3a", color: "#6b7cff" };
+    case "team_social":
+      return { ...base, borderColor: "#1a2a1a", color: "#4ade80" };
+    case "other":
+      return { ...base, borderColor: "#2a1a2a", color: "#a78bfa" };
+    default:
+      return base;
+  }
+}
+
+function formatPollOptionLabel(option: string, pollType: PollType): string {
+  if (pollType !== "meeting_time") return option;
+  const parsed = new Date(option);
+  if (Number.isNaN(parsed.getTime())) return option;
+  return parsed.toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function PollTypePill({
+  label,
+  selected,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: selected ? "#E51937" : "#1a1a1a",
+        border: selected ? "1px solid #E51937" : "1px solid #333333",
+        color: selected ? "#ffffff" : "#777777",
+        borderRadius: "20px",
+        padding: "6px 16px",
+        fontSize: "12px",
+        fontWeight: 500,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function PollBubble({
+  poll,
+  currentUserId,
+  onVote,
+  voting,
+}: {
+  poll: ChatPoll;
+  currentUserId?: string;
+  onVote: (pollId: string, optionIndex: number) => void;
+  voting: boolean;
+}) {
+  const ended = isPollEnded(poll);
+  const total = pollTotalVotes(poll.votes);
+  const userVote =
+    currentUserId != null
+      ? getUserVoteOptionIndex(poll.votes, currentUserId)
+      : null;
+  const profilePath = `/app/profile/${poll.createdBy}`;
+  const creatorName = poll.creatorName ?? "Member";
+  const { pollType, question } = decodePollQuestion(poll.question);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: "10px",
+        marginBottom: "12px",
+        alignItems: "flex-start",
+      }}
+    >
+      <Link to={profilePath} style={{ display: "flex", flexShrink: 0 }}>
+        <Avatar
+          url={poll.creatorAvatar}
+          name={creatorName}
+          size={32}
+        />
+      </Link>
+      <div style={{ maxWidth: "85%", minWidth: "240px" }}>
+        <Link
+          to={profilePath}
+          style={{
+            fontSize: "11px",
+            color: "#555555",
+            marginBottom: "2px",
+            textDecoration: "none",
+            display: "block",
+          }}
+        >
+          {creatorName}
+        </Link>
+        <div
+          style={{
+            background: "#1a1a1a",
+            border: "1px solid #242424",
+            borderRadius: "12px",
+            padding: "14px 16px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "10px",
+            }}
+          >
+            <BarChart2 size={14} color="#E51937" aria-hidden />
+            <span
+              style={{
+                fontSize: "11px",
+                color: "#747676",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Poll
+            </span>
+            <span style={pollTypeBadgeStyle(pollType)}>
+              {pollTypeLabel(pollType)}
+            </span>
+          </div>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              margin: "0 0 12px",
+              lineHeight: 1.4,
+            }}
+          >
+            {question}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {poll.options.map((option, index) => {
+              const voteCount = (poll.votes[String(index)] ?? []).length;
+              const percent = total > 0 ? Math.round((voteCount / total) * 100) : 0;
+              const selected = userVote === index;
+              const disabled = ended || voting;
+
+              return (
+                <button
+                  key={`${poll.id}-${index}`}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onVote(poll.id, index)}
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    textAlign: "left",
+                    background: selected ? "#2a1518" : "#111111",
+                    border: selected
+                      ? "1px solid #E51937"
+                      : "1px solid #2a2a2a",
+                    borderRadius: "8px",
+                    padding: "10px 12px",
+                    cursor: disabled ? "default" : "pointer",
+                    overflow: "hidden",
+                  }}
+                >
+                  {total > 0 ? (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: `${percent}%`,
+                        background: "rgba(229, 25, 55, 0.15)",
+                        pointerEvents: "none",
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    style={{
+                      position: "relative",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        color: "#ffffff",
+                        fontWeight: selected ? 600 : 400,
+                      }}
+                    >
+                      {formatPollOptionLabel(option, pollType)}
+                    </span>
+                    <span style={{ fontSize: "12px", color: "#747676" }}>
+                      {voteCount > 0 ? `${percent}%` : ""}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: "11px", color: "#555555", margin: "10px 0 0" }}>
+            {total} vote{total === 1 ? "" : "s"}
+            {ended ? " · Poll ended" : null}
+            {!ended && poll.endsAt
+              ? ` · Ends ${formatTime(poll.endsAt)}`
+              : null}
+          </p>
+        </div>
+        <span
+          style={{
+            fontSize: "10px",
+            color: "#555555",
+            marginTop: "2px",
+            display: "block",
+          }}
+        >
+          {formatTime(poll.createdAt)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function MessageAttachment({ msg }: { msg: DirectMessage }) {
   if (!msg.attachmentUrl || !msg.attachmentType) return null;
   if (msg.attachmentType.startsWith("image/")) {
@@ -316,8 +633,10 @@ export default function ClubChatPage() {
   const {
     conversations,
     messages,
+    polls,
     loading,
     messagesLoading,
+    pollsLoading,
     userRole,
     clubMembers,
     activeConversationId,
@@ -328,6 +647,8 @@ export default function ClubChatPage() {
     createDirectMessage,
     createGroupChat,
     sendMessage,
+    createPoll,
+    voteOnPoll,
     uploadAttachment,
     uploadGroupAvatar,
     updateGroupConversation,
@@ -350,6 +671,13 @@ export default function ClubChatPage() {
   const [sendError, setSendError] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [showPollModal, setShowPollModal] = useState(false);
+  const [pollType, setPollType] = useState<PollType>("general");
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState(["", ""]);
+  const [pollEndsAt, setPollEndsAt] = useState("");
+  const [creatingPoll, setCreatingPoll] = useState(false);
+  const [votingPollId, setVotingPollId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -365,9 +693,33 @@ export default function ClubChatPage() {
     );
   }, [clubMembers, memberSearch]);
 
+  type ChatTimelineItem =
+    | { kind: "message"; id: string; sortAt: string; message: DirectMessage }
+    | { kind: "poll"; id: string; sortAt: string; poll: ChatPoll };
+
+  const chatTimeline = useMemo(() => {
+    const items: ChatTimelineItem[] = [
+      ...messages.map((message) => ({
+        kind: "message" as const,
+        id: message.id,
+        sortAt: message.createdAt,
+        message,
+      })),
+      ...polls.map((poll) => ({
+        kind: "poll" as const,
+        id: poll.id,
+        sortAt: poll.createdAt,
+        poll,
+      })),
+    ];
+    return items.sort(
+      (a, b) => new Date(a.sortAt).getTime() - new Date(b.sortAt).getTime(),
+    );
+  }, [messages, polls]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, activeConversationId]);
+  }, [chatTimeline.length, activeConversationId]);
 
   useEffect(() => {
     if (!activeConversationId || !user?.id || !clubId) return;
@@ -390,6 +742,43 @@ export default function ClubChatPage() {
         notifyUnreadCountRefresh();
       });
   }, [activeConversationId, user?.id, clubId]);
+
+  function resetPollModal() {
+    setShowPollModal(false);
+    setPollType("general");
+    setPollQuestion("");
+    setPollOptions(["", ""]);
+    setPollEndsAt("");
+  }
+
+  async function handleCreatePoll() {
+    if (!activeConversationId) return;
+    const trimmedOptions = pollOptions.map((o) => o.trim()).filter(Boolean);
+    if (!pollQuestion.trim() || trimmedOptions.length < 2) return;
+
+    setCreatingPoll(true);
+    const endsAt = pollEndsAt.trim()
+      ? new Date(pollEndsAt).toISOString()
+      : null;
+    const storedOptions =
+      pollType === "meeting_time"
+        ? trimmedOptions.map((slot) => new Date(slot).toISOString())
+        : trimmedOptions;
+    const ok = await createPoll(
+      activeConversationId,
+      encodePollQuestion(pollType, pollQuestion),
+      storedOptions,
+      endsAt,
+    );
+    setCreatingPoll(false);
+    if (ok) resetPollModal();
+  }
+
+  async function handlePollVote(pollId: string, optionIndex: number) {
+    setVotingPollId(pollId);
+    await voteOnPoll(pollId, optionIndex);
+    setVotingPollId(null);
+  }
 
   function resetModal() {
     setShowModal(false);
@@ -906,11 +1295,11 @@ export default function ClubChatPage() {
                 padding: "16px 20px",
               }}
             >
-              {messagesLoading ? (
+              {messagesLoading || pollsLoading ? (
                 <div className="flex justify-center py-8">
                   <Spinner label="Loading messages…" />
                 </div>
-              ) : messages.length === 0 ? (
+              ) : chatTimeline.length === 0 ? (
                 <p
                   style={{
                     textAlign: "center",
@@ -922,13 +1311,25 @@ export default function ClubChatPage() {
                   No messages yet. Say hello!
                 </p>
               ) : (
-                messages.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    msg={msg}
-                    isOwn={msg.senderId === user?.id}
-                  />
-                ))
+                chatTimeline.map((item) =>
+                  item.kind === "message" ? (
+                    <MessageBubble
+                      key={item.id}
+                      msg={item.message}
+                      isOwn={item.message.senderId === user?.id}
+                    />
+                  ) : (
+                    <PollBubble
+                      key={item.id}
+                      poll={item.poll}
+                      currentUserId={user?.id}
+                      onVote={(pollId, optionIndex) =>
+                        void handlePollVote(pollId, optionIndex)
+                      }
+                      voting={votingPollId === item.poll.id}
+                    />
+                  ),
+                )
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -970,6 +1371,27 @@ export default function ClubChatPage() {
                 }}
               >
                 <PaperclipIcon />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPollModal(true)}
+                aria-label="Create poll"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#555555",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#E51937";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#555555";
+                }}
+              >
+                <BarChart2 size={20} aria-hidden />
               </button>
               <input
                 type="text"
@@ -1049,6 +1471,249 @@ export default function ClubChatPage() {
           </>
         )}
       </div>
+
+      {showPollModal && activeConversationId ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: "16px",
+          }}
+          onClick={resetPollModal}
+        >
+          <div style={pollModalStyle} onClick={(e) => e.stopPropagation()}>
+            <h3
+              style={{
+                fontWeight: 700,
+                fontSize: "16px",
+                color: "#ffffff",
+                margin: "0 0 16px",
+              }}
+            >
+              Create Poll
+            </h3>
+
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#888888",
+                textTransform: "uppercase",
+                margin: "0 0 8px",
+              }}
+            >
+              Poll Type
+            </p>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginBottom: "16px",
+              }}
+            >
+              {POLL_TYPE_OPTIONS.map((option) => (
+                <PollTypePill
+                  key={option.value}
+                  label={option.label}
+                  selected={pollType === option.value}
+                  disabled={creatingPoll}
+                  onClick={() => setPollType(option.value)}
+                />
+              ))}
+            </div>
+
+            <input
+              type="text"
+              required
+              value={pollQuestion}
+              onChange={(e) => setPollQuestion(e.target.value)}
+              placeholder="Ask a question..."
+              disabled={creatingPoll}
+              style={{ ...pollInputStyle, marginBottom: "16px" }}
+            />
+
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#888888",
+                textTransform: "uppercase",
+                margin: "0 0 8px",
+              }}
+            >
+              Options
+            </p>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                marginBottom: "12px",
+              }}
+            >
+              {pollOptions.map((option, index) => (
+                <div
+                  key={index}
+                  style={{ display: "flex", gap: "8px", alignItems: "center" }}
+                >
+                  <input
+                    type={pollType === "meeting_time" ? "datetime-local" : "text"}
+                    value={option}
+                    onChange={(e) => {
+                      const next = [...pollOptions];
+                      next[index] = e.target.value;
+                      setPollOptions(next);
+                    }}
+                    placeholder={
+                      pollType === "meeting_time"
+                        ? "Propose a time slot"
+                        : `Option ${index + 1}`
+                    }
+                    disabled={creatingPoll}
+                    style={{ ...pollInputStyle, flex: 1 }}
+                  />
+                  {pollOptions.length > 2 ? (
+                    <button
+                      type="button"
+                      aria-label={`Remove option ${index + 1}`}
+                      onClick={() =>
+                        setPollOptions(pollOptions.filter((_, i) => i !== index))
+                      }
+                      disabled={creatingPoll}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#555555",
+                        cursor: "pointer",
+                        padding: "4px",
+                        display: "flex",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "#E51937";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = "#555555";
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+
+            {pollType === "meeting_time" ? (
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "#555555",
+                  margin: "0 0 12px",
+                }}
+              >
+                Members can select all times that work for them
+              </p>
+            ) : null}
+
+            {pollOptions.length < 6 ? (
+              <button
+                type="button"
+                onClick={() => setPollOptions([...pollOptions, ""])}
+                disabled={creatingPoll}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#cccccc",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  marginBottom: "16px",
+                }}
+              >
+                + Add Option
+              </button>
+            ) : null}
+
+            <label
+              htmlFor="poll-ends-at"
+              style={{
+                display: "block",
+                fontSize: "12px",
+                color: "#888888",
+                marginBottom: "8px",
+              }}
+            >
+              Poll ends at (optional)
+            </label>
+            <input
+              id="poll-ends-at"
+              type="datetime-local"
+              value={pollEndsAt}
+              onChange={(e) => setPollEndsAt(e.target.value)}
+              disabled={creatingPoll}
+              style={{ ...pollInputStyle, marginBottom: "20px" }}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={resetPollModal}
+                disabled={creatingPoll}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCreatePoll()}
+                disabled={
+                  creatingPoll ||
+                  !pollQuestion.trim() ||
+                  pollOptions.filter((o) => o.trim()).length < 2
+                }
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity:
+                    creatingPoll ||
+                    !pollQuestion.trim() ||
+                    pollOptions.filter((o) => o.trim()).length < 2
+                      ? 0.5
+                      : 1,
+                }}
+              >
+                {creatingPoll ? "Creating…" : "Create Poll"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* New conversation modal */}
       {showModal ? (

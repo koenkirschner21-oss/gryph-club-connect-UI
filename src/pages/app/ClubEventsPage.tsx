@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { CalendarPlus } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -119,6 +120,102 @@ function CategorySelector({
       </div>
     </div>
   );
+}
+
+function escapeIcsText(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+
+function toIcsUtc(date: Date): string {
+  return date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
+function parseEventStart(event: ClubEvent): Date {
+  if (event.startAt) {
+    const fromStartAt = new Date(event.startAt);
+    if (!Number.isNaN(fromStartAt.getTime())) return fromStartAt;
+  }
+
+  const timeRaw = (event.time ?? "").trim();
+  const timeMatch = timeRaw.match(/^(\d{1,2}):(\d{2})/);
+  if (timeMatch) {
+    const hours = Number.parseInt(timeMatch[1], 10);
+    const minutes = Number.parseInt(timeMatch[2], 10);
+    const local = new Date(event.date);
+    local.setHours(hours, minutes, 0, 0);
+    if (!Number.isNaN(local.getTime())) return local;
+  }
+
+  if (timeRaw && timeRaw !== "TBD") {
+    const combined = new Date(`${event.date} ${timeRaw}`);
+    if (!Number.isNaN(combined.getTime())) return combined;
+  }
+
+  const fallback = new Date(`${event.date}T12:00:00`);
+  return Number.isNaN(fallback.getTime()) ? new Date() : fallback;
+}
+
+function parseEventEnd(event: ClubEvent, start: Date): Date {
+  if (event.endAt) {
+    const fromEndAt = new Date(event.endAt);
+    if (!Number.isNaN(fromEndAt.getTime())) return fromEndAt;
+  }
+  return new Date(start.getTime() + 60 * 60 * 1000);
+}
+
+function downloadEventIcs(event: ClubEvent) {
+  const start = parseEventStart(event);
+  const end = parseEventEnd(event, start);
+  const location =
+    event.location && event.location !== "TBD" ? event.location : "";
+  const description = event.description?.trim() ?? "";
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Gryph Club Connect//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${event.id}@gryphclubconnect`,
+    `DTSTAMP:${toIcsUtc(new Date())}`,
+    `DTSTART:${toIcsUtc(start)}`,
+    `DTEND:${toIcsUtc(end)}`,
+    `SUMMARY:${escapeIcsText(event.title)}`,
+  ];
+
+  if (location) {
+    lines.push(`LOCATION:${escapeIcsText(location)}`);
+  }
+  if (description) {
+    lines.push(`DESCRIPTION:${escapeIcsText(description)}`);
+  }
+
+  lines.push("END:VEVENT", "END:VCALENDAR");
+
+  const blob = new Blob([`${lines.join("\r\n")}\r\n`], {
+    type: "text/calendar;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeTitle = event.title
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 60);
+  anchor.href = url;
+  anchor.download = `${safeTitle || "event"}.ics`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }
 
 function EventCategoryBadge({ category }: { category: string }) {
@@ -386,7 +483,8 @@ const sectionHeadingStyle: CSSProperties = {
   fontWeight: 600,
   fontSize: "15px",
   color: "#ffffff",
-  marginBottom: "12px" };
+  marginBottom: "12px",
+};
 
 function normalizeUserRole(role: string): MemberRole {
   if (role === "owner") return "owner";
@@ -1519,6 +1617,25 @@ export default function ClubEventsPage() {
                         </>
                       ) : null}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => downloadEventIcs(event)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        background: "transparent",
+                        border: "1px solid #333333",
+                        color: "#747676",
+                        borderRadius: "6px",
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <CalendarPlus size={14} aria-hidden />
+                      Add to Calendar
+                    </button>
                     {isPrivileged ? (
                       <>
                         {(eventQuestionsMap[event.id]?.length ?? 0) > 0 ? (
@@ -1728,6 +1845,26 @@ export default function ClubEventsPage() {
                         {event.location}
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => downloadEventIcs(event)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        background: "transparent",
+                        border: "1px solid #333333",
+                        color: "#747676",
+                        borderRadius: "6px",
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        marginTop: "10px",
+                      }}
+                    >
+                      <CalendarPlus size={14} aria-hidden />
+                      Add to Calendar
+                    </button>
                   </div>
                   {isPrivileged && (
                     <Button

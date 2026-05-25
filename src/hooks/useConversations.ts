@@ -40,6 +40,133 @@ export interface Conversation {
   unreadCount: number;
 }
 
+export interface ChatPoll {
+  id: string;
+  conversationId: string;
+  clubId: string;
+  createdBy: string;
+  question: string;
+  options: string[];
+  votes: Record<string, string[]>;
+  endsAt: string | null;
+  createdAt: string;
+  creatorName?: string;
+  creatorAvatar?: string;
+}
+
+function mapPollRow(row: Record<string, unknown>): ChatPoll {
+  const rawOptions = row.options;
+  const options = Array.isArray(rawOptions)
+    ? (rawOptions as string[]).map(String)
+    : [];
+
+  const rawVotes = row.votes;
+  let votes: Record<string, string[]> = {};
+  if (rawVotes && typeof rawVotes === "object" && !Array.isArray(rawVotes)) {
+    votes = Object.fromEntries(
+      Object.entries(rawVotes as Record<string, unknown>).map(([key, val]) => [
+        key,
+        Array.isArray(val) ? (val as string[]) : [],
+      ]),
+    );
+  }
+
+  const creator = (row.creator ?? {}) as Record<string, unknown>;
+
+  return {
+    id: row.id as string,
+    conversationId: row.conversation_id as string,
+    clubId: row.club_id as string,
+    createdBy: row.created_by as string,
+    question: row.question as string,
+    options,
+    votes,
+    endsAt: (row.ends_at as string | null) ?? null,
+    createdAt: (row.created_at as string) ?? "",
+    creatorName: (creator.full_name as string) ?? undefined,
+    creatorAvatar: (creator.avatar_url as string) ?? undefined,
+  };
+}
+
+function enrichPollsWithCreators(
+  rows: Record<string, unknown>[],
+): ChatPoll[] {
+  return rows.map((row) => mapPollRow(row));
+}
+
+async function attachPollCreators(
+  polls: ChatPoll[],
+): Promise<ChatPoll[]> {
+  const creatorIds = [...new Set(polls.map((p) => p.createdBy).filter(Boolean))];
+  if (creatorIds.length === 0) return polls;
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url")
+    .in("id", creatorIds);
+
+  const profileMap = Object.fromEntries(
+    (profiles ?? []).map((p) => [
+      p.id as string,
+      {
+        name: (p.full_name as string) ?? "Unknown",
+        avatar: (p.avatar_url as string) ?? undefined,
+      },
+    ]),
+  );
+
+  return polls.map((poll) => {
+    const profile = profileMap[poll.createdBy];
+    if (!profile) return poll;
+    return {
+      ...poll,
+      creatorName: poll.creatorName ?? profile.name,
+      creatorAvatar: poll.creatorAvatar ?? profile.avatar,
+    };
+  });
+}
+
+function normalizePollVotes(
+  votes: Record<string, string[]>,
+): Record<string, string[]> {
+  const next: Record<string, string[]> = {};
+  for (const [key, val] of Object.entries(votes)) {
+    if (Array.isArray(val)) {
+      next[key] = val.filter((id) => typeof id === "string");
+    }
+  }
+  return next;
+}
+
+function applyVote(
+  votes: Record<string, string[]>,
+  optionIndex: number,
+  userId: string,
+): Record<string, string[]> {
+  const next = normalizePollVotes(votes);
+  for (const key of Object.keys(next)) {
+    next[key] = next[key].filter((id) => id !== userId);
+  }
+  const key = String(optionIndex);
+  next[key] = [...(next[key] ?? []), userId];
+  return next;
+}
+
+function getUserVoteOptionIndex(
+  votes: Record<string, string[]>,
+  userId: string,
+): number | null {
+  for (const [key, voterIds] of Object.entries(votes)) {
+    if (voterIds.includes(userId)) {
+      const index = Number.parseInt(key, 10);
+      return Number.isNaN(index) ? null : index;
+    }
+  }
+  return null;
+}
+
+export { getUserVoteOptionIndex };
+
 function mapMessageRow(row: Record<string, unknown>): DirectMessage {
   const sender = (row.sender ?? {}) as Record<string, unknown>;
   return {
@@ -131,8 +258,10 @@ function avatarForConversation(
 export interface UseConversationsReturn {
   conversations: Conversation[];
   messages: DirectMessage[];
+  polls: ChatPoll[];
   loading: boolean;
   messagesLoading: boolean;
+  pollsLoading: boolean;
   userRole: MemberRole;
   clubMembers: ConversationMember[];
   activeConversationId: string | null;
@@ -151,6 +280,13 @@ export interface UseConversationsReturn {
     content: string,
     attachment?: { url: string; type: string } | null,
   ) => Promise<boolean>;
+  createPoll: (
+    conversationId: string,
+    question: string,
+    options: string[],
+    endsAt?: string | null,
+  ) => Promise<boolean>;
+  voteOnPoll: (pollId: string, optionIndex: number) => Promise<boolean>;
   uploadAttachment: (
     file: File,
     conversationId: string,
@@ -162,6 +298,18 @@ export interface UseConversationsReturn {
   ) => Promise<boolean>;
   refresh: () => void;
 }
+
+const POLL_SELECT = `
+  id,
+  conversation_id,
+  club_id,
+  created_by,
+  question,
+  options,
+  votes,
+  ends_at,
+  created_at
+`;
 
 const MESSAGE_SELECT = `
   id,
@@ -192,8 +340,10 @@ export function useConversations(
   const { user } = useAuthContext();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [polls, setPolls] = useState<ChatPoll[]>([]);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [pollsLoading, setPollsLoading] = useState(false);
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const [clubMembers, setClubMembers] = useState<ConversationMember[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<
@@ -202,6 +352,7 @@ export function useConversations(
   const [refreshKey, setRefreshKey] = useState(0);
 
   const messagesChannelRef = useRef<RealtimeChannel | null>(null);
+  const pollsChannelRef = useRef<RealtimeChannel | null>(null);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   const activeConversation =
@@ -367,6 +518,26 @@ export function useConversations(
     loadConversations();
   }, [loadConversations, refreshKey]);
 
+  const loadPolls = useCallback(async (conversationId: string) => {
+    setPollsLoading(true);
+    const { data, error } = await supabase
+      .from("chat_polls")
+      .select(POLL_SELECT)
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Failed to load polls:", error.message);
+      setPolls([]);
+    } else {
+      const mapped = enrichPollsWithCreators(
+        (data ?? []) as Record<string, unknown>[],
+      );
+      setPolls(await attachPollCreators(mapped));
+    }
+    setPollsLoading(false);
+  }, []);
+
   const loadMessages = useCallback(
     async (conversationId: string) => {
       setMessagesLoading(true);
@@ -422,12 +593,14 @@ export function useConversations(
   useEffect(() => {
     if (!activeConversationId) {
       setMessages([]);
+      setPolls([]);
       return;
     }
 
     loadMessages(activeConversationId);
+    loadPolls(activeConversationId);
     markConversationRead(activeConversationId);
-  }, [activeConversationId, loadMessages, markConversationRead]);
+  }, [activeConversationId, loadMessages, loadPolls, markConversationRead]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -479,6 +652,40 @@ export function useConversations(
       }
     };
   }, [activeConversationId, loadConversations, user?.id]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+
+    if (pollsChannelRef.current) {
+      supabase.removeChannel(pollsChannelRef.current);
+      pollsChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`chat_polls:${activeConversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_polls",
+          filter: `conversation_id=eq.${activeConversationId}`,
+        },
+        () => {
+          void loadPolls(activeConversationId);
+        },
+      )
+      .subscribe();
+
+    pollsChannelRef.current = channel;
+
+    return () => {
+      if (pollsChannelRef.current) {
+        supabase.removeChannel(pollsChannelRef.current);
+        pollsChannelRef.current = null;
+      }
+    };
+  }, [activeConversationId, loadPolls]);
 
   const findExistingDirectConversation = useCallback(
     async (otherUserId: string): Promise<string | null> => {
@@ -729,11 +936,85 @@ export function useConversations(
     [user, loadConversations],
   );
 
+  const createPoll = useCallback(
+    async (
+      conversationId: string,
+      question: string,
+      options: string[],
+      endsAt?: string | null,
+    ): Promise<boolean> => {
+      if (!clubId || !user?.id) return false;
+
+      const trimmedOptions = options.map((o) => o.trim()).filter(Boolean);
+      if (!question.trim() || trimmedOptions.length < 2) return false;
+
+      const { error } = await supabase.from("chat_polls").insert({
+        conversation_id: conversationId,
+        club_id: clubId,
+        created_by: user.id,
+        question: question.trim(),
+        options: trimmedOptions,
+        votes: {},
+        ends_at: endsAt ?? null,
+      });
+
+      if (error) {
+        console.error("Failed to create poll:", error.message);
+        return false;
+      }
+
+      await supabase
+        .from("conversations")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", conversationId);
+
+      await loadPolls(conversationId);
+      await loadConversations();
+      return true;
+    },
+    [clubId, user?.id, loadPolls, loadConversations],
+  );
+
+  const voteOnPoll = useCallback(
+    async (pollId: string, optionIndex: number): Promise<boolean> => {
+      if (!user?.id) return false;
+
+      const poll = polls.find((p) => p.id === pollId);
+      if (!poll) return false;
+
+      if (poll.endsAt && new Date(poll.endsAt).getTime() < Date.now()) {
+        return false;
+      }
+
+      const nextVotes = applyVote(poll.votes, optionIndex, user.id);
+
+      const { error } = await supabase
+        .from("chat_polls")
+        .update({ votes: nextVotes })
+        .eq("id", pollId);
+
+      if (error) {
+        console.error("Failed to vote on poll:", error.message);
+        return false;
+      }
+
+      setPolls((prev) =>
+        prev.map((p) =>
+          p.id === pollId ? { ...p, votes: nextVotes } : p,
+        ),
+      );
+      return true;
+    },
+    [polls, user?.id],
+  );
+
   return {
     conversations,
     messages,
+    polls,
     loading,
     messagesLoading,
+    pollsLoading,
     userRole,
     clubMembers,
     activeConversationId,
@@ -744,6 +1025,8 @@ export function useConversations(
     createDirectMessage,
     createGroupChat,
     sendMessage,
+    createPoll,
+    voteOnPoll,
     uploadAttachment,
     uploadGroupAvatar,
     updateGroupConversation,
