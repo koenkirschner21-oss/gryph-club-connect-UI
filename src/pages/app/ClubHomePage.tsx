@@ -479,6 +479,77 @@ function ClubTaskCard({
   );
 }
 
+function NextEventBanner({
+  event,
+}: {
+  event: { title: string; date: string; time?: string };
+}) {
+  const parsedDate = new Date(event.date);
+  const monthLabel = Number.isNaN(parsedDate.getTime())
+    ? "---"
+    : parsedDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const dayLabel = Number.isNaN(parsedDate.getTime())
+    ? "?"
+    : String(parsedDate.getDate());
+  const timeLabel =
+    event.time && event.time.trim() !== "" && event.time.toUpperCase() !== "TBD"
+      ? formatEventTime12h(event.time)
+      : null;
+
+  return (
+    <div
+      style={{
+        background: "linear-gradient(135deg, #1a0505, #2d0808)",
+        border: "1px solid #3a1010",
+        borderRadius: "10px",
+        padding: "16px 20px",
+        display: "flex",
+        alignItems: "center",
+        gap: "14px",
+      }}
+    >
+      <div
+        className="flex shrink-0 flex-col items-center justify-center"
+        style={{
+          width: "44px",
+          height: "44px",
+          backgroundColor: "#E51937",
+          borderRadius: "8px",
+        }}
+      >
+        <span style={{ fontSize: "9px", color: "#fff", lineHeight: 1 }}>
+          {monthLabel}
+        </span>
+        <span style={{ fontSize: "18px", fontWeight: 700, color: "#fff", lineHeight: 1 }}>
+          {dayLabel}
+        </span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: "10px",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "#747676",
+            margin: 0,
+          }}
+        >
+          Next Event
+        </p>
+        <p style={{ fontSize: "16px", fontWeight: 700, color: "#fff", margin: "4px 0 0" }}>
+          {event.title}
+        </p>
+        {timeLabel ? (
+          <p style={{ fontSize: "12px", color: "#555555", margin: "4px 0 0" }}>{timeLabel}</p>
+        ) : null}
+      </div>
+      <Link to="../events" style={viewAllLink}>
+        View Event →
+      </Link>
+    </div>
+  );
+}
+
 export default function ClubHomePage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
@@ -523,31 +594,44 @@ export default function ClubHomePage() {
     [events],
   );
 
-  const recentPosts = posts.slice(0, 3);
-  const previewEvents = upcomingEvents.slice(0, 3);
+  const nextEvent = upcomingEvents[0];
   const meetingSublabel =
     club?.location && !isHiddenLocation(club.location) ? club.location.trim() : "";
 
-  const dashboardTasks = useMemo(() => {
-    const open = tasks.filter((t) => t.status !== "done");
-    if (userRole === "owner") {
-      return open;
-    }
-    if (userRole === "executive") {
-      return open.filter(
-        (t) => t.assignedTo === user?.id || t.createdBy === user?.id,
-      );
-    }
-    return open.filter((t) => t.assignedTo === user?.id);
+  const executiveTasks = useMemo(() => {
+    return tasks.filter((t) => t.assignedTo === user?.id || t.createdBy === user?.id);
   }, [tasks, userRole, user?.id]);
 
-  const previewTasks = dashboardTasks.slice(0, 5);
+  const memberTasks = useMemo(
+    () => tasks.filter((t) => t.assignedTo === user?.id),
+    [tasks, user?.id],
+  );
+
+  const tasksForRole =
+    userRole === "owner" ? tasks : userRole === "executive" ? executiveTasks : memberTasks;
+  const previewTasks = tasksForRole.slice(0, 3);
   const tasksSectionTitle =
-    userRole === "owner" ? "Club Tasks" : "My Tasks";
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.status === "done").length;
+    userRole === "owner"
+      ? "Club Tasks"
+      : userRole === "executive"
+        ? "My Tasks"
+        : "My Tasks";
+  const totalTasks = tasksForRole.length;
+  const completedTasks = tasksForRole.filter((t) => t.status === "done").length;
   const taskProgressPercent =
     totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const progressLabel =
+    userRole === "executive"
+      ? `${completedTasks} of ${totalTasks} of your tasks completed`
+      : `${completedTasks} of ${totalTasks} tasks completed`;
+
+  const postsCap = userRole === "member" ? 4 : 2;
+  const previewPosts = posts.slice(0, postsCap);
+  const eventsCap = userRole === "member" ? 4 : 3;
+  const previewEvents = upcomingEvents.slice(0, eventsCap);
+  const [memberRsvps, setMemberRsvps] = useState<
+    Record<string, "going" | "maybe" | "not_going" | null>
+  >({});
 
   if (!club) {
     return (
@@ -657,6 +741,12 @@ export default function ClubHomePage() {
         />
       </div>
 
+      {nextEvent ? (
+        <div className="mt-8">
+          <NextEventBanner event={nextEvent} />
+        </div>
+      ) : null}
+
       <div className="mt-8">
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>Recent Announcements</h2>
@@ -685,20 +775,22 @@ export default function ClubHomePage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {recentPosts.map((post) => (
-              <article
-                key={post.id}
-                style={{
-                  backgroundColor: "#1a1a1a",
-                  border: "1px solid #242424",
-                  borderLeft: "3px solid #E51937",
-                  borderRadius: "8px",
-                  padding: "16px",
-                }}
-              >
+            {previewPosts.map((post) => (
+              <Link key={post.id} to="../announcements" className="block no-underline">
+                <article
+                  style={{
+                    backgroundColor: "#1a1a1a",
+                    border: "1px solid #242424",
+                    borderLeft: "3px solid #E51937",
+                    borderRadius: "8px",
+                    padding: userRole === "member" ? "20px" : "16px",
+                    transition: "all 0.15s ease",
+                    cursor: "pointer",
+                  }}
+                >
                 <h3
                   style={{
-                    fontSize: "14px",
+                    fontSize: userRole === "member" ? "15px" : "14px",
                     fontWeight: 600,
                     color: "#ffffff",
                     margin: 0,
@@ -706,21 +798,30 @@ export default function ClubHomePage() {
                 >
                   {post.title}
                 </h3>
+                {userRole !== "member" ? (
+                  <p
+                    style={{
+                      fontSize: "11px",
+                      color: "#555555",
+                      margin: "6px 0 0",
+                    }}
+                  >
+                    {post.authorName ?? "Unknown"} ·{" "}
+                    {new Date(post.createdAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                ) : (
+                  <p style={{ fontSize: "11px", color: "#555555", margin: "6px 0 0" }}>
+                    {new Date(post.createdAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                )}
                 <p
-                  style={{
-                    fontSize: "11px",
-                    color: "#555555",
-                    margin: "6px 0 0",
-                  }}
-                >
-                  {post.authorName ?? "Unknown"} ·{" "}
-                  {new Date(post.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </p>
-                <p
-                  className="line-clamp-2"
+                  className={userRole === "member" ? "line-clamp-3" : "line-clamp-2"}
                   style={{
                     fontSize: "13px",
                     color: "#777777",
@@ -730,16 +831,18 @@ export default function ClubHomePage() {
                 >
                   {post.content}
                 </p>
-              </article>
+                </article>
+              </Link>
             ))}
           </div>
         )}
       </div>
 
+      {(userRole !== "member" || totalTasks > 0) ? (
       <div className="mt-8">
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>{tasksSectionTitle}</h2>
-          {dashboardTasks.length > 0 ? (
+          {tasksForRole.length > 0 ? (
             <Link to="tasks" style={viewAllLink}>
               View All →
             </Link>
@@ -773,7 +876,7 @@ export default function ClubHomePage() {
                 margin: "6px 0 0",
               }}
             >
-              {completedTasks} of {totalTasks} tasks completed
+              {progressLabel}
             </p>
           </div>
         ) : null}
@@ -811,6 +914,7 @@ export default function ClubHomePage() {
           </div>
         )}
       </div>
+      ) : null}
 
       <div className="mt-8">
         <div style={sectionHeadingRow}>
@@ -840,16 +944,64 @@ export default function ClubHomePage() {
         ) : (
           <div>
             {previewEvents.map((event) => (
-              <ClubEventCard
-                key={event.id}
-                title={event.title}
-                date={event.date}
-                time={event.time}
-                location={event.location}
-                clubName={club.name}
-                clubAbbreviation={club.abbreviation}
-                clubLogoUrl={club.logoUrl}
-              />
+              <Link key={event.id} to="../events" className="block no-underline">
+                <div style={{ cursor: "pointer" }}>
+                  <ClubEventCard
+                    title={event.title}
+                    date={event.date}
+                    time={event.time}
+                    location={event.location}
+                    clubName={club.name}
+                    clubAbbreviation={club.abbreviation}
+                    clubLogoUrl={club.logoUrl}
+                  />
+                  {userRole === "member" ? (
+                    <div
+                      style={{
+                        marginTop: "-2px",
+                        marginBottom: "10px",
+                        marginLeft: "92px",
+                        display: "flex",
+                        gap: "8px",
+                      }}
+                    >
+                      {(["going", "maybe", "not_going"] as const).map((status) => {
+                        const active = memberRsvps[event.id] === status;
+                        const activeStyles =
+                          status === "going"
+                            ? { background: "#0d2b0d", color: "#4ade80", border: "1px solid #1a4a1a" }
+                            : status === "maybe"
+                              ? { background: "#2a2a0d", color: "#FFC429", border: "1px solid #3a3a1a" }
+                              : { background: "#1a1a1a", color: "#888888", border: "1px solid #333333" };
+                        return (
+                          <button
+                            key={status}
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setMemberRsvps((prev) => ({
+                                ...prev,
+                                [event.id]: prev[event.id] === status ? null : status,
+                              }));
+                            }}
+                            style={{
+                              borderRadius: "6px",
+                              padding: "4px 10px",
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              ...(active
+                                ? activeStyles
+                                : { background: "transparent", color: "#777777", border: "1px solid #333333" }),
+                            }}
+                          >
+                            {status === "going" ? "Going" : status === "maybe" ? "Maybe" : "Not Going"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </Link>
             ))}
           </div>
         )}

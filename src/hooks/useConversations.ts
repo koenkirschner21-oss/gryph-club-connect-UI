@@ -35,6 +35,8 @@ export interface Conversation {
   avatarUrl?: string | null;
   createdAt: string;
   updatedAt: string;
+  isPinned: boolean;
+  isFavorite: boolean;
   members: ConversationMember[];
   lastMessage?: DirectMessage | null;
   unreadCount: number;
@@ -255,6 +257,24 @@ function avatarForConversation(
   return other?.avatarUrl ?? null;
 }
 
+function conversationActivityAt(convo: Conversation): number {
+  const lastMessageTs = convo.lastMessage?.createdAt
+    ? new Date(convo.lastMessage.createdAt).getTime()
+    : Number.NaN;
+  if (!Number.isNaN(lastMessageTs)) return lastMessageTs;
+  const updatedTs = new Date(convo.updatedAt).getTime();
+  if (!Number.isNaN(updatedTs)) return updatedTs;
+  const createdTs = new Date(convo.createdAt).getTime();
+  return Number.isNaN(createdTs) ? 0 : createdTs;
+}
+
+function sortConversationsByPriority(items: Conversation[]): Conversation[] {
+  return [...items].sort((a, b) => {
+    if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+    return conversationActivityAt(b) - conversationActivityAt(a);
+  });
+}
+
 export interface UseConversationsReturn {
   conversations: Conversation[];
   messages: DirectMessage[];
@@ -296,6 +316,8 @@ export interface UseConversationsReturn {
     conversationId: string,
     fields: { name?: string; avatarUrl?: string | null },
   ) => Promise<boolean>;
+  toggleConversationPin: (conversationId: string) => Promise<boolean>;
+  toggleConversationFavorite: (conversationId: string) => Promise<boolean>;
   refresh: () => void;
 }
 
@@ -444,7 +466,7 @@ export function useConversations(
 
     const { data: convoRows, error: convoErr } = await supabase
       .from("conversations")
-      .select("id, club_id, type, name, avatar_url, created_at, updated_at")
+      .select("id, club_id, type, name, avatar_url, created_at, updated_at, is_pinned, is_favorite")
       .eq("club_id", clubId)
       .in("id", conversationIds)
       .order("updated_at", { ascending: false });
@@ -503,6 +525,8 @@ export function useConversations(
           avatarUrl: row.avatar_url,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
+          isPinned: Boolean(row.is_pinned),
+          isFavorite: Boolean(row.is_favorite),
           members,
           lastMessage,
           unreadCount,
@@ -510,7 +534,7 @@ export function useConversations(
       }),
     );
 
-    setConversations(enriched);
+    setConversations(sortConversationsByPriority(enriched));
     setLoading(false);
   }, [clubId, user?.id]);
 
@@ -582,8 +606,10 @@ export function useConversations(
       );
 
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === conversationId ? { ...c, unreadCount: 0 } : c,
+        sortConversationsByPriority(
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, unreadCount: 0 } : c,
+          ),
         ),
       );
     },
@@ -853,19 +879,71 @@ export function useConversations(
       }
 
       setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== conversationId) return c;
-          return {
-            ...c,
-            name: (data.name as string) || c.name,
-            avatarUrl: (data.avatar_url as string | null) ?? null,
-            updatedAt: data.updated_at as string,
-          };
-        }),
+        sortConversationsByPriority(
+          prev.map((c) => {
+            if (c.id !== conversationId) return c;
+            return {
+              ...c,
+              name: (data.name as string) || c.name,
+              avatarUrl: (data.avatar_url as string | null) ?? null,
+              updatedAt: data.updated_at as string,
+            };
+          }),
+        ),
       );
       return true;
     },
     [],
+  );
+
+  const toggleConversationPin = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      const current = conversations.find((c) => c.id === conversationId);
+      if (!current) return false;
+      const nextValue = !current.isPinned;
+      const { error } = await supabase
+        .from("conversations")
+        .update({ is_pinned: nextValue })
+        .eq("id", conversationId);
+      if (error) {
+        console.error("Failed to toggle pin:", error.message);
+        return false;
+      }
+      setConversations((prev) =>
+        sortConversationsByPriority(
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, isPinned: nextValue } : c,
+          ),
+        ),
+      );
+      return true;
+    },
+    [conversations],
+  );
+
+  const toggleConversationFavorite = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      const current = conversations.find((c) => c.id === conversationId);
+      if (!current) return false;
+      const nextValue = !current.isFavorite;
+      const { error } = await supabase
+        .from("conversations")
+        .update({ is_favorite: nextValue })
+        .eq("id", conversationId);
+      if (error) {
+        console.error("Failed to toggle favorite:", error.message);
+        return false;
+      }
+      setConversations((prev) =>
+        sortConversationsByPriority(
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, isFavorite: nextValue } : c,
+          ),
+        ),
+      );
+      return true;
+    },
+    [conversations],
   );
 
   const sendMessage = useCallback(
@@ -1030,6 +1108,8 @@ export function useConversations(
     uploadAttachment,
     uploadGroupAvatar,
     updateGroupConversation,
+    toggleConversationPin,
+    toggleConversationFavorite,
     refresh,
   };
 }

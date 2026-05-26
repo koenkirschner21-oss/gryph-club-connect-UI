@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Pin } from "lucide-react";
+import { Bookmark, Download, Heart } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubPosts } from "../../hooks/useClubPosts";
@@ -18,6 +18,16 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const ACCEPTED_FILE_TYPES =
   "image/jpeg,image/png,image/gif,image/webp,application/pdf";
 const STORAGE_BUCKET = "announcement-attachments";
+
+type ReactionName = "heart" | "thumbs_up" | "laugh" | "bookmark";
+type PostReactionState = Record<ReactionName, number>;
+type PostReactionFlags = Record<ReactionName, boolean>;
+
+type AuthorMeta = {
+  name?: string;
+  avatarUrl?: string;
+  role?: MemberRole;
+};
 
 const pageStyle: CSSProperties = {
   backgroundColor: PAGE_BG,
@@ -45,14 +55,6 @@ const cancelButtonStyle: CSSProperties = {
   fontWeight: 500,
   fontSize: "14px",
   cursor: "pointer",
-};
-
-const postCardStyle: CSSProperties = {
-  backgroundColor: CARD_BG,
-  border: `1px solid ${CARD_BORDER}`,
-  borderLeft: `3px solid ${ACCENT_RED}`,
-  borderRadius: "8px",
-  padding: "20px",
 };
 
 const formContainerStyle: CSSProperties = {
@@ -106,70 +108,6 @@ const formCancelButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-const editButtonStyle: CSSProperties = {
-  backgroundColor: "transparent",
-  border: "1px solid #333333",
-  color: "#888888",
-  borderRadius: "6px",
-  padding: "5px 12px",
-  fontSize: "12px",
-  cursor: "pointer",
-  flexShrink: 0,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-};
-
-const deleteButtonStyle: CSSProperties = {
-  backgroundColor: "transparent",
-  border: "1px solid #3a1a1a",
-  color: ACCENT_RED,
-  borderRadius: "6px",
-  padding: "5px 12px",
-  fontSize: "12px",
-  cursor: "pointer",
-  flexShrink: 0,
-};
-
-const pinButtonStyle: CSSProperties = {
-  backgroundColor: "transparent",
-  border: "1px solid #333333",
-  borderRadius: "6px",
-  padding: "5px 10px",
-  cursor: "pointer",
-  flexShrink: 0,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const pinnedBadgeStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "4px",
-  background: "#1a0a00",
-  border: `1px solid ${PIN_GOLD}`,
-  color: PIN_GOLD,
-  borderRadius: "20px",
-  padding: "2px 10px",
-  fontSize: "11px",
-  fontWeight: 500,
-};
-
-const pdfLinkStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
-  background: "#1a1a1a",
-  border: "1px solid #333333",
-  borderRadius: "6px",
-  padding: "8px 14px",
-  color: ACCENT_RED,
-  fontSize: "13px",
-  textDecoration: "none",
-  marginTop: "12px",
-};
-
 function normalizeRole(role: string | null | undefined): MemberRole {
   if (role === "owner") return "owner";
   if (role === "executive" || role === "exec") return "executive";
@@ -184,26 +122,105 @@ function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function PencilIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
+function relativeTime(value: string): string {
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return "just now";
+  const diff = Date.now() - timestamp;
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) return "just now";
+  if (diff < hour) {
+    const mins = Math.floor(diff / minute);
+    return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  }
+  if (diff < day) {
+    const hours = Math.floor(diff / hour);
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+  const days = Math.floor(diff / day);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
-function DownloadIcon() {
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function roleBadgeStyle(role: MemberRole | undefined): CSSProperties {
+  if (role === "owner") {
+    return {
+      fontSize: "11px",
+      fontWeight: 600,
+      color: PIN_GOLD,
+      border: `1px solid ${PIN_GOLD}`,
+      background: "#1a1500",
+      borderRadius: "999px",
+      padding: "2px 8px",
+      textTransform: "uppercase",
+    };
+  }
+  if (role === "executive") {
+    return {
+      fontSize: "11px",
+      fontWeight: 600,
+      color: ACCENT_RED,
+      border: `1px solid ${ACCENT_RED}`,
+      background: "#1a0a0a",
+      borderRadius: "999px",
+      padding: "2px 8px",
+      textTransform: "uppercase",
+    };
+  }
+  return {
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "#888888",
+    border: "1px solid #333333",
+    background: "#151515",
+    borderRadius: "999px",
+    padding: "2px 8px",
+    textTransform: "uppercase",
+  };
+}
+
+function roleLabel(role: MemberRole | undefined): string {
+  if (role === "owner") return "President";
+  if (role === "executive") return "Executive";
+  return "Member";
+}
+
+const reactionButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "6px 10px",
+  borderRadius: "20px",
+  cursor: "pointer",
+};
+
+function menuItemButtonStyle(destructive = false): CSSProperties {
+  return {
+    width: "100%",
+    textAlign: "left",
+    background: "transparent",
+    border: "none",
+    color: destructive ? ACCENT_RED : "#cccccc",
+    padding: "9px 12px",
+    fontSize: "13px",
+    cursor: "pointer",
+  };
+}
+
+function DotsIcon() {
   return (
     <svg
       width="16"
@@ -216,9 +233,9 @@ function DownloadIcon() {
       strokeLinejoin="round"
       aria-hidden
     >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" x2="12" y1="15" y2="3" />
+      <circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -297,31 +314,65 @@ function PostAttachment({
         src={url}
         alt={`Attachment for ${title}`}
         style={{
-          display: "block",
           width: "100%",
-          maxHeight: "300px",
-          objectFit: "contain",
-          borderRadius: "8px",
-          marginTop: "12px",
-          backgroundColor: "#111111",
+          maxHeight: "400px",
+          objectFit: "cover",
+          display: "block",
         }}
       />
     );
   }
 
   if (type === "application/pdf") {
-    const fileName = url.split("/").pop() ?? "Download PDF";
+    const fileName = decodeURIComponent(url.split("/").pop() ?? "Attachment.pdf");
     return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        download
-        style={pdfLinkStyle}
+      <div
+        style={{
+          background: "#111111",
+          border: "1px solid #333333",
+          borderRadius: "8px",
+          padding: "12px 16px",
+          margin: "0 16px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "10px",
+        }}
       >
-        <DownloadIcon />
-        {decodeURIComponent(fileName)}
-      </a>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          <span style={{ color: ACCENT_RED, fontSize: "15px", flexShrink: 0 }}>PDF</span>
+          <span
+            style={{
+              color: "#cccccc",
+              fontSize: "13px",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {fileName}
+          </span>
+        </div>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            color: ACCENT_RED,
+            textDecoration: "none",
+            fontSize: "12px",
+            fontWeight: 600,
+            flexShrink: 0,
+          }}
+        >
+          <Download size={14} />
+          Download
+        </a>
+      </div>
     );
   }
 
@@ -331,8 +382,7 @@ function PostAttachment({
 export default function ClubAnnouncementsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
-  const { posts, loading, createPost, updatePost, deletePost } =
-    useClubPosts(clubId);
+  const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
 
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
@@ -342,23 +392,20 @@ export default function ClubAnnouncementsPage() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [existingAttachmentUrl, setExistingAttachmentUrl] = useState<
-    string | null
-  >(null);
-  const [existingAttachmentType, setExistingAttachmentType] = useState<
-    string | null
-  >(null);
-  const [feedback, setFeedback] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [existingAttachmentUrl, setExistingAttachmentUrl] = useState<string | null>(null);
+  const [existingAttachmentType, setExistingAttachmentType] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [authorMetaById, setAuthorMetaById] = useState<Record<string, AuthorMeta>>({});
   const [pinnedById, setPinnedById] = useState<Record<string, boolean>>({});
+  const [menuOpenPostId, setMenuOpenPostId] = useState<string | null>(null);
+  const [reactionCountsByPost, setReactionCountsByPost] = useState<Record<string, PostReactionState>>({});
+  const [myReactionsByPost, setMyReactionsByPost] = useState<Record<string, PostReactionFlags>>({});
+  const [viewCountByPost, setViewCountByPost] = useState<Record<string, number>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
-
     async function fetchRole() {
       if (!clubId || !user?.id) {
         if (!cancelled) {
@@ -367,7 +414,6 @@ export default function ClubAnnouncementsPage() {
         }
         return;
       }
-
       setRoleLoading(true);
       const { data } = await supabase
         .from("club_members")
@@ -375,65 +421,131 @@ export default function ClubAnnouncementsPage() {
         .eq("club_id", clubId)
         .eq("user_id", user.id)
         .single();
-
       if (!cancelled) {
-        setUserRole(data?.role ? normalizeRole(data.role) : "member");
+        setUserRole(data?.role ? normalizeRole(data.role as string) : "member");
         setRoleLoading(false);
       }
     }
-
-    fetchRole();
+    void fetchRole();
     return () => {
       cancelled = true;
     };
   }, [clubId, user?.id]);
 
   useEffect(() => {
-    if (!clubId) {
+    if (!clubId || posts.length === 0) {
       setPinnedById({});
+      setReactionCountsByPost({});
+      setMyReactionsByPost({});
+      setViewCountByPost({});
       return;
     }
 
     let cancelled = false;
+    const postIds = posts.map((post) => post.id);
+    const authorIds = Array.from(new Set(posts.map((post) => post.authorId)));
 
-    supabase
-      .from("posts")
-      .select(
-        "id, club_id, author_id, title, content, created_at, attachment_url, attachment_type, pinned",
-      )
-      .eq("club_id", clubId)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to load pinned state:", error.message);
-          return;
-        }
+    async function loadMeta() {
+      const [pinnedRes, reactionsRes, viewsRes, profilesRes, rolesRes] = await Promise.all([
+        supabase.from("posts").select("id, is_pinned").in("id", postIds),
+        supabase.from("post_reactions").select("post_id, user_id, reaction").in("post_id", postIds),
+        supabase.from("post_views").select("post_id, user_id").in("post_id", postIds),
+        supabase.from("profiles").select("id, full_name, avatar_url").in("id", authorIds),
+        supabase
+          .from("club_members")
+          .select("user_id, role")
+          .eq("club_id", clubId)
+          .in("user_id", authorIds),
+      ]);
+
+      if (cancelled) return;
+
+      if (!pinnedRes.error) {
         const map: Record<string, boolean> = {};
-        (data ?? []).forEach((row) => {
-          map[row.id as string] = Boolean(row.pinned);
-        });
+        for (const row of pinnedRes.data ?? []) {
+          map[row.id as string] = Boolean((row as Record<string, unknown>).is_pinned);
+        }
         setPinnedById(map);
-      });
+      }
 
+      if (!reactionsRes.error) {
+        const countsMap: Record<string, PostReactionState> = {};
+        const myMap: Record<string, PostReactionFlags> = {};
+        for (const postId of postIds) {
+          countsMap[postId] = { heart: 0, thumbs_up: 0, laugh: 0, bookmark: 0 };
+          myMap[postId] = { heart: false, thumbs_up: false, laugh: false, bookmark: false };
+        }
+        for (const row of reactionsRes.data ?? []) {
+          const postId = row.post_id as string;
+          const reaction = row.reaction as ReactionName;
+          if (!countsMap[postId] || countsMap[postId][reaction] === undefined) continue;
+          countsMap[postId][reaction] += 1;
+          if (row.user_id === user?.id) {
+            myMap[postId][reaction] = true;
+          }
+        }
+        setReactionCountsByPost(countsMap);
+        setMyReactionsByPost(myMap);
+      }
+
+      if (!viewsRes.error) {
+        const countMap: Record<string, number> = {};
+        for (const postId of postIds) countMap[postId] = 0;
+        for (const row of viewsRes.data ?? []) {
+          const postId = row.post_id as string;
+          countMap[postId] = (countMap[postId] ?? 0) + 1;
+        }
+        setViewCountByPost(countMap);
+      }
+
+      const profileById: Record<string, { name?: string; avatarUrl?: string }> = {};
+      for (const row of profilesRes.data ?? []) {
+        const rec = row as Record<string, unknown>;
+        profileById[rec.id as string] = {
+          name: rec.full_name as string | undefined,
+          avatarUrl: rec.avatar_url as string | undefined,
+        };
+      }
+      const roleById: Record<string, MemberRole> = {};
+      for (const row of rolesRes.data ?? []) {
+        roleById[row.user_id as string] = normalizeRole(row.role as string);
+      }
+      const merged: Record<string, AuthorMeta> = {};
+      for (const authorId of authorIds) {
+        merged[authorId] = {
+          name: profileById[authorId]?.name,
+          avatarUrl: profileById[authorId]?.avatarUrl,
+          role: roleById[authorId],
+        };
+      }
+      setAuthorMetaById(merged);
+    }
+
+    void loadMeta();
     return () => {
       cancelled = true;
     };
-  }, [clubId, posts]);
+  }, [clubId, posts, user?.id]);
 
+  useEffect(() => {
+    if (!clubId || !user?.id || posts.length === 0) return;
+    const rows = posts.map((post) => ({ post_id: post.id, user_id: user.id }));
+    void supabase
+      .from("post_views")
+      .upsert(rows, { onConflict: "post_id,user_id", ignoreDuplicates: true });
+  }, [clubId, posts, user?.id]);
+
+  const isPrivileged = isPrivilegedRole(userRole);
   const sortedPosts = useMemo(() => {
     return [...posts].sort((a, b) => {
       const aPinned = pinnedById[a.id] ?? false;
       const bPinned = pinnedById[b.id] ?? false;
-      if (aPinned !== bPinned) {
-        return aPinned ? -1 : 1;
-      }
-      return (
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [posts, pinnedById]);
-
-  const isPrivileged = isPrivilegedRole(userRole);
+  const pinnedPosts = sortedPosts.filter((post) => pinnedById[post.id] ?? false);
+  const regularPosts = sortedPosts.filter((post) => !(pinnedById[post.id] ?? false));
 
   function resetForm() {
     setTitle("");
@@ -443,9 +555,7 @@ export default function ClubAnnouncementsPage() {
     setExistingAttachmentType(null);
     setEditingPostId(null);
     setShowForm(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function openCreateForm() {
@@ -456,9 +566,7 @@ export default function ClubAnnouncementsPage() {
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
     setShowForm(true);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function openEditForm(post: Post) {
@@ -469,9 +577,7 @@ export default function ClubAnnouncementsPage() {
     setExistingAttachmentUrl(post.attachmentUrl ?? null);
     setExistingAttachmentType(post.attachmentType ?? null);
     setShowForm(true);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleFileChange(file: File | null) {
@@ -479,16 +585,12 @@ export default function ClubAnnouncementsPage() {
       setSelectedFile(null);
       return;
     }
-
     if (file.size > MAX_FILE_BYTES) {
       setFeedback({ type: "error", text: "File must be 20MB or smaller." });
       setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-
     const allowed = ACCEPTED_FILE_TYPES.split(",");
     if (!allowed.includes(file.type)) {
       setFeedback({
@@ -496,20 +598,14 @@ export default function ClubAnnouncementsPage() {
         text: "Unsupported file type. Use JPEG, PNG, GIF, WebP, or PDF.",
       });
       setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-
     setFeedback(null);
     setSelectedFile(file);
   }
 
-  async function uploadAttachment(
-    file: File,
-    postId: string,
-  ): Promise<{ url: string; type: string } | null> {
+  async function uploadAttachment(file: File, postId: string): Promise<{ url: string; type: string } | null> {
     if (!clubId) return null;
     const path = `${clubId}/${postId}/${Date.now()}-${sanitizeFileName(file.name)}`;
     const url = await uploadImage(STORAGE_BUCKET, path, file);
@@ -519,13 +615,11 @@ export default function ClubAnnouncementsPage() {
 
   async function handleSubmit() {
     if (!title.trim() || !content.trim() || !clubId) return;
-
     setSaving(true);
     setFeedback(null);
 
     let attachmentUrl = existingAttachmentUrl;
     let attachmentType = existingAttachmentType;
-
     if (selectedFile) {
       const uploadKey = editingPostId ?? crypto.randomUUID();
       const uploaded = await uploadAttachment(selectedFile, uploadKey);
@@ -546,67 +640,88 @@ export default function ClubAnnouncementsPage() {
     };
 
     const isEditing = Boolean(editingPostId);
-
     const ok = isEditing
-      ? await updatePost(editingPostId!, payload)
+      ? await updatePost(editingPostId as string, payload)
       : await createPost(payload);
-
     setSaving(false);
 
     if (ok) {
       resetForm();
-      setFeedback({
-        type: "success",
-        text: isEditing
-          ? "Announcement updated."
-          : "Announcement posted.",
-      });
+      setFeedback({ type: "success", text: isEditing ? "Announcement updated." : "Announcement posted." });
     } else {
-      setFeedback({
-        type: "error",
-        text: isEditing
-          ? "Failed to update announcement."
-          : "Failed to post announcement.",
-      });
+      setFeedback({ type: "error", text: isEditing ? "Failed to update announcement." : "Failed to post announcement." });
     }
   }
 
   async function handleTogglePin(postId: string) {
     const currentlyPinned = pinnedById[postId] ?? false;
-    setFeedback(null);
-
     const { error } = await supabase
       .from("posts")
-      .update({ pinned: !currentlyPinned })
+      .update({ is_pinned: !currentlyPinned })
       .eq("id", postId);
-
     if (error) {
-      console.error("Failed to toggle pin:", error.message);
       setFeedback({
         type: "error",
-        text: currentlyPinned
-          ? "Failed to unpin announcement."
-          : "Failed to pin announcement.",
+        text: currentlyPinned ? "Failed to unpin announcement." : "Failed to pin announcement.",
       });
       return;
     }
+    setPinnedById((prev) => ({ ...prev, [postId]: !currentlyPinned }));
+    refresh();
+  }
 
-    setPinnedById((prev) => ({
+  async function handleReactionToggle(postId: string, reaction: ReactionName) {
+    if (!user?.id) return;
+    const active = myReactionsByPost[postId]?.[reaction] ?? false;
+
+    setMyReactionsByPost((prev) => ({
       ...prev,
-      [postId]: !currentlyPinned,
+      [postId]: {
+        heart: prev[postId]?.heart ?? false,
+        thumbs_up: prev[postId]?.thumbs_up ?? false,
+        laugh: prev[postId]?.laugh ?? false,
+        bookmark: prev[postId]?.bookmark ?? false,
+        [reaction]: !active,
+      },
     }));
+    setReactionCountsByPost((prev) => ({
+      ...prev,
+      [postId]: {
+        heart: prev[postId]?.heart ?? 0,
+        thumbs_up: prev[postId]?.thumbs_up ?? 0,
+        laugh: prev[postId]?.laugh ?? 0,
+        bookmark: prev[postId]?.bookmark ?? 0,
+        [reaction]: Math.max((prev[postId]?.[reaction] ?? 0) + (active ? -1 : 1), 0),
+      },
+    }));
+
+    if (active) {
+      const { error } = await supabase
+        .from("post_reactions")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", user.id)
+        .eq("reaction", reaction);
+      if (error) console.error("Failed to remove reaction:", error.message);
+      else refresh();
+      return;
+    }
+
+    const { error } = await supabase.from("post_reactions").insert({
+      post_id: postId,
+      user_id: user.id,
+      reaction,
+    });
+    if (error) console.error("Failed to add reaction:", error.message);
+    else refresh();
   }
 
   async function handleDelete(postId: string) {
-    if (!window.confirm("Delete this announcement? This cannot be undone.")) {
-      return;
-    }
-    setFeedback(null);
+    if (!window.confirm("Delete this announcement? This cannot be undone.")) return;
     const ok = await deletePost(postId);
     if (ok) {
-      if (editingPostId === postId) {
-        resetForm();
-      }
+      refresh();
+      if (editingPostId === postId) resetForm();
       setFeedback({ type: "success", text: "Announcement deleted." });
     } else {
       setFeedback({ type: "error", text: "Failed to delete announcement." });
@@ -647,51 +762,39 @@ export default function ClubAnnouncementsPage() {
         }}
       >
         <div>
-          <h1
-            style={{
-              fontWeight: 700,
-              fontSize: "22px",
-              color: "#ffffff",
-              margin: 0,
-            }}
-          >
+          <h1 style={{ fontWeight: 700, fontSize: "22px", color: "#ffffff", margin: 0 }}>
             Announcements
           </h1>
           <p style={{ fontSize: "13px", color: MUTED, margin: "4px 0 0" }}>
             {posts.length} post{posts.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {isPrivileged && (
+        {isPrivileged ? (
           <button
             type="button"
             style={showForm && !editingPostId ? cancelButtonStyle : newPostButtonStyle}
             onClick={() => {
-              if (showForm && !editingPostId) {
-                resetForm();
-              } else {
-                openCreateForm();
-              }
+              if (showForm && !editingPostId) resetForm();
+              else openCreateForm();
             }}
           >
             {showForm && !editingPostId ? "Cancel" : "+ New Post"}
           </button>
-        )}
+        ) : null}
       </div>
 
-      {feedback && (
+      {feedback ? (
         <div
           role="alert"
           className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
-            feedback.type === "success"
-              ? "bg-green-500/10 text-green-400"
-              : "bg-primary/10 text-primary"
+            feedback.type === "success" ? "bg-green-500/10 text-green-400" : "bg-primary/10 text-primary"
           }`}
         >
           {feedback.text}
         </div>
-      )}
+      ) : null}
 
-      {showForm && isPrivileged && (
+      {showForm && isPrivileged ? (
         <div style={{ ...formContainerStyle, marginBottom: "24px" }}>
           <h3
             style={{
@@ -733,43 +836,19 @@ export default function ClubAnnouncementsPage() {
                 onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
                 style={{ display: "none" }}
               />
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  gap: "12px",
-                }}
-              >
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px" }}>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    ...formCancelButtonStyle,
-                    padding: "8px 16px",
-                  }}
+                  style={{ ...formCancelButtonStyle, padding: "8px 16px" }}
                 >
                   Choose File
                 </button>
-                <span style={{ fontSize: "13px", color: "#888888" }}>
-                  {attachmentLabel}
-                </span>
+                <span style={{ fontSize: "13px", color: "#888888" }}>{attachmentLabel}</span>
               </div>
             </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "12px",
-                paddingTop: "8px",
-              }}
-            >
-              <button
-                type="button"
-                style={formCancelButtonStyle}
-                onClick={resetForm}
-                disabled={saving}
-              >
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", paddingTop: "8px" }}>
+              <button type="button" style={formCancelButtonStyle} onClick={resetForm} disabled={saving}>
                 Cancel
               </button>
               <button
@@ -777,168 +856,289 @@ export default function ClubAnnouncementsPage() {
                 style={{
                   ...submitButtonStyle,
                   opacity: !title.trim() || !content.trim() || saving ? 0.6 : 1,
-                  cursor:
-                    !title.trim() || !content.trim() || saving
-                      ? "not-allowed"
-                      : "pointer",
+                  cursor: !title.trim() || !content.trim() || saving ? "not-allowed" : "pointer",
                 }}
                 onClick={handleSubmit}
                 disabled={!title.trim() || !content.trim() || saving}
               >
-                {saving
-                  ? editingPostId
-                    ? "Saving…"
-                    : "Posting…"
-                  : editingPostId
-                    ? "Save Changes"
-                    : "Post Announcement"}
+                {saving ? (editingPostId ? "Saving…" : "Posting…") : editingPostId ? "Save Changes" : "Post Announcement"}
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {posts.length === 0 ? (
-        <p
-          style={{
-            textAlign: "center",
-            color: MUTED,
-            fontSize: "14px",
-            padding: "48px 16px",
-          }}
-        >
-          No announcements yet.{" "}
-          {isPrivileged ? (
-            <span style={{ color: ACCENT_RED }}>
-              Create your first announcement
-            </span>
-          ) : (
-            "Check back soon!"
-          )}
+        <p style={{ textAlign: "center", color: MUTED, fontSize: "14px", padding: "48px 16px" }}>
+          {isPrivileged
+            ? "Create your first announcement →"
+            : "No announcements yet. Be the first to post."}
         </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {sortedPosts.map((post) => {
-            const isPinned = pinnedById[post.id] ?? false;
-            return (
-            <article key={post.id} style={postCardStyle}>
-              <div
+          {pinnedPosts.length > 0 ? (
+            <div style={{ marginBottom: "4px" }}>
+              <p
                 style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: "16px",
+                  color: PIN_GOLD,
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  margin: "0 0 10px",
                 }}
               >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <h3
-                      style={{
-                        fontWeight: 600,
-                        fontSize: "16px",
-                        color: "#ffffff",
-                        margin: 0,
-                      }}
-                    >
-                      {post.title}
-                    </h3>
-                    {isPinned ? (
-                      <span style={pinnedBadgeStyle}>
-                        <Pin size={12} color={PIN_GOLD} aria-hidden />
-                        Pinned
-                      </span>
-                    ) : null}
-                  </div>
-                  <p
-                    style={{
-                      fontSize: "12px",
-                      color: MUTED,
-                      marginTop: "4px",
-                      marginBottom: 0,
-                    }}
-                  >
-                    <span style={{ color: "#888888", fontWeight: 500 }}>
-                      {post.authorName ?? "Unknown"}
-                    </span>
-                    {" · "}
-                    {new Date(post.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </p>
-                  <p
-                    style={{
-                      fontSize: "14px",
-                      color: "#cccccc",
-                      lineHeight: 1.6,
-                      marginTop: "12px",
-                      marginBottom: 0,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {post.content}
-                  </p>
-                  {post.attachmentUrl && post.attachmentType ? (
-                    <PostAttachment
-                      url={post.attachmentUrl}
-                      type={post.attachmentType}
-                      title={post.title}
-                    />
-                  ) : null}
-                </div>
-                {isPrivileged && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexShrink: 0,
-                      gap: "8px",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      style={pinButtonStyle}
-                      title={isPinned ? "Unpin" : "Pin"}
-                      aria-label={isPinned ? "Unpin" : "Pin"}
-                      onClick={() => handleTogglePin(post.id)}
-                    >
-                      <Pin
-                        size={16}
-                        color={isPinned ? PIN_GOLD : MUTED}
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      style={editButtonStyle}
-                      onClick={() => openEditForm(post)}
-                    >
-                      <PencilIcon />
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      style={deleteButtonStyle}
-                      onClick={() => handleDelete(post.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )}
+                📌 Pinned
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {pinnedPosts.map((post) => renderPostCard(post, true))}
               </div>
-            </article>
-            );
-          })}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {regularPosts.map((post) => renderPostCard(post, false))}
+          </div>
         </div>
       )}
     </div>
   );
+
+  function renderPostCard(post: Post, pinnedSection: boolean) {
+    const isPinned = pinnedById[post.id] ?? false;
+    const authorMeta = authorMetaById[post.authorId] ?? {};
+    const displayName = authorMeta.name ?? post.authorName ?? "Unknown";
+    const reactionCounts = reactionCountsByPost[post.id] ?? {
+      heart: 0,
+      thumbs_up: 0,
+      laugh: 0,
+      bookmark: 0,
+    };
+    const myReactions = myReactionsByPost[post.id] ?? {
+      heart: false,
+      thumbs_up: false,
+      laugh: false,
+      bookmark: false,
+    };
+    const heartActive = myReactions.heart;
+    const bookmarkActive = myReactions.bookmark;
+    const heartCount = reactionCounts.heart ?? 0;
+
+    return (
+      <article
+        key={post.id}
+        style={{
+          background: CARD_BG,
+          border: pinnedSection ? "1px solid #3a2500" : `1px solid ${CARD_BORDER}`,
+          borderRadius: "12px",
+          overflow: "hidden",
+          marginBottom: "16px",
+          transition: "all 0.15s ease",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: "14px 16px 10px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+            {authorMeta.avatarUrl ? (
+              <img
+                src={authorMeta.avatarUrl}
+                alt=""
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "50%",
+                  background: "#2a2a2a",
+                  color: "#888888",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {initials(displayName)}
+              </div>
+            )}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <p style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff", margin: 0 }}>
+                  {displayName}
+                </p>
+                <span style={roleBadgeStyle(authorMeta.role)}>{roleLabel(authorMeta.role)}</span>
+              </div>
+              <p style={{ fontSize: "12px", color: "#555555", margin: "3px 0 0" }}>
+                {relativeTime(post.createdAt)}
+              </p>
+            </div>
+          </div>
+          {isPrivileged ? (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <button
+                type="button"
+                aria-label="Post options"
+                onClick={() => setMenuOpenPostId((prev) => (prev === post.id ? null : post.id))}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#777777",
+                  padding: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                <DotsIcon />
+              </button>
+              {menuOpenPostId === post.id ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "24px",
+                    background: "#151515",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: "8px",
+                    minWidth: "140px",
+                    zIndex: 5,
+                    overflow: "hidden",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpenPostId(null);
+                      void handleTogglePin(post.id);
+                    }}
+                    style={menuItemButtonStyle()}
+                  >
+                    {isPinned ? "Unpin" : "Pin"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpenPostId(null);
+                      openEditForm(post);
+                    }}
+                    style={menuItemButtonStyle()}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpenPostId(null);
+                      void handleDelete(post.id);
+                    }}
+                    style={menuItemButtonStyle(true)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ padding: "0 16px 16px" }}>
+          <p style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: "0 0 8px" }}>
+            {post.title}
+          </p>
+          <p
+            style={{
+              fontSize: "15px",
+              color: "#cccccc",
+              lineHeight: 1.7,
+              margin: 0,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {post.content}
+          </p>
+        </div>
+        {post.attachmentUrl && post.attachmentType ? (
+          <PostAttachment url={post.attachmentUrl} type={post.attachmentType} title={post.title} />
+        ) : null}
+
+        <div
+          style={{
+            padding: "12px 16px",
+            borderTop: "1px solid #1e1e1e",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              aria-label={heartActive ? "Unlike announcement" : "Like announcement"}
+              onClick={() => void handleReactionToggle(post.id, "heart")}
+              style={reactionButtonStyle}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#1f1f1f";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <Heart
+                size={16}
+                color={heartActive ? ACCENT_RED : MUTED}
+                fill={heartActive ? ACCENT_RED : "none"}
+                aria-hidden
+              />
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: heartActive ? ACCENT_RED : MUTED,
+                }}
+              >
+                {heartCount}
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-label={bookmarkActive ? "Remove bookmark" : "Bookmark announcement"}
+              onClick={() => void handleReactionToggle(post.id, "bookmark")}
+              style={reactionButtonStyle}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#1f1f1f";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <Bookmark
+                size={16}
+                color={bookmarkActive ? PIN_GOLD : MUTED}
+                fill={bookmarkActive ? PIN_GOLD : "none"}
+                aria-hidden
+              />
+            </button>
+          </div>
+          {isPrivileged ? (
+            <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+              Seen by {viewCountByPost[post.id] ?? 0} members
+            </p>
+          ) : null}
+        </div>
+      </article>
+    );
+  }
 }

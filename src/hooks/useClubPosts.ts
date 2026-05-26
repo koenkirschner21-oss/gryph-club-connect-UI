@@ -155,16 +155,26 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           attachment_type: fields.attachmentType ?? null,
         })
         .eq("id", postId)
-        .select(POST_SELECT)
-        .single();
+        .select("id");
 
-      if (err || !data) {
-        console.error("Failed to update post:", err?.message);
+      if (err || !data?.length) {
+        console.error("Failed to update post:", err?.message ?? "no rows updated");
         return false;
       }
 
-      const updated = mapPostRow(data);
-      setPosts((prev) => prev.map((p) => (p.id === postId ? updated : p)));
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                title: fields.title,
+                content: fields.content,
+                attachmentUrl: fields.attachmentUrl ?? null,
+                attachmentType: fields.attachmentType ?? null,
+              }
+            : p,
+        ),
+      );
       return true;
     },
     [],

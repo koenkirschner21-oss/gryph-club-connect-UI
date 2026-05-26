@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ChangeEvent,
 } from "react";
-import { BarChart2, X } from "lucide-react";
+import { BarChart2, Pin, Star, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
@@ -47,6 +47,17 @@ function formatTime(iso: string): string {
   if (isToday) {
     return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function formatConversationTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  if (diffMs < 60_000) return "now";
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m`;
+  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h`;
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
@@ -652,6 +663,8 @@ export default function ClubChatPage() {
     uploadAttachment,
     uploadGroupAvatar,
     updateGroupConversation,
+    toggleConversationPin,
+    toggleConversationFavorite,
   } = useConversations(clubId);
 
   const [showModal, setShowModal] = useState(false);
@@ -678,6 +691,7 @@ export default function ClubChatPage() {
   const [pollEndsAt, setPollEndsAt] = useState("");
   const [creatingPoll, setCreatingPoll] = useState(false);
   const [votingPollId, setVotingPollId] = useState<string | null>(null);
+  const [hoveredConversationId, setHoveredConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -716,6 +730,25 @@ export default function ClubChatPage() {
       (a, b) => new Date(a.sortAt).getTime() - new Date(b.sortAt).getTime(),
     );
   }, [messages, polls]);
+
+  const pinnedConversations = useMemo(
+    () => conversations.filter((c) => c.isPinned),
+    [conversations],
+  );
+  const favoriteConversations = useMemo(
+    () => conversations.filter((c) => !c.isPinned && c.isFavorite),
+    [conversations],
+  );
+  const regularConversations = useMemo(
+    () => conversations.filter((c) => !c.isPinned && !c.isFavorite),
+    [conversations],
+  );
+
+  useEffect(() => {
+    if (!activeConversationId && conversations.length > 0) {
+      setActiveConversationId(conversations[0].id);
+    }
+  }, [activeConversationId, conversations, setActiveConversationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1031,11 +1064,373 @@ export default function ClubChatPage() {
               No conversations yet
             </p>
           ) : (
-            conversations.map((convo) => {
+            <>
+              {pinnedConversations.length > 0 ? (
+                <>
+                  <p
+                    style={{
+                      fontSize: "10px",
+                      color: "#555555",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      margin: "8px 16px 6px",
+                    }}
+                  >
+                    PINNED
+                  </p>
+                  {pinnedConversations.map((convo) => {
+                    const isActive = convo.id === activeConversationId;
+                    const name = displayConversationName(convo);
+                    const avatar = listConversationAvatar(convo);
+                    const hasGroupAvatar = convo.type === "group" && Boolean(convo.avatarUrl);
+                    const showActions = hoveredConversationId === convo.id;
+                    return (
+                      <button
+                        key={convo.id}
+                        type="button"
+                        onClick={() => setActiveConversationId(convo.id)}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          cursor: "pointer",
+                          background: isActive ? "#1f1f1f" : "transparent",
+                          border: "none",
+                          borderLeft: isActive
+                            ? "3px solid #E51937"
+                            : "3px solid transparent",
+                          textAlign: "left",
+                        }}
+                        onMouseEnter={(e) => {
+                          setHoveredConversationId(convo.id);
+                          if (!isActive) e.currentTarget.style.background = "#1a1a1a";
+                        }}
+                        onMouseLeave={(e) => {
+                          setHoveredConversationId((prev) => (prev === convo.id ? null : prev));
+                          if (!isActive) e.currentTarget.style.background = "transparent";
+                        }}
+                      >
+                        <Avatar
+                          url={avatar}
+                          name={name}
+                          size={40}
+                          rounded={
+                            convo.type === "group" && !hasGroupAvatar
+                              ? "group"
+                              : "full"
+                          }
+                        />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                color: "#ffffff",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              <Pin size={12} color="#FFC429" fill="#FFC429" aria-hidden />
+                              {name}
+                            </span>
+                            {convo.lastMessage ? (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  color: "#555555",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {formatConversationTime(convo.lastMessage.createdAt)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                              marginTop: "2px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "12px",
+                                color: "#555555",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                flex: 1,
+                              }}
+                            >
+                              {previewText(convo)}
+                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+                              {convo.unreadCount > 0 ? (
+                                <span
+                                  style={{
+                                    background: "#E51937",
+                                    color: "#ffffff",
+                                    borderRadius: "50%",
+                                    width: "18px",
+                                    height: "18px",
+                                    fontSize: "10px",
+                                    fontWeight: 700,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {convo.unreadCount > 9 ? "9+" : convo.unreadCount}
+                                </span>
+                              ) : null}
+                              {showActions ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    aria-label={convo.isPinned ? "Unpin conversation" : "Pin conversation"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void toggleConversationPin(convo.id);
+                                    }}
+                                    style={{ background: "transparent", border: "none", padding: 0, display: "flex", cursor: "pointer", color: "#555555" }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.color = "#FFC429";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.color = "#555555";
+                                    }}
+                                  >
+                                    <Pin size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={convo.isFavorite ? "Remove favorite" : "Favorite conversation"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void toggleConversationFavorite(convo.id);
+                                    }}
+                                    style={{ background: "transparent", border: "none", padding: 0, display: "flex", cursor: "pointer", color: convo.isFavorite ? "#FFC429" : "#555555" }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.color = "#FFC429";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.color = convo.isFavorite ? "#FFC429" : "#555555";
+                                    }}
+                                  >
+                                    <Star size={14} fill={convo.isFavorite ? "#FFC429" : "none"} />
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </>
+              ) : null}
+
+              {favoriteConversations.length > 0 ? (
+                <>
+                  <p
+                    style={{
+                      fontSize: "10px",
+                      color: "#555555",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      margin: "10px 16px 6px",
+                    }}
+                  >
+                    FAVORITES
+                  </p>
+                  {favoriteConversations.map((convo) => {
+                    const isActive = convo.id === activeConversationId;
+                    const name = displayConversationName(convo);
+                    const avatar = listConversationAvatar(convo);
+                    const hasGroupAvatar = convo.type === "group" && Boolean(convo.avatarUrl);
+                    const showActions = hoveredConversationId === convo.id;
+                    return (
+                      <button
+                        key={convo.id}
+                        type="button"
+                        onClick={() => setActiveConversationId(convo.id)}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          cursor: "pointer",
+                          background: isActive ? "#1f1f1f" : "transparent",
+                          border: "none",
+                          borderLeft: isActive
+                            ? "3px solid #E51937"
+                            : "3px solid transparent",
+                          textAlign: "left",
+                        }}
+                        onMouseEnter={(e) => {
+                          setHoveredConversationId(convo.id);
+                          if (!isActive) e.currentTarget.style.background = "#1a1a1a";
+                        }}
+                        onMouseLeave={(e) => {
+                          setHoveredConversationId((prev) => (prev === convo.id ? null : prev));
+                          if (!isActive) e.currentTarget.style.background = "transparent";
+                        }}
+                      >
+                        <Avatar
+                          url={avatar}
+                          name={name}
+                          size={40}
+                          rounded={
+                            convo.type === "group" && !hasGroupAvatar
+                              ? "group"
+                              : "full"
+                          }
+                        />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                color: "#ffffff",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {name}
+                            </span>
+                            {convo.lastMessage ? (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  color: "#555555",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {formatConversationTime(convo.lastMessage.createdAt)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                              marginTop: "2px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "12px",
+                                color: "#555555",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                flex: 1,
+                              }}
+                            >
+                              {previewText(convo)}
+                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+                              {convo.unreadCount > 0 ? (
+                                <span
+                                  style={{
+                                    background: "#E51937",
+                                    color: "#ffffff",
+                                    borderRadius: "50%",
+                                    width: "18px",
+                                    height: "18px",
+                                    fontSize: "10px",
+                                    fontWeight: 700,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {convo.unreadCount > 9 ? "9+" : convo.unreadCount}
+                                </span>
+                              ) : null}
+                              {showActions ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    aria-label={convo.isPinned ? "Unpin conversation" : "Pin conversation"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void toggleConversationPin(convo.id);
+                                    }}
+                                    style={{ background: "transparent", border: "none", padding: 0, display: "flex", cursor: "pointer", color: "#555555" }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.color = "#FFC429";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.color = "#555555";
+                                    }}
+                                  >
+                                    <Pin size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label={convo.isFavorite ? "Remove favorite" : "Favorite conversation"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void toggleConversationFavorite(convo.id);
+                                    }}
+                                    style={{ background: "transparent", border: "none", padding: 0, display: "flex", cursor: "pointer", color: convo.isFavorite ? "#FFC429" : "#555555" }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.color = "#FFC429";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.color = convo.isFavorite ? "#FFC429" : "#555555";
+                                    }}
+                                  >
+                                    <Star size={14} fill={convo.isFavorite ? "#FFC429" : "none"} />
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </>
+              ) : null}
+
+              {regularConversations.map((convo) => {
               const isActive = convo.id === activeConversationId;
               const name = displayConversationName(convo);
               const avatar = listConversationAvatar(convo);
               const hasGroupAvatar = convo.type === "group" && Boolean(convo.avatarUrl);
+              const showActions = hoveredConversationId === convo.id;
               return (
                 <button
                   key={convo.id}
@@ -1056,11 +1451,13 @@ export default function ClubChatPage() {
                     textAlign: "left",
                   }}
                   onMouseEnter={(e) => {
+                    setHoveredConversationId(convo.id);
                     if (!isActive) {
                       e.currentTarget.style.background = "#1a1a1a";
                     }
                   }}
                   onMouseLeave={(e) => {
+                    setHoveredConversationId((prev) => (prev === convo.id ? null : prev));
                     if (!isActive) {
                       e.currentTarget.style.background = "transparent";
                     }
@@ -1105,7 +1502,7 @@ export default function ClubChatPage() {
                             flexShrink: 0,
                           }}
                         >
-                          {formatTime(convo.lastMessage.createdAt)}
+                          {formatConversationTime(convo.lastMessage.createdAt)}
                         </span>
                       ) : null}
                     </div>
@@ -1130,30 +1527,71 @@ export default function ClubChatPage() {
                       >
                         {previewText(convo)}
                       </span>
-                      {convo.unreadCount > 0 ? (
-                        <span
-                          style={{
-                            background: "#E51937",
-                            color: "#ffffff",
-                            borderRadius: "50%",
-                            width: "18px",
-                            height: "18px",
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {convo.unreadCount > 9 ? "9+" : convo.unreadCount}
-                        </span>
-                      ) : null}
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+                        {convo.unreadCount > 0 ? (
+                          <span
+                            style={{
+                              background: "#E51937",
+                              color: "#ffffff",
+                              borderRadius: "50%",
+                              width: "18px",
+                              height: "18px",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {convo.unreadCount > 9 ? "9+" : convo.unreadCount}
+                          </span>
+                        ) : null}
+                        {showActions ? (
+                          <>
+                            <button
+                              type="button"
+                              aria-label={convo.isPinned ? "Unpin conversation" : "Pin conversation"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void toggleConversationPin(convo.id);
+                              }}
+                              style={{ background: "transparent", border: "none", padding: 0, display: "flex", cursor: "pointer", color: "#555555" }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = "#FFC429";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = "#555555";
+                              }}
+                            >
+                              <Pin size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={convo.isFavorite ? "Remove favorite" : "Favorite conversation"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void toggleConversationFavorite(convo.id);
+                              }}
+                              style={{ background: "transparent", border: "none", padding: 0, display: "flex", cursor: "pointer", color: convo.isFavorite ? "#FFC429" : "#555555" }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = "#FFC429";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = convo.isFavorite ? "#FFC429" : "#555555";
+                              }}
+                            >
+                              <Star size={14} fill={convo.isFavorite ? "#FFC429" : "none"} />
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </button>
               );
-            })
+            })}
+            </>
           )}
         </div>
       </aside>
@@ -1201,7 +1639,7 @@ export default function ClubChatPage() {
               textAlign: "center",
             }}
           >
-            Select a conversation or start a new one
+            Select a conversation
           </div>
         ) : (
           <>
