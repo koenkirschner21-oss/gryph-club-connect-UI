@@ -40,7 +40,7 @@ const workspaceLinks: {
   { to: "events", label: "Events", end: false, Icon: Calendar },
   {
     to: "recruiting",
-    label: "Recruiting",
+    label: "Hiring",
     end: false,
     Icon: ({ size = 16, strokeWidth = 2, "aria-hidden": ariaHidden = true }) => (
       <Briefcase size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
@@ -120,7 +120,7 @@ export default function WorkspaceLayout() {
     <div className="flex min-h-[calc(100vh-4rem)]">
       {/* Sidebar */}
       <aside
-        className="hidden w-52 flex-shrink-0 border-r md:block"
+        className="hidden w-44 flex-shrink-0 border-r md:block"
         style={{ backgroundColor: "#111111", borderColor: "#1e1e1e" }}
       >
         <div className="flex h-full flex-col">
@@ -158,7 +158,10 @@ export default function WorkspaceLayout() {
           </div>
 
           {/* Nav links */}
-          <nav className="flex-1 space-y-0.5 p-3" aria-label="Workspace navigation">
+          <nav
+            className="flex flex-1 flex-col space-y-0.5 p-3"
+            aria-label="Workspace navigation"
+          >
             {workspaceLinks.map(({ to, label, end, Icon }) => (
               <NavLink
                 key={to}
@@ -170,7 +173,8 @@ export default function WorkspaceLayout() {
                 {label}
               </NavLink>
             ))}
-            {showAnalytics && (
+            <div className="flex-1" aria-hidden />
+            {showAnalytics ? (
               <NavLink
                 to={analyticsLink.to}
                 className={({ isActive }) => workspaceNavClass(isActive)}
@@ -178,7 +182,7 @@ export default function WorkspaceLayout() {
                 <analyticsLink.Icon size={16} strokeWidth={2} aria-hidden />
                 {analyticsLink.label}
               </NavLink>
-            )}
+            ) : null}
           </nav>
 
           {/* Public profile link */}

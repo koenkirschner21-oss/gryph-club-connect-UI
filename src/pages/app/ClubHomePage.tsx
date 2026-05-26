@@ -68,6 +68,53 @@ const quickActionOutlineButton: CSSProperties = {
   textDecoration: "none",
 };
 
+const quickActionNeutralButton: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  background: "transparent",
+  backgroundColor: "transparent",
+  border: "1px solid #333333",
+  color: "#cccccc",
+  borderRadius: "6px",
+  padding: "8px 16px",
+  fontSize: "13px",
+  fontWeight: 500,
+  textDecoration: "none",
+};
+
+function formatEventTime12h(timeStr: string): string {
+  const t = timeStr.trim();
+  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    const hour = parseInt(ampmMatch[1], 10);
+    const minute = ampmMatch[2];
+    if (hour >= 1 && hour <= 12) {
+      return `${hour}:${minute} ${ampmMatch[3].toUpperCase()}`;
+    }
+  }
+  const m24 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m24) {
+    let hour = parseInt(m24[1], 10);
+    const minute = m24[2];
+    if (hour <= 23) {
+      const period = hour >= 12 ? "PM" : "AM";
+      hour = hour % 12 || 12;
+      return `${hour}:${minute} ${period}`;
+    }
+  }
+  return t;
+}
+
+function formatEventDateShort(dateStr: string): string {
+  const trimmed = dateStr.trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T12:00:00`)
+    : new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return trimmed;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function normalizeUserRole(role: MemberRole | string | null | undefined): MemberRole {
   if (role === "owner") return "owner";
   if (role === "executive" || role === "exec") return "executive";
@@ -79,7 +126,7 @@ function taskStatusAccent(status: TaskStatus): string {
     case "in_progress":
       return "#FFC429";
     case "done":
-      return "#4ade80";
+      return "#E51937";
     default:
       return "#747676";
   }
@@ -92,6 +139,7 @@ function ClubStatCard({
   accentColor,
   to,
   valueFontSize = "2rem",
+  valueColor = "#ffffff",
 }: {
   label: string;
   value: string | number;
@@ -99,6 +147,7 @@ function ClubStatCard({
   accentColor: string;
   to?: string;
   valueFontSize?: string;
+  valueColor?: string;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -114,6 +163,8 @@ function ClubStatCard({
         borderRadius: "8px",
         padding: "16px",
         cursor: to ? "pointer" : undefined,
+        transform: hovered && to ? "translateY(-1px)" : undefined,
+        transition: "all 0.15s ease",
       }}
     >
       <p
@@ -132,7 +183,7 @@ function ClubStatCard({
         style={{
           fontSize: valueFontSize,
           fontWeight: 700,
-          color: "#ffffff",
+          color: valueColor,
           lineHeight: 1.15,
           margin: "8px 0 0",
         }}
@@ -184,15 +235,20 @@ function ClubEventCard({
     : String(parsedDate.getDate());
 
   const timeLabel =
-    time && time.trim() !== "" && time.toUpperCase() !== "TBD" ? time : null;
+    time && time.trim() !== "" && time.toUpperCase() !== "TBD"
+      ? formatEventTime12h(time)
+      : null;
+  const dateShort = formatEventDateShort(date);
   const locationLabel =
     location && !isHiddenLocation(location) ? location.trim() : null;
-  const meta = [timeLabel, locationLabel].filter(Boolean).join(" · ");
+
+  const metaParts = [dateShort, timeLabel, locationLabel].filter(Boolean);
 
   return (
     <div
-      className="flex gap-3.5"
+      className="flex"
       style={{
+        gap: "14px",
         backgroundColor: "#1a1a1a",
         border: "1px solid #242424",
         borderRadius: "8px",
@@ -241,7 +297,7 @@ function ClubEventCard({
         >
           {title}
         </h3>
-        {meta ? (
+        {metaParts.length > 0 ? (
           <p
             style={{
               fontSize: "12px",
@@ -249,7 +305,7 @@ function ClubEventCard({
               margin: "4px 0 0",
             }}
           >
-            {meta}
+            {metaParts.join(" · ")}
           </p>
         ) : null}
       </div>
@@ -258,6 +314,7 @@ function ClubEventCard({
 }
 
 function ClubTaskCard({ task }: { task: Task }) {
+  const [hovered, setHovered] = useState(false);
   const statusLabel =
     task.status === "in_progress"
       ? "In progress"
@@ -268,28 +325,32 @@ function ClubTaskCard({ task }: { task: Task }) {
   return (
     <Link to="tasks" className="block no-underline">
       <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         style={{
           background: "#1a1a1a",
-          borderTop: "1px solid #242424",
-          borderRight: "1px solid #242424",
-          borderBottom: "1px solid #242424",
+          borderTop: `1px solid ${hovered ? "#333333" : "#242424"}`,
+          borderRight: `1px solid ${hovered ? "#333333" : "#242424"}`,
+          borderBottom: `1px solid ${hovered ? "#333333" : "#242424"}`,
           borderLeft: `3px solid ${taskStatusAccent(task.status)}`,
           borderRadius: "8px",
           padding: "14px 16px",
           marginBottom: "8px",
+          transform: hovered ? "translateY(-1px)" : undefined,
+          transition: "all 0.15s ease",
         }}
       >
         <p
           style={{
             fontSize: "14px",
-            fontWeight: 500,
+            fontWeight: 600,
             color: "#ffffff",
             margin: "0 0 4px",
           }}
         >
           {task.title}
         </p>
-        <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
+        <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
           {statusLabel}
           {task.assigneeName ? ` · ${task.assigneeName}` : ""}
           {task.dueDate
@@ -418,11 +479,11 @@ export default function ClubHomePage() {
             <Megaphone size={16} strokeWidth={2} aria-hidden />
             New Announcement
           </Link>
-          <Link to="events" style={quickActionButton}>
+          <Link to="events" style={quickActionOutlineButton}>
             <Calendar size={16} strokeWidth={2} aria-hidden />
             New Event
           </Link>
-          <Link to="members" style={quickActionOutlineButton}>
+          <Link to="members" style={quickActionNeutralButton}>
             <Users size={16} strokeWidth={2} aria-hidden />
             Invite Member
           </Link>
@@ -435,7 +496,7 @@ export default function ClubHomePage() {
             <Megaphone size={16} strokeWidth={2} aria-hidden />
             New Announcement
           </Link>
-          <Link to="events" style={quickActionButton}>
+          <Link to="events" style={quickActionOutlineButton}>
             <Calendar size={16} strokeWidth={2} aria-hidden />
             New Event
           </Link>
@@ -465,11 +526,12 @@ export default function ClubHomePage() {
         />
         <ClubStatCard
           label="Meeting"
-          value={club.meetingSchedule || "Not set"}
+          value={club.meetingSchedule?.trim() || "Not scheduled"}
           sublabel={meetingSublabel}
           accentColor="#747676"
           to="events"
-          valueFontSize="1.2rem"
+          valueFontSize={club.meetingSchedule?.trim() ? "2rem" : "14px"}
+          valueColor={club.meetingSchedule?.trim() ? "#ffffff" : "#555555"}
         />
       </div>
 
