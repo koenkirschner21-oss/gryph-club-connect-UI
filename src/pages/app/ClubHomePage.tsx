@@ -18,8 +18,8 @@ const sectionHeadingRow: CSSProperties = {
 };
 
 const sectionHeading: CSSProperties = {
-  fontWeight: 600,
-  fontSize: "15px",
+  fontWeight: 700,
+  fontSize: "16px",
   color: "#ffffff",
   margin: 0,
 };
@@ -115,6 +115,67 @@ function formatEventDateShort(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+const CLUB_LOGO_SIZE = 32;
+
+function deriveAbbreviation(name: string, maxLen = 3): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, maxLen)
+    .toUpperCase();
+}
+
+function ClubLogoMark({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr = abbreviation?.trim() || deriveAbbreviation(name);
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: `${CLUB_LOGO_SIZE}px`,
+          height: `${CLUB_LOGO_SIZE}px`,
+          borderRadius: "6px",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: `${CLUB_LOGO_SIZE}px`,
+        height: `${CLUB_LOGO_SIZE}px`,
+        borderRadius: "6px",
+        border: "1px solid #2a2a2a",
+        background: "#2a2a2a",
+        color: "#888888",
+        fontSize: "11px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
+}
+
 function normalizeUserRole(role: MemberRole | string | null | undefined): MemberRole {
   if (role === "owner") return "owner";
   if (role === "executive" || role === "exec") return "executive";
@@ -140,6 +201,8 @@ function ClubStatCard({
   to,
   valueFontSize = "2rem",
   valueColor = "#ffffff",
+  valueFontStyle,
+  valueHint,
 }: {
   label: string;
   value: string | number;
@@ -148,8 +211,11 @@ function ClubStatCard({
   to?: string;
   valueFontSize?: string;
   valueColor?: string;
+  valueFontStyle?: CSSProperties["fontStyle"];
+  valueHint?: string;
 }) {
   const [hovered, setHovered] = useState(false);
+  const borderMuted = hovered ? "#333333" : "#242424";
 
   const card = (
     <div
@@ -158,8 +224,10 @@ function ClubStatCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         background: "#1a1a1a",
-        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
-        borderLeft: `3px solid ${accentColor}`,
+        borderTop: `1px solid ${borderMuted}`,
+        borderRight: `1px solid ${borderMuted}`,
+        borderBottom: `1px solid ${borderMuted}`,
+        borderLeft: `4px solid ${accentColor}`,
         borderRadius: "8px",
         padding: "16px",
         cursor: to ? "pointer" : undefined,
@@ -182,14 +250,26 @@ function ClubStatCard({
       <p
         style={{
           fontSize: valueFontSize,
-          fontWeight: 700,
+          fontWeight: valueFontStyle === "italic" ? 400 : 700,
           color: valueColor,
+          fontStyle: valueFontStyle,
           lineHeight: 1.15,
           margin: "8px 0 0",
         }}
       >
         {value}
       </p>
+      {valueHint ? (
+        <p
+          style={{
+            fontSize: "11px",
+            color: "#E51937",
+            margin: "4px 0 0",
+          }}
+        >
+          {valueHint}
+        </p>
+      ) : null}
       {sublabel ? (
         <p
           style={{
@@ -220,11 +300,17 @@ function ClubEventCard({
   date,
   time,
   location,
+  clubName,
+  clubAbbreviation,
+  clubLogoUrl,
 }: {
   title: string;
   date: string;
   time?: string;
   location?: string;
+  clubName: string;
+  clubAbbreviation?: string;
+  clubLogoUrl?: string;
 }) {
   const parsedDate = new Date(date);
   const monthLabel = Number.isNaN(parsedDate.getTime())
@@ -248,11 +334,11 @@ function ClubEventCard({
     <div
       className="flex"
       style={{
-        gap: "14px",
+        gap: "16px",
         backgroundColor: "#1a1a1a",
         border: "1px solid #242424",
         borderRadius: "8px",
-        padding: "16px",
+        padding: "16px 20px",
         marginBottom: "8px",
       }}
     >
@@ -286,6 +372,11 @@ function ClubEventCard({
           {dayLabel}
         </span>
       </div>
+      <ClubLogoMark
+        name={clubName}
+        abbreviation={clubAbbreviation}
+        logoUrl={clubLogoUrl}
+      />
       <div className="min-w-0 flex-1">
         <h3
           style={{
@@ -313,7 +404,17 @@ function ClubEventCard({
   );
 }
 
-function ClubTaskCard({ task }: { task: Task }) {
+function ClubTaskCard({
+  task,
+  clubName,
+  clubAbbreviation,
+  clubLogoUrl,
+}: {
+  task: Task;
+  clubName: string;
+  clubAbbreviation?: string;
+  clubLogoUrl?: string;
+}) {
   const [hovered, setHovered] = useState(false);
   const statusLabel =
     task.status === "in_progress"
@@ -322,44 +423,57 @@ function ClubTaskCard({ task }: { task: Task }) {
         ? "Done"
         : "To do";
 
+  const borderMuted = hovered ? "#333333" : "#242424";
+
   return (
     <Link to="tasks" className="block no-underline">
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: "14px",
           background: "#1a1a1a",
-          borderTop: `1px solid ${hovered ? "#333333" : "#242424"}`,
-          borderRight: `1px solid ${hovered ? "#333333" : "#242424"}`,
-          borderBottom: `1px solid ${hovered ? "#333333" : "#242424"}`,
-          borderLeft: `3px solid ${taskStatusAccent(task.status)}`,
+          borderTop: `1px solid ${borderMuted}`,
+          borderRight: `1px solid ${borderMuted}`,
+          borderBottom: `1px solid ${borderMuted}`,
+          borderLeft: `4px solid ${taskStatusAccent(task.status)}`,
           borderRadius: "8px",
-          padding: "14px 16px",
+          padding: "14px 16px 14px 14px",
           marginBottom: "8px",
           transform: hovered ? "translateY(-1px)" : undefined,
           transition: "all 0.15s ease",
         }}
       >
-        <p
-          style={{
-            fontSize: "14px",
-            fontWeight: 600,
-            color: "#ffffff",
-            margin: "0 0 4px",
-          }}
-        >
-          {task.title}
-        </p>
-        <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
-          {statusLabel}
-          {task.assigneeName ? ` · ${task.assigneeName}` : ""}
-          {task.dueDate
-            ? ` · Due ${new Date(task.dueDate).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}`
-            : ""}
-        </p>
+        <ClubLogoMark
+          name={clubName}
+          abbreviation={clubAbbreviation}
+          logoUrl={clubLogoUrl}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              margin: "0 0 4px",
+            }}
+          >
+            {task.title}
+          </p>
+          <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+            {statusLabel}
+            {task.assigneeName ? ` · ${task.assigneeName}` : ""}
+            {task.dueDate
+              ? ` · Due ${new Date(task.dueDate).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}`
+              : ""}
+          </p>
+        </div>
       </div>
     </Link>
   );
@@ -430,6 +544,10 @@ export default function ClubHomePage() {
   const previewTasks = dashboardTasks.slice(0, 5);
   const tasksSectionTitle =
     userRole === "owner" ? "Club Tasks" : "My Tasks";
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.status === "done").length;
+  const taskProgressPercent =
+    totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   if (!club) {
     return (
@@ -514,7 +632,7 @@ export default function ClubHomePage() {
             value={club.memberCount}
             sublabel="Active members"
             accentColor="#E51937"
-            to="members"
+            to="../members"
           />
         ) : null}
         <ClubStatCard
@@ -522,55 +640,21 @@ export default function ClubHomePage() {
           value={eventsLoading ? "…" : upcomingEvents.length}
           sublabel="Scheduled events"
           accentColor="#FFC429"
-          to="events"
+          to="../events"
         />
         <ClubStatCard
           label="Meeting"
           value={club.meetingSchedule?.trim() || "Not scheduled"}
           sublabel={meetingSublabel}
           accentColor="#747676"
-          to="events"
-          valueFontSize={club.meetingSchedule?.trim() ? "2rem" : "14px"}
+          to="../events"
+          valueFontSize={club.meetingSchedule?.trim() ? "2rem" : "13px"}
           valueColor={club.meetingSchedule?.trim() ? "#ffffff" : "#555555"}
+          valueFontStyle={club.meetingSchedule?.trim() ? undefined : "italic"}
+          valueHint={
+            club.meetingSchedule?.trim() ? undefined : "Click to schedule →"
+          }
         />
-      </div>
-
-      <div className="mt-8">
-        <div style={sectionHeadingRow}>
-          <h2 style={sectionHeading}>{tasksSectionTitle}</h2>
-          {dashboardTasks.length > 0 ? (
-            <Link to="tasks" style={viewAllLink}>
-              View All →
-            </Link>
-          ) : null}
-        </div>
-        {tasksLoading ? (
-          <div className="flex justify-center py-8">
-            <Spinner label="Loading tasks…" />
-          </div>
-        ) : previewTasks.length === 0 ? (
-          <div
-            className="text-center"
-            style={{
-              background: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "8px",
-              padding: "16px",
-            }}
-          >
-            <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
-              {userRole === "owner"
-                ? "No active tasks in this club."
-                : "No active tasks assigned to you."}
-            </p>
-          </div>
-        ) : (
-          <div>
-            {previewTasks.map((task) => (
-              <ClubTaskCard key={task.id} task={task} />
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="mt-8">
@@ -654,6 +738,82 @@ export default function ClubHomePage() {
 
       <div className="mt-8">
         <div style={sectionHeadingRow}>
+          <h2 style={sectionHeading}>{tasksSectionTitle}</h2>
+          {dashboardTasks.length > 0 ? (
+            <Link to="tasks" style={viewAllLink}>
+              View All →
+            </Link>
+          ) : null}
+        </div>
+        {totalTasks > 0 ? (
+          <div style={{ marginBottom: "16px" }}>
+            <div
+              style={{
+                height: "4px",
+                borderRadius: "2px",
+                background: "#1e1e1e",
+                width: "100%",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  borderRadius: "2px",
+                  background: "#E51937",
+                  width: `${taskProgressPercent}%`,
+                  transition: "width 0.15s ease",
+                }}
+              />
+            </div>
+            <p
+              style={{
+                fontSize: "11px",
+                color: "#555555",
+                margin: "6px 0 0",
+              }}
+            >
+              {completedTasks} of {totalTasks} tasks completed
+            </p>
+          </div>
+        ) : null}
+        {tasksLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner label="Loading tasks…" />
+          </div>
+        ) : previewTasks.length === 0 ? (
+          <div
+            className="text-center"
+            style={{
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "8px",
+              padding: "16px",
+            }}
+          >
+            <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
+              {userRole === "owner"
+                ? "No active tasks in this club."
+                : "No active tasks assigned to you."}
+            </p>
+          </div>
+        ) : (
+          <div>
+            {previewTasks.map((task) => (
+              <ClubTaskCard
+                key={task.id}
+                task={task}
+                clubName={club.name}
+                clubAbbreviation={club.abbreviation}
+                clubLogoUrl={club.logoUrl}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-8">
+        <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>Upcoming Events</h2>
           {upcomingEvents.length > 0 ? (
             <Link to="events" style={viewAllLink}>
@@ -686,6 +846,9 @@ export default function ClubHomePage() {
                 date={event.date}
                 time={event.time}
                 location={event.location}
+                clubName={club.name}
+                clubAbbreviation={club.abbreviation}
+                clubLogoUrl={club.logoUrl}
               />
             ))}
           </div>
