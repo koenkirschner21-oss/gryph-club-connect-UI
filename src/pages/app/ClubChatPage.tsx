@@ -665,6 +665,7 @@ export default function ClubChatPage() {
     updateGroupConversation,
     toggleConversationPin,
     toggleConversationFavorite,
+    refresh,
   } = useConversations(clubId);
 
   const [showModal, setShowModal] = useState(false);
@@ -975,6 +976,7 @@ export default function ClubChatPage() {
 
     setSavingGroupEdit(false);
     if (ok) {
+      refresh();
       closeEditGroupModal();
     } else {
       setSendError(true);
@@ -1085,9 +1087,9 @@ export default function ClubChatPage() {
                     const hasGroupAvatar = convo.type === "group" && Boolean(convo.avatarUrl);
                     const showActions = hoveredConversationId === convo.id;
                     return (
-                      <button
+                      <div
                         key={convo.id}
-                        type="button"
+                        role="button"
                         onClick={() => setActiveConversationId(convo.id)}
                         style={{
                           width: "100%",
@@ -1241,7 +1243,7 @@ export default function ClubChatPage() {
                             </div>
                           </div>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </>
@@ -1267,9 +1269,9 @@ export default function ClubChatPage() {
                     const hasGroupAvatar = convo.type === "group" && Boolean(convo.avatarUrl);
                     const showActions = hoveredConversationId === convo.id;
                     return (
-                      <button
+                      <div
                         key={convo.id}
-                        type="button"
+                        role="button"
                         onClick={() => setActiveConversationId(convo.id)}
                         style={{
                           width: "100%",
@@ -1419,7 +1421,7 @@ export default function ClubChatPage() {
                             </div>
                           </div>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
                 </>
@@ -1432,9 +1434,9 @@ export default function ClubChatPage() {
               const hasGroupAvatar = convo.type === "group" && Boolean(convo.avatarUrl);
               const showActions = hoveredConversationId === convo.id;
               return (
-                <button
+                <div
                   key={convo.id}
-                  type="button"
+                  role="button"
                   onClick={() => setActiveConversationId(convo.id)}
                   style={{
                     width: "100%",
@@ -1588,7 +1590,7 @@ export default function ClubChatPage() {
                       </div>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
             </>

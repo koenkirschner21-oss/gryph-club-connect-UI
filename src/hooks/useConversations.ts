@@ -170,7 +170,6 @@ function getUserVoteOptionIndex(
 export { getUserVoteOptionIndex };
 
 function mapMessageRow(row: Record<string, unknown>): DirectMessage {
-  const sender = (row.sender ?? {}) as Record<string, unknown>;
   return {
     id: row.id as string,
     conversationId: row.conversation_id as string,
@@ -180,9 +179,39 @@ function mapMessageRow(row: Record<string, unknown>): DirectMessage {
     attachmentType: (row.attachment_type as string | null) ?? null,
     readBy: (row.read_by as string[]) ?? [],
     createdAt: (row.created_at as string) ?? "",
-    senderName: (sender.full_name as string) ?? undefined,
-    senderAvatar: (sender.avatar_url as string) ?? undefined,
   };
+}
+
+async function attachMessageSenders(
+  messages: DirectMessage[],
+): Promise<DirectMessage[]> {
+  const senderIds = [...new Set(messages.map((m) => m.senderId).filter(Boolean))];
+  if (senderIds.length === 0) return messages;
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url")
+    .in("id", senderIds);
+
+  const profileMap = Object.fromEntries(
+    (profiles ?? []).map((p) => [
+      p.id as string,
+      {
+        name: (p.full_name as string) ?? undefined,
+        avatar: (p.avatar_url as string) ?? undefined,
+      },
+    ]),
+  );
+
+  return messages.map((message) => {
+    const profile = profileMap[message.senderId];
+    if (!profile) return message;
+    return {
+      ...message,
+      senderName: message.senderName ?? profile.name,
+      senderAvatar: message.senderAvatar ?? profile.avatar,
+    };
+  });
 }
 
 function isTempMessageId(id: string): boolean {
@@ -333,21 +362,6 @@ const POLL_SELECT = `
   created_at
 `;
 
-const MESSAGE_SELECT = `
-  id,
-  conversation_id,
-  sender_id,
-  content,
-  attachment_url,
-  attachment_type,
-  read_by,
-  created_at,
-  sender:profiles!direct_messages_sender_profile_fkey (
-    full_name,
-    avatar_url
-  )
-`;
-
 const MEMBER_SELECT = `
   user_id,
   member_profile:profiles!conversation_members_user_profile_fkey (
@@ -487,7 +501,7 @@ export function useConversations(
             .eq("conversation_id", row.id),
           supabase
             .from("direct_messages")
-            .select(MESSAGE_SELECT)
+            .select("*")
             .eq("conversation_id", row.id)
             .order("created_at", { ascending: false })
             .limit(1)
@@ -503,8 +517,11 @@ export function useConversations(
           mapMemberRow(m as Record<string, unknown>),
         );
 
-        const lastMessage = lastMsgRes.data
+        const lastMessageRaw = lastMsgRes.data
           ? mapMessageRow(lastMsgRes.data as Record<string, unknown>)
+          : null;
+        const lastMessage = lastMessageRaw
+          ? (await attachMessageSenders([lastMessageRaw]))[0]
           : null;
 
         let displayName = row.name ?? "";
@@ -567,7 +584,7 @@ export function useConversations(
       setMessagesLoading(true);
       const { data, error } = await supabase
         .from("direct_messages")
-        .select(MESSAGE_SELECT)
+        .select("*")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true });
 
@@ -575,7 +592,10 @@ export function useConversations(
         console.error("Failed to load messages:", error.message);
         setMessages([]);
       } else {
-        setMessages((data ?? []).map((r) => mapMessageRow(r as Record<string, unknown>)));
+        const mapped = (data ?? []).map((r) =>
+          mapMessageRow(r as Record<string, unknown>),
+        );
+        setMessages(await attachMessageSenders(mapped));
       }
       setMessagesLoading(false);
     },
@@ -650,18 +670,19 @@ export function useConversations(
           const row = payload.new as Record<string, unknown>;
           const { data } = await supabase
             .from("direct_messages")
-            .select(MESSAGE_SELECT)
+            .select("*")
             .eq("id", row.id as string)
             .single();
 
           if (data) {
             const mapped = mapMessageRow(data as Record<string, unknown>);
-            setMessages((prev) => mergeConfirmedMessage(prev, mapped));
-            if (user?.id && mapped.senderId !== user.id) {
+            const [enriched] = await attachMessageSenders([mapped]);
+            setMessages((prev) => mergeConfirmedMessage(prev, enriched));
+            if (user?.id && enriched.senderId !== user.id) {
               await supabase
                 .from("direct_messages")
-                .update({ read_by: [...mapped.readBy, user.id] })
-                .eq("id", mapped.id);
+                .update({ read_by: [...enriched.readBy, user.id] })
+                .eq("id", enriched.id);
             }
           }
           loadConversations();
@@ -866,15 +887,18 @@ export function useConversations(
         payload.avatar_url = fields.avatarUrl;
       }
 
+      console.log("Updating conversation:", conversationId, fields.name, fields.avatarUrl);
+      console.log("Update payload:", payload);
+
       const { data, error } = await supabase
         .from("conversations")
         .update(payload)
-        .eq("id", conversationId)
-        .select("id, club_id, type, name, avatar_url, created_at, updated_at")
-        .single();
+        .eq("id", conversationId);
 
-      if (error || !data) {
-        console.error("Failed to update conversation:", error?.message);
+      console.log("Update result:", data, "Error:", error);
+
+      if (error) {
+        console.error("Failed to update conversation:", error.message, error);
         return false;
       }
 
@@ -884,13 +908,20 @@ export function useConversations(
             if (c.id !== conversationId) return c;
             return {
               ...c,
-              name: (data.name as string) || c.name,
-              avatarUrl: (data.avatar_url as string | null) ?? null,
-              updatedAt: data.updated_at as string,
+              name:
+                fields.name !== undefined
+                  ? fields.name.trim() || c.name
+                  : c.name,
+              avatarUrl:
+                fields.avatarUrl !== undefined
+                  ? fields.avatarUrl ?? null
+                  : c.avatarUrl,
+              updatedAt: payload.updated_at as string,
             };
           }),
         ),
       );
+      console.log("Update succeeded; local conversations state patched");
       return true;
     },
     [],
@@ -991,7 +1022,7 @@ export function useConversations(
           attachment_type: attachment?.type ?? null,
           read_by: [user.id],
         })
-        .select(MESSAGE_SELECT)
+        .select("*")
         .single();
 
       if (error || !data) {
@@ -1001,7 +1032,8 @@ export function useConversations(
       }
 
       const mapped = mapMessageRow(data as Record<string, unknown>);
-      setMessages((prev) => mergeConfirmedMessage(prev, mapped, tempId));
+      const [enriched] = await attachMessageSenders([mapped]);
+      setMessages((prev) => mergeConfirmedMessage(prev, enriched, tempId));
 
       await supabase
         .from("conversations")
