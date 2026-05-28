@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { uploadImage } from "../lib/uploadImage";
+import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import { useAuthContext } from "../context/useAuthContext";
-import type { MemberRole } from "../types";
+import type { MemberRole, NotificationType } from "../types";
 
 const STORAGE_BUCKET = "announcement-attachments";
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -12,6 +13,36 @@ export interface ConversationMember {
   userId: string;
   fullName?: string;
   avatarUrl?: string;
+  mentionUsername: string;
+}
+
+export function mentionUsernameFromProfile(
+  fullName: string | undefined,
+  userId: string,
+): string {
+  if (fullName?.trim()) {
+    const slug = fullName.trim().replace(/\s+/g, "").replace(/[^a-zA-Z0-9._]/g, "");
+    if (slug) return slug;
+  }
+  return userId.slice(0, 8);
+}
+
+function parseMentionedUserIds(
+  content: string,
+  members: ConversationMember[],
+  currentUserId: string,
+): string[] {
+  const tokens = content.match(/@([a-zA-Z0-9._]+)/g) ?? [];
+  const mentioned = new Set<string>();
+  for (const token of tokens) {
+    const username = token.slice(1).toLowerCase();
+    for (const member of members) {
+      if (member.mentionUsername.toLowerCase() === username && member.userId !== currentUserId) {
+        mentioned.add(member.userId);
+      }
+    }
+  }
+  return [...mentioned];
 }
 
 export interface DirectMessage {
@@ -248,10 +279,13 @@ function mergeConfirmedMessage(
 
 function mapMemberRow(row: Record<string, unknown>): ConversationMember {
   const profile = (row.member_profile ?? {}) as Record<string, unknown>;
+  const userId = row.user_id as string;
+  const fullName = (profile.full_name as string) ?? undefined;
   return {
-    userId: row.user_id as string,
-    fullName: (profile.full_name as string) ?? undefined,
+    userId,
+    fullName,
     avatarUrl: (profile.avatar_url as string) ?? undefined,
+    mentionUsername: mentionUsernameFromProfile(fullName, userId),
   };
 }
 
@@ -347,6 +381,7 @@ export interface UseConversationsReturn {
   ) => Promise<boolean>;
   toggleConversationPin: (conversationId: string) => Promise<boolean>;
   toggleConversationFavorite: (conversationId: string) => Promise<boolean>;
+  fetchConversationMembers: (conversationId: string) => Promise<ConversationMember[]>;
   refresh: () => void;
 }
 
@@ -887,18 +922,13 @@ export function useConversations(
         payload.avatar_url = fields.avatarUrl;
       }
 
-      console.log("Updating conversation:", conversationId, fields.name, fields.avatarUrl);
-      console.log("Update payload:", payload);
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("conversations")
         .update(payload)
         .eq("id", conversationId);
 
-      console.log("Update result:", data, "Error:", error);
-
       if (error) {
-        console.error("Failed to update conversation:", error.message, error);
+        console.error("Failed to update conversation:", error.message);
         return false;
       }
 
@@ -921,11 +951,24 @@ export function useConversations(
           }),
         ),
       );
-      console.log("Update succeeded; local conversations state patched");
       return true;
     },
     [],
   );
+
+  const fetchConversationMembers = useCallback(async (conversationId: string) => {
+    const { data, error } = await supabase
+      .from("conversation_members")
+      .select(MEMBER_SELECT)
+      .eq("conversation_id", conversationId);
+
+    if (error) {
+      console.error("Failed to load conversation members:", error.message);
+      return [];
+    }
+
+    return (data ?? []).map((row) => mapMemberRow(row as Record<string, unknown>));
+  }, []);
 
   const toggleConversationPin = useCallback(
     async (conversationId: string): Promise<boolean> => {
@@ -1040,10 +1083,30 @@ export function useConversations(
         .update({ updated_at: new Date().toISOString() })
         .eq("id", conversationId);
 
+      const convo = conversations.find((c) => c.id === conversationId);
+      if (convo && clubId && trimmed) {
+        const mentionedUserIds = parseMentionedUserIds(trimmed, convo.members, user.id);
+        if (mentionedUserIds.length > 0) {
+          const conversationName = displayNameForConversation(convo, user.id);
+          const rows: NotificationRequest[] = mentionedUserIds.map((mentionedUserId) => ({
+            user_id: mentionedUserId,
+            type: "mention" as NotificationType,
+            message: `${currentUserName} mentioned you in ${conversationName}`,
+            club_id: clubId,
+            reference_id: conversationId,
+          }));
+          void notifyUsers(rows).then((ok) => {
+            if (!ok) {
+              console.error("Failed to send mention notifications.");
+            }
+          });
+        }
+      }
+
       await loadConversations();
       return true;
     },
-    [user, loadConversations],
+    [user, clubId, conversations, loadConversations],
   );
 
   const createPoll = useCallback(
@@ -1142,6 +1205,7 @@ export function useConversations(
     updateGroupConversation,
     toggleConversationPin,
     toggleConversationFavorite,
+    fetchConversationMembers,
     refresh,
   };
 }

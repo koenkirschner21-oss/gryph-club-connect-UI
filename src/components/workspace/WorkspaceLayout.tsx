@@ -1,5 +1,12 @@
-import { useEffect, useState, type ReactElement } from "react";
-import { NavLink, Outlet, useParams, Navigate } from "react-router-dom";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from "react";
+import { NavLink, Outlet, useLocation, useParams, Navigate } from "react-router-dom";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   LayoutDashboard,
   Megaphone,
@@ -24,11 +31,18 @@ const workspaceLinks: {
   label: string;
   end: boolean;
   Icon: (props: IconProps) => ReactElement;
+  badgeKey?: "chat" | "tasks" | "announcements";
 }[] = [
   { to: "", label: "Dashboard", end: true, Icon: LayoutDashboard },
-  { to: "announcements", label: "Announcements", end: false, Icon: Megaphone },
-  { to: "chat", label: "Chat", end: false, Icon: MessageSquare },
-  { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare },
+  {
+    to: "announcements",
+    label: "Announcements",
+    end: false,
+    Icon: Megaphone,
+    badgeKey: "announcements",
+  },
+  { to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
+  { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare, badgeKey: "tasks" },
   {
     to: "documents",
     label: "Documents",
@@ -56,6 +70,37 @@ const analyticsLink = {
   Icon: BarChart2,
 } as const;
 
+const badgeStyle: CSSProperties = {
+  background: "#E51937",
+  color: "#ffffff",
+  borderRadius: "20px",
+  minWidth: "18px",
+  height: "18px",
+  fontSize: "10px",
+  fontWeight: 700,
+  padding: "0 5px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+function announcementsVisitedKey(clubId: string): string {
+  return `last_visited_announcements_${clubId}`;
+}
+
+function tasksVisitedKey(clubId: string): string {
+  return `last_visited_tasks_${clubId}`;
+}
+
+function visitedTimestampForQuery(value: string | null): string | null {
+  if (!value) return null;
+  if (/^\d+$/.test(value)) {
+    return new Date(Number(value)).toISOString();
+  }
+  return value;
+}
+
 function normalizeUserRole(role: string): MemberRole {
   if (role === "owner") return "owner";
   if (role === "executive" || role === "exec") return "executive";
@@ -64,21 +109,139 @@ function normalizeUserRole(role: string): MemberRole {
 
 function workspaceNavClass(isActive: boolean) {
   const base =
-    "flex items-center gap-2 rounded-[6px] border-l-[3px] py-[9px] pr-[14px] text-[13px] font-normal transition-colors";
+    "flex w-full items-center justify-between rounded-[6px] border-l-[3px] py-[9px] pr-[14px] text-[13px] font-normal transition-colors";
   if (isActive) {
     return `${base} border-l-[#E51937] bg-[#1f1f1f] pl-[11px] text-white`;
   }
   return `${base} border-l-transparent pl-[14px] text-[#777777] hover:bg-[#1a1a1a] hover:text-[#cccccc]`;
 }
 
+function NavCountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span style={badgeStyle} aria-label={`${count} unread`}>
+      {count > 9 ? "9+" : count}
+    </span>
+  );
+}
+
 export default function WorkspaceLayout() {
   const { clubId } = useParams<{ clubId: string }>();
+  const location = useLocation();
   const { user } = useAuthContext();
   const { getClubById, loading, activeClubId, switchClub } = useClubContext();
   const resolvedClubId = clubId ?? activeClubId ?? "";
   const [userRole, setUserRole] = useState<MemberRole>("member");
+  const [chatUnread, setChatUnread] = useState(0);
+  const [tasksUnread, setTasksUnread] = useState(0);
+  const [announcementsUnread, setAnnouncementsUnread] = useState(0);
   const showAnalytics =
     userRole === "owner" || userRole === "executive";
+
+  const workspaceBasePath = resolvedClubId
+    ? `/app/workspace/${resolvedClubId}`
+    : "";
+
+  const loadBadgeCounts = useCallback(async () => {
+    if (!user?.id || !resolvedClubId) {
+      setChatUnread(0);
+      setTasksUnread(0);
+      setAnnouncementsUnread(0);
+      return;
+    }
+
+    const { data: memberships, error: membershipsError } = await supabase
+      .from("conversation_members")
+      .select("conversation_id")
+      .eq("user_id", user.id);
+
+    if (membershipsError) {
+      console.error("Failed to load chat memberships for badges:", membershipsError.message);
+      setChatUnread(0);
+    } else {
+      const membershipIds = (memberships ?? []).map((row) => row.conversation_id as string);
+      if (membershipIds.length === 0) {
+        setChatUnread(0);
+      } else {
+        const { data: clubConvos, error: convosError } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("club_id", resolvedClubId)
+          .in("id", membershipIds);
+
+        if (convosError) {
+          console.error("Failed to load club conversations for badges:", convosError.message);
+          setChatUnread(0);
+        } else {
+          const clubConversationIds = (clubConvos ?? []).map((row) => row.id as string);
+          if (clubConversationIds.length === 0) {
+            setChatUnread(0);
+          } else {
+            const { data: unreadMessages, error: messagesError } = await supabase
+              .from("direct_messages")
+              .select("id, read_by, sender_id")
+              .in("conversation_id", clubConversationIds)
+              .neq("sender_id", user.id);
+
+            if (messagesError) {
+              console.error("Failed to load chat unread for badges:", messagesError.message);
+              setChatUnread(0);
+            } else {
+              setChatUnread(
+                (unreadMessages ?? []).filter(
+                  (row) => !(row.read_by ?? []).includes(user.id),
+                ).length,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    const lastTasksVisited = visitedTimestampForQuery(
+      localStorage.getItem(tasksVisitedKey(resolvedClubId)),
+    );
+    let tasksQuery = supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("club_id", resolvedClubId)
+      .eq("assigned_to", user.id)
+      .neq("status", "done");
+
+    if (lastTasksVisited) {
+      tasksQuery = tasksQuery.gt("created_at", lastTasksVisited);
+    }
+
+    const { count: openTasks, error: tasksError } = await tasksQuery;
+
+    if (tasksError) {
+      console.error("Failed to load task badge count:", tasksError.message);
+      setTasksUnread(0);
+    } else {
+      setTasksUnread(openTasks ?? 0);
+    }
+
+    const lastVisited = visitedTimestampForQuery(
+      localStorage.getItem(announcementsVisitedKey(resolvedClubId)),
+    );
+    let announcementsQuery = supabase
+      .from("posts")
+      .select("id", { count: "exact", head: true })
+      .eq("club_id", resolvedClubId);
+
+    if (lastVisited) {
+      announcementsQuery = announcementsQuery.gt("created_at", lastVisited);
+    }
+
+    const { count: newAnnouncements, error: announcementsError } = await announcementsQuery;
+
+    if (announcementsError) {
+      console.error("Failed to load announcements badge count:", announcementsError.message);
+      setAnnouncementsUnread(0);
+    } else {
+      setAnnouncementsUnread(newAnnouncements ?? 0);
+    }
+  }, [resolvedClubId, user?.id]);
 
   useEffect(() => {
     if (clubId && clubId !== activeClubId) {
@@ -99,8 +262,107 @@ export default function WorkspaceLayout() {
         setUserRole(normalizeUserRole(data.role));
       }
     };
-    fetchRole();
+    void fetchRole();
   }, [resolvedClubId, user?.id]);
+
+  useEffect(() => {
+    void loadBadgeCounts();
+  }, [loadBadgeCounts]);
+
+  useEffect(() => {
+    if (!resolvedClubId || !workspaceBasePath) return;
+
+    const path = location.pathname;
+    if (path.startsWith(`${workspaceBasePath}/chat`)) {
+      setChatUnread(0);
+      return;
+    }
+    if (path.startsWith(`${workspaceBasePath}/tasks`)) {
+      localStorage.setItem(tasksVisitedKey(resolvedClubId), String(Date.now()));
+      setTasksUnread(0);
+      return;
+    }
+    if (path.startsWith(`${workspaceBasePath}/announcements`)) {
+      localStorage.setItem(
+        announcementsVisitedKey(resolvedClubId),
+        String(Date.now()),
+      );
+      setAnnouncementsUnread(0);
+    }
+  }, [location.pathname, resolvedClubId, workspaceBasePath]);
+
+  const handleBadgeNavClick = useCallback(
+    (badgeKey?: "chat" | "tasks" | "announcements") => {
+      if (!resolvedClubId || !badgeKey) return;
+      if (badgeKey === "chat") {
+        setChatUnread(0);
+        return;
+      }
+      if (badgeKey === "tasks") {
+        localStorage.setItem(tasksVisitedKey(resolvedClubId), String(Date.now()));
+        setTasksUnread(0);
+        return;
+      }
+      if (badgeKey === "announcements") {
+        localStorage.setItem(
+          announcementsVisitedKey(resolvedClubId),
+          String(Date.now()),
+        );
+        setAnnouncementsUnread(0);
+      }
+    },
+    [resolvedClubId],
+  );
+
+  useEffect(() => {
+    if (!user?.id || !resolvedClubId) return;
+
+    const channel: RealtimeChannel = supabase
+      .channel(`workspace-badges:${resolvedClubId}:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "direct_messages" },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+          filter: `club_id=eq.${resolvedClubId}`,
+        },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "posts",
+          filter: `club_id=eq.${resolvedClubId}`,
+        },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadBadgeCounts, resolvedClubId, user?.id]);
+
+  const badgeCountFor = (key?: "chat" | "tasks" | "announcements") => {
+    if (key === "chat") return chatUnread;
+    if (key === "tasks") return tasksUnread;
+    if (key === "announcements") return announcementsUnread;
+    return 0;
+  };
 
   const club = getClubById(resolvedClubId);
 
@@ -162,15 +424,32 @@ export default function WorkspaceLayout() {
             className="flex flex-1 flex-col space-y-0.5 p-3"
             aria-label="Workspace navigation"
           >
-            {workspaceLinks.map(({ to, label, end, Icon }) => (
+            {workspaceLinks.map(({ to, label, end, Icon, badgeKey }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
                 className={({ isActive }) => workspaceNavClass(isActive)}
+                onClick={() => handleBadgeNavClick(badgeKey)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                }}
               >
-                <Icon size={16} strokeWidth={2} aria-hidden />
-                {label}
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    minWidth: 0,
+                  }}
+                >
+                  <Icon size={16} strokeWidth={2} aria-hidden />
+                  {label}
+                </span>
+                <NavCountBadge count={badgeCountFor(badgeKey)} />
               </NavLink>
             ))}
             <div className="flex-1" aria-hidden />
@@ -219,6 +498,9 @@ export default function WorkspaceLayout() {
               }
             >
               {link.label}
+              {link.badgeKey && badgeCountFor(link.badgeKey) > 0
+                ? ` (${badgeCountFor(link.badgeKey)})`
+                : ""}
             </NavLink>
           ))}
           {showAnalytics && (

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { MessageSquare, Send, X } from "lucide-react";
+import { MessageSquare, MoreHorizontal, Send, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubContext } from "../../context/useClubContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { supabase } from "../../lib/supabaseClient";
@@ -11,83 +12,133 @@ import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 
-
 const statusLabels: Record<TaskStatus, string> = {
   todo: "To Do",
   in_progress: "In Progress",
-  done: "Done" };
+  done: "Done",
+};
 
 const statusAccent: Record<TaskStatus, string> = {
   todo: "#747676",
   in_progress: "#FFC429",
-  done: "#22c55e" };
+  done: "#E51937",
+};
 
-function priorityBadgeStyle(priority: TaskPriority): CSSProperties {
-  const base: CSSProperties = {
-    borderRadius: "20px",
-    padding: "3px 10px",
-    fontSize: "11px",
-    textTransform: "capitalize" };
-  if (priority === "high") {
-    return {
-      ...base,
-      backgroundColor: "#2a0a0a",
-      color: "#E51937",
-      border: "1px solid #3a1a1a" };
-  }
-  if (priority === "low") {
-    return {
-      ...base,
-      backgroundColor: "#111111",
-      color: "#555555",
-      border: "1px solid #222222" };
-  }
-  return {
-    ...base,
-    backgroundColor: "#2a1f00",
-    color: "#FFC429",
-    border: "1px solid #3a2f00" };
+const BOARD_COLUMNS: TaskStatus[] = ["todo", "in_progress", "done"];
+
+const columnEmptyMessage: Record<TaskStatus, string> = {
+  todo: "No tasks to do",
+  in_progress: "Nothing in progress",
+  done: "No completed tasks yet",
+};
+
+type ViewMode = "board" | "list";
+
+const viewModeLabels: Record<ViewMode, string> = {
+  board: "Board",
+  list: "List",
+};
+
+function normalizeUserRole(role: string): MemberRole {
+  if (role === "owner") return "owner";
+  if (role === "executive" || role === "exec") return "executive";
+  return "member";
+}
+
+function deriveAbbreviation(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  return words
+    .slice(0, 3)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
 }
 
 function statusBadgeStyle(status: TaskStatus): CSSProperties {
   const base: CSSProperties = {
     borderRadius: "20px",
     padding: "3px 10px",
-    fontSize: "11px" };
+    fontSize: "11px",
+    fontWeight: 500,
+    flexShrink: 0,
+  };
   if (status === "todo") {
-    return {
-      ...base,
-      backgroundColor: "#1a1a2a",
-      color: "#6b7cff",
-      border: "1px solid #2a2a3a" };
+    return { ...base, backgroundColor: "#1a1a1a", color: "#747676", border: "1px solid #2a2a2a" };
   }
   if (status === "in_progress") {
-    return {
-      ...base,
-      backgroundColor: "#2a1f00",
-      color: "#FFC429",
-      border: "1px solid #3a2f00" };
+    return { ...base, backgroundColor: "#2a1f00", color: "#FFC429", border: "1px solid #3a2f00" };
   }
-  return {
-    ...base,
-    backgroundColor: "#0d2b0d",
-    color: "#4ade80",
-    border: "1px solid #1a4a1a" };
+  return { ...base, backgroundColor: "#2a1518", color: "#E51937", border: "1px solid #3a1a1a" };
 }
 
-function filterTabClass(isActive: boolean) {
-  const base =
-    "cursor-pointer rounded-md border px-[14px] py-1.5 text-[13px] transition-colors";
-  if (isActive) {
-    return `${base} border-[#E51937] bg-[#E51937] text-white`;
-  }
-  return `${base} border-[#222222] bg-[#1a1a1a] text-[#777777] hover:bg-[#242424] hover:text-[#cccccc]`;
+function nextStatus(status: TaskStatus): TaskStatus | null {
+  if (status === "todo") return "in_progress";
+  if (status === "in_progress") return "done";
+  return null;
 }
 
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
+function prevStatus(status: TaskStatus): TaskStatus | null {
+  if (status === "in_progress") return "todo";
+  if (status === "done") return "in_progress";
+  return null;
+}
+
+const kanbanForwardButtonStyle: CSSProperties = {
+  fontSize: "11px",
+  borderRadius: "20px",
+  padding: "4px 10px",
+  background: "#E51937",
+  color: "#ffffff",
+  border: "none",
+  cursor: "pointer",
+};
+
+const kanbanBackButtonStyle: CSSProperties = {
+  fontSize: "11px",
+  borderRadius: "20px",
+  padding: "4px 10px",
+  background: "transparent",
+  border: "1px solid #333333",
+  color: "#777777",
+  cursor: "pointer",
+};
+
+function kanbanForwardLabel(status: TaskStatus): string | null {
+  if (status === "todo") return "Start Task →";
+  if (status === "in_progress") return "Mark Done →";
+  return null;
+}
+
+function kanbanBackLabel(status: TaskStatus): string | null {
+  if (status === "in_progress") return "← Back to To Do";
+  if (status === "done") return "← Back to In Progress";
+  return null;
+}
+
+function listQuickActionLabel(status: TaskStatus): string | null {
+  if (status === "todo") return "Mark In Progress";
+  if (status === "in_progress") return "Mark Done";
+  return null;
+}
+
+function formatDueDateLabel(dueDate: string): string {
+  return new Date(dueDate).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function dueDateColor(dueDate: string | undefined, status: TaskStatus): string {
+  if (!dueDate || status === "done") return "#555555";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  if (due < today) return "#E51937";
+  if (due.getTime() === today.getTime()) return "#FFC429";
+  return "#555555";
 }
 
 interface TaskComment {
@@ -160,12 +211,14 @@ async function fetchCommentsForTask(taskId: string): Promise<TaskComment[]> {
   });
 }
 
-function CommentAvatar({
+function AvatarCircle({
   name,
   avatarUrl,
+  size,
 }: {
   name: string;
   avatarUrl?: string;
+  size: number;
 }) {
   if (avatarUrl) {
     return (
@@ -173,8 +226,8 @@ function CommentAvatar({
         src={avatarUrl}
         alt=""
         style={{
-          width: "28px",
-          height: "28px",
+          width: size,
+          height: size,
           borderRadius: "50%",
           objectFit: "cover",
           flexShrink: 0,
@@ -182,23 +235,72 @@ function CommentAvatar({
       />
     );
   }
-
   return (
     <div
       style={{
-        width: "28px",
-        height: "28px",
+        width: size,
+        height: size,
         borderRadius: "50%",
         background: "#2a2a2a",
-        fontSize: "11px",
+        fontSize: size <= 20 ? "9px" : "11px",
         color: "#cccccc",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        fontWeight: 600,
+      }}
+    >
+      {getInitials(name)}
+    </div>
+  );
+}
+
+function ClubLogoMark({
+  name,
+  abbreviation,
+  logoUrl,
+  size = 32,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+  size?: number;
+}) {
+  const abbr = abbreviation?.trim() || deriveAbbreviation(name);
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "6px",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "6px",
+        border: "1px solid #2a2a2a",
+        background: "#2a2a2a",
+        color: "#888888",
+        fontSize: "11px",
+        fontWeight: 600,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
       }}
     >
-      {getInitials(name)}
+      {abbr}
     </div>
   );
 }
@@ -311,11 +413,10 @@ function TaskCommentsSection({
         type="button"
         onClick={onToggle}
         className="mt-3 flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 transition-colors hover:text-[#888888]"
-        style={{ color: "#555555", fontSize: "12px" }}
+        style={{ color: "#555555", fontSize: "11px" }}
       >
-        <MessageSquare size={14} strokeWidth={2} aria-hidden />
-        Comments
-        <span style={{ fontSize: "12px", color: "#555555" }}>({commentCount})</span>
+        <MessageSquare size={12} strokeWidth={2} aria-hidden />
+        {commentCount}
       </button>
 
       {expanded ? (
@@ -350,10 +451,7 @@ function TaskCommentsSection({
                   marginBottom: "10px",
                 }}
               >
-                <CommentAvatar
-                  name={comment.authorName}
-                  avatarUrl={comment.avatarUrl}
-                />
+                <AvatarCircle name={comment.authorName} avatarUrl={comment.avatarUrl} size={28} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
@@ -420,62 +518,62 @@ function TaskCommentsSection({
           )}
 
           {canComment ? (
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              alignItems: "center",
-              marginTop: "8px",
-            }}
-          >
-            <input
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void handleSend();
-                }
-              }}
-              placeholder="Add a comment..."
-              disabled={!userId || sending}
+            <div
               style={{
-                background: "#1a1a1a",
-                border: "1px solid #2a2a2a",
-                borderRadius: "20px",
-                padding: "8px 14px",
-                color: "#ffffff",
-                fontSize: "13px",
-                flex: 1,
-                outline: "none",
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => void handleSend()}
-              disabled={!draft.trim() || !userId || sending}
-              title="Send comment"
-              aria-label="Send comment"
-              style={{
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "50%",
-                width: "32px",
-                height: "32px",
                 display: "flex",
+                gap: "8px",
                 alignItems: "center",
-                justifyContent: "center",
-                cursor:
-                  !draft.trim() || !userId || sending ? "not-allowed" : "pointer",
-                opacity: !draft.trim() || !userId || sending ? 0.5 : 1,
-                flexShrink: 0,
+                marginTop: "8px",
               }}
             >
-              <Send size={14} strokeWidth={2} aria-hidden />
-            </button>
-          </div>
+              <input
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                placeholder="Add a comment..."
+                disabled={!userId || sending}
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "20px",
+                  padding: "8px 14px",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  flex: 1,
+                  outline: "none",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={!draft.trim() || !userId || sending}
+                title="Send comment"
+                aria-label="Send comment"
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: "32px",
+                  height: "32px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor:
+                    !draft.trim() || !userId || sending ? "not-allowed" : "pointer",
+                  opacity: !draft.trim() || !userId || sending ? 0.5 : 1,
+                  flexShrink: 0,
+                }}
+              >
+                <Send size={14} strokeWidth={2} aria-hidden />
+              </button>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -483,17 +581,63 @@ function TaskCommentsSection({
   );
 }
 
+function ViewToggle({
+  mode,
+  onChange,
+}: {
+  mode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Task view"
+      style={{ display: "flex", gap: "6px" }}
+    >
+      {(["board", "list"] as const).map((option) => {
+        const active = mode === option;
+        const label = viewModeLabels[option];
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            aria-pressed={active}
+            aria-label={`${label} view`}
+            style={{
+              background: active ? "#E51937" : "#1a1a1a",
+              color: active ? "#ffffff" : "#777777",
+              border: active ? "none" : "1px solid #333333",
+              borderRadius: "6px",
+              padding: "6px 16px",
+              fontSize: "13px",
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ClubTasksPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
+  const { getClubById } = useClubContext();
   const {
     tasks,
     loading,
     error: loadError,
     createTask,
     updateTask,
-    deleteTask } = useClubTasks(clubId);
+    deleteTask,
+  } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
+
+  const club = clubId ? getClubById(clubId) : undefined;
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
@@ -519,24 +663,25 @@ export default function ClubTasksPage() {
     return tasks.filter((t) => t.assignedTo === user?.id);
   }, [tasks, isPrivileged, user?.id]);
 
+  const [viewMode, setViewMode] = useState<ViewMode>("board");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
-  const [filter, setFilter] = useState<TaskStatus | "all">("all");
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+  const [openMenuTaskId, setOpenMenuTaskId] = useState<string | null>(null);
+  const [statusAnimatingId, setStatusAnimatingId] = useState<string | null>(null);
 
-  // Form state for create / edit
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [assignedTo, setAssignedTo] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
   const handleCommentCountChange = useCallback((taskId: string, count: number) => {
@@ -578,6 +723,79 @@ export default function ClubTasksPage() {
     };
   }, [visibleTasks]);
 
+  const todoCt = visibleTasks.filter((t) => t.status === "todo").length;
+  const inProgressCt = visibleTasks.filter((t) => t.status === "in_progress").length;
+  const doneCt = visibleTasks.filter((t) => t.status === "done").length;
+  const totalCount = visibleTasks.length;
+  const progressFillPercent =
+    totalCount === 0 ? 0 : (doneCt / totalCount) * 100;
+
+  const tasksByStatus = useMemo(() => {
+    const grouped: Record<TaskStatus, Task[]> = {
+      todo: [],
+      in_progress: [],
+      done: [],
+    };
+    for (const task of visibleTasks) {
+      grouped[task.status].push(task);
+    }
+    return grouped;
+  }, [visibleTasks]);
+
+  const activeListTasks = useMemo(
+    () =>
+      visibleTasks.filter((t) => t.status === "todo" || t.status === "in_progress"),
+    [visibleTasks],
+  );
+  const completedListTasks = useMemo(
+    () => visibleTasks.filter((t) => t.status === "done"),
+    [visibleTasks],
+  );
+
+  const delegatedByAssignee = useMemo(() => {
+    if (!isPrivileged || !user?.id) return [];
+
+    const delegated = tasks.filter(
+      (t) =>
+        t.createdBy === user.id &&
+        t.assignedTo &&
+        t.assignedTo !== user.id,
+    );
+
+    const byAssignee = new Map<string, Task[]>();
+    for (const task of delegated) {
+      const assigneeId = task.assignedTo as string;
+      const existing = byAssignee.get(assigneeId) ?? [];
+      existing.push(task);
+      byAssignee.set(assigneeId, existing);
+    }
+
+    return [...byAssignee.entries()]
+      .map(([assigneeId, assigneeTasks]) => {
+        const done = assigneeTasks.filter((t) => t.status === "done").length;
+        const total = assigneeTasks.length;
+        const member = members.find((m) => m.userId === assigneeId);
+        const name =
+          assigneeTasks[0]?.assigneeName ??
+          member?.fullName ??
+          member?.email ??
+          "Unknown";
+        const avatarUrl =
+          assigneeTasks[0]?.assigneeAvatar ?? member?.avatarUrl;
+
+        return {
+          assigneeId,
+          name,
+          avatarUrl,
+          tasks: assigneeTasks,
+          done,
+          total,
+          allDone: total > 0 && done === total,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [tasks, isPrivileged, user?.id, members]);
+
   function toggleComments(taskId: string) {
     setExpandedComments((prev) => ({
       ...prev,
@@ -603,6 +821,7 @@ export default function ClubTasksPage() {
     setAssignedTo(task.assignedTo ?? "");
     setDueDate(task.dueDate ?? "");
     setShowForm(true);
+    setOpenMenuTaskId(null);
   }
 
   async function handleSubmit() {
@@ -617,21 +836,24 @@ export default function ClubTasksPage() {
         description: description.trim(),
         priority,
         assignedTo: assignedTo || null,
-        dueDate: dueDate || null });
+        dueDate: dueDate || null,
+      });
     } else {
       ok = await createTask({
         title: title.trim(),
         description: description.trim(),
         priority,
         assignedTo: assignedTo || undefined,
-        dueDate: dueDate || undefined });
+        dueDate: dueDate || undefined,
+      });
     }
 
     setSaving(false);
     if (ok) {
       setFeedback({
         type: "success",
-        text: editingId ? "Task updated." : "Task created." });
+        text: editingId ? "Task updated." : "Task created.",
+      });
     } else {
       setFeedback({ type: "error", text: "Failed to save task." });
     }
@@ -641,6 +863,7 @@ export default function ClubTasksPage() {
   async function handleDelete(taskId: string) {
     if (!window.confirm("Delete this task? This cannot be undone.")) return;
     setFeedback(null);
+    setOpenMenuTaskId(null);
     const ok = await deleteTask(taskId);
     if (ok) {
       setFeedback({ type: "success", text: "Task deleted." });
@@ -650,20 +873,483 @@ export default function ClubTasksPage() {
   }
 
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
+    setStatusAnimatingId(taskId);
     const ok = await updateTask(taskId, { status: newStatus });
+    window.setTimeout(() => setStatusAnimatingId(null), 280);
     if (!ok) {
       setFeedback({ type: "error", text: "Failed to update status." });
     }
   }
 
-  const filteredTasks =
-    filter === "all"
-      ? visibleTasks
-      : visibleTasks.filter((t) => t.status === filter);
+  function assigneeAvatarFor(task: Task): string | undefined {
+    if (task.assigneeAvatar) return task.assigneeAvatar;
+    const member = members.find((m) => m.userId === task.assignedTo);
+    return member?.avatarUrl;
+  }
 
-  const todoCt = visibleTasks.filter((t) => t.status === "todo").length;
-  const inProgressCt = visibleTasks.filter((t) => t.status === "in_progress").length;
-  const doneCt = visibleTasks.filter((t) => t.status === "done").length;
+  function renderTaskMenu(task: Task) {
+    if (!isPrivileged) return null;
+    return (
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <button
+          type="button"
+          aria-label="Task options"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenMenuTaskId((prev) => (prev === task.id ? null : task.id));
+          }}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#555555",
+            cursor: "pointer",
+            padding: "2px",
+            display: "flex",
+          }}
+        >
+          <MoreHorizontal size={16} aria-hidden />
+        </button>
+        {openMenuTaskId === task.id ? (
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              top: "100%",
+              marginTop: "4px",
+              background: "#151515",
+              border: "1px solid #2a2a2a",
+              borderRadius: "8px",
+              minWidth: "120px",
+              zIndex: 20,
+              overflow: "hidden",
+            }}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                startEdit(task);
+              }}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                color: "#cccccc",
+                padding: "9px 12px",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleDelete(task.id);
+              }}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                color: "#E51937",
+                padding: "9px 12px",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderDelegatedTaskCard(task: Task) {
+    return (
+      <div
+        key={task.id}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+          background: "#1a1a1a",
+          border: "1px solid #242424",
+          borderLeft: `3px solid ${statusAccent[task.status]}`,
+          borderRadius: "8px",
+          padding: "10px 14px",
+          marginBottom: "6px",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "#ffffff",
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          {task.title}
+        </span>
+        <span style={statusBadgeStyle(task.status)}>{statusLabels[task.status]}</span>
+      </div>
+    );
+  }
+
+  function renderBoardCard(task: Task) {
+    const isDone = task.status === "done";
+    const isHovered = hoveredTaskId === task.id;
+    const canChangeStatus = isPrivileged || task.assignedTo === user?.id;
+    const canViewComments = isPrivileged || task.assignedTo === user?.id;
+    const canComment = isPrivileged || task.assignedTo === user?.id;
+    const backTarget = prevStatus(task.status);
+    const forwardTarget = nextStatus(task.status);
+    const backLabel = kanbanBackLabel(task.status);
+    const forwardLabel = kanbanForwardLabel(task.status);
+    const assigneeName = task.assigneeName ?? "Unassigned";
+    const commentCount = commentCounts[task.id] ?? 0;
+    const isAnimating = statusAnimatingId === task.id;
+
+    return (
+      <div
+        key={`${task.id}-${task.status}`}
+        onMouseEnter={() => setHoveredTaskId(task.id)}
+        onMouseLeave={() => {
+          setHoveredTaskId((prev) => (prev === task.id ? null : prev));
+          if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
+        }}
+        style={{
+          background: "#1a1a1a",
+          border: `1px solid ${isHovered ? "#333333" : "#242424"}`,
+          borderLeft: `3px solid ${statusAccent[task.status]}`,
+          borderRadius: "8px",
+          padding: "14px 16px",
+          marginBottom: "8px",
+          cursor: "pointer",
+          opacity: isAnimating ? 0.5 : 1,
+          transform: isHovered ? "translateY(-1px)" : undefined,
+          transition: "border-color 0.15s ease, transform 0.15s ease, opacity 0.2s ease",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              textDecoration: isDone ? "line-through" : "none",
+              margin: 0,
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            {task.title}
+          </p>
+          {isHovered ? renderTaskMenu(task) : null}
+        </div>
+
+        {task.description ? (
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#555555",
+              margin: "6px 0 0",
+              lineHeight: 1.4,
+            }}
+          >
+            {task.description}
+          </p>
+        ) : null}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            marginTop: "10px",
+          }}
+        >
+          <AvatarCircle
+            name={assigneeName}
+            avatarUrl={assigneeAvatarFor(task)}
+            size={20}
+          />
+          <span style={{ fontSize: "12px", color: "#555555" }}>
+            {task.assignedTo ? (
+              <Link
+                to={`/app/profile/${task.assignedTo}`}
+                style={{ color: "#555555", textDecoration: "none" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {assigneeName}
+              </Link>
+            ) : (
+              assigneeName
+            )}
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginTop: "8px",
+            gap: "8px",
+          }}
+        >
+          {task.dueDate ? (
+            <span
+              style={{
+                fontSize: "11px",
+                color: dueDateColor(task.dueDate, task.status),
+              }}
+            >
+              Due {formatDueDateLabel(task.dueDate)}
+            </span>
+          ) : (
+            <span />
+          )}
+          {canViewComments ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleComments(task.id);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                color: "#555555",
+                fontSize: "11px",
+              }}
+            >
+              <MessageSquare size={12} strokeWidth={2} aria-hidden />
+              {commentCount}
+            </button>
+          ) : null}
+        </div>
+
+        {isHovered && canChangeStatus && (backTarget || forwardTarget) ? (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px",
+              marginTop: "10px",
+            }}
+          >
+            {backTarget && backLabel ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleStatusChange(task.id, backTarget);
+                }}
+                style={kanbanBackButtonStyle}
+              >
+                {backLabel}
+              </button>
+            ) : null}
+            {forwardTarget && forwardLabel ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleStatusChange(task.id, forwardTarget);
+                }}
+                style={kanbanForwardButtonStyle}
+              >
+                {forwardLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {canViewComments && expandedComments[task.id] ? (
+          <div onClick={(e) => e.stopPropagation()}>
+            <TaskCommentsSection
+              taskId={task.id}
+              userId={user?.id}
+              expanded
+              onToggle={() => toggleComments(task.id)}
+              commentCount={commentCount}
+              onCommentCountChange={handleCommentCountChange}
+              canComment={canComment}
+              canDeleteAnyComment={isPrivileged}
+            />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderListCard(task: Task, completed = false) {
+    const isHovered = hoveredTaskId === task.id;
+    const canChangeStatus = isPrivileged || task.assignedTo === user?.id;
+    const canViewComments = isPrivileged || task.assignedTo === user?.id;
+    const canComment = isPrivileged || task.assignedTo === user?.id;
+    const next = nextStatus(task.status);
+    const assigneeName = task.assigneeName ?? "Unassigned";
+    const commentCount = commentCounts[task.id] ?? 0;
+    const listAction = listQuickActionLabel(task.status);
+
+    return (
+      <div
+        key={task.id}
+        onMouseEnter={() => setHoveredTaskId(task.id)}
+        onMouseLeave={() => {
+          setHoveredTaskId((prev) => (prev === task.id ? null : prev));
+          if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
+        }}
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: "14px",
+          background: "#1a1a1a",
+          borderTop: `1px solid ${isHovered ? "#333333" : "#242424"}`,
+          borderRight: `1px solid ${isHovered ? "#333333" : "#242424"}`,
+          borderBottom: `1px solid ${isHovered ? "#333333" : "#242424"}`,
+          borderLeft: `4px solid ${statusAccent[task.status]}`,
+          borderRadius: "8px",
+          padding: "14px 16px 14px 14px",
+          marginBottom: "8px",
+          opacity: completed ? 0.75 : 1,
+          transform: isHovered ? "translateY(-1px)" : undefined,
+          transition: "all 0.15s ease",
+        }}
+      >
+        {club ? (
+          <ClubLogoMark
+            name={club.name}
+            abbreviation={club.abbreviation}
+            logoUrl={club.imageUrl}
+            size={32}
+          />
+        ) : null}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: completed ? "#777777" : "#ffffff",
+              margin: "0 0 6px",
+              textDecoration: completed ? "line-through" : "none",
+            }}
+          >
+            {task.title}
+          </p>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              flexWrap: "wrap",
+            }}
+          >
+            <AvatarCircle
+              name={assigneeName}
+              avatarUrl={assigneeAvatarFor(task)}
+              size={20}
+            />
+            <span style={{ fontSize: "12px", color: "#555555" }}>
+              {task.assignedTo ? (
+                <Link
+                  to={`/app/profile/${task.assignedTo}`}
+                  style={{ color: "#555555", textDecoration: "none" }}
+                >
+                  {assigneeName}
+                </Link>
+              ) : (
+                assigneeName
+              )}
+            </span>
+            {task.dueDate ? (
+              <span
+                style={{
+                  fontSize: "12px",
+                  color: dueDateColor(task.dueDate, task.status),
+                }}
+              >
+                · Due {formatDueDateLabel(task.dueDate)}
+              </span>
+            ) : null}
+            {canViewComments ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  fontSize: "11px",
+                  color: "#555555",
+                }}
+              >
+                · <MessageSquare size={11} strokeWidth={2} aria-hidden /> {commentCount}
+              </span>
+            ) : null}
+          </div>
+          {canViewComments ? (
+            <TaskCommentsSection
+              taskId={task.id}
+              userId={user?.id}
+              expanded={!!expandedComments[task.id]}
+              onToggle={() => toggleComments(task.id)}
+              commentCount={commentCount}
+              onCommentCountChange={handleCommentCountChange}
+              canComment={canComment}
+              canDeleteAnyComment={isPrivileged}
+            />
+          ) : null}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "8px",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={statusBadgeStyle(task.status)}>{statusLabels[task.status]}</span>
+            {isHovered ? renderTaskMenu(task) : null}
+          </div>
+          {canChangeStatus && listAction && !completed ? (
+            <button
+              type="button"
+              onClick={() => {
+                const target = next;
+                if (target) void handleStatusChange(task.id, target);
+              }}
+              style={{
+                background: "transparent",
+                border: "1px solid #E51937",
+                borderRadius: "20px",
+                padding: "5px 12px",
+                fontSize: "11px",
+                color: "#E51937",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {listAction}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -687,40 +1373,86 @@ export default function ClubTasksPage() {
 
   return (
     <div className="p-4 sm:p-6" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h1
             style={{
               fontWeight: 700,
               fontSize: "22px",
-              color: "#ffffff" }}
+              color: "#ffffff",
+              margin: 0,
+            }}
           >
             Tasks
           </h1>
           <p
             style={{
               fontSize: "13px",
-              color: "#555555" }}
+              color: "#555555",
+              margin: "6px 0 10px",
+            }}
           >
             {todoCt} to do · {inProgressCt} in progress · {doneCt} done
           </p>
-        </div>
-        {isPrivileged && (
-          <Button
-            onClick={() => {
-              if (showForm) resetForm();
-              else setShowForm(true);
+          <div
+            style={{
+              height: "4px",
+              borderRadius: "2px",
+              background: "#1e1e1e",
+              overflow: "hidden",
+              maxWidth: "320px",
             }}
-            className="!border-0 !bg-[#E51937] !px-[18px] !py-[9px] !text-[13px] !font-medium !text-white hover:!bg-[#cc0020]"
-            style={{ borderRadius: "6px" }}
           >
-            {showForm ? "Cancel" : "+ New Task"}
-          </Button>
-        )}
+            {progressFillPercent > 0 ? (
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progressFillPercent}%`,
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  background: "#E51937",
+                  borderRadius: "2px",
+                  transition: "width 0.25s ease",
+                }}
+              />
+            ) : null}
+          </div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            flexShrink: 0,
+          }}
+        >
+          <ViewToggle mode={viewMode} onChange={setViewMode} />
+          {isPrivileged ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (showForm) resetForm();
+                else setShowForm(true);
+              }}
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "9px 18px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {showForm ? "Cancel" : "+ New Task"}
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      {/* Feedback message */}
-      {feedback && (
+      {feedback ? (
         <div
           role="alert"
           className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
@@ -731,10 +1463,9 @@ export default function ClubTasksPage() {
         >
           {feedback.text}
         </div>
-      )}
+      ) : null}
 
-      {/* Create / edit form — admin/exec only */}
-      {showForm && isPrivileged && (
+      {showForm && isPrivileged ? (
         <Card className="mb-6 p-5">
           <h3 className="mb-4 font-semibold text-white">
             {editingId ? "Edit Task" : "Create New Task"}
@@ -817,15 +1548,12 @@ export default function ClubTasksPage() {
               </select>
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              {editingId && (
+              {editingId ? (
                 <Button variant="ghost" onClick={resetForm}>
                   Cancel Edit
                 </Button>
-              )}
-              <Button
-                onClick={handleSubmit}
-                disabled={!title.trim() || saving}
-              >
+              ) : null}
+              <Button onClick={handleSubmit} disabled={!title.trim() || saving}>
                 {saving
                   ? "Saving…"
                   : editingId
@@ -835,194 +1563,285 @@ export default function ClubTasksPage() {
             </div>
           </div>
         </Card>
-      )}
+      ) : null}
 
-      {/* Filter tabs */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(["all", "todo", "in_progress", "done"] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setFilter(s)}
-            className={filterTabClass(filter === s)}
-            style={{ }}
-          >
-            {s === "all"
-              ? `All (${visibleTasks.length})`
-              : `${statusLabels[s]} (${visibleTasks.filter((t) => t.status === s).length})`}
-          </button>
-        ))}
-      </div>
-
-      {/* Task list */}
-      {filteredTasks.length === 0 ? (
+      {visibleTasks.length === 0 ? (
         <Card className="p-8 text-center">
           <div className="mx-auto mb-3 text-3xl">📋</div>
-          <p className="font-medium text-white">
-            {visibleTasks.length === 0
-              ? "No tasks yet"
-              : "No tasks match this filter"}
-          </p>
+          <p className="font-medium text-white">No tasks yet</p>
           <p className="mt-1 text-sm text-muted">
-            {visibleTasks.length === 0
-              ? isPrivileged
-                ? "Create a task to get your team organized."
-                : "You have no tasks assigned to you yet."
-              : "Try a different filter to see more tasks."}
+            {isPrivileged
+              ? "Create a task to get your team organized."
+              : "You have no tasks assigned to you yet."}
           </p>
         </Card>
-      ) : (
-        <div className="space-y-3">
-          {filteredTasks.map((task) => {
-            const isOverdue =
-              task.dueDate &&
-              task.status !== "done" &&
-              new Date(task.dueDate) < new Date();
-            const canChangeStatus =
-              isPrivileged || task.assignedTo === user?.id;
-            const canViewComments =
-              isPrivileged || task.assignedTo === user?.id;
-            const canComment =
-              isPrivileged || task.assignedTo === user?.id;
-
-            return (
+      ) : viewMode === "board" ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: "12px",
+            alignItems: "stretch",
+          }}
+        >
+          {BOARD_COLUMNS.map((columnStatus) => (
+            <div
+              key={columnStatus}
+              style={{
+                background: "#111111",
+                borderRadius: "10px",
+                padding: "12px",
+                minHeight: "calc(100vh - 280px)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
               <div
-                key={task.id}
                 style={{
-                  backgroundColor: "#1a1a1a",
-                  border: "1px solid #242424",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  borderLeft: `3px solid ${statusAccent[task.status]}` }}
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "12px",
+                  flexShrink: 0,
+                }}
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3
-                        className={task.status === "done" ? "line-through" : ""}
-                        style={{
-                          fontWeight: 500,
-                          fontSize: "14px",
-                          color: task.status === "done" ? "#555555" : "#ffffff" }}
-                      >
-                        {task.title}
-                      </h3>
-                      <span style={priorityBadgeStyle(task.priority)}>
-                        {task.priority}
-                      </span>
-                      <span style={statusBadgeStyle(task.status)}>
-                        {statusLabels[task.status]}
-                      </span>
-                    </div>
-                    {task.description && (
-                      <p
-                        className="mt-1"
-                        style={{
-                          fontSize: "13px",
-                          color: "#777777",
-                          lineHeight: 1.5 }}
-                      >
-                        {task.description}
-                      </p>
-                    )}
-                    <div
-                      className="mt-2 flex flex-wrap items-center gap-3 text-xs"
-                      style={{ color: "#555555" }}
-                    >
-                      {task.assigneeName && task.assignedTo && (
-                        <Link
-                          to={`/app/profile/${task.assignedTo}`}
-                          style={{ color: "#555555", textDecoration: "none" }}
-                        >
-                          👤 {task.assigneeName}
-                        </Link>
-                      )}
-                      {task.assigneeName && !task.assignedTo && (
-                        <span>👤 {task.assigneeName}</span>
-                      )}
-                      {task.dueDate && (
-                        <span className={isOverdue ? "text-red-400" : ""}>
-                          📅{" "}
-                          {new Date(task.dueDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric" })}
-                          {isOverdue && " (overdue)"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {canChangeStatus ? (
-                      <select
-                        value={task.status}
-                        onChange={(e) =>
-                          handleStatusChange(
-                            task.id,
-                            e.target.value as TaskStatus,
-                          )
-                        }
-                        className="cursor-pointer rounded-md border"
-                        style={{
-                          backgroundColor: "#111111",
-                          borderColor: "#333333",
-                          color: "#cccccc",
-                          borderRadius: "6px",
-                          padding: "6px 10px",
-                          fontSize: "12px" }}
-                        aria-label="Change task status"
-                      >
-                        <option value="todo">To Do</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="done">Done</option>
-                      </select>
-                    ) : null}
-                    {isPrivileged && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => startEdit(task)}
-                          className="cursor-pointer rounded-md border bg-transparent transition-colors hover:text-[#cccccc]"
-                          style={{
-                            borderColor: "#333333",
-                            color: "#888888",
-                            padding: "5px 12px",
-                            fontSize: "12px" }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(task.id)}
-                          className="cursor-pointer rounded-md border bg-transparent transition-colors hover:bg-[#2a0a0a]"
-                          style={{
-                            borderColor: "#3a1a1a",
-                            color: "#E51937",
-                            padding: "5px 12px",
-                            fontSize: "12px" }}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
-                  </div>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: statusAccent[columnStatus],
+                  }}
+                >
+                  {statusLabels[columnStatus]}
+                </span>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#555555",
+                    background: "#1a1a1a",
+                    borderRadius: "20px",
+                    padding: "2px 8px",
+                  }}
+                >
+                  {tasksByStatus[columnStatus].length}
+                </span>
+              </div>
+              {tasksByStatus[columnStatus].length === 0 ? (
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    padding: "24px 12px",
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#444444",
+                      margin: 0,
+                    }}
+                  >
+                    {columnEmptyMessage[columnStatus]}
+                  </p>
                 </div>
-                {canViewComments ? (
-                <TaskCommentsSection
-                  taskId={task.id}
-                  userId={user?.id}
-                  expanded={!!expandedComments[task.id]}
-                  onToggle={() => toggleComments(task.id)}
-                  commentCount={commentCounts[task.id] ?? 0}
-                  onCommentCountChange={handleCommentCountChange}
-                  canComment={canComment}
-                  canDeleteAnyComment={isPrivileged}
-                />
-                ) : null}
+              ) : (
+                <div style={{ flex: 1 }}>
+                  {tasksByStatus[columnStatus].map((task) => renderBoardCard(task))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div>
+          {(["todo", "in_progress"] as const).map((sectionStatus) => {
+            const sectionTasks = activeListTasks.filter(
+              (t) => t.status === sectionStatus,
+            );
+            if (sectionTasks.length === 0) return null;
+            return (
+              <div key={sectionStatus} style={{ marginBottom: "20px" }}>
+                <p
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: statusAccent[sectionStatus],
+                    margin: "0 0 10px",
+                  }}
+                >
+                  {statusLabels[sectionStatus]}
+                </p>
+                {sectionTasks.map((task) => renderListCard(task))}
               </div>
             );
           })}
+
+          {completedListTasks.length > 0 ? (
+            <div style={{ marginTop: "8px" }}>
+              <button
+                type="button"
+                onClick={() => setShowCompleted((prev) => !prev)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#555555",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  padding: "0 0 12px",
+                }}
+              >
+                {showCompleted
+                  ? "Hide completed tasks"
+                  : `Show ${completedListTasks.length} completed task${completedListTasks.length === 1 ? "" : "s"}`}
+              </button>
+              {showCompleted
+                ? completedListTasks.map((task) => renderListCard(task, true))
+                : null}
+            </div>
+          ) : null}
         </div>
       )}
+
+      {isPrivileged ? (
+        <section
+          aria-labelledby="delegated-tasks-heading"
+          style={{ marginTop: "40px" }}
+        >
+          <h2
+            id="delegated-tasks-heading"
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
+            Delegated Tasks
+          </h2>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#555555",
+              margin: "6px 0 16px",
+            }}
+          >
+            Tasks you&apos;ve assigned to others
+          </p>
+
+          {delegatedByAssignee.length === 0 ? (
+            <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+              You haven&apos;t delegated any tasks yet.
+            </p>
+          ) : (
+            delegatedByAssignee.map((group) => {
+              const progressPercent =
+                group.total === 0 ? 0 : (group.done / group.total) * 100;
+
+              return (
+                <div key={group.assigneeId} style={{ marginBottom: "24px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "12px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <AvatarCircle
+                      name={group.name}
+                      avatarUrl={group.avatarUrl}
+                      size={32}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "#ffffff",
+                          }}
+                        >
+                          {group.name}
+                        </span>
+                        {group.allDone ? (
+                          <span
+                            style={{
+                              background: "#2a1f00",
+                              color: "#FFC429",
+                              border: "1px solid #3a2f00",
+                              borderRadius: "20px",
+                              padding: "2px 8px",
+                              fontSize: "11px",
+                              fontWeight: 500,
+                            }}
+                          >
+                            ✓ All done
+                          </span>
+                        ) : null}
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            flex: 1,
+                            height: "4px",
+                            borderRadius: "2px",
+                            background: "#1e1e1e",
+                            overflow: "hidden",
+                            minWidth: "80px",
+                          }}
+                        >
+                          {progressPercent > 0 ? (
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${progressPercent}%`,
+                                background: "#E51937",
+                                borderRadius: "2px",
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "#555555",
+                            whiteSpace: "nowrap",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {group.done}/{group.total} tasks
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {group.tasks.map((task) => renderDelegatedTaskCard(task))}
+                </div>
+              );
+            })
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

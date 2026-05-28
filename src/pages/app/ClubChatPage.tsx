@@ -1,12 +1,14 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type ChangeEvent,
+  type KeyboardEvent,
 } from "react";
-import { BarChart2, Pin, Star, X } from "lucide-react";
+import { BarChart2, Pencil, Pin, Search, SquarePen, Star, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
@@ -14,6 +16,7 @@ import {
   getUserVoteOptionIndex,
   type ChatPoll,
   type Conversation,
+  type ConversationMember,
   type DirectMessage,
 } from "../../hooks/useConversations";
 import { notifyUnreadCountRefresh } from "../../components/ui/NotificationsDropdown";
@@ -117,15 +120,6 @@ function Avatar({
   );
 }
 
-function ComposeIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
 function PersonIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -191,25 +185,6 @@ function canEditGroupChat(
     return role === "owner";
   }
   return role === "owner" || role === "executive";
-}
-
-function PencilIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
 }
 
 const pollInputStyle: CSSProperties = {
@@ -665,6 +640,7 @@ export default function ClubChatPage() {
     updateGroupConversation,
     toggleConversationPin,
     toggleConversationFavorite,
+    fetchConversationMembers,
     refresh,
   } = useConversations(clubId);
 
@@ -693,10 +669,16 @@ export default function ClubChatPage() {
   const [creatingPoll, setCreatingPoll] = useState(false);
   const [votingPollId, setVotingPollId] = useState<string | null>(null);
   const [hoveredConversationId, setHoveredConversationId] = useState<string | null>(null);
+  const [conversationSearch, setConversationSearch] = useState("");
+  const [showMentionPopup, setShowMentionPopup] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionMembers, setMentionMembers] = useState<ConversationMember[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarEditRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
+  const mentionPopupRef = useRef<HTMLDivElement>(null);
 
   const isPrivileged = userRole === "owner" || userRole === "executive";
 
@@ -744,6 +726,78 @@ export default function ClubChatPage() {
     () => conversations.filter((c) => !c.isPinned && !c.isFavorite),
     [conversations],
   );
+
+  const conversationSearchTrimmed = conversationSearch.trim().toLowerCase();
+
+  const conversationMatchesSearch = useCallback(
+    (convo: Conversation) => {
+      if (!conversationSearchTrimmed) return true;
+      const name = displayConversationName(convo).toLowerCase();
+      const msg = convo.lastMessage;
+      const preview = msg
+        ? msg.attachmentUrl && !msg.content
+          ? "attachment"
+          : (msg.content ?? "").toLowerCase()
+        : "no messages yet";
+      return (
+        name.includes(conversationSearchTrimmed) ||
+        preview.includes(conversationSearchTrimmed)
+      );
+    },
+    [conversationSearchTrimmed, displayConversationName],
+  );
+
+  const filteredPinnedConversations = useMemo(
+    () => pinnedConversations.filter(conversationMatchesSearch),
+    [pinnedConversations, conversationMatchesSearch],
+  );
+  const filteredFavoriteConversations = useMemo(
+    () => favoriteConversations.filter(conversationMatchesSearch),
+    [favoriteConversations, conversationMatchesSearch],
+  );
+  const filteredRegularConversations = useMemo(
+    () => regularConversations.filter(conversationMatchesSearch),
+    [regularConversations, conversationMatchesSearch],
+  );
+
+  const hasFilteredConversations =
+    filteredPinnedConversations.length +
+      filteredFavoriteConversations.length +
+      filteredRegularConversations.length >
+    0;
+
+  const filteredMentionMembers = useMemo(() => {
+    const pool =
+      mentionMembers.length > 0
+        ? mentionMembers
+        : activeConversation?.members ?? [];
+    const others = pool.filter((m) => m.userId !== user?.id);
+    const q = mentionQuery.toLowerCase();
+    if (!q) return others;
+    return others.filter(
+      (m) =>
+        (m.fullName ?? "").toLowerCase().includes(q) ||
+        m.mentionUsername.toLowerCase().includes(q),
+    );
+  }, [mentionMembers, mentionQuery, activeConversation?.members, user?.id]);
+
+  useEffect(() => {
+    if (!showMentionPopup || !activeConversationId) return;
+    void fetchConversationMembers(activeConversationId).then(setMentionMembers);
+  }, [showMentionPopup, activeConversationId, fetchConversationMembers]);
+
+  useEffect(() => {
+    if (!showMentionPopup) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (mentionPopupRef.current?.contains(target)) return;
+      if (messageInputRef.current?.contains(target)) return;
+      setShowMentionPopup(false);
+      setMentionQuery("");
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showMentionPopup]);
 
   useEffect(() => {
     if (!activeConversationId && conversations.length > 0) {
@@ -899,6 +953,53 @@ export default function ClubChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  function handleDraftChange(e: ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value;
+    setDraft(value);
+    const cursor = e.target.selectionStart ?? value.length;
+    const beforeCursor = value.slice(0, cursor);
+    const mentionMatch = beforeCursor.match(/@([a-zA-Z0-9._]*)$/);
+    if (mentionMatch) {
+      setShowMentionPopup(true);
+      setMentionQuery(mentionMatch[1]);
+    } else {
+      setShowMentionPopup(false);
+      setMentionQuery("");
+    }
+  }
+
+  function insertMention(member: ConversationMember) {
+    const username = member.mentionUsername;
+    const input = messageInputRef.current;
+    const cursor = input?.selectionStart ?? draft.length;
+    const beforeCursor = draft.slice(0, cursor);
+    const afterCursor = draft.slice(cursor);
+    const atIndex = beforeCursor.lastIndexOf("@");
+    const nextDraft =
+      atIndex === -1
+        ? `${draft}@${username} `
+        : `${beforeCursor.slice(0, atIndex)}@${username} ${afterCursor}`;
+    setDraft(nextDraft);
+    setShowMentionPopup(false);
+    setMentionQuery("");
+    requestAnimationFrame(() => {
+      input?.focus();
+    });
+  }
+
+  function handleMessageKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape" && showMentionPopup) {
+      e.preventDefault();
+      setShowMentionPopup(false);
+      setMentionQuery("");
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void handleSend();
+    }
+  }
+
   async function handleSend() {
     if (!activeConversationId || !user) return;
     const text = draft.trim();
@@ -1049,8 +1150,40 @@ export default function ClubChatPage() {
               display: "flex",
             }}
           >
-            <ComposeIcon />
+            <SquarePen size={20} aria-hidden />
           </button>
+        </div>
+
+        <div style={{ padding: "0 16px 12px", position: "relative" }}>
+          <Search
+            size={14}
+            color="#555555"
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+            }}
+          />
+          <input
+            type="search"
+            value={conversationSearch}
+            onChange={(e) => setConversationSearch(e.target.value)}
+            placeholder="Search conversations..."
+            style={{
+              width: "100%",
+              background: "#111111",
+              border: "1px solid #2a2a2a",
+              borderRadius: "8px",
+              padding: "8px 12px 8px 34px",
+              color: "#ffffff",
+              fontSize: "13px",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
         </div>
 
         <div style={{ flex: 1, overflowY: "auto" }}>
@@ -1065,9 +1198,20 @@ export default function ClubChatPage() {
             >
               No conversations yet
             </p>
+          ) : !hasFilteredConversations ? (
+            <p
+              style={{
+                padding: "16px",
+                fontSize: "13px",
+                color: "#555555",
+                textAlign: "center",
+              }}
+            >
+              No conversations found
+            </p>
           ) : (
             <>
-              {pinnedConversations.length > 0 ? (
+              {filteredPinnedConversations.length > 0 ? (
                 <>
                   <p
                     style={{
@@ -1080,7 +1224,7 @@ export default function ClubChatPage() {
                   >
                     PINNED
                   </p>
-                  {pinnedConversations.map((convo) => {
+                  {filteredPinnedConversations.map((convo) => {
                     const isActive = convo.id === activeConversationId;
                     const name = displayConversationName(convo);
                     const avatar = listConversationAvatar(convo);
@@ -1249,7 +1393,7 @@ export default function ClubChatPage() {
                 </>
               ) : null}
 
-              {favoriteConversations.length > 0 ? (
+              {filteredFavoriteConversations.length > 0 ? (
                 <>
                   <p
                     style={{
@@ -1262,7 +1406,7 @@ export default function ClubChatPage() {
                   >
                     FAVORITES
                   </p>
-                  {favoriteConversations.map((convo) => {
+                  {filteredFavoriteConversations.map((convo) => {
                     const isActive = convo.id === activeConversationId;
                     const name = displayConversationName(convo);
                     const avatar = listConversationAvatar(convo);
@@ -1427,7 +1571,7 @@ export default function ClubChatPage() {
                 </>
               ) : null}
 
-              {regularConversations.map((convo) => {
+              {filteredRegularConversations.map((convo) => {
               const isActive = convo.id === activeConversationId;
               const name = displayConversationName(convo);
               const avatar = listConversationAvatar(convo);
@@ -1624,7 +1768,7 @@ export default function ClubChatPage() {
               cursor: "pointer",
             }}
           >
-            <ComposeIcon />
+            <SquarePen size={20} aria-hidden />
           </button>
         </div>
 
@@ -1710,7 +1854,7 @@ export default function ClubChatPage() {
                         e.currentTarget.style.color = "#888888";
                       }}
                     >
-                      <PencilIcon size={14} />
+                      <Pencil size={14} aria-hidden />
                     </button>
                   ) : null}
                 </div>
@@ -1782,8 +1926,69 @@ export default function ClubChatPage() {
                 display: "flex",
                 gap: "8px",
                 alignItems: "center",
+                position: "relative",
               }}
             >
+              {showMentionPopup && activeConversation ? (
+                <div
+                  ref={mentionPopupRef}
+                  style={{
+                    position: "absolute",
+                    left: "16px",
+                    right: "16px",
+                    bottom: "100%",
+                    marginBottom: "8px",
+                    background: "#1a1a1a",
+                    border: "1px solid #242424",
+                    borderRadius: "8px",
+                    padding: "8px",
+                    maxHeight: "200px",
+                    overflowY: "auto",
+                    zIndex: 10,
+                  }}
+                >
+                  {filteredMentionMembers.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: "12px", color: "#555555", padding: "6px 10px" }}>
+                      No members found
+                    </p>
+                  ) : (
+                    filteredMentionMembers.map((member) => (
+                      <button
+                        key={member.userId}
+                        type="button"
+                        onClick={() => insertMention(member)}
+                        style={{
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          padding: "6px 10px",
+                          background: "transparent",
+                          border: "none",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "#252525";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent";
+                        }}
+                      >
+                        <Avatar
+                          url={member.avatarUrl}
+                          name={member.fullName ?? member.mentionUsername}
+                          size={28}
+                        />
+                        <span style={{ fontSize: "13px", color: "#cccccc" }}>
+                          {member.fullName ?? member.mentionUsername}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1834,16 +2039,12 @@ export default function ClubChatPage() {
                 <BarChart2 size={20} aria-hidden />
               </button>
               <input
+                ref={messageInputRef}
                 type="text"
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={handleDraftChange}
                 placeholder="Message…"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
+                onKeyDown={handleMessageKeyDown}
                 onFocus={() => setInputFocused(true)}
                 onBlur={() => setInputFocused(false)}
                 style={{
