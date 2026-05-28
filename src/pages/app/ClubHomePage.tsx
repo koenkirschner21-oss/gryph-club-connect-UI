@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { X } from "lucide-react";
 import { Megaphone, Calendar, Users } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -214,6 +215,7 @@ function ClubStatCard({
   valueFontStyle?: CSSProperties["fontStyle"];
   valueHint?: string;
 }) {
+  const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
   const borderMuted = hovered ? "#333333" : "#242424";
 
@@ -286,9 +288,20 @@ function ClubStatCard({
 
   if (to) {
     return (
-      <Link to={to} className="block h-full no-underline">
+      <div
+        role="link"
+        tabIndex={0}
+        className="block h-full cursor-pointer no-underline"
+        onClick={() => navigate(to)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            navigate(to);
+          }
+        }}
+      >
         {card}
-      </Link>
+      </div>
     );
   }
 
@@ -409,11 +422,13 @@ function ClubTaskCard({
   clubName,
   clubAbbreviation,
   clubLogoUrl,
+  tasksPath,
 }: {
   task: Task;
   clubName: string;
   clubAbbreviation?: string;
   clubLogoUrl?: string;
+  tasksPath: string;
 }) {
   const [hovered, setHovered] = useState(false);
   const statusLabel =
@@ -426,7 +441,7 @@ function ClubTaskCard({
   const borderMuted = hovered ? "#333333" : "#242424";
 
   return (
-    <Link to="tasks" className="block no-underline">
+    <Link to={tasksPath} className="block no-underline">
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -481,8 +496,10 @@ function ClubTaskCard({
 
 function NextEventBanner({
   event,
+  eventsPath,
 }: {
   event: { title: string; date: string; time?: string };
+  eventsPath: string;
 }) {
   const parsedDate = new Date(event.date);
   const monthLabel = Number.isNaN(parsedDate.getTime())
@@ -543,7 +560,7 @@ function NextEventBanner({
           <p style={{ fontSize: "12px", color: "#555555", margin: "4px 0 0" }}>{timeLabel}</p>
         ) : null}
       </div>
-      <Link to="../events" style={viewAllLink}>
+      <Link to={eventsPath} style={viewAllLink}>
         View Event →
       </Link>
     </div>
@@ -556,11 +573,19 @@ export default function ClubHomePage() {
   const { getClubById, getUserRole, userRoles } = useClubContext();
   const club = getClubById(clubId ?? "");
 
+  const clubBasePath = clubId ? `/app/clubs/${clubId}` : "";
+  const membersPath = `${clubBasePath}/members`;
+  const eventsPath = `${clubBasePath}/events`;
+  const announcementsPath = `${clubBasePath}/announcements`;
+  const tasksPath = `${clubBasePath}/tasks`;
+
   const contextRole = clubId
     ? getUserRole(clubId) ?? userRoles[clubId] ?? null
     : null;
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   useEffect(() => {
     if (contextRole) {
@@ -633,6 +658,19 @@ export default function ClubHomePage() {
     Record<string, "going" | "maybe" | "not_going" | null>
   >({});
 
+  function handleCopyInviteCode() {
+    if (!club?.joinCode) return;
+    navigator.clipboard.writeText(club.joinCode).then(
+      () => {
+        setInviteCopied(true);
+        window.setTimeout(() => setInviteCopied(false), 2000);
+      },
+      () => {
+        // Clipboard unavailable — user can still copy manually from the code display.
+      },
+    );
+  }
+
   if (!club) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -677,28 +715,36 @@ export default function ClubHomePage() {
 
       {userRole === "owner" ? (
         <div className="mb-6 flex flex-wrap gap-2">
-          <Link to="announcements" style={quickActionButton}>
+          <Link to={announcementsPath} style={quickActionButton}>
             <Megaphone size={16} strokeWidth={2} aria-hidden />
             New Announcement
           </Link>
-          <Link to="events" style={quickActionOutlineButton}>
+          <Link to={eventsPath} style={quickActionOutlineButton}>
             <Calendar size={16} strokeWidth={2} aria-hidden />
             New Event
           </Link>
-          <Link to="members" style={quickActionNeutralButton}>
+          <button
+            type="button"
+            onClick={() => setShowInviteModal(true)}
+            style={{
+              ...quickActionNeutralButton,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
             <Users size={16} strokeWidth={2} aria-hidden />
             Invite Member
-          </Link>
+          </button>
         </div>
       ) : null}
 
       {userRole === "executive" ? (
         <div className="mb-6 flex flex-wrap gap-2">
-          <Link to="announcements" style={quickActionButton}>
+          <Link to={announcementsPath} style={quickActionButton}>
             <Megaphone size={16} strokeWidth={2} aria-hidden />
             New Announcement
           </Link>
-          <Link to="events" style={quickActionOutlineButton}>
+          <Link to={eventsPath} style={quickActionOutlineButton}>
             <Calendar size={16} strokeWidth={2} aria-hidden />
             New Event
           </Link>
@@ -716,7 +762,7 @@ export default function ClubHomePage() {
             value={club.memberCount}
             sublabel="Active members"
             accentColor="#E51937"
-            to="../members"
+            to={membersPath}
           />
         ) : null}
         <ClubStatCard
@@ -724,14 +770,14 @@ export default function ClubHomePage() {
           value={eventsLoading ? "…" : upcomingEvents.length}
           sublabel="Scheduled events"
           accentColor="#FFC429"
-          to="../events"
+          to={eventsPath}
         />
         <ClubStatCard
           label="Meeting"
           value={club.meetingSchedule?.trim() || "Not scheduled"}
           sublabel={meetingSublabel}
           accentColor="#747676"
-          to="../events"
+          to={eventsPath}
           valueFontSize={club.meetingSchedule?.trim() ? "2rem" : "13px"}
           valueColor={club.meetingSchedule?.trim() ? "#ffffff" : "#555555"}
           valueFontStyle={club.meetingSchedule?.trim() ? undefined : "italic"}
@@ -743,7 +789,7 @@ export default function ClubHomePage() {
 
       {nextEvent ? (
         <div className="mt-8">
-          <NextEventBanner event={nextEvent} />
+          <NextEventBanner event={nextEvent} eventsPath={eventsPath} />
         </div>
       ) : null}
 
@@ -751,7 +797,7 @@ export default function ClubHomePage() {
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>Recent Announcements</h2>
           {posts.length > 0 ? (
-            <Link to="announcements" style={viewAllLink}>
+            <Link to={announcementsPath} style={viewAllLink}>
               View All →
             </Link>
           ) : null}
@@ -776,7 +822,7 @@ export default function ClubHomePage() {
         ) : (
           <div className="space-y-3">
             {previewPosts.map((post) => (
-              <Link key={post.id} to="../announcements" className="block no-underline">
+              <Link key={post.id} to={announcementsPath} className="block no-underline">
                 <article
                   style={{
                     backgroundColor: "#1a1a1a",
@@ -843,7 +889,7 @@ export default function ClubHomePage() {
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>{tasksSectionTitle}</h2>
           {tasksForRole.length > 0 ? (
-            <Link to="tasks" style={viewAllLink}>
+            <Link to={tasksPath} style={viewAllLink}>
               View All →
             </Link>
           ) : null}
@@ -909,6 +955,7 @@ export default function ClubHomePage() {
                 clubName={club.name}
                 clubAbbreviation={club.abbreviation}
                 clubLogoUrl={club.logoUrl}
+                tasksPath={tasksPath}
               />
             ))}
           </div>
@@ -920,7 +967,7 @@ export default function ClubHomePage() {
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>Upcoming Events</h2>
           {upcomingEvents.length > 0 ? (
-            <Link to="events" style={viewAllLink}>
+            <Link to={eventsPath} style={viewAllLink}>
               View All →
             </Link>
           ) : null}
@@ -937,14 +984,14 @@ export default function ClubHomePage() {
             <p className="text-sm" style={{ color: "#555555" }}>
               No upcoming events scheduled.
             </p>
-            <Link to="events" className="mt-3 inline-block" style={viewAllLink}>
+            <Link to={eventsPath} className="mt-3 inline-block" style={viewAllLink}>
               View Events Page →
             </Link>
           </div>
         ) : (
           <div>
             {previewEvents.map((event) => (
-              <Link key={event.id} to="../events" className="block no-underline">
+              <Link key={event.id} to={eventsPath} className="block no-underline">
                 <div style={{ cursor: "pointer" }}>
                   <ClubEventCard
                     title={event.title}
@@ -1006,6 +1053,117 @@ export default function ClubHomePage() {
           </div>
         )}
       </div>
+
+      {showInviteModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="invite-club-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: "16px",
+          }}
+          onClick={() => setShowInviteModal(false)}
+        >
+          <div
+            style={{
+              position: "relative",
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "400px",
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowInviteModal(false)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <X size={18} aria-hidden />
+            </button>
+            <h2
+              id="invite-club-title"
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 20px",
+              }}
+            >
+              Invite to Club
+            </h2>
+            {club.joinCode ? (
+              <>
+                <p
+                  style={{
+                    fontSize: "24px",
+                    fontWeight: 700,
+                    color: "#FFC429",
+                    letterSpacing: "0.15em",
+                    textAlign: "center",
+                    margin: "0 0 12px",
+                  }}
+                >
+                  {club.joinCode}
+                </p>
+                <p
+                  style={{
+                    fontSize: "13px",
+                    color: "#555555",
+                    textAlign: "center",
+                    margin: "0 0 20px",
+                  }}
+                >
+                  Share this code with anyone to join your club
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyInviteCode}
+                  style={{
+                    width: "100%",
+                    background: "#E51937",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "10px 24px",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  {inviteCopied ? "Copied!" : "Copy Code"}
+                </button>
+              </>
+            ) : (
+              <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                No invite code is set for this club yet. Generate one in club
+                settings.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { CalendarPlus, Repeat } from "lucide-react";
+import { MoreHorizontal, Repeat } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -45,7 +45,7 @@ function eventCategoryLabel(value: string): string {
   );
 }
 
-function categoryBadgeStyle(category: string): CSSProperties {
+function categoryBadgeStyle(category: string, featured = false): CSSProperties {
   const base: CSSProperties = {
     background: "#111111",
     border: "1px solid #222222",
@@ -57,18 +57,25 @@ function categoryBadgeStyle(category: string): CSSProperties {
     flexShrink: 0,
   };
 
+  if (featured) {
+    return {
+      ...base,
+      background: "#1a0a0a",
+      borderColor: "#E51937",
+      color: "#E51937",
+    };
+  }
+
   switch (category) {
     case "weekly_meeting":
-      return { ...base, borderColor: "#2a2a3a", color: "#6b7cff" };
+      return { ...base, background: "#0a0a1a", borderColor: "#1a1a3a", color: "#6b7cff" };
     case "team_social":
-      return { ...base, borderColor: "#1a2a1a", color: "#4ade80" };
+      return { ...base, background: "#0a1a0a", borderColor: "#1a3a1a", color: "#4ade80" };
     case "conference":
     case "workshop":
-      return { ...base, borderColor: "#2a1f00", color: "#FFC429" };
+      return { ...base, background: "#1a1500", borderColor: "#3a2f00", color: "#FFC429" };
     case "public_event":
-      return { ...base, borderColor: "#1a1a2a", color: "#E51937" };
-    case "fundraiser":
-      return { ...base, borderColor: "#2a1a2a", color: "#a78bfa" };
+      return base;
     default:
       return base;
   }
@@ -218,10 +225,17 @@ function downloadEventIcs(event: ClubEvent) {
   URL.revokeObjectURL(url);
 }
 
-function EventCategoryBadge({ category }: { category: string }) {
+function EventCategoryBadge({
+  category,
+  featured = false,
+}: {
+  category: string;
+  featured?: boolean;
+}) {
+  const label = featured ? "Featured" : eventCategoryLabel(category);
   return (
-    <span style={categoryBadgeStyle(category)}>
-      {eventCategoryLabel(category)}
+    <span style={categoryBadgeStyle(category, featured)}>
+      {label}
     </span>
   );
 }
@@ -645,10 +659,10 @@ function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
     <div
       className="flex shrink-0 flex-col items-center justify-center"
       style={{
-        width: "44px",
-        height: "44px",
+        width: "52px",
+        height: "52px",
         backgroundColor: muted ? "#333333" : "#E51937",
-        borderRadius: "6px" }}
+        borderRadius: "8px" }}
     >
       <span
         style={{
@@ -661,7 +675,7 @@ function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
       </span>
       <span
         style={{
-          fontSize: "18px",
+          fontSize: "22px",
           fontWeight: 700,
           color: "#ffffff",
           lineHeight: 1.1 }}
@@ -674,8 +688,8 @@ function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
 
 function rsvpButtonStyle(value: RsvpStatus, active: boolean): CSSProperties {
   const base: CSSProperties = {
-    borderRadius: "6px",
-    padding: "6px 14px",
+    borderRadius: "20px",
+    padding: "4px 12px",
     fontSize: "12px",
     fontWeight: 500,
     cursor: "pointer" };
@@ -683,35 +697,35 @@ function rsvpButtonStyle(value: RsvpStatus, active: boolean): CSSProperties {
     return {
       ...base,
       backgroundColor: "#111111",
-      color: "#555555",
+      color: "#444444",
       border: "1px solid #222222" };
   }
   if (value === "going") {
     return {
       ...base,
-      backgroundColor: "#0d2b0d",
-      color: "#4ade80",
-      border: "1px solid #1a4a1a" };
+      backgroundColor: "#1a0505",
+      color: "#E51937",
+      border: "1px solid #E51937" };
   }
   if (value === "maybe") {
     return {
       ...base,
-      backgroundColor: "#2a2a0d",
+      backgroundColor: "#2a1f00",
       color: "#FFC429",
-      border: "1px solid #3a3a1a" };
+      border: "1px solid #FFC429" };
   }
   return {
     ...base,
     backgroundColor: "#1a1a1a",
-    color: "#555555",
-    border: "1px solid #2a2a2a" };
+    color: "#747676",
+    border: "1px solid #555555" };
 }
 
 const eventCardStyle: CSSProperties = {
   backgroundColor: "#1a1a1a",
   border: "1px solid #242424",
-  borderRadius: "8px",
-  padding: "16px",
+  borderRadius: "10px",
+  padding: "20px",
   borderLeft: "3px solid #E51937" };
 
 const sectionHeadingStyle: CSSProperties = {
@@ -720,6 +734,353 @@ const sectionHeadingStyle: CSSProperties = {
   color: "#ffffff",
   marginBottom: "12px",
 };
+
+function formatEventTime(value: string): string | null {
+  const raw = value.trim();
+  if (!raw || raw.toUpperCase() === "TBD") return null;
+  const parsed = new Date(`1970-01-01T${raw}`);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function cleanEventLocation(value: string): string | null {
+  const raw = value.trim();
+  if (!raw || raw.toUpperCase() === "TBD") return null;
+  return raw;
+}
+
+function EventCard({
+  event,
+  category,
+  clubLogoUrl,
+  clubAbbreviation,
+  isRecurring,
+  isPrivileged,
+  past = false,
+  myStatus,
+  counts,
+  copiedEventId,
+  onRsvp,
+  onStartEdit,
+  onDelete,
+  onCopyRsvpLink,
+  onAddToCalendar,
+  showViewAttendees,
+  onToggleAttendees,
+  attendeesList,
+  onOpenResponses,
+  hasFormResponses,
+}: {
+  event: ClubEvent;
+  category: string;
+  clubLogoUrl?: string;
+  clubAbbreviation?: string;
+  isRecurring: boolean;
+  isPrivileged: boolean;
+  past?: boolean;
+  myStatus?: RsvpStatus;
+  counts: { going: number; maybe: number; not_going: number };
+  copiedEventId: string | null;
+  onRsvp: (eventId: string, status: RsvpStatus) => void;
+  onStartEdit: (event: ClubEvent) => void;
+  onDelete: (eventId: string) => void;
+  onCopyRsvpLink: (eventId: string) => void;
+  onAddToCalendar: (event: ClubEvent) => void;
+  showViewAttendees: boolean;
+  onToggleAttendees: (eventId: string) => void;
+  attendeesList?: Array<{
+    id: string;
+    fullName?: string;
+    avatarUrl?: string;
+    program?: string;
+    status: RsvpStatus;
+  }>;
+  onOpenResponses: (event: ClubEvent) => void;
+  hasFormResponses: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const timeLabel = formatEventTime(event.time);
+  const locationLabel = cleanEventLocation(event.location);
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setMenuOpen(false);
+      }}
+      style={{
+        ...eventCardStyle,
+        ...(past ? { borderLeft: "3px solid #333333", opacity: 0.6 } : null),
+      }}
+    >
+      <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+        <EventDateBlock date={event.date} muted={past} />
+        {clubLogoUrl ? (
+          <img
+            src={clubLogoUrl}
+            alt=""
+            style={{
+              width: "44px",
+              height: "44px",
+              borderRadius: "8px",
+              objectFit: "cover",
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "44px",
+              height: "44px",
+              borderRadius: "8px",
+              background: "#2a2a2a",
+              color: "#888888",
+              fontSize: "13px",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {deriveInitialsFromAbbreviation(clubAbbreviation)}
+          </div>
+        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: 0 }}>
+              {event.title}
+            </h3>
+            <EventCategoryBadge
+              category={category}
+              featured={event.visibility === "featured"}
+            />
+            {isRecurring ? <EventRecurringBadge /> : null}
+          </div>
+
+          {timeLabel || locationLabel ? (
+            <p style={{ fontSize: "12px", color: "#555555", margin: "4px 0 0" }}>
+              {[timeLabel, locationLabel].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+
+          {event.description ? (
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#777777",
+                margin: "6px 0 0",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {event.description}
+            </p>
+          ) : null}
+
+          <p style={{ fontSize: "12px", color: "#555555", margin: "8px 0 0" }}>
+            {counts.going} going · {counts.maybe} maybe · {counts.not_going} not going
+          </p>
+
+          {!past ? (
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
+              {RSVP_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onRsvp(event.id, opt.value)}
+                  style={rsvpButtonStyle(opt.value, myStatus === opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {attendeesList && isPrivileged ? (
+            <div className="mt-3 space-y-2 rounded-lg border border-border bg-surface p-3">
+              {attendeesList.length === 0 ? (
+                <p className="text-xs text-muted">No RSVPs yet.</p>
+              ) : (
+                attendeesList.map((a) => (
+                  <div key={a.id} className="flex items-center gap-3">
+                    {a.avatarUrl ? (
+                      <img
+                        src={a.avatarUrl}
+                        alt=""
+                        className="h-7 w-7 flex-shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {(a.fullName ?? "U")[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate text-sm font-medium text-white">
+                        {a.fullName ?? "Unknown"}
+                      </p>
+                      {a.program ? <p className="truncate text-xs text-muted">{a.program}</p> : null}
+                    </div>
+                    <span
+                      className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        a.status === "going"
+                          ? "bg-green-500/10 text-green-400"
+                          : a.status === "maybe"
+                            ? "bg-yellow-500/10 text-yellow-400"
+                            : "bg-red-500/10 text-red-400"
+                      }`}
+                    >
+                      {a.status === "not_going"
+                        ? "Not Going"
+                        : a.status.charAt(0).toUpperCase() + a.status.slice(1)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
+          {isPrivileged && hovered ? (
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                aria-label="Event options"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#747676",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "2px",
+                }}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {menuOpen ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    marginTop: "4px",
+                    background: "#151515",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: "8px",
+                    minWidth: "170px",
+                    zIndex: 20,
+                    overflow: "hidden",
+                  }}
+                >
+                  {!past ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onStartEdit(event);
+                        }}
+                        style={menuButtonStyle}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onCopyRsvpLink(event.id);
+                        }}
+                        style={menuButtonStyle}
+                      >
+                        {copiedEventId === event.id ? "Copied!" : "Copy RSVP Link"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onAddToCalendar(event);
+                        }}
+                        style={menuButtonStyle}
+                      >
+                        Add to Calendar
+                      </button>
+                      {hasFormResponses ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            onOpenResponses(event);
+                          }}
+                          style={menuButtonStyle}
+                        >
+                          View Responses
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onDelete(event.id);
+                    }}
+                    style={{ ...menuButtonStyle, color: "#E51937" }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {showViewAttendees && isPrivileged ? (
+            <button
+              type="button"
+              onClick={() => onToggleAttendees(event.id)}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                color: "#E51937",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              {attendeesList ? "Hide Attendees" : "View Attendees"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const menuButtonStyle: CSSProperties = {
+  width: "100%",
+  textAlign: "left",
+  background: "transparent",
+  border: "none",
+  color: "#cccccc",
+  padding: "9px 12px",
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
+function deriveInitialsFromAbbreviation(abbreviation?: string | null): string {
+  const cleaned = (abbreviation ?? "").trim();
+  if (!cleaned) return "?";
+  return cleaned.slice(0, 4).toUpperCase();
+}
 
 function normalizeUserRole(role: string): MemberRole {
   if (role === "owner") return "owner";
@@ -1056,6 +1417,10 @@ export default function ClubEventsPage() {
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
+  const [clubBrand, setClubBrand] = useState<{
+    logoUrl?: string;
+    abbreviation?: string;
+  }>({});
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -1072,6 +1437,23 @@ export default function ClubEventsPage() {
     };
     fetchRole();
   }, [clubId, user?.id]);
+
+  useEffect(() => {
+    const fetchClubBrand = async () => {
+      if (!clubId) return;
+      const { data } = await supabase
+        .from("clubs")
+        .select("logo_url, abbreviation")
+        .eq("id", clubId)
+        .maybeSingle();
+
+      setClubBrand({
+        logoUrl: (data?.logo_url as string) ?? undefined,
+        abbreviation: (data?.abbreviation as string) ?? undefined,
+      });
+    };
+    void fetchClubBrand();
+  }, [clubId]);
 
   const eventIds = useMemo(() => events.map((e) => e.id), [events]);
   const { myRsvps, counts, attendees, setRsvp, removeRsvp, loadAttendees } =
@@ -2012,250 +2394,28 @@ export default function ClubEventsPage() {
             const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
             const myStatus = myRsvps[event.id];
             return (
-            <div key={event.id} style={eventCardStyle}>
-              <div className="flex items-start gap-4">
-                <EventDateBlock date={event.date} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3
-                      style={{
-                        fontWeight: 600,
-                        fontSize: "15px",
-                        color: "#ffffff",
-                      }}
-                    >
-                      {event.title}
-                    </h3>
-                    <EventCategoryBadge category={getEventCategory(event.id)} />
-                    {isEventRecurring(event.id) ? <EventRecurringBadge /> : null}
-                  </div>
-                  <div
-                    className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
-                    style={{
-                      fontSize: "12px",
-                      color: "#555555" }}
-                  >
-                    <span className="flex items-center gap-1">
-                      <svg
-                        className="h-3.5 w-3.5 shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      {event.time}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <svg
-                        className="h-3.5 w-3.5 shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                      </svg>
-                      {event.location}
-                    </span>
-                  </div>
-                  {event.description && (
-                    <p
-                      className="mt-2"
-                      style={{
-                        fontSize: "13px",
-                        color: "#777777",
-                        lineHeight: 1.5 }}
-                    >
-                      {event.description}
-                    </p>
-                  )}
-
-                  {/* RSVP counts — all members see aggregate counts */}
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <p style={{ fontSize: "12px", margin: 0 }}>
-                      <span style={{ color: "#4ade80" }}>{c.going} going</span>
-                      {isPrivileged ? (
-                        <>
-                          <span style={{ color: "#555555" }}> · </span>
-                          <span style={{ color: "#FFC429" }}>{c.maybe} maybe</span>
-                          <span style={{ color: "#555555" }}> · </span>
-                          <span style={{ color: "#555555" }}>
-                            {c.not_going} not going
-                          </span>
-                        </>
-                      ) : null}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => downloadEventIcs(event)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        background: "transparent",
-                        border: "1px solid #333333",
-                        color: "#747676",
-                        borderRadius: "6px",
-                        padding: "5px 12px",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <CalendarPlus size={14} aria-hidden />
-                      Add to Calendar
-                    </button>
-                    {isPrivileged ? (
-                      <>
-                        {(eventQuestionsMap[event.id]?.length ?? 0) > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => void openResponsesModal(event)}
-                            style={{
-                              background: "transparent",
-                              border: "1px solid #333333",
-                              color: "#cccccc",
-                              borderRadius: "6px",
-                              padding: "4px 10px",
-                              fontSize: "11px",
-                              cursor: "pointer",
-                            }}
-                          >
-                            View Responses
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => void copyRsvpLink(event.id)}
-                          style={{
-                            background: "transparent",
-                            border: "1px solid #333333",
-                            color: "#747676",
-                            borderRadius: "6px",
-                            padding: "5px 12px",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {copiedEventId === event.id ? "Copied!" : "Copy RSVP Link"}
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-
-                  {/* RSVP buttons */}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {RSVP_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => handleRsvp(event.id, opt.value)}
-                        style={rsvpButtonStyle(opt.value, myStatus === opt.value)}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Admin: attendee list toggle */}
-                  {isPrivileged && (
-                    <button
-                      type="button"
-                      onClick={() => toggleAttendees(event.id)}
-                      className="mt-3 cursor-pointer text-xs font-medium text-primary hover:underline"
-                    >
-                      {expandedAttendees === event.id
-                        ? "Hide attendees"
-                        : "View attendees"}
-                    </button>
-                  )}
-
-                  {/* Attendee list */}
-                  {expandedAttendees === event.id && attendees[event.id] && (
-                    <div className="mt-3 space-y-2 rounded-lg border border-border bg-surface p-3">
-                      {attendees[event.id].length === 0 ? (
-                        <p className="text-xs text-muted">No RSVPs yet.</p>
-                      ) : (
-                        attendees[event.id].map((a) => (
-                          <div
-                            key={a.id}
-                            className="flex items-center gap-3"
-                          >
-                            {a.avatarUrl ? (
-                              <img
-                                src={a.avatarUrl}
-                                alt=""
-                                className="h-7 w-7 flex-shrink-0 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                                {(a.fullName ?? "U")[0].toUpperCase()}
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <p className="truncate text-sm font-medium text-white">
-                                {a.fullName ?? "Unknown"}
-                              </p>
-                              {a.program && (
-                                <p className="truncate text-xs text-muted">
-                                  {a.program}
-                                </p>
-                              )}
-                            </div>
-                            <span
-                              className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                                a.status === "going"
-                                  ? "bg-green-500/10 text-green-400"
-                                  : a.status === "maybe"
-                                    ? "bg-yellow-500/10 text-yellow-400"
-                                    : "bg-red-500/10 text-red-400"
-                              }`}
-                            >
-                              {a.status === "not_going" ? "Not Going" : a.status.charAt(0).toUpperCase() + a.status.slice(1)}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-                {isPrivileged && (
-                  <div className="flex flex-shrink-0 gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => startEdit(event)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(event.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
+              <EventCard
+                key={event.id}
+                event={event}
+                category={getEventCategory(event.id)}
+                clubLogoUrl={clubBrand.logoUrl}
+                clubAbbreviation={clubBrand.abbreviation}
+                isRecurring={isEventRecurring(event.id)}
+                isPrivileged={isPrivileged}
+                myStatus={myStatus}
+                counts={c}
+                copiedEventId={copiedEventId}
+                onRsvp={handleRsvp}
+                onStartEdit={startEdit}
+                onDelete={handleDelete}
+                onCopyRsvpLink={copyRsvpLink}
+                onAddToCalendar={downloadEventIcs}
+                showViewAttendees={isPrivileged}
+                onToggleAttendees={toggleAttendees}
+                attendeesList={expandedAttendees === event.id ? attendees[event.id] : undefined}
+                onOpenResponses={openResponsesModal}
+                hasFormResponses={(eventQuestionsMap[event.id]?.length ?? 0) > 0}
+              />
             );
           })}
         </div>
@@ -2264,108 +2424,30 @@ export default function ClubEventsPage() {
       {/* Past Events */}
       {pastEvents.length > 0 && (
         <>
-          <h2 style={sectionHeadingStyle}>Past Events</h2>
-          <div className="space-y-3 opacity-60">
+          <h2 style={{ ...sectionHeadingStyle, color: "#555555" }}>Past Events</h2>
+          <div className="space-y-3">
             {pastEvents.map((event) => (
-              <div key={event.id} style={eventCardStyle}>
-                <div className="flex items-start gap-4">
-                  <EventDateBlock date={event.date} muted />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3
-                        style={{
-                          fontWeight: 600,
-                          fontSize: "15px",
-                          color: "#ffffff",
-                        }}
-                      >
-                        {event.title}
-                      </h3>
-                      <EventCategoryBadge category={getEventCategory(event.id)} />
-                      {isEventRecurring(event.id) ? (
-                        <EventRecurringBadge />
-                      ) : null}
-                    </div>
-                    <div
-                      className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
-                      style={{
-                        fontSize: "12px",
-                        color: "#555555",
-                      }}
-                    >
-                      <span className="flex items-center gap-1">
-                        <svg
-                          className="h-3.5 w-3.5 shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        {event.time}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <svg
-                          className="h-3.5 w-3.5 shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                        {event.location}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => downloadEventIcs(event)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        background: "transparent",
-                        border: "1px solid #333333",
-                        color: "#747676",
-                        borderRadius: "6px",
-                        padding: "5px 12px",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        marginTop: "10px",
-                      }}
-                    >
-                      <CalendarPlus size={14} aria-hidden />
-                      Add to Calendar
-                    </button>
-                  </div>
-                  {isPrivileged && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(event.id)}
-                    >
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <EventCard
+                key={event.id}
+                event={event}
+                category={getEventCategory(event.id)}
+                clubLogoUrl={clubBrand.logoUrl}
+                clubAbbreviation={clubBrand.abbreviation}
+                isRecurring={isEventRecurring(event.id)}
+                isPrivileged={isPrivileged}
+                past
+                counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}
+                copiedEventId={copiedEventId}
+                onRsvp={handleRsvp}
+                onStartEdit={startEdit}
+                onDelete={handleDelete}
+                onCopyRsvpLink={copyRsvpLink}
+                onAddToCalendar={downloadEventIcs}
+                showViewAttendees={false}
+                onToggleAttendees={toggleAttendees}
+                onOpenResponses={openResponsesModal}
+                hasFormResponses={false}
+              />
             ))}
           </div>
         </>

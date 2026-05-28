@@ -5,7 +5,14 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
-import { NavLink, Outlet, useLocation, useParams, Navigate } from "react-router-dom";
+import {
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+  Navigate,
+} from "react-router-dom";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   LayoutDashboard,
@@ -365,6 +372,14 @@ export default function WorkspaceLayout() {
   };
 
   const club = getClubById(resolvedClubId);
+  const navigate = useNavigate();
+  const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
+
+  const clubProfilePath = club
+    ? club.slug
+      ? `/clubs/${club.slug}`
+      : `/app/clubs/${resolvedClubId}`
+    : "/app";
 
   if (loading) {
     return (
@@ -388,7 +403,25 @@ export default function WorkspaceLayout() {
         <div className="flex h-full flex-col">
           {/* Club header */}
           <div className="border-b p-4" style={{ borderColor: "#1e1e1e" }}>
-            <div className="flex items-center gap-3">
+            <div
+              role="button"
+              tabIndex={0}
+              className="flex items-center gap-3"
+              onClick={() => navigate(clubProfilePath)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate(clubProfilePath);
+                }
+              }}
+              onMouseEnter={() => setClubHeaderHovered(true)}
+              onMouseLeave={() => setClubHeaderHovered(false)}
+              style={{
+                cursor: "pointer",
+                opacity: clubHeaderHovered ? 0.8 : 1,
+                transition: "opacity 0.15s ease",
+              }}
+            >
               <img
                 src={club.imageUrl}
                 alt=""

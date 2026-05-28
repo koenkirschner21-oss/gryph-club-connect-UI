@@ -45,6 +45,22 @@ function normalizeUserRole(role: string): MemberRole {
   return "member";
 }
 
+const highImportanceBadgeStyle: CSSProperties = {
+  background: "#1a0505",
+  border: "1px solid #E51937",
+  color: "#E51937",
+  borderRadius: "20px",
+  padding: "2px 8px",
+  fontSize: "10px",
+  fontWeight: 700,
+  flexShrink: 0,
+  lineHeight: 1.2,
+};
+
+function HighImportanceBadge() {
+  return <span style={highImportanceBadgeStyle}>!</span>;
+}
+
 function deriveAbbreviation(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "?";
@@ -678,7 +694,7 @@ export default function ClubTasksPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<TaskPriority>("medium");
+  const [highImportance, setHighImportance] = useState(false);
   const [assignedTo, setAssignedTo] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -806,7 +822,7 @@ export default function ClubTasksPage() {
   function resetForm() {
     setTitle("");
     setDescription("");
-    setPriority("medium");
+    setHighImportance(false);
     setAssignedTo("");
     setDueDate("");
     setEditingId(null);
@@ -817,7 +833,7 @@ export default function ClubTasksPage() {
     setEditingId(task.id);
     setTitle(task.title);
     setDescription(task.description);
-    setPriority(task.priority);
+    setHighImportance(task.priority === "high");
     setAssignedTo(task.assignedTo ?? "");
     setDueDate(task.dueDate ?? "");
     setShowForm(true);
@@ -828,6 +844,8 @@ export default function ClubTasksPage() {
     if (!title.trim()) return;
     setSaving(true);
     setFeedback(null);
+
+    const priority: TaskPriority = highImportance ? "high" : "medium";
 
     let ok: boolean;
     if (editingId) {
@@ -992,9 +1010,15 @@ export default function ClubTasksPage() {
             color: "#ffffff",
             flex: 1,
             minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
           }}
         >
-          {task.title}
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {task.title}
+          </span>
+          {task.priority === "high" ? <HighImportanceBadge /> : null}
         </span>
         <span style={statusBadgeStyle(task.status)}>{statusLabels[task.status]}</span>
       </div>
@@ -1037,19 +1061,29 @@ export default function ClubTasksPage() {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
-          <p
+          <div
             style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              color: "#ffffff",
-              textDecoration: isDone ? "line-through" : "none",
-              margin: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
               flex: 1,
               minWidth: 0,
             }}
           >
-            {task.title}
-          </p>
+            <p
+              style={{
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "#ffffff",
+                textDecoration: isDone ? "line-through" : "none",
+                margin: 0,
+                minWidth: 0,
+              }}
+            >
+              {task.title}
+            </p>
+            {task.priority === "high" ? <HighImportanceBadge /> : null}
+          </div>
           {isHovered ? renderTaskMenu(task) : null}
         </div>
 
@@ -1239,17 +1273,27 @@ export default function ClubTasksPage() {
           />
         ) : null}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p
+          <div
             style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              color: completed ? "#777777" : "#ffffff",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
               margin: "0 0 6px",
-              textDecoration: completed ? "line-through" : "none",
             }}
           >
-            {task.title}
-          </p>
+            <p
+              style={{
+                fontSize: "14px",
+                fontWeight: 600,
+                color: completed ? "#777777" : "#ffffff",
+                margin: 0,
+                textDecoration: completed ? "line-through" : "none",
+              }}
+            >
+              {task.title}
+            </p>
+            {task.priority === "high" ? <HighImportanceBadge /> : null}
+          </div>
           <div
             style={{
               display: "flex",
@@ -1495,37 +1539,55 @@ export default function ClubTasksPage() {
                 className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
               />
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-              <div className="flex-1">
-                <label
-                  htmlFor="taskPriority"
-                  className="mb-1 block text-sm font-medium text-white"
-                >
-                  Priority
-                </label>
-                <select
-                  id="taskPriority"
-                  value={priority}
-                  onChange={(e) =>
-                    setPriority(e.target.value as TaskPriority)
-                  }
-                  className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-              <div className="flex-1">
-                <FormInput
-                  id="taskDueDate"
-                  label="Due Date"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                cursor: "pointer",
+              }}
+            >
+              <button
+                type="button"
+                role="switch"
+                aria-checked={highImportance}
+                onClick={() => setHighImportance((prev) => !prev)}
+                style={{
+                  width: "40px",
+                  height: "22px",
+                  borderRadius: "11px",
+                  border: "none",
+                  background: highImportance ? "#E51937" : "#333333",
+                  position: "relative",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  transition: "background 0.15s ease",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "3px",
+                    left: highImportance ? "21px" : "3px",
+                    width: "16px",
+                    height: "16px",
+                    borderRadius: "50%",
+                    background: "#ffffff",
+                    transition: "left 0.15s ease",
+                  }}
                 />
-              </div>
-            </div>
+              </button>
+              <span style={{ fontSize: "13px", color: "#cccccc" }}>
+                High Importance
+              </span>
+            </label>
+            <FormInput
+              id="taskDueDate"
+              label="Due Date"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
             <div>
               <label
                 htmlFor="taskAssignee"
@@ -1711,11 +1773,11 @@ export default function ClubTasksPage() {
 
       {isPrivileged ? (
         <section
-          aria-labelledby="delegated-tasks-heading"
+          aria-labelledby="team-tasks-heading"
           style={{ marginTop: "40px" }}
         >
           <h2
-            id="delegated-tasks-heading"
+            id="team-tasks-heading"
             style={{
               fontSize: "16px",
               fontWeight: 700,
@@ -1723,7 +1785,7 @@ export default function ClubTasksPage() {
               margin: 0,
             }}
           >
-            Delegated Tasks
+            Team Tasks
           </h2>
           <p
             style={{
@@ -1732,7 +1794,7 @@ export default function ClubTasksPage() {
               margin: "6px 0 16px",
             }}
           >
-            Tasks you&apos;ve assigned to others
+            Track progress on tasks you&apos;ve assigned
           </p>
 
           {delegatedByAssignee.length === 0 ? (

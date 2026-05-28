@@ -148,6 +148,39 @@ function getFileExtension(name: string, fileType?: string | null): string {
   return fromName || "file";
 }
 
+function previewKindForDocument(
+  doc: ClubDocument,
+): "image" | "pdf" | null {
+  const ext = getFileExtension(doc.name, doc.file_type);
+  if (
+    ["jpg", "jpeg", "png", "gif", "webp", "svg", "img"].includes(ext) ||
+    doc.file_type?.startsWith("image/")
+  ) {
+    return "image";
+  }
+  if (ext === "pdf" || doc.file_type?.includes("pdf")) return "pdf";
+  return null;
+}
+
+async function downloadClubDocument(doc: ClubDocument): Promise<boolean> {
+  try {
+    const response = await fetch(doc.file_url);
+    if (!response.ok) throw new Error("Download failed");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = doc.name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function fileIconColor(name: string, fileType?: string | null): string {
   const ext = getFileExtension(name, fileType);
   if (ext === "pdf") return "#E51937";
@@ -377,20 +410,41 @@ function CategoryPills({
   );
 }
 
+const docActionButtonStyle = (
+  hovered: boolean,
+): CSSProperties => ({
+  background: "#1f1f1f",
+  border: `1px solid ${hovered ? "#E51937" : "#2a2a2a"}`,
+  color: hovered ? "#E51937" : "#cccccc",
+  borderRadius: "6px",
+  padding: "5px 14px",
+  fontSize: "12px",
+  cursor: "pointer",
+  transition: "border-color 0.15s ease, color 0.15s ease",
+});
+
 function DocumentCard({
   doc,
   isPrivileged,
   deleting,
   onDelete,
+  onEdit,
+  onPreview,
+  onDownload,
 }: {
   doc: ClubDocument;
   isPrivileged: boolean;
   deleting: boolean;
   onDelete: (doc: ClubDocument) => void;
+  onEdit: (doc: ClubDocument) => void;
+  onPreview: (doc: ClubDocument) => void;
+  onDownload: (doc: ClubDocument) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [downloadHovered, setDownloadHovered] = useState(false);
+  const [previewHovered, setPreviewHovered] = useState(false);
+  const previewKind = previewKindForDocument(doc);
 
   const iconBg = fileIconBackground(doc.name, doc.file_type);
 
@@ -487,26 +541,32 @@ function DocumentCard({
           })}
         </p>
         <Box style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <a
-            href={doc.file_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
+          {previewKind ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview(doc);
+              }}
+              onMouseEnter={() => setPreviewHovered(true)}
+              onMouseLeave={() => setPreviewHovered(false)}
+              style={docActionButtonStyle(previewHovered)}
+            >
+              Preview
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void onDownload(doc);
+            }}
             onMouseEnter={() => setDownloadHovered(true)}
             onMouseLeave={() => setDownloadHovered(false)}
-            style={{
-              background: "#1f1f1f",
-              border: `1px solid ${downloadHovered ? "#E51937" : "#2a2a2a"}`,
-              color: downloadHovered ? "#E51937" : "#cccccc",
-              borderRadius: "6px",
-              padding: "5px 14px",
-              fontSize: "12px",
-              textDecoration: "none",
-              transition: "border-color 0.15s ease, color 0.15s ease",
-            }}
+            style={docActionButtonStyle(downloadHovered)}
           >
             Download
-          </a>
+          </button>
           {isPrivileged && hovered ? (
             <Box style={{ position: "relative" }}>
               <button
@@ -546,16 +606,20 @@ function DocumentCard({
                 >
                   <button
                     type="button"
-                    disabled
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      onEdit(doc);
+                    }}
                     style={{
                       width: "100%",
                       background: "transparent",
                       border: "none",
                       textAlign: "left",
-                      color: "#777777",
+                      color: "#cccccc",
                       fontSize: "12px",
                       padding: "8px 10px",
-                      cursor: "not-allowed",
+                      cursor: "pointer",
                     }}
                   >
                     Edit
@@ -613,6 +677,10 @@ export default function ClubDocumentsPage() {
     text: string;
   } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<ClubDocument | null>(null);
+  const [editingDocument, setEditingDocument] = useState<ClubDocument | null>(null);
+  const [editDocName, setEditDocName] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [resourceLinks, setResourceLinks] = useState<ResourceLink[]>([]);
   const [linksLoading, setLinksLoading] = useState(true);
@@ -888,6 +956,49 @@ export default function ClubDocumentsPage() {
     void loadDocuments();
   }
 
+  async function handleDownloadDocument(doc: ClubDocument) {
+    setFeedback(null);
+    const ok = await downloadClubDocument(doc);
+    if (!ok) {
+      setFeedback({ type: "error", text: "Failed to download document." });
+    }
+  }
+
+  function openEditDocument(doc: ClubDocument) {
+    setEditingDocument(doc);
+    setEditDocName(doc.name);
+  }
+
+  function closeEditModal() {
+    if (savingEdit) return;
+    setEditingDocument(null);
+    setEditDocName("");
+  }
+
+  async function handleRenameDocument() {
+    if (!editingDocument || !editDocName.trim()) return;
+
+    setSavingEdit(true);
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("club_documents")
+      .update({ name: editDocName.trim() })
+      .eq("id", editingDocument.id);
+
+    setSavingEdit(false);
+
+    if (error) {
+      console.error("Failed to rename document:", error.message);
+      setFeedback({ type: "error", text: "Failed to rename document." });
+      return;
+    }
+
+    setFeedback({ type: "success", text: "Document renamed." });
+    closeEditModal();
+    void loadDocuments();
+  }
+
   async function handleDelete(doc: ClubDocument) {
     if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
     setDeletingId(doc.id);
@@ -1122,6 +1233,9 @@ export default function ClubDocumentsPage() {
               isPrivileged={isPrivileged}
               deleting={deletingId === doc.id}
               onDelete={(item) => void handleDelete(item)}
+              onEdit={openEditDocument}
+              onPreview={(item) => setPreviewDoc(item)}
+              onDownload={(item) => void handleDownloadDocument(item)}
             />
           ))}
         </div>
@@ -1436,6 +1550,196 @@ export default function ClubDocumentsPage() {
                 }}
               >
                 {uploading ? "Uploading…" : "Upload"}
+              </button>
+            </Box>
+          </div>
+        </div>
+      ) : null}
+
+      {previewDoc ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            ...modalOverlayStyle,
+            background:
+              previewKindForDocument(previewDoc) === "image"
+                ? "rgba(0, 0, 0, 0.85)"
+                : modalOverlayStyle.background,
+          }}
+          onClick={() => setPreviewDoc(null)}
+        >
+          {previewKindForDocument(previewDoc) === "image" ? (
+            <img
+              src={previewDoc.file_url}
+              alt={previewDoc.name}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: "min(90vw, 1200px)",
+                maxHeight: "90vh",
+                objectFit: "contain",
+                borderRadius: "8px",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "min(90vw, 960px)",
+                height: "min(85vh, 800px)",
+                background: "#1a1a1a",
+                border: "1px solid #242424",
+                borderRadius: "12px",
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 16px",
+                  borderBottom: "1px solid #242424",
+                }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#ffffff",
+                  }}
+                >
+                  {previewDoc.name}
+                </p>
+                <button
+                  type="button"
+                  aria-label="Close preview"
+                  onClick={() => setPreviewDoc(null)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#777777",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "flex",
+                  }}
+                >
+                  <X size={18} aria-hidden />
+                </button>
+              </div>
+              <iframe
+                title={previewDoc.name}
+                src={previewDoc.file_url}
+                style={{ flex: 1, width: "100%", border: "none", background: "#111" }}
+              />
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {editingDocument ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={modalOverlayStyle}
+          onClick={closeEditModal}
+        >
+          <div
+            style={addLinkModalPanelStyle}
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "16px",
+              }}
+            >
+              <h2
+                style={{
+                  fontWeight: 600,
+                  fontSize: "16px",
+                  color: "#ffffff",
+                  margin: 0,
+                }}
+              >
+                Rename Document
+              </h2>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={closeEditModal}
+                disabled={savingEdit}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#777777",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                }}
+              >
+                <X size={18} aria-hidden />
+              </button>
+            </div>
+
+            <label htmlFor="edit-doc-name" style={labelStyle}>
+              Document name
+            </label>
+            <input
+              id="edit-doc-name"
+              type="text"
+              value={editDocName}
+              onChange={(e) => setEditDocName(e.target.value)}
+              disabled={savingEdit}
+              style={{ ...inputStyle, marginBottom: "16px" }}
+            />
+
+            <Box
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeEditModal}
+                disabled={savingEdit}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRenameDocument()}
+                disabled={savingEdit || !editDocName.trim()}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: savingEdit || !editDocName.trim() ? 0.5 : 1,
+                }}
+              >
+                {savingEdit ? "Saving…" : "Save"}
               </button>
             </Box>
           </div>
