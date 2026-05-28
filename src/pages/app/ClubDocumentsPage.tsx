@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { FileText, Globe, MoreHorizontal, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
@@ -132,6 +132,14 @@ function formatFileSize(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function domainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 function getFileExtension(name: string, fileType?: string | null): string {
   const fromName = name.split(".").pop()?.toLowerCase() ?? "";
   if (fromName && fromName !== name.toLowerCase()) return fromName;
@@ -149,6 +157,17 @@ function fileIconColor(name: string, fileType?: string | null): string {
   if (["doc", "docx", "txt", "rtf"].includes(ext)) return "#6b7cff";
   if (["xls", "xlsx", "csv"].includes(ext)) return "#4ade80";
   return "#747676";
+}
+
+function fileIconBackground(name: string, fileType?: string | null): string {
+  const ext = getFileExtension(name, fileType);
+  if (ext === "pdf") return "#1a0505";
+  if (["jpg", "jpeg", "png", "gif", "webp", "svg", "img"].includes(ext)) {
+    return "#1a1500";
+  }
+  if (["doc", "docx", "txt", "rtf"].includes(ext)) return "#0a0a1a";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "#0a1a0a";
+  return "#1a1a1a";
 }
 
 function FileTypeIcon({
@@ -176,25 +195,6 @@ function FileTypeIcon({
       <path d="M10 9H8" />
       <path d="M16 13H8" />
       <path d="M16 17H8" />
-    </svg>
-  );
-}
-
-function EmptyDocumentsIcon() {
-  return (
-    <svg
-      width={48}
-      height={48}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#555555"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
     </svg>
   );
 }
@@ -233,7 +233,7 @@ function Box({
   );
 }
 
-function ResourceLinkCard({
+function ResourceLinkRow({
   link,
   canManage,
   onDelete,
@@ -264,17 +264,44 @@ function ResourceLinkCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        position: "relative",
-        background: "#1a1a1a",
-        border: "1px solid #242424",
-        borderRadius: "10px",
-        padding: "14px 16px",
-        minWidth: "200px",
-        maxWidth: "220px",
-        flex: "0 0 auto",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        padding: "8px 0",
+        borderBottom: "1px solid #1e1e1e",
+        color: "#cccccc",
+        fontSize: "13px",
         cursor: "pointer",
       }}
     >
+      <Globe size={14} color="#E51937" aria-hidden />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: 0,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {link.title}
+        </p>
+        <p
+          style={{
+            fontSize: "11px",
+            color: "#555555",
+            margin: "2px 0 0",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {domainFromUrl(link.url)}
+        </p>
+      </div>
       {canManage && hovered ? (
         <button
           type="button"
@@ -285,50 +312,19 @@ function ResourceLinkCard({
             onDelete(link);
           }}
           style={{
-            position: "absolute",
-            top: "8px",
-            right: "8px",
             background: "transparent",
             border: "none",
-            color: hovered ? "#E51937" : "#555555",
+            color: "#E51937",
             cursor: deleting ? "not-allowed" : "pointer",
             padding: "2px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            flexShrink: 0,
           }}
         >
           <X size={14} />
         </button>
-      ) : null}
-      <ExternalLink size={16} color="#E51937" aria-hidden />
-      <p
-        style={{
-          fontSize: "13px",
-          fontWeight: 600,
-          color: "#ffffff",
-          margin: "6px 0 0",
-          paddingRight: canManage ? "18px" : 0,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {link.title}
-      </p>
-      {link.description ? (
-        <p
-          style={{
-            fontSize: "12px",
-            color: "#555555",
-            margin: "4px 0 0",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {link.description}
-        </p>
       ) : null}
     </div>
   );
@@ -343,6 +339,7 @@ function CategoryPills({
   onChange: (value: string) => void;
   includeAll?: boolean;
 }) {
+  const [hoveredValue, setHoveredValue] = useState<string | null>(null);
   const options = includeAll
     ? [{ value: "all", label: "All" }, ...DOCUMENT_CATEGORIES]
     : DOCUMENT_CATEGORIES;
@@ -351,26 +348,244 @@ function CategoryPills({
     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
       {options.map((option) => {
         const selected = value === option.value;
+        const hovered = hoveredValue === option.value;
         return (
           <button
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
+            onMouseEnter={() => setHoveredValue(option.value)}
+            onMouseLeave={() => setHoveredValue(null)}
             style={{
               background: selected ? "#E51937" : "#1a1a1a",
-              border: selected ? "1px solid #E51937" : "1px solid #333333",
+              border: selected ? "none" : `1px solid ${hovered ? "#444444" : "#2a2a2a"}`,
               color: selected ? "#ffffff" : "#777777",
               borderRadius: "20px",
               fontSize: "12px",
               fontWeight: 500,
               padding: "6px 16px",
               cursor: "pointer",
+              transition: "border-color 0.15s ease, color 0.15s ease",
+              ...(selected ? null : hovered ? { color: "#cccccc" } : null),
             }}
           >
             {option.label}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function DocumentCard({
+  doc,
+  isPrivileged,
+  deleting,
+  onDelete,
+}: {
+  doc: ClubDocument;
+  isPrivileged: boolean;
+  deleting: boolean;
+  onDelete: (doc: ClubDocument) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [downloadHovered, setDownloadHovered] = useState(false);
+
+  const iconBg = fileIconBackground(doc.name, doc.file_type);
+
+  return (
+    <div
+      onClick={() => setMenuOpen(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setMenuOpen(false);
+      }}
+      style={{
+        background: "#1a1a1a",
+        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
+        borderRadius: "10px",
+        overflow: "hidden",
+        transition: "border-color 0.15s ease, transform 0.15s ease",
+        transform: hovered ? "translateY(-1px)" : "translateY(0)",
+      }}
+    >
+      <Box
+        style={{
+          padding: "16px",
+          display: "flex",
+          gap: "12px",
+          alignItems: "flex-start",
+        }}
+      >
+        <Box
+          style={{
+            width: "44px",
+            height: "44px",
+            borderRadius: "8px",
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: iconBg,
+          }}
+        >
+          <FileTypeIcon name={doc.name} fileType={doc.file_type} />
+        </Box>
+        <Box style={{ minWidth: 0, flex: 1 }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              margin: "0 0 4px",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {doc.name}
+          </p>
+          {doc.description ? (
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#555555",
+                margin: "0 0 8px",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {doc.description}
+            </p>
+          ) : null}
+          <span style={categoryBadgeStyle()}>{categoryLabel(doc.category)}</span>
+        </Box>
+      </Box>
+
+      <Box
+        style={{
+          background: "#141414",
+          borderTop: "1px solid #1e1e1e",
+          padding: "10px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "10px",
+        }}
+      >
+        <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
+          {formatFileSize(doc.file_size)} ·{" "}
+          {new Date(doc.created_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </p>
+        <Box style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <a
+            href={doc.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            onMouseEnter={() => setDownloadHovered(true)}
+            onMouseLeave={() => setDownloadHovered(false)}
+            style={{
+              background: "#1f1f1f",
+              border: `1px solid ${downloadHovered ? "#E51937" : "#2a2a2a"}`,
+              color: downloadHovered ? "#E51937" : "#cccccc",
+              borderRadius: "6px",
+              padding: "5px 14px",
+              fontSize: "12px",
+              textDecoration: "none",
+              transition: "border-color 0.15s ease, color 0.15s ease",
+            }}
+          >
+            Download
+          </a>
+          {isPrivileged && hovered ? (
+            <Box style={{ position: "relative" }}>
+              <button
+                type="button"
+                aria-label="Document actions"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen((prev) => !prev);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#777777",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "2px",
+                }}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {menuOpen ? (
+                <Box
+                  role="menu"
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    marginTop: "4px",
+                    minWidth: "120px",
+                    background: "#151515",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: "8px",
+                    overflow: "hidden",
+                    zIndex: 10,
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled
+                    style={{
+                      width: "100%",
+                      background: "transparent",
+                      border: "none",
+                      textAlign: "left",
+                      color: "#777777",
+                      fontSize: "12px",
+                      padding: "8px 10px",
+                      cursor: "not-allowed",
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(doc);
+                    }}
+                    style={{
+                      width: "100%",
+                      background: "transparent",
+                      border: "none",
+                      textAlign: "left",
+                      color: "#E51937",
+                      fontSize: "12px",
+                      padding: "8px 10px",
+                      cursor: deleting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {deleting ? "Deleting…" : "Delete"}
+                  </button>
+                </Box>
+              ) : null}
+            </Box>
+          ) : null}
+        </Box>
+      </Box>
     </div>
   );
 }
@@ -498,6 +713,12 @@ export default function ClubDocumentsPage() {
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timeout = window.setTimeout(() => setFeedback(null), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
 
   const filteredDocuments = useMemo(() => {
     if (filterCategory === "all") return documents;
@@ -695,7 +916,7 @@ export default function ClubDocumentsPage() {
 
   const gridStyle: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+    gridTemplateColumns: "repeat(3, 1fr)",
     gap: "16px",
   };
 
@@ -752,24 +973,48 @@ export default function ClubDocumentsPage() {
       {feedback ? (
         <div
           role="alert"
-          className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
-            feedback.type === "success"
-              ? "bg-green-500/10 text-green-400"
-              : "bg-primary/10 text-primary"
-          }`}
+          style={{
+            marginBottom: "16px",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            fontSize: "13px",
+            border:
+              feedback.type === "success"
+                ? "1px solid #1a4a1a"
+                : "1px solid #3a1a1a",
+            background: feedback.type === "success" ? "#0d2b0d" : "#1a0505",
+            color: feedback.type === "success" ? "#4ade80" : "#E51937",
+          }}
         >
           {feedback.text}
         </div>
       ) : null}
 
-      <Box style={{ marginBottom: "24px" }}>
+      <Box style={{ marginBottom: "20px" }}>
+        <CategoryPills
+          value={filterCategory}
+          onChange={setFilterCategory}
+          includeAll
+        />
+      </Box>
+
+      <Box
+        style={{
+          marginTop: "4px",
+          marginBottom: "28px",
+          background: "#1a1a1a",
+          border: "1px solid #242424",
+          borderRadius: "10px",
+          padding: "20px",
+        }}
+      >
         <Box
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: "12px",
-            marginBottom: "12px",
+            marginBottom: "8px",
           }}
         >
           <h2
@@ -789,11 +1034,19 @@ export default function ClubDocumentsPage() {
               style={{
                 background: "transparent",
                 border: "1px solid #333333",
-                color: "#cccccc",
+                color: "#777777",
                 borderRadius: "6px",
-                padding: "6px 14px",
+                padding: "7px 14px",
                 fontSize: "12px",
                 cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#E51937";
+                e.currentTarget.style.color = "#E51937";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#333333";
+                e.currentTarget.style.color = "#777777";
               }}
             >
               + Add Link
@@ -802,43 +1055,17 @@ export default function ClubDocumentsPage() {
         </Box>
 
         {linksLoading ? (
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              overflowX: "auto",
-              paddingBottom: "4px",
-            }}
-          >
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  background: "#1a1a1a",
-                  border: "1px solid #242424",
-                  borderRadius: "10px",
-                  minWidth: "200px",
-                  height: "88px",
-                  flex: "0 0 auto",
-                }}
-              />
-            ))}
-          </div>
+          <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
+            Loading links…
+          </p>
         ) : resourceLinks.length === 0 ? (
-          <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+          <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
             No resource links yet
           </p>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              overflowX: "auto",
-              paddingBottom: "4px",
-            }}
-          >
+          <Box>
             {resourceLinks.map((link) => (
-              <ResourceLinkCard
+              <ResourceLinkRow
                 key={link.id}
                 link={link}
                 canManage={isPrivileged}
@@ -846,16 +1073,8 @@ export default function ClubDocumentsPage() {
                 onDelete={(item) => void handleDeleteLink(item)}
               />
             ))}
-          </div>
+          </Box>
         )}
-      </Box>
-
-      <Box style={{ marginBottom: "20px" }}>
-        <CategoryPills
-          value={filterCategory}
-          onChange={setFilterCategory}
-          includeAll
-        />
       </Box>
 
       {loading ? (
@@ -873,7 +1092,7 @@ export default function ClubDocumentsPage() {
               marginBottom: "16px",
             }}
           >
-            <EmptyDocumentsIcon />
+            <FileText size={32} color="#333333" />
           </Box>
           <p style={{ fontSize: "14px", color: "#555555", margin: "0 0 8px" }}>
             No documents yet
@@ -888,124 +1107,22 @@ export default function ClubDocumentsPage() {
                 color: "#E51937",
                 fontSize: "14px",
                 cursor: "pointer",
-                textDecoration: "underline",
-                textUnderlineOffset: "2px",
               }}
             >
-              Upload your first document
+              Upload your first document →
             </button>
           ) : null}
         </Box>
       ) : (
         <div style={gridStyle}>
           {filteredDocuments.map((doc) => (
-            <Box
+            <DocumentCard
               key={doc.id}
-              style={{
-                background: "#1a1a1a",
-                border: "1px solid #242424",
-                borderRadius: "10px",
-                padding: "16px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-              }}
-            >
-              <Box style={{ display: "flex", gap: "12px" }}>
-                <FileTypeIcon name={doc.name} fileType={doc.file_type} />
-                <Box style={{ minWidth: 0, flex: 1 }}>
-                  <p
-                    style={{
-                      fontSize: "14px",
-                      fontWeight: 600,
-                      color: "#ffffff",
-                      margin: "0 0 4px",
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {doc.name}
-                  </p>
-                  {doc.description ? (
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#555555",
-                        margin: 0,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {doc.description}
-                    </p>
-                  ) : null}
-                </Box>
-              </Box>
-
-              <span style={categoryBadgeStyle()}>
-                {categoryLabel(doc.category)}
-              </span>
-
-              <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
-                {formatFileSize(doc.file_size)} ·{" "}
-                {new Date(doc.created_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
-              <p style={{ fontSize: "11px", color: "#747676", margin: 0 }}>
-                Uploaded by {doc.uploaderName ?? "Unknown"}
-              </p>
-
-              <Box
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  marginTop: "auto",
-                  paddingTop: "4px",
-                }}
-              >
-                <a
-                  href={doc.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download
-                  style={{
-                    background: "#1a1a1a",
-                    border: "1px solid #333333",
-                    color: "#cccccc",
-                    borderRadius: "6px",
-                    padding: "5px 12px",
-                    fontSize: "12px",
-                    textDecoration: "none",
-                  }}
-                >
-                  Download
-                </a>
-                {isPrivileged ? (
-                  <button
-                    type="button"
-                    disabled={deletingId === doc.id}
-                    onClick={() => void handleDelete(doc)}
-                    style={{
-                      background: "transparent",
-                      border: "1px solid #3a1a1a",
-                      color: "#E51937",
-                      borderRadius: "6px",
-                      padding: "5px 12px",
-                      fontSize: "12px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {deletingId === doc.id ? "Deleting…" : "Delete"}
-                  </button>
-                ) : null}
-              </Box>
-            </Box>
+              doc={doc}
+              isPrivileged={isPrivileged}
+              deleting={deletingId === doc.id}
+              onDelete={(item) => void handleDelete(item)}
+            />
           ))}
         </div>
       )}
