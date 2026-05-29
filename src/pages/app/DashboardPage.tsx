@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -338,6 +339,10 @@ export default function DashboardPage() {
           badge={unreadNotificationCount > 0 ? unreadNotificationCount : undefined}
           onClick={() => setActiveTab("overview")}
         />
+        <ThisWeekTabButton
+          active={activeTab === "week"}
+          onClick={() => setActiveTab("week")}
+        />
         <TabButton
           label="Events"
           active={activeTab === "events"}
@@ -347,11 +352,6 @@ export default function DashboardPage() {
           label="Tasks"
           active={activeTab === "tasks"}
           onClick={() => setActiveTab("tasks")}
-        />
-        <TabButton
-          label="This Week"
-          active={activeTab === "week"}
-          onClick={() => setActiveTab("week")}
         />
       </div>
 
@@ -373,7 +373,14 @@ export default function DashboardPage() {
           onViewAllTasks={() => setActiveTab("tasks")}
         />
       )}
-      {activeTab === "week" && <ThisWeekTab joinedClubIds={joinedClubs} />}
+      {activeTab === "week" && (
+        <ThisWeekTab
+          joinedClubIds={joinedClubs}
+          clubLogos={clubLogos}
+          onViewAllTasks={() => setActiveTab("tasks")}
+          onViewAllEvents={() => setActiveTab("events")}
+        />
+      )}
       {activeTab === "events" && (
         <EventsTab
           upcomingEvents={upcomingEvents}
@@ -404,11 +411,12 @@ function TabButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`relative cursor-pointer pb-3 text-sm font-medium transition-colors ${
+      className={`relative box-border inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 border-b-2 text-sm font-medium transition-colors ${
         active
-          ? "text-white after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:bg-primary"
-          : "text-muted hover:text-white"
+          ? "border-primary text-white"
+          : "border-transparent text-muted hover:text-white"
       }`}
     >
       {label}
@@ -417,6 +425,45 @@ function TabButton({
           {badge > 9 ? "9+" : badge}
         </span>
       )}
+    </button>
+  );
+}
+
+function ThisWeekTabButton({
+  active,
+  onClick,
+}: {
+  active: boolean;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="box-border inline-flex h-10 shrink-0 items-center"
+      style={{
+        position: "relative",
+        gap: "6px",
+        padding: 0,
+        fontSize: "14px",
+        fontWeight: 500,
+        lineHeight: "20px",
+        background: "transparent",
+        border: "none",
+        borderBottom: active ? "2px solid #FFC429" : "2px solid transparent",
+        color: active ? "#ffffff" : "#FFC429",
+        cursor: "pointer",
+        textShadow:
+          hovered && !active ? "0 0 8px rgba(255, 196, 41, 0.4)" : "none",
+        transition: "color 0.15s ease, text-shadow 0.15s ease",
+      }}
+    >
+      <Calendar size={13} strokeWidth={2} aria-hidden />
+      This Week
     </button>
   );
 }
@@ -451,43 +498,30 @@ function addDaysIso(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function formatWeekDayHeading(isoDate: string): string {
-  const d = new Date(`${isoDate}T12:00:00`);
-  return d.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
+const CALENDAR_WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+function calendarWeekDays(reference = new Date()): Array<{
+  dateKey: string;
+  label: string;
+  dayNum: number;
+}> {
+  const ref = new Date(reference);
+  const dayOfWeek = ref.getDay();
+  const monday = new Date(ref);
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  monday.setDate(ref.getDate() + diff);
+  monday.setHours(12, 0, 0, 0);
+
+  return CALENDAR_WEEK_LABELS.map((label, index) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + index);
+    return {
+      dateKey: d.toISOString().slice(0, 10),
+      label,
+      dayNum: d.getDate(),
+    };
   });
 }
-
-function weekDayKeysFromToday(): string[] {
-  const start = todayIsoDate();
-  const keys: string[] = [];
-  for (let i = 0; i <= 7; i += 1) {
-    keys.push(addDaysIso(start, i));
-  }
-  return keys;
-}
-
-const weekItemLabelStyle: CSSProperties = {
-  fontSize: "10px",
-  color: "#747676",
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  margin: "0 0 6px",
-};
-
-const highImportanceBadgeStyle: CSSProperties = {
-  background: "#1a0505",
-  border: "1px solid #E51937",
-  color: "#E51937",
-  borderRadius: "20px",
-  padding: "2px 8px",
-  fontSize: "10px",
-  fontWeight: 700,
-  flexShrink: 0,
-  lineHeight: 1.2,
-};
 
 type WeekTaskItem = {
   kind: "task";
@@ -497,6 +531,7 @@ type WeekTaskItem = {
   clubName: string;
   clubId: string;
   priority: string;
+  status: string;
 };
 
 type WeekEventItem = {
@@ -512,10 +547,106 @@ type WeekEventItem = {
 
 type WeekPlannerItem = WeekTaskItem | WeekEventItem;
 
-function ThisWeekTab({ joinedClubIds }: { joinedClubIds: string[] }) {
+function weekEventToDashboard(event: WeekEventItem): DashboardEvent {
+  return {
+    id: event.id,
+    clubId: event.clubId,
+    title: event.title,
+    description: "",
+    date: event.dateKey,
+    time: event.time,
+    location: event.location,
+    createdAt: "",
+    clubName: event.clubName,
+    clubAbbreviation: "",
+    clubBrandColor: "#C20430",
+  };
+}
+
+function WeekTaskCard({
+  task,
+  logoUrl,
+}: {
+  task: WeekTaskItem;
+  logoUrl?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const borderMuted = hovered ? "#333" : "#242424";
+
+  return (
+    <Link
+      to={`/app/clubs/${task.clubId}/tasks`}
+      className="block no-underline"
+      style={{ cursor: "pointer" }}
+    >
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          background: "#1a1a1a",
+          borderTop: `1px solid ${borderMuted}`,
+          borderRight: `1px solid ${borderMuted}`,
+          borderBottom: `1px solid ${borderMuted}`,
+          borderLeft: `4px solid ${taskStatusBorder(task.status)}`,
+          borderRadius: "8px",
+          padding: "14px 16px",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "12px",
+          transition: "all 0.15s ease",
+          transform: hovered ? "translateY(-1px)" : undefined,
+        }}
+      >
+        <ClubBadge name={task.clubName} size="sm" logoUrl={logoUrl} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              margin: "0 0 4px",
+            }}
+          >
+            {task.title}
+          </p>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "11px",
+              color: isTaskOverdue(task.dateKey) ? "#E51937" : "#555555",
+            }}
+          >
+            <Calendar size={11} aria-hidden />
+            {formatTaskDueDate(task.dateKey)}
+          </span>
+        </div>
+        <span style={{ ...dashboardTaskStatusBadgeStyle(task.status), alignSelf: "flex-start" }}>
+          {taskStatusLabel(task.status)}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function ThisWeekTab({
+  joinedClubIds,
+  clubLogos,
+  onViewAllTasks,
+  onViewAllEvents,
+}: {
+  joinedClubIds: string[];
+  clubLogos: Record<string, string>;
+  onViewAllTasks: () => void;
+  onViewAllEvents: () => void;
+}) {
   const [items, setItems] = useState<WeekPlannerItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const weekItemsRef = useRef<HTMLDivElement>(null);
   const todayKey = todayIsoDate();
+  const weekDays = useMemo(() => calendarWeekDays(), []);
 
   useEffect(() => {
     if (joinedClubIds.length === 0) {
@@ -542,6 +673,7 @@ function ThisWeekTab({ joinedClubIds }: { joinedClubIds: string[] }) {
             club_id,
             title,
             priority,
+            status,
             due_date,
             clubs:club_id ( name )
           `,
@@ -612,6 +744,7 @@ function ThisWeekTab({ joinedClubIds }: { joinedClubIds: string[] }) {
             clubName: (club.name as string) ?? "",
             clubId: row.club_id as string,
             priority: (row.priority as string) ?? "medium",
+            status: (row.status as string) ?? "todo",
           });
         }
       }
@@ -627,19 +760,56 @@ function ThisWeekTab({ joinedClubIds }: { joinedClubIds: string[] }) {
     };
   }, [joinedClubIds]);
 
-  const itemsByDay = useMemo(() => {
-    const map = new Map<string, WeekPlannerItem[]>();
+  const dayMeta = useMemo(() => {
+    const map = new Map<
+      string,
+      { hasEvents: boolean; hasTasks: boolean; itemCount: number }
+    >();
     for (const item of items) {
-      const existing = map.get(item.dateKey) ?? [];
-      existing.push(item);
+      const existing = map.get(item.dateKey) ?? {
+        hasEvents: false,
+        hasTasks: false,
+        itemCount: 0,
+      };
+      if (item.kind === "event") existing.hasEvents = true;
+      if (item.kind === "task") existing.hasTasks = true;
+      existing.itemCount += 1;
       map.set(item.dateKey, existing);
     }
     return map;
   }, [items]);
 
-  const daysWithItems = useMemo(() => {
-    return weekDayKeysFromToday().filter((key) => (itemsByDay.get(key)?.length ?? 0) > 0);
-  }, [itemsByDay]);
+  const weekTasks = useMemo(() => {
+    const tasks = items.filter((i): i is WeekTaskItem => i.kind === "task");
+    const filtered = selectedDayKey
+      ? tasks.filter((t) => t.dateKey === selectedDayKey)
+      : tasks;
+    return [...filtered].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  }, [items, selectedDayKey]);
+
+  const weekEvents = useMemo(() => {
+    const events = items.filter((i): i is WeekEventItem => i.kind === "event");
+    const filtered = selectedDayKey
+      ? events.filter((e) => e.dateKey === selectedDayKey)
+      : events;
+    return [...filtered].sort((a, b) => {
+      const byDate = a.dateKey.localeCompare(b.dateKey);
+      if (byDate !== 0) return byDate;
+      return (a.time ?? "").localeCompare(b.time ?? "");
+    });
+  }, [items, selectedDayKey]);
+
+  const previewTasks = weekTasks.slice(0, 3);
+  const previewEvents = weekEvents.slice(0, 3);
+
+  function handleDayClick(dateKey: string) {
+    const meta = dayMeta.get(dateKey);
+    if (!meta?.itemCount) return;
+    setSelectedDayKey(dateKey);
+    requestAnimationFrame(() => {
+      weekItemsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   if (loading) {
     return (
@@ -649,160 +819,180 @@ function ThisWeekTab({ joinedClubIds }: { joinedClubIds: string[] }) {
     );
   }
 
-  if (daysWithItems.length === 0) {
-    return (
-      <p
+  return (
+    <div>
+      <div
         style={{
-          textAlign: "center",
-          color: "#555555",
-          fontSize: "13px",
-          margin: "48px 0",
+          display: "grid",
+          gridTemplateColumns: "repeat(7, 1fr)",
+          gap: "8px",
+          marginBottom: "24px",
         }}
       >
-        Nothing scheduled this week. Enjoy the break!
-      </p>
-    );
-  }
+        {weekDays.map((day) => {
+          const meta = dayMeta.get(day.dateKey);
+          const isToday = day.dateKey === todayKey;
+          const isSelected = selectedDayKey === day.dateKey;
+          const hasItems = (meta?.itemCount ?? 0) > 0;
+          const showDots = meta?.hasEvents || meta?.hasTasks;
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-      {daysWithItems.map((dateKey) => {
-        const dayItems = itemsByDay.get(dateKey) ?? [];
-        const isToday = dateKey === todayKey;
-        const events = dayItems.filter((i) => i.kind === "event");
-        const tasks = dayItems.filter((i) => i.kind === "task");
+          let background = "#111111";
+          let border = "1px solid #1e1e1e";
+          if (isToday) {
+            background = "#1a0505";
+            border = "1px solid #E51937";
+          }
+          if (isSelected && hasItems) {
+            border = "1px solid #333333";
+          }
 
-        return (
-          <section key={dateKey}>
-            <div
+          return (
+            <button
+              key={day.dateKey}
+              type="button"
+              onClick={() => handleDayClick(day.dateKey)}
               style={{
+                height: "64px",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                gap: "10px",
-                marginBottom: "12px",
+                justifyContent: "center",
+                gap: "4px",
+                cursor: hasItems ? "pointer" : "default",
+                background,
+                border,
+                borderRadius: "8px",
+                padding: 0,
               }}
             >
-              <h3
+              <span
                 style={{
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: isToday ? "#ffffff" : "#555555",
+                  fontSize: "10px",
                   textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  margin: 0,
+                  color: "#555555",
+                  letterSpacing: "0.04em",
                 }}
               >
-                {formatWeekDayHeading(dateKey)}
-              </h3>
-              {isToday ? (
+                {day.label}
+              </span>
+              <span
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  lineHeight: 1,
+                }}
+              >
+                {day.dayNum}
+              </span>
+              {showDots ? (
                 <span
                   style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    color: "#E51937",
-                    letterSpacing: "0.06em",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "4px",
+                    minHeight: "6px",
                   }}
                 >
-                  TODAY
+                  {meta?.hasEvents ? (
+                    <span
+                      style={{
+                        width: "5px",
+                        height: "5px",
+                        borderRadius: "50%",
+                        background: "#E51937",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : null}
+                  {meta?.hasTasks ? (
+                    <span
+                      style={{
+                        width: "5px",
+                        height: "5px",
+                        borderRadius: "50%",
+                        background: "#FFC429",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : null}
                 </span>
-              ) : null}
-            </div>
+              ) : (
+                <span style={{ minHeight: "6px" }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {events.map((event) => (
-                <Link
-                  key={`event-${event.id}`}
-                  to={`/app/clubs/${event.clubId}/events`}
-                  className="block no-underline"
-                >
-                  <div
-                    style={{
-                      background: "#1a1a1a",
-                      border: "1px solid #242424",
-                      borderRadius: "8px",
-                      padding: "12px 16px",
-                      borderLeft: "3px solid #E51937",
-                    }}
-                  >
-                    <p style={weekItemLabelStyle}>EVENT</p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 500,
-                        color: "#ffffff",
-                        margin: "0 0 4px",
-                      }}
-                    >
-                      {event.title}
-                    </p>
-                    {(event.time?.trim() || event.location?.trim()) && (
-                      <p
-                        style={{
-                          fontSize: "11px",
-                          color: "#555555",
-                          margin: "0 0 4px",
-                        }}
-                      >
-                        {[event.time?.trim(), event.location?.trim()]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    )}
-                    <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
-                      {event.clubName}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+      <div ref={weekItemsRef}>
+        <h3
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: "0 0 10px",
+          }}
+        >
+          Tasks This Week
+        </h3>
+        {weekTasks.length === 0 ? (
+          <p style={{ color: "#444444", fontSize: "13px", margin: "0 0 24px" }}>
+            No tasks due this week
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+            {previewTasks.map((task) => (
+              <WeekTaskCard
+                key={task.id}
+                task={task}
+                logoUrl={clubLogos[task.clubId]}
+              />
+            ))}
+            {weekTasks.length > 3 ? (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" onClick={onViewAllTasks} style={viewAllLinkStyle}>
+                  View All →
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
 
-              {tasks.map((task) => (
-                <Link
-                  key={`task-${task.id}`}
-                  to={`/app/clubs/${task.clubId}/tasks`}
-                  className="block no-underline"
-                >
-                  <div
-                    style={{
-                      background: "#1a1a1a",
-                      border: "1px solid #242424",
-                      borderRadius: "8px",
-                      padding: "12px 16px",
-                      borderLeft: "3px solid #FFC429",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "8px",
-                      }}
-                    >
-                      <p style={{ ...weekItemLabelStyle, margin: 0 }}>TASK</p>
-                      {task.priority === "high" ? (
-                        <span style={highImportanceBadgeStyle}>!</span>
-                      ) : null}
-                    </div>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 500,
-                        color: "#ffffff",
-                        margin: "6px 0 4px",
-                      }}
-                    >
-                      {task.title}
-                    </p>
-                    <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
-                      {task.clubName}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        );
-      })}
+        <h3
+          style={{
+            fontSize: "13px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: "0 0 10px",
+          }}
+        >
+          Events This Week
+        </h3>
+        {weekEvents.length === 0 ? (
+          <p style={{ color: "#444444", fontSize: "13px", margin: 0 }}>
+            No events this week
+          </p>
+        ) : (
+          <div>
+            {previewEvents.map((event) => (
+              <EventCard
+                key={event.id}
+                event={weekEventToDashboard(event)}
+                logoUrl={clubLogos[event.clubId]}
+              />
+            ))}
+            {weekEvents.length > 3 ? (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+                <button type="button" onClick={onViewAllEvents} style={viewAllLinkStyle}>
+                  View All →
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -888,7 +1078,7 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
         </div>
         <span
           style={{
-            ...taskStatusPillStyle(task.status),
+            ...dashboardTaskStatusBadgeStyle(task.status),
             alignSelf: "flex-start",
           }}
         >
@@ -953,17 +1143,12 @@ function taskStatusLabel(status: string): string {
   return "To Do";
 }
 
-function taskStatusPillStyle(status: string): CSSProperties {
-  const base: CSSProperties = {
-    fontSize: "11px",
-    fontWeight: 500,
-    borderRadius: "20px",
-    padding: "2px 8px",
-    flexShrink: 0,
-  };
+function taskStatusColorStyle(status: string): Pick<
+  CSSProperties,
+  "background" | "border" | "color"
+> {
   if (status === "in_progress") {
     return {
-      ...base,
       background: "#2a1f00",
       border: "1px solid #FFC429",
       color: "#FFC429",
@@ -971,17 +1156,58 @@ function taskStatusPillStyle(status: string): CSSProperties {
   }
   if (status === "done") {
     return {
-      ...base,
       background: "#1a0a0a",
       border: "1px solid #E51937",
       color: "#E51937",
     };
   }
   return {
-    ...base,
     background: "#222222",
     border: "1px solid #444444",
     color: "#888888",
+  };
+}
+
+function dashboardTaskStatusBadgeStyle(status: string): CSSProperties {
+  const base: CSSProperties = {
+    fontSize: "10px",
+    fontWeight: 500,
+    borderRadius: "4px",
+    padding: "2px 6px",
+    flexShrink: 0,
+  };
+  if (status === "in_progress") {
+    return {
+      ...base,
+      background: "#1f1a00",
+      border: "1px solid #2a2400",
+      color: "#9a7a00",
+    };
+  }
+  if (status === "done") {
+    return {
+      ...base,
+      background: "#1a0a0a",
+      border: "1px solid #2a1a1a",
+      color: "#8a3a3a",
+    };
+  }
+  return {
+    ...base,
+    background: "#1a1a1a",
+    border: "1px solid #333333",
+    color: "#666666",
+  };
+}
+
+function taskStatusPillStyle(status: string): CSSProperties {
+  return {
+    ...taskStatusColorStyle(status),
+    fontSize: "11px",
+    fontWeight: 500,
+    borderRadius: "20px",
+    padding: "2px 8px",
+    flexShrink: 0,
   };
 }
 
