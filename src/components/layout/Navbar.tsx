@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
+import { supabase } from "../../lib/supabaseClient";
 import NotificationsDropdown from "../ui/NotificationsDropdown";
 
 const wordmarkFont: CSSProperties = {
@@ -27,9 +28,38 @@ export default function Navbar() {
   const { user, signOut } = useAuthContext();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const initials =
     user?.email?.slice(0, 2).toUpperCase() ??
     "GC";
+
+  useEffect(() => {
+    if (!user?.id) {
+      setIsPlatformAdmin(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("platform_admins")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to check platform admin:", error.message);
+          setIsPlatformAdmin(false);
+          return;
+        }
+        setIsPlatformAdmin(Boolean(data));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   async function handleLogout() {
     try {
@@ -134,6 +164,22 @@ export default function Navbar() {
 
           {user ? (
             <div className="ml-3 flex items-center gap-3">
+              {isPlatformAdmin ? (
+                <Link
+                  to="/admin"
+                  aria-current={
+                    location.pathname === "/admin" ? "page" : undefined
+                  }
+                  className="border-b-2 border-transparent px-0 py-2 text-[13px] font-semibold text-[#FFC429] transition-all hover:border-[#FFC429]"
+                  style={
+                    location.pathname === "/admin"
+                      ? { borderBottomColor: "#FFC429" }
+                      : undefined
+                  }
+                >
+                  Admin
+                </Link>
+              ) : null}
               <NotificationsDropdown />
               <div className="relative">
                 <button
@@ -279,6 +325,22 @@ export default function Navbar() {
                 >
                   Hiring
                 </Link>
+                {isPlatformAdmin ? (
+                  <Link
+                    to="/admin"
+                    onClick={() => setMobileOpen(false)}
+                    aria-current={
+                      location.pathname === "/admin" ? "page" : undefined
+                    }
+                    className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      location.pathname === "/admin"
+                        ? "bg-[#FFC429]/15 text-[#FFC429]"
+                        : "text-[#FFC429] hover:bg-white/5"
+                    }`}
+                  >
+                    Admin
+                  </Link>
+                ) : null}
               </>
             ) : (
               navLinks.map((link) => {

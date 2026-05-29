@@ -1,0 +1,1128 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
+import { FileText, X } from "lucide-react";
+import { useAuthContext } from "../../context/useAuthContext";
+import { supabase } from "../../lib/supabaseClient";
+import { notifyUsers } from "../../lib/notifyUsers";
+import Spinner from "../../components/ui/Spinner";
+
+type AdminTab = "requests" | "users" | "stats";
+type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
+
+interface ClubRequestRow {
+  id: string;
+  submitted_by: string | null;
+  name: string;
+  short_description: string | null;
+  long_description: string | null;
+  category: string | null;
+  requested_at: string;
+  status: "pending" | "approved" | "rejected";
+  review_note: string | null;
+  submitterName: string;
+  submitterEmail: string;
+}
+
+interface AdminUserRow {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+interface AdminStats {
+  users: number;
+  clubs: number;
+  events: number;
+  messages: number;
+}
+
+const PAGE_BG = "#0f0f0f";
+
+const pillButtonStyle = (active: boolean): CSSProperties => ({
+  background: active ? "#E51937" : "#1a1a1a",
+  border: active ? "1px solid #E51937" : "1px solid #333333",
+  color: active ? "#ffffff" : "#777777",
+  borderRadius: "20px",
+  padding: "6px 16px",
+  fontSize: "12px",
+  cursor: "pointer",
+});
+
+const statusBadgeStyle = (
+  status: ClubRequestRow["status"],
+): CSSProperties => {
+  if (status === "approved") {
+    return {
+      background: "#0d2b0d",
+      color: "#4ade80",
+      borderRadius: "20px",
+      padding: "4px 10px",
+      fontSize: "11px",
+      fontWeight: 600,
+      textTransform: "capitalize",
+    };
+  }
+  if (status === "rejected") {
+    return {
+      background: "#1a0505",
+      color: "#E51937",
+      borderRadius: "20px",
+      padding: "4px 10px",
+      fontSize: "11px",
+      fontWeight: 600,
+      textTransform: "capitalize",
+    };
+  }
+  return {
+    background: "#2a1f00",
+    color: "#FFC429",
+    borderRadius: "20px",
+    padding: "4px 10px",
+    fontSize: "11px",
+    fontWeight: 600,
+    textTransform: "capitalize",
+  };
+};
+
+function generateSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function parseRequestMeta(longDescription: string | null): {
+  slug?: string;
+  contact_email?: string;
+  meeting_schedule?: string;
+  meeting_location?: string;
+  social_links?: Record<string, string>;
+} {
+  if (!longDescription) return {};
+  try {
+    return JSON.parse(longDescription) as {
+      slug?: string;
+      contact_email?: string;
+      meeting_schedule?: string;
+      meeting_location?: string;
+      social_links?: Record<string, string>;
+    };
+  } catch {
+    return {};
+  }
+}
+
+function formatRequestDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatJoinedDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function userDisplayName(user: AdminUserRow): string {
+  return user.full_name?.trim() || user.email?.trim() || "Unknown user";
+}
+
+function userInitials(user: AdminUserRow): string {
+  const name = userDisplayName(user);
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
+function requestCardAccent(status: ClubRequestRow["status"]): string {
+  if (status === "approved") return "#4ade80";
+  if (status === "rejected") return "#E51937";
+  return "#FFC429";
+}
+
+function HeaderQuickStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ padding: "0 20px" }}>
+      <p
+        style={{
+          fontSize: "22px",
+          fontWeight: 700,
+          color: "#ffffff",
+          margin: 0,
+          lineHeight: 1.1,
+        }}
+      >
+        {value}
+      </p>
+      <p style={{ fontSize: "11px", color: "#555555", margin: "4px 0 0" }}>
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function AdminTabButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        padding: "14px 20px",
+        fontSize: "13px",
+        fontWeight: 500,
+        background: "transparent",
+        border: "none",
+        borderBottom: active ? "2px solid #E51937" : "2px solid transparent",
+        color: active ? "#ffffff" : hovered ? "#cccccc" : "#555555",
+        cursor: "pointer",
+        marginBottom: "-1px",
+        transition: "color 0.15s ease",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function AdminStatCard({
+  label,
+  value,
+  accentColor,
+}: {
+  label: string;
+  value: number;
+  accentColor: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#1a1a1a",
+        border: "1px solid #242424",
+        borderRadius: "8px",
+        padding: "16px 18px",
+        borderLeft: `3px solid ${accentColor}`,
+      }}
+    >
+      <p
+        style={{
+          fontSize: "28px",
+          fontWeight: 700,
+          color: "#ffffff",
+          margin: "0 0 8px",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </p>
+      <p
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#747676",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          margin: 0,
+        }}
+      >
+        {label}
+      </p>
+    </div>
+  );
+}
+
+export default function AdminPage() {
+  const { user } = useAuthContext();
+  const [activeTab, setActiveTab] = useState<AdminTab>("requests");
+
+  const [requests, setRequests] = useState<ClubRequestRow[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [requestFilter, setRequestFilter] = useState<RequestStatusFilter>("all");
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const [rejectTarget, setRejectTarget] = useState<ClubRequestRow | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
+
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [userSearch, setUserSearch] = useState("");
+
+  const [stats, setStats] = useState<AdminStats>({
+    users: 0,
+    clubs: 0,
+    events: 0,
+    messages: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  const loadRequests = useCallback(async () => {
+    setRequestsLoading(true);
+    setFeedback(null);
+
+    const { data, error } = await supabase
+      .from("club_requests")
+      .select("*")
+      .order("requested_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load club requests:", error.message);
+      setRequests([]);
+      setFeedback("Failed to load club requests.");
+      setRequestsLoading(false);
+      return;
+    }
+
+    const rows = data ?? [];
+    const submitterIds = [
+      ...new Set(
+        rows
+          .map((row) => row.submitted_by as string | null)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+
+    const profileMap = new Map<
+      string,
+      { full_name: string | null; email: string | null }
+    >();
+
+    if (submitterIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", submitterIds);
+
+      (profiles ?? []).forEach((profile) => {
+        profileMap.set(profile.id as string, {
+          full_name: (profile.full_name as string) ?? null,
+          email: (profile.email as string) ?? null,
+        });
+      });
+    }
+
+    setRequests(
+      rows.map((row) => {
+        const submitterId = row.submitted_by as string | null;
+        const profile = submitterId ? profileMap.get(submitterId) : undefined;
+        return {
+          id: row.id as string,
+          submitted_by: submitterId,
+          name: (row.name as string) ?? "",
+          short_description: (row.short_description as string) ?? null,
+          long_description: (row.long_description as string) ?? null,
+          category: (row.category as string) ?? null,
+          requested_at: (row.requested_at as string) ?? "",
+          status: (row.status as ClubRequestRow["status"]) ?? "pending",
+          review_note: (row.review_note as string) ?? null,
+          submitterName: profile?.full_name?.trim() || "Unknown",
+          submitterEmail: profile?.email?.trim() || "",
+        };
+      }),
+    );
+    setRequestsLoading(false);
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    setUsersLoading(true);
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, avatar_url, created_at")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load users:", error.message);
+      setUsers([]);
+      setUsersLoading(false);
+      return;
+    }
+
+    setUsers(
+      (data ?? []).map((row) => ({
+        id: row.id as string,
+        full_name: (row.full_name as string) ?? null,
+        email: (row.email as string) ?? null,
+        avatar_url: (row.avatar_url as string) ?? null,
+        created_at: (row.created_at as string) ?? "",
+      })),
+    );
+    setUsersLoading(false);
+  }, []);
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+
+    const [usersRes, clubsRes, eventsRes, messagesRes] = await Promise.all([
+      supabase.from("profiles").select("id", { count: "exact", head: true }),
+      supabase.from("clubs").select("id", { count: "exact", head: true }),
+      supabase.from("events").select("id", { count: "exact", head: true }),
+      supabase
+        .from("direct_messages")
+        .select("id", { count: "exact", head: true }),
+    ]);
+
+    setStats({
+      users: usersRes.error ? 0 : (usersRes.count ?? 0),
+      clubs: clubsRes.error ? 0 : (clubsRes.count ?? 0),
+      events: eventsRes.error ? 0 : (eventsRes.count ?? 0),
+      messages: messagesRes.error ? 0 : (messagesRes.count ?? 0),
+    });
+    setStatsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadRequests();
+  }, [loadRequests]);
+
+  useEffect(() => {
+    if (activeTab === "users") void loadUsers();
+  }, [activeTab, loadUsers]);
+
+  useEffect(() => {
+    if (activeTab === "stats") void loadStats();
+  }, [activeTab, loadStats]);
+
+  const filteredRequests = useMemo(() => {
+    if (requestFilter === "all") return requests;
+    return requests.filter((request) => request.status === requestFilter);
+  }, [requests, requestFilter]);
+
+  const filteredUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((row) => {
+      const name = row.full_name?.toLowerCase() ?? "";
+      const email = row.email?.toLowerCase() ?? "";
+      return name.includes(query) || email.includes(query);
+    });
+  }, [users, userSearch]);
+
+  const emptyRequestMessage = useMemo(() => {
+    if (requestFilter === "pending") return "No pending requests";
+    if (requestFilter === "approved") return "No approved requests";
+    if (requestFilter === "rejected") return "No rejected requests";
+    return "No club requests";
+  }, [requestFilter]);
+
+  async function handleApprove(request: ClubRequestRow) {
+    if (!user?.id || !request.submitted_by) return;
+
+    setActionLoadingId(request.id);
+    setFeedback(null);
+
+    const meta = parseRequestMeta(request.long_description);
+
+    const { data: club, error: clubError } = await supabase
+      .from("clubs")
+      .insert({
+        name: request.name,
+        slug: meta.slug || generateSlug(request.name),
+        description: request.short_description ?? "",
+        category: request.category ?? "",
+        contact_email: meta.contact_email ?? "",
+        meeting_schedule: meta.meeting_schedule ?? "",
+        meeting_location: meta.meeting_location ?? "",
+        social_links: meta.social_links ?? null,
+        created_by: request.submitted_by,
+        is_public: true,
+      })
+      .select("id")
+      .single();
+
+    if (clubError || !club) {
+      console.error("Failed to create club from request:", clubError?.message);
+      setFeedback(
+        clubError?.message ??
+          "Failed to approve request. Ensure admin database policies are configured.",
+      );
+      setActionLoadingId(null);
+      return;
+    }
+
+    const clubId = club.id as string;
+
+    const { error: memberError } = await supabase.from("club_members").insert({
+      club_id: clubId,
+      user_id: request.submitted_by,
+      role: "owner",
+      status: "active",
+    });
+
+    if (memberError) {
+      console.error("Failed to add club owner membership:", memberError.message);
+    }
+
+    const { error: updateError } = await supabase
+      .from("club_requests")
+      .update({
+        status: "approved",
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", request.id);
+
+    if (updateError) {
+      console.error("Failed to update club request:", updateError.message);
+      setFeedback("Club was created but the request status could not be updated.");
+      setActionLoadingId(null);
+      return;
+    }
+
+    await notifyUsers([
+      {
+        user_id: request.submitted_by,
+        type: "club_update",
+        message: `Your club request for "${request.name}" has been approved!`,
+        club_id: clubId,
+        reference_id: request.id,
+      },
+    ]);
+
+    setActionLoadingId(null);
+    void loadRequests();
+  }
+
+  async function handleReject() {
+    if (!user?.id || !rejectTarget?.submitted_by) return;
+
+    setActionLoadingId(rejectTarget.id);
+    setFeedback(null);
+
+    const { error: updateError } = await supabase
+      .from("club_requests")
+      .update({
+        status: "rejected",
+        review_note: rejectNote.trim() || null,
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", rejectTarget.id);
+
+    if (updateError) {
+      console.error("Failed to reject club request:", updateError.message);
+      setFeedback("Failed to reject request.");
+      setActionLoadingId(null);
+      return;
+    }
+
+    await notifyUsers([
+      {
+        user_id: rejectTarget.submitted_by,
+        type: "club_update",
+        message: rejectNote.trim()
+          ? `Your club request for "${rejectTarget.name}" was rejected: ${rejectNote.trim()}`
+          : `Your club request for "${rejectTarget.name}" was rejected.`,
+        reference_id: rejectTarget.id,
+      },
+    ]);
+
+    setRejectTarget(null);
+    setRejectNote("");
+    setActionLoadingId(null);
+    void loadRequests();
+  }
+
+  const requestFilterPills: { value: RequestStatusFilter; label: string }[] = [
+    { value: "all", label: "All" },
+    { value: "pending", label: "Pending" },
+    { value: "approved", label: "Approved" },
+    { value: "rejected", label: "Rejected" },
+  ];
+
+  const pendingRequestCount = useMemo(
+    () => requests.filter((request) => request.status === "pending").length,
+    [requests],
+  );
+
+  const headerQuickStats = [
+    { label: "Total Users", value: stats.users },
+    { label: "Total Clubs", value: stats.clubs },
+    { label: "Total Requests", value: requests.length },
+    { label: "Pending Review", value: pendingRequestCount },
+  ];
+
+  return (
+    <div style={{ background: PAGE_BG, minHeight: "calc(100vh - 4rem)" }}>
+      <header
+        style={{
+          background:
+            "linear-gradient(135deg, #1a0505 0%, #2d0808 60%, #1a0505 100%)",
+          borderBottom: "1px solid #3a1010",
+          padding: "32px 40px",
+        }}
+      >
+        <h1
+          style={{
+            fontSize: "28px",
+            fontWeight: 800,
+            color: "#ffffff",
+            margin: 0,
+            lineHeight: 1.2,
+          }}
+        >
+          Admin Panel
+          <span
+            style={{
+              display: "inline-block",
+              background: "#E51937",
+              color: "#ffffff",
+              fontSize: "10px",
+              fontWeight: 700,
+              borderRadius: "4px",
+              padding: "3px 8px",
+              letterSpacing: "0.1em",
+              verticalAlign: "middle",
+              marginLeft: "12px",
+            }}
+          >
+            ADMIN
+          </span>
+        </h1>
+        <p style={{ fontSize: "13px", color: "#555555", margin: "4px 0 0" }}>
+          GryphClubConnect Administration
+        </p>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            marginTop: "24px",
+          }}
+        >
+          {headerQuickStats.map((item, index) => (
+            <div
+              key={item.label}
+              style={{ display: "flex", alignItems: "center" }}
+            >
+              {index > 0 ? (
+                <div
+                  aria-hidden
+                  style={{
+                    width: "1px",
+                    height: "36px",
+                    background: "#3a1010",
+                    flexShrink: 0,
+                  }}
+                />
+              ) : null}
+              <HeaderQuickStat label={item.label} value={item.value} />
+            </div>
+          ))}
+        </div>
+      </header>
+
+      <div
+        style={{
+          background: "#111111",
+          borderBottom: "1px solid #1e1e1e",
+          padding: "0 40px",
+          display: "flex",
+          alignItems: "flex-end",
+          gap: "4px",
+        }}
+      >
+        <AdminTabButton
+          label="Club Requests"
+          active={activeTab === "requests"}
+          onClick={() => setActiveTab("requests")}
+        />
+        <AdminTabButton
+          label="Users"
+          active={activeTab === "users"}
+          onClick={() => setActiveTab("users")}
+        />
+        <AdminTabButton
+          label="Stats"
+          active={activeTab === "stats"}
+          onClick={() => setActiveTab("stats")}
+        />
+      </div>
+
+      <div style={{ padding: "32px 40px" }}>
+        {feedback ? (
+          <p
+            role="alert"
+            style={{
+              fontSize: "13px",
+              color: "#E51937",
+              margin: "0 0 20px",
+            }}
+          >
+            {feedback}
+          </p>
+        ) : null}
+
+      {activeTab === "requests" ? (
+        <section>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginBottom: "20px",
+            }}
+          >
+            {requestFilterPills.map((pill) => (
+              <button
+                key={pill.value}
+                type="button"
+                onClick={() => setRequestFilter(pill.value)}
+                style={pillButtonStyle(requestFilter === pill.value)}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+
+          {requestsLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner label="Loading club requests…" />
+            </div>
+          ) : filteredRequests.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 16px" }}>
+              <FileText
+                size={32}
+                color="#333333"
+                style={{ margin: "0 auto 12px", display: "block" }}
+                aria-hidden
+              />
+              <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                {requestFilter === "all"
+                  ? "No club requests yet"
+                  : emptyRequestMessage}
+              </p>
+            </div>
+          ) : (
+            filteredRequests.map((request) => (
+              <article
+                key={request.id}
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #242424",
+                  borderLeft: `3px solid ${requestCardAccent(request.status)}`,
+                  borderRadius: "10px",
+                  padding: "20px",
+                  marginBottom: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h3
+                      style={{
+                        fontSize: "16px",
+                        fontWeight: 700,
+                        color: "#ffffff",
+                        margin: "0 0 6px",
+                      }}
+                    >
+                      {request.name}
+                    </h3>
+                    <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+                      Submitted by {request.submitterName}
+                      {request.submitterEmail
+                        ? ` · ${request.submitterEmail}`
+                        : ""}
+                      {" · "}
+                      {formatRequestDate(request.requested_at)}
+                    </p>
+                    {request.category ? (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          marginTop: "10px",
+                          background: "#111111",
+                          border: "1px solid #222222",
+                          color: "#747676",
+                          borderRadius: "20px",
+                          padding: "3px 10px",
+                          fontSize: "11px",
+                        }}
+                      >
+                        {request.category}
+                      </span>
+                    ) : null}
+                    {request.short_description ? (
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "#777777",
+                          margin: "8px 0 0",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {request.short_description}
+                      </p>
+                    ) : null}
+                    {request.status === "rejected" && request.review_note ? (
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          color: "#E51937",
+                          margin: "8px 0 0",
+                        }}
+                      >
+                        Rejection note: {request.review_note}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span style={statusBadgeStyle(request.status)}>
+                    {request.status}
+                  </span>
+                </div>
+
+                {request.status === "pending" ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      justifyContent: "flex-end",
+                      gap: "10px",
+                      marginTop: "16px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={actionLoadingId === request.id}
+                      onClick={() => void handleApprove(request)}
+                      style={{
+                        background: "#0d2b0d",
+                        border: "1px solid #4ade80",
+                        color: "#4ade80",
+                        borderRadius: "6px",
+                        padding: "8px 20px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor:
+                          actionLoadingId === request.id
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity: actionLoadingId === request.id ? 0.6 : 1,
+                      }}
+                    >
+                      {actionLoadingId === request.id ? "Working…" : "Approve"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionLoadingId === request.id}
+                      onClick={() => {
+                        setRejectTarget(request);
+                        setRejectNote("");
+                      }}
+                      style={{
+                        background: "#1a0505",
+                        border: "1px solid #E51937",
+                        color: "#E51937",
+                        borderRadius: "6px",
+                        padding: "8px 20px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor:
+                          actionLoadingId === request.id
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity: actionLoadingId === request.id ? 0.6 : 1,
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))
+          )}
+        </section>
+      ) : null}
+
+      {activeTab === "users" ? (
+        <section>
+          <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px" }}>
+            {users.length} user{users.length === 1 ? "" : "s"} total
+          </p>
+          <input
+            type="search"
+            placeholder="Search by name or email…"
+            value={userSearch}
+            onChange={(e) => setUserSearch(e.target.value)}
+            style={{
+              width: "100%",
+              background: "#111111",
+              border: "1px solid #2a2a2a",
+              borderRadius: "8px",
+              padding: "10px 14px",
+              color: "#ffffff",
+              fontSize: "14px",
+              marginBottom: "20px",
+              boxSizing: "border-box",
+            }}
+          />
+
+          {usersLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner label="Loading users…" />
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+              No users match your search.
+            </p>
+          ) : (
+            filteredUsers.map((row) => (
+              <div
+                key={row.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  background: "#1a1a1a",
+                  border: "1px solid #242424",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
+                  marginBottom: "8px",
+                }}
+              >
+                {row.avatar_url ? (
+                  <img
+                    src={row.avatar_url}
+                    alt=""
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      background: "#2a2a2a",
+                      color: "#888888",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {userInitials(row)}
+                  </div>
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: "#ffffff",
+                      margin: "0 0 2px",
+                    }}
+                  >
+                    {userDisplayName(row)}
+                  </p>
+                  <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+                    {row.email ?? "No email"}
+                  </p>
+                </div>
+                <p
+                  style={{
+                    fontSize: "11px",
+                    color: "#555555",
+                    margin: 0,
+                    flexShrink: 0,
+                    textAlign: "right",
+                  }}
+                >
+                  Joined {formatJoinedDate(row.created_at)}
+                </p>
+              </div>
+            ))
+          )}
+        </section>
+      ) : null}
+
+      {activeTab === "stats" ? (
+        <section>
+          {statsLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner label="Loading stats…" />
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: "16px",
+              }}
+            >
+              <AdminStatCard
+                label="Total Users"
+                value={stats.users}
+                accentColor="#E51937"
+              />
+              <AdminStatCard
+                label="Total Clubs"
+                value={stats.clubs}
+                accentColor="#FFC429"
+              />
+              <AdminStatCard
+                label="Total Events"
+                value={stats.events}
+                accentColor="#747676"
+              />
+              <AdminStatCard
+                label="Total Messages"
+                value={stats.messages}
+                accentColor="#6b7cff"
+              />
+            </div>
+          )}
+        </section>
+      ) : null}
+      </div>
+
+      {rejectTarget ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: "16px",
+          }}
+          onClick={() => {
+            if (!actionLoadingId) setRejectTarget(null);
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "420px",
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setRejectTarget(null)}
+              disabled={Boolean(actionLoadingId)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+              }}
+            >
+              <X size={18} aria-hidden />
+            </button>
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 8px",
+              }}
+            >
+              Reject &ldquo;{rejectTarget.name}&rdquo;?
+            </h3>
+            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px" }}>
+              Optional note for the submitter:
+            </p>
+            <textarea
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              rows={4}
+              placeholder="Reason for rejection…"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                background: "#111111",
+                border: "1px solid #2a2a2a",
+                borderRadius: "6px",
+                padding: "10px 14px",
+                color: "#ffffff",
+                fontSize: "14px",
+                marginBottom: "16px",
+                resize: "vertical",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleReject()}
+              disabled={Boolean(actionLoadingId)}
+              style={{
+                width: "100%",
+                background: "#1a0505",
+                border: "1px solid #E51937",
+                color: "#E51937",
+                borderRadius: "6px",
+                padding: "10px 24px",
+                fontWeight: 600,
+                fontSize: "14px",
+                cursor: actionLoadingId ? "not-allowed" : "pointer",
+                opacity: actionLoadingId ? 0.6 : 1,
+              }}
+            >
+              {actionLoadingId ? "Rejecting…" : "Confirm Reject"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

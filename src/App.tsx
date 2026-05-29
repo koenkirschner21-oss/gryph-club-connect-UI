@@ -1,10 +1,14 @@
-import { BrowserRouter, Routes, Route, NavLink, Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route, NavLink, Outlet, Navigate } from "react-router-dom";
 import { Briefcase, LayoutDashboard } from "lucide-react";
 import AppShell from "./components/layout/AppShell";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
 import WorkspaceLayout from "./components/workspace/WorkspaceLayout";
 import { AuthProvider } from "./context/AuthContext";
+import { useAuthContext } from "./context/useAuthContext";
+import { supabase } from "./lib/supabaseClient";
+import Spinner from "./components/ui/Spinner";
 import { ClubProvider } from "./context/ClubContext";
 import { NotificationsProvider } from "./context/NotificationsProvider";
 import Home from "./pages/Home";
@@ -37,6 +41,7 @@ import MemberProfilePage from "./pages/app/MemberProfilePage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminClubs from "./pages/admin/AdminClubs";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminPage from "./pages/admin/AdminPage";
 import EventRSVPPage from "./pages/public/EventRSVPPage";
 import HiringBoardPage from "./pages/app/HiringBoardPage";
 import ClubRecruitingPage from "./pages/app/ClubRecruitingPage";
@@ -48,6 +53,55 @@ function appSidebarNavClass(isActive: boolean) {
     return `${base} border-l-[#E51937] bg-[#1f1f1f] pl-[11px] text-white`;
   }
   return `${base} border-l-transparent pl-[14px] text-[#777777] hover:bg-[#1a1a1a] hover:text-[#cccccc]`;
+}
+
+function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuthContext();
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user?.id) {
+      setIsPlatformAdmin(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("platform_admins")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to verify platform admin:", error.message);
+          setIsPlatformAdmin(false);
+          return;
+        }
+        setIsPlatformAdmin(Boolean(data));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user?.id]);
+
+  if (authLoading || isPlatformAdmin === null) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Spinner label="Checking access…" />
+      </div>
+    );
+  }
+
+  if (!user || !isPlatformAdmin) {
+    return <Navigate to="/app" replace />;
+  }
+
+  return children;
 }
 
 function AppMainLayoutPlain() {
@@ -217,6 +271,16 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <OnboardingPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute>
+                      <PlatformAdminRoute>
+                        <AdminPage />
+                      </PlatformAdminRoute>
                     </ProtectedRoute>
                   }
                 />
