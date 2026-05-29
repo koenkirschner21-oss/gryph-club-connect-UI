@@ -1423,6 +1423,11 @@ export default function ClubEventsPage() {
   }>({});
 
   useEffect(() => {
+    const previewRole = localStorage.getItem("previewRole");
+    if (previewRole) {
+      setUserRole(previewRole as MemberRole);
+      return;
+    }
     const fetchRole = async () => {
       if (!user?.id || !clubId) return;
       const { data } = await supabase

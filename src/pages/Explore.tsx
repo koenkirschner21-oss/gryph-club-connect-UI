@@ -1,6 +1,13 @@
-import { useState, useMemo, useCallback, useEffect, type CSSProperties } from "react";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  type CSSProperties,
+} from "react";
 import { Link } from "react-router-dom";
-import { Users } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
@@ -43,7 +50,7 @@ function ExploreSearchBar({
   placeholder?: string;
 }) {
   return (
-    <div className="relative w-full" style={{ maxWidth: "640px" }}>
+    <div className="relative w-full" style={{ maxWidth: "500px" }}>
       <svg
         className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2"
         style={{ color: "#555555" }}
@@ -69,10 +76,11 @@ function ExploreSearchBar({
           backgroundColor: "#111111",
           border: "1px solid #2a2a2a",
           borderRadius: "10px",
-          padding: "14px 20px 14px 48px",
+          padding: "0 20px 0 48px",
           color: "#ffffff",
           fontSize: "15px",
           width: "100%",
+          height: "52px",
           boxSizing: "border-box",
           outline: "none",
         }}
@@ -100,55 +108,142 @@ function ExploreSearchBar({
   );
 }
 
-function filterPillStyle(active: boolean): CSSProperties {
-  return active
-    ? {
-        backgroundColor: ACCENT_RED,
-        color: "#ffffff",
-        border: "none",
-        borderRadius: "6px",
-        padding: "7px 16px",
-        fontSize: "12px",
-        fontWeight: 500,
-        cursor: "pointer",
-        flexShrink: 0,
-      }
-    : {
-        backgroundColor: "#1a1a1a",
-        border: "1px solid #2a2a2a",
-        color: "#777777",
-        borderRadius: "6px",
-        padding: "7px 16px",
-        fontSize: "12px",
-        fontWeight: 500,
-        cursor: "pointer",
-        flexShrink: 0,
-      };
-}
+function CategoryFilterDropdown({
+  categories,
+  activeCategory,
+  onSelect,
+}: {
+  categories: string[];
+  activeCategory: string;
+  onSelect: (category: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
-function ClubExploreAvatar({ club }: { club: Club }) {
-  const { bg, border } = getClubAvatarColors(club.name);
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open]);
+
+  const dropdownOptions = useMemo(
+    () =>
+      categories.map((cat) => ({
+        value: cat,
+        label: cat === "All" ? "All Categories" : cat,
+      })),
+    [categories],
+  );
+
   return (
-    <div
-      style={{
-        width: "48px",
-        height: "48px",
-        borderRadius: "10px",
-        background: bg,
-        border: `1px solid ${border}`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-      aria-hidden="true"
-    >
-      <span style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
-        {exploreInitials(club)}
-      </span>
+    <div ref={rootRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        style={{
+          background: "#1a1a1a",
+          border: "1px solid #2a2a2a",
+          color: "#cccccc",
+          borderRadius: "8px",
+          padding: "10px 16px",
+          fontSize: "13px",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          cursor: "pointer",
+        }}
+      >
+        Filter by Category
+        <ChevronDown
+          size={16}
+          aria-hidden
+          style={{
+            marginLeft: "2px",
+            transform: open ? "rotate(180deg)" : undefined,
+            transition: "transform 0.15s ease",
+          }}
+        />
+      </button>
+
+      {open ? (
+        <div
+          role="listbox"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            left: 0,
+            zIndex: 50,
+            minWidth: "220px",
+            background: "#1a1a1a",
+            border: "1px solid #242424",
+            borderRadius: "10px",
+            padding: "8px",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+          }}
+        >
+          {dropdownOptions.map((option) => {
+            const isActive = activeCategory === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                onClick={() => {
+                  onSelect(option.value);
+                  setOpen(false);
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.background = "#252525";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "8px 12px",
+                  fontSize: "13px",
+                  color: isActive ? ACCENT_RED : "#cccccc",
+                  fontWeight: isActive ? 600 : 400,
+                  borderRadius: "6px",
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
+
+const cardActionButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  background: ACCENT_RED,
+  color: "#ffffff",
+  borderRadius: "6px",
+  padding: "6px 14px",
+  fontSize: "12px",
+  fontWeight: 600,
+  border: "none",
+};
 
 function ExploreClubCard({
   club,
@@ -159,6 +254,8 @@ function ExploreClubCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const description = club.shortDescription || club.description;
+  const { bg, border } = getClubAvatarColors(club.name);
+  const logoUrl = club.logoUrl?.trim();
 
   return (
     <Link
@@ -173,207 +270,128 @@ function ExploreClubCard({
           background: "#1a1a1a",
           border: `1px solid ${hovered ? "#333333" : "#242424"}`,
           borderRadius: "12px",
-          padding: "20px",
+          overflow: "hidden",
           height: "100%",
           display: "flex",
           flexDirection: "column",
           transition: "all 0.15s ease",
           transform: hovered ? "translateY(-2px)" : undefined,
+          boxShadow: hovered ? "0 8px 24px rgba(0,0,0,0.4)" : undefined,
           boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <ClubExploreAvatar club={club} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  color: "#ffffff",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {club.name}
-              </h3>
-            </div>
-          </div>
-        </div>
-
-        {club.category ? (
-          <span
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt=""
             style={{
-              display: "inline-block",
-              marginTop: "12px",
-              background: "#111111",
-              border: "1px solid #222222",
-              color: "#747676",
-              borderRadius: "4px",
-              padding: "3px 8px",
-              fontSize: "11px",
+              width: "100%",
+              height: "100px",
+              objectFit: "cover",
+              display: "block",
             }}
-          >
-            {club.category}
-          </span>
-        ) : null}
-
-        <p
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-            margin: "10px 0 0",
-            fontSize: "12px",
-            color: MUTED,
-          }}
-        >
-          <Users size={12} aria-hidden />
-          {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
-        </p>
-
-        {description ? (
-          <p
-            style={{
-              margin: "8px 0 0",
-              fontSize: "13px",
-              color: "#666666",
-              lineHeight: 1.45,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-              flex: 1,
-            }}
-          >
-            {description}
-          </p>
+          />
         ) : (
-          <div style={{ flex: 1 }} />
+          <div
+            style={{
+              height: "100px",
+              background: bg,
+              borderBottom: `1px solid ${border}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            aria-hidden="true"
+          >
+            <span
+              style={{
+                fontSize: "32px",
+                fontWeight: 800,
+                color: border,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {exploreInitials(club)}
+            </span>
+          </div>
         )}
 
-        <div style={{ marginTop: "14px" }}>
-          {joined ? (
+        <div style={{ padding: "16px", display: "flex", flexDirection: "column", flex: 1 }}>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "#ffffff",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {club.name}
+          </h3>
+
+          {club.category ? (
             <span
               style={{
                 display: "inline-block",
-                background: "#1a0505",
-                border: `1px solid ${ACCENT_RED}`,
-                color: ACCENT_RED,
+                marginTop: "4px",
+                background: "#111111",
+                border: "1px solid #1e1e1e",
+                color: "#555555",
                 borderRadius: "4px",
-                padding: "4px 10px",
-                fontSize: "13px",
-                fontWeight: 500,
+                padding: "2px 8px",
+                fontSize: "10px",
+                width: "fit-content",
               }}
             >
-              Joined ✓
+              {club.category}
             </span>
-          ) : (
-            <span style={{ fontSize: "13px", fontWeight: 500, color: ACCENT_RED }}>
-              View Club →
-            </span>
-          )}
-        </div>
-      </article>
-    </Link>
-  );
-}
+          ) : null}
 
-function ExploreScrollCard({ club }: { club: Club }) {
-  const [hovered, setHovered] = useState(false);
-  const description = club.shortDescription || club.description;
-
-  return (
-    <Link
-      to={`/clubs/${club.slug}`}
-      className="block shrink-0 no-underline"
-      style={{ width: "min(280px, 78vw)", cursor: "pointer" }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <article
-        style={{
-          background: "#1a1a1a",
-          border: `1px solid ${hovered ? "#333333" : "#242424"}`,
-          borderRadius: "12px",
-          padding: "16px",
-          height: "100%",
-          transition: "all 0.15s ease",
-          transform: hovered ? "translateY(-2px)" : undefined,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>
-          <ClubExploreAvatar club={club} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  color: "#ffffff",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {club.name}
-              </h3>
-            </div>
+          {description ? (
             <p
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                margin: "6px 0 0",
+                margin: "8px 0 0",
                 fontSize: "12px",
-                color: MUTED,
+                color: "#555555",
+                lineHeight: 1.5,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                flex: 1,
               }}
             >
-              <Users size={12} aria-hidden />
-              {club.memberCount} members
+              {description}
             </p>
+          ) : (
+            <div style={{ flex: 1 }} />
+          )}
+
+          <div style={{ marginTop: "12px" }}>
+            {joined ? (
+              <span style={cardActionButtonStyle}>
+                <Check size={14} strokeWidth={2.5} aria-hidden />
+                Joined
+              </span>
+            ) : (
+              <span style={cardActionButtonStyle}>View Club</span>
+            )}
           </div>
         </div>
-        {club.category ? (
-          <span
-            style={{
-              display: "inline-block",
-              background: "#111111",
-              border: "1px solid #222222",
-              color: "#747676",
-              borderRadius: "4px",
-              padding: "2px 8px",
-              fontSize: "11px",
-            }}
-          >
-            {club.category}
-          </span>
-        ) : null}
-        {description ? (
-          <p
-            style={{
-              margin: "10px 0 0",
-              fontSize: "13px",
-              color: "#666666",
-              lineHeight: 1.4,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {description}
-          </p>
-        ) : null}
       </article>
     </Link>
   );
 }
 
-function HorizontalClubRow({ clubs }: { clubs: Club[] }) {
+function HorizontalClubRow({
+  clubs,
+  joinedByClubId,
+}: {
+  clubs: Club[];
+  joinedByClubId: (clubId: string) => boolean;
+}) {
   return (
     <div
       className="scrollbar-thin"
@@ -386,7 +404,9 @@ function HorizontalClubRow({ clubs }: { clubs: Club[] }) {
       }}
     >
       {clubs.map((club) => (
-        <ExploreScrollCard key={club.id} club={club} />
+        <div key={club.id} style={{ width: "min(240px, 72vw)", flexShrink: 0 }}>
+          <ExploreClubCard club={club} joined={joinedByClubId(club.id)} />
+        </div>
       ))}
     </div>
   );
@@ -493,13 +513,17 @@ export default function Explore() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
-  const hasActiveFilters =
-    search !== "" || activeCategory !== "All";
+  const hasActiveFilters = search !== "" || activeCategory !== "All";
 
   const clearFilters = useCallback(() => {
     setSearch("");
     setActiveCategory("All");
   }, []);
+
+  const isClubJoined = useCallback(
+    (clubId: string) => Boolean(user && isJoined(clubId)),
+    [user, isJoined],
+  );
 
   const mostActiveClubs = useMemo(
     () => sortClubsByActivity(clubs).slice(0, 6),
@@ -567,277 +591,245 @@ export default function Explore() {
     <>
       {/* Hero */}
       <section style={{ backgroundColor: PAGE_BG }}>
-        <div
-          style={{
-            maxWidth: "800px",
-            margin: "0 auto",
-            padding: "80px 40px 48px",
-          }}
-        >
-          <div className="min-w-0">
-              <h1
-                style={{
-                  fontSize: "48px",
-                  fontWeight: 800,
-                  color: "#ffffff",
-                  lineHeight: 1.1,
-                  margin: 0,
-                }}
-              >
-                Find Your Club
-              </h1>
-              <p
-                style={{
-                  fontSize: "15px",
-                  color: "#555555",
-                  marginTop: "10px",
-                  marginBottom: 0,
-                  lineHeight: 1.5,
-                }}
-              >
-                Browse {clubs.length} student organizations at the University of Guelph
-              </p>
+        <div style={{ padding: "80px 48px 48px", textAlign: "left" }}>
+          <h1
+            style={{
+              fontSize: "56px",
+              fontWeight: 800,
+              color: "#ffffff",
+              lineHeight: 1,
+              margin: 0,
+            }}
+          >
+            Find Your <span style={{ color: ACCENT_RED }}>Club</span>
+          </h1>
+          <p
+            style={{
+              fontSize: "16px",
+              color: "#555555",
+              marginTop: "12px",
+              marginBottom: 0,
+              lineHeight: 1.5,
+            }}
+          >
+            Browse {clubs.length} student organizations at the University of Guelph
+          </p>
 
-              <div style={{ marginTop: "28px", maxWidth: "560px" }}>
-                <ExploreSearchBar
-                  value={search}
-                  onChange={setSearch}
-                  placeholder="Search clubs by name, tag, or keyword…"
-                />
+          <div style={{ marginTop: "24px", maxWidth: "500px" }}>
+            <ExploreSearchBar
+              value={search}
+              onChange={setSearch}
+              placeholder="Search clubs by name, tag, or keyword…"
+            />
+          </div>
+
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#444444",
+              marginTop: "14px",
+              marginBottom: 0,
+            }}
+          >
+            {clubs.length} clubs · {categoryCount} categories
+          </p>
+        </div>
+      </section>
+
+      <div
+        className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
+        style={{ backgroundColor: PAGE_BG }}
+      >
+        <div style={{ marginBottom: "24px" }}>
+          <CategoryFilterDropdown
+            categories={categories}
+            activeCategory={activeCategory}
+            onSelect={setActiveCategory}
+          />
+        </div>
+
+        {/* Discovery rows */}
+        {!loading && !hasActiveFilters ? (
+          <>
+            {mostActiveClubs.length > 0 ? (
+              <section className="mb-12">
+                <h2
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    color: "#ffffff",
+                    margin: "0 0 4px",
+                  }}
+                >
+                  Most Active Clubs
+                </h2>
+                <p style={{ fontSize: "12px", color: MUTED, margin: "0 0 14px" }}>
+                  Ranked by member activity
+                </p>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: "16px",
+                  }}
+                  className="max-lg:grid-cols-2 max-sm:grid-cols-1"
+                >
+                  {mostActiveClubs.map((club) => (
+                    <ExploreClubCard
+                      key={club.id}
+                      club={club}
+                      joined={isClubJoined(club.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {featuredCategoryRows.map((row) => (
+              <section key={row.category} className="mb-12">
+                <h2
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    color: "#ffffff",
+                    margin: "0 0 14px",
+                  }}
+                >
+                  {row.category}
+                </h2>
+                <HorizontalClubRow clubs={row.clubs} joinedByClubId={isClubJoined} />
+              </section>
+            ))}
+          </>
+        ) : null}
+
+        {/* Main grid */}
+        <div className="pb-12 pt-2">
+          {error ? (
+            <div
+              role="alert"
+              style={{
+                marginBottom: "32px",
+                borderRadius: "12px",
+                border: "1px solid rgba(229, 25, 55, 0.35)",
+                background: "rgba(229, 25, 55, 0.1)",
+                padding: "16px 20px",
+                fontSize: "14px",
+                color: "#ff6b6b",
+              }}
+            >
+              Could not load clubs from the server. Please check your connection and try again.
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div className="flex min-h-[40vh] items-center justify-center">
+              <Spinner label="Loading clubs…" />
+            </div>
+          ) : filteredClubs.length > 0 ? (
+            <>
+              <div className="mb-8 flex items-start justify-between gap-4">
+                <div>
+                  <h2 style={{ fontSize: "20px", color: "#ffffff", margin: 0, fontWeight: 700 }}>
+                    All Clubs
+                  </h2>
+                  <p style={{ fontSize: "14px", color: MUTED, margin: "4px 0 0" }}>
+                    Showing{" "}
+                    <span style={{ fontWeight: 600, color: "#ffffff" }}>{filteredClubs.length}</span>{" "}
+                    of {clubs.length} clubs
+                    {activeCategory !== "All" ? (
+                      <span>
+                        {" "}
+                        in <span style={{ color: ACCENT_RED }}>{activeCategory}</span>
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
+                {hasActiveFilters ? (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="cursor-pointer text-sm font-medium"
+                    style={{ color: ACCENT_RED, background: "transparent", border: "none" }}
+                  >
+                    Clear filters
+                  </button>
+                ) : null}
               </div>
 
-              <p
+              <div
                 style={{
-                  fontSize: "13px",
-                  color: "#444444",
-                  marginTop: "16px",
-                  marginBottom: 0,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gap: "16px",
                 }}
+                className="max-xl:grid-cols-3 max-md:grid-cols-2 max-sm:grid-cols-1"
               >
-                {clubs.length} clubs · {categoryCount} categories
-              </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Filters */}
-      <section
-        className="sticky top-16 z-30 border-t border-b backdrop-blur supports-[backdrop-filter]"
-        style={{
-          borderColor: "#222222",
-          backgroundColor: "rgba(15, 15, 15, 0.95)",
-        }}
-      >
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div
-              className="scrollbar-thin flex min-w-0 flex-1 items-center gap-2 overflow-x-auto"
-              style={{ WebkitOverflowScrolling: "touch" }}
-            >
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setActiveCategory(cat)}
-                  style={filterPillStyle(activeCategory === cat)}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {hasActiveFilters ? (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="shrink-0 cursor-pointer text-sm font-medium transition-colors"
-                style={{
-                  color: ACCENT_RED,
-                  background: "transparent",
-                  border: "none",
-                  padding: "7px 4px",
-                }}
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      {/* Discovery rows */}
-      {!loading && !hasActiveFilters && (
-        <div
-          className="mx-auto max-w-7xl px-4 pt-10 sm:px-6 lg:px-8"
-          style={{ backgroundColor: PAGE_BG }}
-        >
-          {mostActiveClubs.length > 0 ? (
-            <section className="mb-12">
-              <h2
-                style={{
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  color: "#ffffff",
-                  margin: "0 0 4px",
-                }}
-              >
-                Most Active Clubs
-              </h2>
-              <p style={{ fontSize: "12px", color: MUTED, margin: "0 0 14px" }}>
-                Ranked by member activity
-              </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {mostActiveClubs.map((club) => (
+                {filteredClubs.map((club) => (
                   <ExploreClubCard
                     key={club.id}
                     club={club}
-                    joined={Boolean(user && isJoined(club.id))}
+                    joined={isClubJoined(club.id)}
                   />
                 ))}
               </div>
-            </section>
-          ) : null}
-
-          {featuredCategoryRows.map((row) => (
-            <section key={row.category} className="mb-12">
-              <h2
+            </>
+          ) : (
+            <div
+              style={{
+                borderRadius: "12px",
+                border: "1px solid #242424",
+                background: "#1a1a1a",
+                padding: "80px 24px",
+                textAlign: "center",
+              }}
+            >
+              <div
                 style={{
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  color: "#ffffff",
-                  margin: "0 0 14px",
+                  margin: "0 auto",
+                  display: "flex",
+                  height: "64px",
+                  width: "64px",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "50%",
+                  background: "#111111",
                 }}
               >
-                {row.category}
-              </h2>
-              <HorizontalClubRow clubs={row.clubs} />
-            </section>
-          ))}
-        </div>
-      )}
-
-      {/* Main grid */}
-      <div
-        className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8"
-        style={{ backgroundColor: PAGE_BG }}
-      >
-        {error ? (
-          <div
-            role="alert"
-            style={{
-              marginBottom: "32px",
-              borderRadius: "12px",
-              border: "1px solid rgba(229, 25, 55, 0.35)",
-              background: "rgba(229, 25, 55, 0.1)",
-              padding: "16px 20px",
-              fontSize: "14px",
-              color: "#ff6b6b",
-            }}
-          >
-            Could not load clubs from the server. Please check your connection and try again.
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="flex min-h-[40vh] items-center justify-center">
-            <Spinner label="Loading clubs…" />
-          </div>
-        ) : filteredClubs.length > 0 ? (
-          <>
-            <div className="mb-8 flex items-start justify-between gap-4">
-              <div>
-                <h2 style={{ fontSize: "20px", color: "#ffffff", margin: 0, fontWeight: 700 }}>
-                  All Clubs
-                </h2>
-                <p style={{ fontSize: "14px", color: MUTED, margin: "4px 0 0" }}>
-                  Showing{" "}
-                  <span style={{ fontWeight: 600, color: "#ffffff" }}>{filteredClubs.length}</span> of{" "}
-                  {clubs.length} clubs
-                  {activeCategory !== "All" ? (
-                    <span>
-                      {" "}
-                      in <span style={{ color: ACCENT_RED }}>{activeCategory}</span>
-                    </span>
-                  ) : null}
-                </p>
+                <svg
+                  style={{ height: "32px", width: "32px", color: MUTED }}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
               </div>
+              <p style={{ marginTop: "20px", fontSize: "20px", fontWeight: 700, color: "#ffffff" }}>
+                {emptyStateMessage.title}
+              </p>
+              <p style={{ marginTop: "8px", fontSize: "14px", color: MUTED }}>
+                {emptyStateMessage.description}
+              </p>
               {hasActiveFilters ? (
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="cursor-pointer text-sm font-medium"
-                  style={{ color: ACCENT_RED, background: "transparent", border: "none" }}
+                  className="mt-6 cursor-pointer rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+                  style={{ background: ACCENT_RED, border: "none" }}
                 >
-                  Clear filters
+                  Clear all filters
                 </button>
               ) : null}
             </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredClubs.map((club) => (
-                <ExploreClubCard
-                  key={club.id}
-                  club={club}
-                  joined={Boolean(user && isJoined(club.id))}
-                />
-              ))}
-            </div>
-          </>
-        ) : (
-          <div
-            style={{
-              borderRadius: "12px",
-              border: "1px solid #242424",
-              background: "#1a1a1a",
-              padding: "80px 24px",
-              textAlign: "center",
-            }}
-          >
-            <div
-              style={{
-                margin: "0 auto",
-                display: "flex",
-                height: "64px",
-                width: "64px",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "50%",
-                background: "#111111",
-              }}
-            >
-              <svg
-                style={{ height: "32px", width: "32px", color: MUTED }}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
-            <p style={{ marginTop: "20px", fontSize: "20px", fontWeight: 700, color: "#ffffff" }}>
-              {emptyStateMessage.title}
-            </p>
-            <p style={{ marginTop: "8px", fontSize: "14px", color: MUTED }}>
-              {emptyStateMessage.description}
-            </p>
-            {hasActiveFilters ? (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-6 cursor-pointer rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-                style={{ background: ACCENT_RED, border: "none" }}
-              >
-                Clear all filters
-              </button>
-            ) : null}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </>
   );

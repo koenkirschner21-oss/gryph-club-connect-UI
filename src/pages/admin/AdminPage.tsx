@@ -6,13 +6,28 @@ import {
   type CSSProperties,
 } from "react";
 import { FileText, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import Spinner from "../../components/ui/Spinner";
 
-type AdminTab = "requests" | "users" | "stats";
+type AdminTab = "requests" | "users" | "moderation" | "stats";
 type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
+type ReportStatusFilter = "all" | "unreviewed" | "resolved";
+
+interface PostReportRow {
+  id: string;
+  post_id: string;
+  reported_by: string;
+  reason: string;
+  details: string | null;
+  status: "unreviewed" | "resolved" | "dismissed";
+  created_at: string;
+  postTitle: string;
+  postContent: string;
+  reporterName: string;
+}
 
 interface ClubRequestRow {
   id: string;
@@ -260,8 +275,15 @@ function AdminStatCard({
   );
 }
 
+function startRolePreview(role: "member" | "executive" | "owner", navigate: (path: string) => void) {
+  localStorage.setItem("previewRole", role);
+  window.dispatchEvent(new Event("previewrole-change"));
+  navigate("/app");
+}
+
 export default function AdminPage() {
   const { user } = useAuthContext();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>("requests");
 
   const [requests, setRequests] = useState<ClubRequestRow[]>([]);
@@ -284,6 +306,66 @@ export default function AdminPage() {
     messages: 0,
   });
   const [statsLoading, setStatsLoading] = useState(true);
+
+  const [reports, setReports] = useState<PostReportRow[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [reportFilter, setReportFilter] = useState<ReportStatusFilter>("all");
+  const [reportActionLoadingId, setReportActionLoadingId] = useState<string | null>(null);
+
+  const loadReports = useCallback(async () => {
+    setReportsLoading(true);
+
+    const { data, error } = await supabase
+      .from("post_reports")
+      .select(
+        `
+        id,
+        post_id,
+        reported_by,
+        reason,
+        details,
+        status,
+        created_at,
+        posts ( title, content ),
+        profiles!post_reports_reported_by_fkey ( full_name )
+      `,
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load post reports:", error.message);
+      setReports([]);
+      setReportsLoading(false);
+      return;
+    }
+
+    setReports(
+      (data ?? []).map((row) => {
+        const record = row as Record<string, unknown>;
+        const postRaw = record.posts as unknown;
+        const post = (
+          Array.isArray(postRaw) ? postRaw[0] ?? {} : postRaw ?? {}
+        ) as Record<string, unknown>;
+        const profileRaw = record.profiles as unknown;
+        const profile = (
+          Array.isArray(profileRaw) ? profileRaw[0] ?? {} : profileRaw ?? {}
+        ) as Record<string, unknown>;
+        return {
+          id: record.id as string,
+          post_id: record.post_id as string,
+          reported_by: record.reported_by as string,
+          reason: (record.reason as string) ?? "",
+          details: (record.details as string) ?? null,
+          status: (record.status as PostReportRow["status"]) ?? "unreviewed",
+          created_at: (record.created_at as string) ?? "",
+          postTitle: (post.title as string) ?? "Untitled post",
+          postContent: (post.content as string) ?? "",
+          reporterName: (profile.full_name as string)?.trim() || "Unknown",
+        };
+      }),
+    );
+    setReportsLoading(false);
+  }, []);
 
   const loadRequests = useCallback(async () => {
     setRequestsLoading(true);
@@ -411,6 +493,22 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === "stats") void loadStats();
   }, [activeTab, loadStats]);
+
+  useEffect(() => {
+    if (activeTab === "moderation") void loadReports();
+  }, [activeTab, loadReports]);
+
+  const filteredReports = useMemo(() => {
+    if (reportFilter === "unreviewed") {
+      return reports.filter((report) => report.status === "unreviewed");
+    }
+    if (reportFilter === "resolved") {
+      return reports.filter(
+        (report) => report.status === "resolved" || report.status === "dismissed",
+      );
+    }
+    return reports;
+  }, [reports, reportFilter]);
 
   const filteredRequests = useMemo(() => {
     if (requestFilter === "all") return requests;
@@ -552,6 +650,62 @@ export default function AdminPage() {
     void loadRequests();
   }
 
+  async function handleRemoveReportedPost(report: PostReportRow) {
+    setReportActionLoadingId(report.id);
+    setFeedback(null);
+
+    const { error: deleteError } = await supabase
+      .from("posts")
+      .delete()
+      .eq("id", report.post_id);
+
+    if (deleteError) {
+      console.error("Failed to delete post:", deleteError.message);
+      setFeedback("Failed to remove post.");
+      setReportActionLoadingId(null);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("post_reports")
+      .update({ status: "resolved" })
+      .eq("id", report.id);
+
+    if (updateError) {
+      console.error("Failed to update report:", updateError.message);
+      setFeedback("Post removed but report status could not be updated.");
+    }
+
+    setReportActionLoadingId(null);
+    void loadReports();
+  }
+
+  async function handleDismissReport(report: PostReportRow) {
+    setReportActionLoadingId(report.id);
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("post_reports")
+      .update({ status: "dismissed" })
+      .eq("id", report.id);
+
+    if (error) {
+      console.error("Failed to dismiss report:", error.message);
+      setFeedback("Failed to dismiss report.");
+      setReportActionLoadingId(null);
+      return;
+    }
+
+    setReportActionLoadingId(null);
+    void loadReports();
+  }
+
+  const reportFilterPills: { value: ReportStatusFilter; label: string }[] = [
+    { value: "all", label: "All" },
+    { value: "unreviewed", label: "Unreviewed" },
+    { value: "resolved", label: "Resolved" },
+  ];
+
   const requestFilterPills: { value: RequestStatusFilter; label: string }[] = [
     { value: "all", label: "All" },
     { value: "pending", label: "Pending" },
@@ -642,6 +796,51 @@ export default function AdminPage() {
         </div>
       </header>
 
+      <div style={{ padding: "20px 40px 0" }}>
+        <div
+          style={{
+            background: "linear-gradient(135deg, #1a1500, #2a2000)",
+            border: "1px solid #3a2f00",
+            borderRadius: "10px",
+            padding: "16px 20px",
+            marginBottom: "24px",
+          }}
+        >
+          <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: "0 0 6px" }}>
+            Role Preview Mode
+          </h2>
+          <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 14px" }}>
+            See the app exactly as a member, executive, or president would
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+            {(
+              [
+                { role: "member" as const, label: "View as Member" },
+                { role: "executive" as const, label: "View as Executive" },
+                { role: "owner" as const, label: "View as President" },
+              ]
+            ).map((item) => (
+              <button
+                key={item.role}
+                type="button"
+                onClick={() => startRolePreview(item.role, navigate)}
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #333333",
+                  color: "#cccccc",
+                  borderRadius: "6px",
+                  padding: "8px 18px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div
         style={{
           background: "#111111",
@@ -661,6 +860,11 @@ export default function AdminPage() {
           label="Users"
           active={activeTab === "users"}
           onClick={() => setActiveTab("users")}
+        />
+        <AdminTabButton
+          label="Moderation"
+          active={activeTab === "moderation"}
+          onClick={() => setActiveTab("moderation")}
         />
         <AdminTabButton
           label="Stats"
@@ -868,6 +1072,125 @@ export default function AdminPage() {
                 ) : null}
               </article>
             ))
+          )}
+        </section>
+      ) : null}
+
+      {activeTab === "moderation" ? (
+        <section>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginBottom: "20px",
+            }}
+          >
+            {reportFilterPills.map((pill) => (
+              <button
+                key={pill.value}
+                type="button"
+                onClick={() => setReportFilter(pill.value)}
+                style={pillButtonStyle(reportFilter === pill.value)}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+
+          {reportsLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner label="Loading reports…" />
+            </div>
+          ) : filteredReports.length === 0 ? (
+            <p style={{ textAlign: "center", color: "#555555", fontSize: "14px", padding: "48px 0" }}>
+              No reports yet
+            </p>
+          ) : (
+            filteredReports.map((report) => {
+              const isUnreviewed = report.status === "unreviewed";
+              return (
+                <article
+                  key={report.id}
+                  style={{
+                    background: "#1a1a1a",
+                    border: "1px solid #242424",
+                    borderLeft: `4px solid ${isUnreviewed ? "#E51937" : "#333333"}`,
+                    borderRadius: "10px",
+                    padding: "20px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <h3 style={{ fontSize: "15px", fontWeight: 700, color: "#ffffff", margin: "0 0 8px" }}>
+                    {report.postTitle}
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#777777",
+                      margin: "0 0 10px",
+                      lineHeight: 1.5,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {report.postContent}
+                  </p>
+                  <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 4px" }}>
+                    Reported by {report.reporterName} · {report.reason}
+                  </p>
+                  <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 14px" }}>
+                    {formatRequestDate(report.created_at)}
+                  </p>
+                  {isUnreviewed ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveReportedPost(report)}
+                        disabled={reportActionLoadingId === report.id}
+                        style={{
+                          background: "#E51937",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: "6px",
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: reportActionLoadingId === report.id ? "not-allowed" : "pointer",
+                          opacity: reportActionLoadingId === report.id ? 0.6 : 1,
+                        }}
+                      >
+                        Remove Post
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDismissReport(report)}
+                        disabled={reportActionLoadingId === report.id}
+                        style={{
+                          background: "transparent",
+                          color: "#cccccc",
+                          border: "1px solid #333333",
+                          borderRadius: "6px",
+                          padding: "8px 16px",
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          cursor: reportActionLoadingId === report.id ? "not-allowed" : "pointer",
+                          opacity: reportActionLoadingId === report.id ? 0.6 : 1,
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "12px", color: "#777777", margin: 0, textTransform: "capitalize" }}>
+                      Status: {report.status}
+                    </p>
+                  )}
+                </article>
+              );
+            })
           )}
         </section>
       ) : null}

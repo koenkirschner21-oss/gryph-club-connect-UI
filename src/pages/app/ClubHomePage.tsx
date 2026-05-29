@@ -588,6 +588,11 @@ export default function ClubHomePage() {
   const [inviteCopied, setInviteCopied] = useState(false);
 
   useEffect(() => {
+    const previewRole = localStorage.getItem("previewRole");
+    if (previewRole) {
+      setUserRole(previewRole as MemberRole);
+      return;
+    }
     if (contextRole) {
       setUserRole(normalizeUserRole(contextRole as MemberRole));
       return;

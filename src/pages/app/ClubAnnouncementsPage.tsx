@@ -19,6 +19,9 @@ const ACCEPTED_FILE_TYPES =
   "image/jpeg,image/png,image/gif,image/webp,application/pdf";
 const STORAGE_BUCKET = "announcement-attachments";
 
+const REPORT_REASONS = ["Inappropriate", "Spam", "Harassment", "Unprofessional"] as const;
+type ReportReason = (typeof REPORT_REASONS)[number];
+
 type ReactionName = "heart" | "thumbs_up" | "laugh" | "bookmark";
 type PostReactionState = Record<ReactionName, number>;
 type PostReactionFlags = Record<ReactionName, boolean>;
@@ -401,12 +404,30 @@ export default function ClubAnnouncementsPage() {
   const [reactionCountsByPost, setReactionCountsByPost] = useState<Record<string, PostReactionState>>({});
   const [myReactionsByPost, setMyReactionsByPost] = useState<Record<string, PostReactionFlags>>({});
   const [viewCountByPost, setViewCountByPost] = useState<Record<string, number>>({});
+  const [reportPostId, setReportPostId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState<ReportReason | null>(null);
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportSuccessMessage, setReportSuccessMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!reportSuccessMessage) return;
+    const timer = window.setTimeout(() => setReportSuccessMessage(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [reportSuccessMessage]);
+
+  useEffect(() => {
     let cancelled = false;
     async function fetchRole() {
+      const previewRole = localStorage.getItem("previewRole");
+      if (previewRole) {
+        setUserRole(previewRole as MemberRole);
+        setRoleLoading(false);
+        return;
+      }
+
       if (!clubId || !user?.id) {
         if (!cancelled) {
           setUserRole(null);
@@ -536,6 +557,40 @@ export default function ClubAnnouncementsPage() {
   }, [clubId, posts, user?.id]);
 
   const isPrivileged = isPrivilegedRole(userRole);
+  const isMemberRole = userRole === "member";
+
+  function openReportModal(postId: string) {
+    setMenuOpenPostId(null);
+    setReportPostId(postId);
+    setReportReason(null);
+    setReportDetails("");
+  }
+
+  function closeReportModal() {
+    if (reportSubmitting) return;
+    setReportPostId(null);
+    setReportReason(null);
+    setReportDetails("");
+  }
+
+  async function handleSubmitReport() {
+    if (!user?.id || !reportPostId || !reportReason) return;
+    setReportSubmitting(true);
+    const { error } = await supabase.from("post_reports").insert({
+      post_id: reportPostId,
+      reported_by: user.id,
+      reason: reportReason,
+      details: reportDetails.trim() || null,
+    });
+    setReportSubmitting(false);
+    if (error) {
+      setFeedback({ type: "error", text: "Could not submit report. Please try again." });
+      return;
+    }
+    closeReportModal();
+    setReportSuccessMessage("Report submitted");
+  }
+
   const sortedPosts = useMemo(() => {
     return [...posts].sort((a, b) => {
       const aPinned = pinnedById[a.id] ?? false;
@@ -783,6 +838,19 @@ export default function ClubAnnouncementsPage() {
         ) : null}
       </div>
 
+      {reportSuccessMessage ? (
+        <p
+          role="status"
+          style={{
+            fontSize: "13px",
+            color: "#4ade80",
+            margin: "0 0 16px",
+          }}
+        >
+          {reportSuccessMessage}
+        </p>
+      ) : null}
+
       {feedback ? (
         <div
           role="alert"
@@ -900,6 +968,123 @@ export default function ClubAnnouncementsPage() {
           </div>
         </div>
       )}
+
+      {reportPostId ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "16px",
+          }}
+          onClick={closeReportModal}
+        >
+          <div
+            style={{
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "420px",
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                fontSize: "18px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 16px",
+              }}
+            >
+              Report Post
+            </h3>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginBottom: "16px",
+              }}
+            >
+              {REPORT_REASONS.map((reason) => {
+                const selected = reportReason === reason;
+                return (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setReportReason(reason)}
+                    style={{
+                      background: selected ? "#1a0505" : "#111111",
+                      border: `1px solid ${selected ? ACCENT_RED : "#2a2a2a"}`,
+                      color: selected ? ACCENT_RED : "#cccccc",
+                      borderRadius: "20px",
+                      padding: "6px 14px",
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {reason}
+                  </button>
+                );
+              })}
+            </div>
+            <label
+              style={{
+                display: "block",
+                fontSize: "12px",
+                color: "#888888",
+                marginBottom: "8px",
+              }}
+            >
+              Additional details (optional)
+            </label>
+            <textarea
+              value={reportDetails}
+              onChange={(e) => setReportDetails(e.target.value)}
+              rows={3}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                background: "#111111",
+                border: "1px solid #2a2a2a",
+                borderRadius: "6px",
+                padding: "10px 14px",
+                color: "#ffffff",
+                fontSize: "14px",
+                marginBottom: "16px",
+                resize: "vertical",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleSubmitReport()}
+              disabled={!reportReason || reportSubmitting}
+              style={{
+                width: "100%",
+                background: ACCENT_RED,
+                color: "#ffffff",
+                borderRadius: "6px",
+                padding: "10px 16px",
+                fontSize: "14px",
+                fontWeight: 600,
+                border: "none",
+                cursor: !reportReason || reportSubmitting ? "not-allowed" : "pointer",
+                opacity: !reportReason || reportSubmitting ? 0.6 : 1,
+              }}
+            >
+              {reportSubmitting ? "Submitting…" : "Submit Report"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -988,7 +1173,7 @@ export default function ClubAnnouncementsPage() {
               </p>
             </div>
           </div>
-          {isPrivileged ? (
+          {isPrivileged || (isMemberRole && post.authorId !== user?.id) ? (
             <div style={{ position: "relative", flexShrink: 0 }}>
               <button
                 type="button"
@@ -1018,36 +1203,49 @@ export default function ClubAnnouncementsPage() {
                     overflow: "hidden",
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpenPostId(null);
-                      void handleTogglePin(post.id);
-                    }}
-                    style={menuItemButtonStyle()}
-                  >
-                    {isPinned ? "Unpin" : "Pin"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpenPostId(null);
-                      openEditForm(post);
-                    }}
-                    style={menuItemButtonStyle()}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpenPostId(null);
-                      void handleDelete(post.id);
-                    }}
-                    style={menuItemButtonStyle(true)}
-                  >
-                    Delete
-                  </button>
+                  {isPrivileged ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpenPostId(null);
+                          void handleTogglePin(post.id);
+                        }}
+                        style={menuItemButtonStyle()}
+                      >
+                        {isPinned ? "Unpin" : "Pin"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpenPostId(null);
+                          openEditForm(post);
+                        }}
+                        style={menuItemButtonStyle()}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpenPostId(null);
+                          void handleDelete(post.id);
+                        }}
+                        style={menuItemButtonStyle(true)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  ) : null}
+                  {isMemberRole && post.authorId !== user?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => openReportModal(post.id)}
+                      style={menuItemButtonStyle()}
+                    >
+                      Report Post
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
