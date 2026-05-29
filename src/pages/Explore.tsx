@@ -1,21 +1,37 @@
 import { useState, useMemo, useCallback, useEffect, type CSSProperties } from "react";
+import { Link } from "react-router-dom";
+import { Users } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
-import { useUserInterests } from "../hooks/useUserInterests";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
 import { supabase } from "../lib/supabaseClient";
-import ClubCard, {
-  CLUB_AVATAR_STYLE,
-  CLUB_CATEGORY_BADGE_STYLE,
-} from "../components/ui/ClubCard";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
 
 const PAGE_BG = "#0f0f0f";
 const ACCENT_RED = "#E51937";
-const ACCENT_GOLD = "#FFC429";
 const MUTED = "#555555";
+
+const CLUB_AVATAR_BACKGROUNDS = ["#1a0505", "#1a1500", "#0a0a1a", "#0a1a0a", "#1a0a1a"] as const;
+
+const CLUB_AVATAR_BORDERS: Record<(typeof CLUB_AVATAR_BACKGROUNDS)[number], string> = {
+  "#1a0505": "#2a1515",
+  "#1a1500": "#2a2510",
+  "#0a0a1a": "#1a1a2a",
+  "#0a1a0a": "#1a2a1a",
+  "#1a0a1a": "#2a1a2a",
+};
+
+function getClubAvatarColors(clubName: string): { bg: string; border: string } {
+  const bgIndex = clubName.charCodeAt(0) % CLUB_AVATAR_BACKGROUNDS.length;
+  const bg = CLUB_AVATAR_BACKGROUNDS[bgIndex];
+  return { bg, border: CLUB_AVATAR_BORDERS[bg] };
+}
+
+function exploreInitials(club: Pick<Club, "abbreviation" | "name">): string {
+  return getClubInitials(club).slice(0, 3);
+}
 
 function ExploreSearchBar({
   value,
@@ -27,10 +43,10 @@ function ExploreSearchBar({
   placeholder?: string;
 }) {
   return (
-    <div className="relative w-full">
+    <div className="relative w-full" style={{ maxWidth: "640px" }}>
       <svg
-        className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2"
-        style={{ color: MUTED }}
+        className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2"
+        style={{ color: "#555555" }}
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -50,12 +66,12 @@ function ExploreSearchBar({
         placeholder={placeholder}
         aria-label={placeholder}
         style={{
-          backgroundColor: "#1a1a1a",
+          backgroundColor: "#111111",
           border: "1px solid #2a2a2a",
-          borderRadius: "8px",
-          padding: "12px 16px 12px 44px",
+          borderRadius: "10px",
+          padding: "14px 20px 14px 48px",
           color: "#ffffff",
-          fontSize: "14px",
+          fontSize: "15px",
           width: "100%",
           boxSizing: "border-box",
           outline: "none",
@@ -67,7 +83,7 @@ function ExploreSearchBar({
           e.currentTarget.style.borderColor = "#2a2a2a";
         }}
       />
-      {value && (
+      {value ? (
         <button
           type="button"
           onClick={() => onChange("")}
@@ -79,135 +95,301 @@ function ExploreSearchBar({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function categoryTabStyle(active: boolean): CSSProperties {
+function filterPillStyle(active: boolean): CSSProperties {
   return active
     ? {
         backgroundColor: ACCENT_RED,
         color: "#ffffff",
-        border: `1px solid ${ACCENT_RED}`,
+        border: "none",
         borderRadius: "6px",
-        padding: "6px 14px",
-        fontSize: "13px",
+        padding: "7px 16px",
+        fontSize: "12px",
+        fontWeight: 500,
         cursor: "pointer",
+        flexShrink: 0,
       }
     : {
         backgroundColor: "#1a1a1a",
-        border: "1px solid #222222",
+        border: "1px solid #2a2a2a",
         color: "#777777",
         borderRadius: "6px",
-        padding: "6px 14px",
-        fontSize: "13px",
+        padding: "7px 16px",
+        fontSize: "12px",
+        fontWeight: 500,
         cursor: "pointer",
+        flexShrink: 0,
       };
 }
 
-function FeaturedSectionHeading({ title }: { title: string }) {
+function ClubExploreAvatar({ club }: { club: Club }) {
+  const { bg, border } = getClubAvatarColors(club.name);
   return (
-    <div className="mb-8 flex items-center gap-2">
-      <svg
-        style={{ width: 20, height: 20, color: ACCENT_GOLD, flexShrink: 0 }}
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        aria-hidden="true"
-      >
-        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-      </svg>
-      <h2
-        style={{
-          fontWeight: 700,
-          fontSize: "20px",
-          color: "#ffffff",
-          margin: 0,
-          borderLeft: `3px solid ${ACCENT_GOLD}`,
-          paddingLeft: "12px",
-        }}
-      >
-        {title}
-      </h2>
+    <div
+      style={{
+        width: "48px",
+        height: "48px",
+        borderRadius: "10px",
+        background: bg,
+        border: `1px solid ${border}`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+      aria-hidden="true"
+    >
+      <span style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
+        {exploreInitials(club)}
+      </span>
     </div>
   );
 }
 
-// ─── Spotlight card (horizontal, larger) ────────────────────────────────────
-function SpotlightCard({ club }: { club: Club }) {
-  return (
-    <a
-      href={`/clubs/${club.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card card-glow-hover hover:border-border-light sm:flex-row"
-    >
-      <div
-        className="flex w-full items-center justify-center p-8 sm:w-52 sm:flex-shrink-0"
-        style={CLUB_AVATAR_STYLE}
-      >
-        <span
-          style={{
-            fontSize: "28px",
-            fontWeight: 700,
-            color: "#888888",
-          }}
-          aria-hidden="true"
-        >
-          {getClubInitials(club)}
-        </span>
-      </div>
+function ExploreClubCard({
+  club,
+  joined,
+}: {
+  club: Club;
+  joined: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const description = club.shortDescription || club.description;
 
-      {/* Right content */}
-      <div className="flex flex-1 flex-col justify-center p-6 sm:p-7">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-bold text-white group-hover:text-primary-light transition-colors">
-            {club.name}
-          </h3>
-          {club.isVerified && (
-            <svg
-              className="h-4 w-4 text-secondary"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-label="Verified"
-            >
-              <path
-                fillRule="evenodd"
-                d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              />
-            </svg>
-          )}
+  return (
+    <Link
+      to={`/clubs/${club.slug}`}
+      className="block no-underline"
+      style={{ cursor: "pointer", height: "100%" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <article
+        style={{
+          background: "#1a1a1a",
+          border: `1px solid ${hovered ? "#333333" : "#242424"}`,
+          borderRadius: "12px",
+          padding: "20px",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          transition: "all 0.15s ease",
+          transform: hovered ? "translateY(-2px)" : undefined,
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <ClubExploreAvatar club={club} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {club.name}
+              </h3>
+            </div>
+          </div>
         </div>
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted/80">
-          {club.shortDescription || club.description}
+
+        {club.category ? (
+          <span
+            style={{
+              display: "inline-block",
+              marginTop: "12px",
+              background: "#111111",
+              border: "1px solid #222222",
+              color: "#747676",
+              borderRadius: "4px",
+              padding: "3px 8px",
+              fontSize: "11px",
+            }}
+          >
+            {club.category}
+          </span>
+        ) : null}
+
+        <p
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            margin: "10px 0 0",
+            fontSize: "12px",
+            color: MUTED,
+          }}
+        >
+          <Users size={12} aria-hidden />
+          {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
         </p>
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-          <span style={CLUB_CATEGORY_BADGE_STYLE}>{club.category}</span>
-          {club.memberCount > 0 && (
-            <span className="text-muted">{club.memberCount} members</span>
-          )}
-          {club.location && (
-            <span className="text-muted">· {club.location}</span>
+
+        {description ? (
+          <p
+            style={{
+              margin: "8px 0 0",
+              fontSize: "13px",
+              color: "#666666",
+              lineHeight: 1.45,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              flex: 1,
+            }}
+          >
+            {description}
+          </p>
+        ) : (
+          <div style={{ flex: 1 }} />
+        )}
+
+        <div style={{ marginTop: "14px" }}>
+          {joined ? (
+            <span
+              style={{
+                display: "inline-block",
+                background: "#1a0505",
+                border: `1px solid ${ACCENT_RED}`,
+                color: ACCENT_RED,
+                borderRadius: "4px",
+                padding: "4px 10px",
+                fontSize: "13px",
+                fontWeight: 500,
+              }}
+            >
+              Joined ✓
+            </span>
+          ) : (
+            <span style={{ fontSize: "13px", fontWeight: 500, color: ACCENT_RED }}>
+              View Club →
+            </span>
           )}
         </div>
-      </div>
-    </a>
+      </article>
+    </Link>
   );
 }
 
-// ─── Size filter options ─────────────────────────────────────────────────────
-type SizeFilter = "all" | "small" | "medium" | "large";
-const SIZE_LABELS: Record<SizeFilter, string> = {
-  all: "Any Size",
-  small: "Small (≤20)",
-  medium: "Medium (21–49)",
-  large: "Large (50+)",
-};
+function ExploreScrollCard({ club }: { club: Club }) {
+  const [hovered, setHovered] = useState(false);
+  const description = club.shortDescription || club.description;
 
-function matchesSize(club: Club, filter: SizeFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "small") return club.memberCount <= 20;
-  if (filter === "medium") return club.memberCount > 20 && club.memberCount < 50;
-  return club.memberCount >= 50;
+  return (
+    <Link
+      to={`/clubs/${club.slug}`}
+      className="block shrink-0 no-underline"
+      style={{ width: "min(280px, 78vw)", cursor: "pointer" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <article
+        style={{
+          background: "#1a1a1a",
+          border: `1px solid ${hovered ? "#333333" : "#242424"}`,
+          borderRadius: "12px",
+          padding: "16px",
+          height: "100%",
+          transition: "all 0.15s ease",
+          transform: hovered ? "translateY(-2px)" : undefined,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>
+          <ClubExploreAvatar club={club} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {club.name}
+              </h3>
+            </div>
+            <p
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                margin: "6px 0 0",
+                fontSize: "12px",
+                color: MUTED,
+              }}
+            >
+              <Users size={12} aria-hidden />
+              {club.memberCount} members
+            </p>
+          </div>
+        </div>
+        {club.category ? (
+          <span
+            style={{
+              display: "inline-block",
+              background: "#111111",
+              border: "1px solid #222222",
+              color: "#747676",
+              borderRadius: "4px",
+              padding: "2px 8px",
+              fontSize: "11px",
+            }}
+          >
+            {club.category}
+          </span>
+        ) : null}
+        {description ? (
+          <p
+            style={{
+              margin: "10px 0 0",
+              fontSize: "13px",
+              color: "#666666",
+              lineHeight: 1.4,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {description}
+          </p>
+        ) : null}
+      </article>
+    </Link>
+  );
+}
+
+function HorizontalClubRow({ clubs }: { clubs: Club[] }) {
+  return (
+    <div
+      className="scrollbar-thin"
+      style={{
+        display: "flex",
+        gap: "16px",
+        overflowX: "auto",
+        paddingBottom: "4px",
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
+      {clubs.map((club) => (
+        <ExploreScrollCard key={club.id} club={club} />
+      ))}
+    </div>
+  );
 }
 
 function mapPublicClubRow(row: Record<string, unknown>): Club {
@@ -245,12 +427,19 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
   };
 }
 
+function sortClubsByActivity(clubs: Club[]): Club[] {
+  return [...clubs].sort((a, b) => {
+    const memberDiff = b.memberCount - a.memberCount;
+    if (memberDiff !== 0) return memberDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // ─── Main Explore page ──────────────────────────────────────────────────────
 export default function Explore() {
-  const { clubs: contextClubs, loading: contextLoading, error: contextError } =
+  const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined } =
     useClubContext();
   const { user } = useAuthContext();
-  const { interests } = useUserInterests();
   const [guestClubs, setGuestClubs] = useState<Club[]>([]);
   const [guestLoading, setGuestLoading] = useState(true);
   const [guestError, setGuestError] = useState<string | null>(null);
@@ -300,63 +489,38 @@ export default function Explore() {
     );
     return ["All", ...Array.from(cats).sort((a, b) => a.localeCompare(b))];
   }, [clubs]);
+
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [sizeFilter, setSizeFilter] = useState<SizeFilter>("all");
 
   const hasActiveFilters =
-    search !== "" || activeCategory !== "All" || sizeFilter !== "all";
+    search !== "" || activeCategory !== "All";
 
   const clearFilters = useCallback(() => {
     setSearch("");
     setActiveCategory("All");
-    setSizeFilter("all");
   }, []);
 
-  // Derived lists
-  const featuredClubs = useMemo(
-    () => clubs.filter((c) => c.isFeatured),
+  const mostActiveClubs = useMemo(
+    () => sortClubsByActivity(clubs).slice(0, 6),
     [clubs],
   );
 
-  const spotlightClubs = useMemo(
-    () => clubs.filter((c) => c.isVerified).slice(0, 3),
-    [clubs],
-  );
-
-  // Recommended clubs — match user interests (only when logged in with interests)
-  const recommendedClubs = useMemo(() => {
-    if (!user || interests.length === 0) return [];
-    return clubs
-      .filter((c) => interests.includes(c.category))
-      .slice(0, 6);
-  }, [clubs, user, interests]);
-
-  // Trending clubs — sorted by member count (proxy for popularity)
-  const trendingClubs = useMemo(
-    () =>
-      [...clubs]
-        .sort((a, b) => b.memberCount - a.memberCount)
-        .slice(0, 6),
-    [clubs],
-  );
-
-  // New clubs — sorted by creation date (most recent first)
-  const newClubs = useMemo(
-    () =>
-      [...clubs]
-        .filter((c) => c.createdAt)
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime(),
-        )
-        .slice(0, 6),
-    [clubs],
-  );
+  const featuredCategoryRows = useMemo(() => {
+    const order = ["Business", "Science", "Culture", "Sports", "Community"];
+    return order
+      .map((category) => ({
+        category,
+        clubs: sortClubsByActivity(
+          clubs.filter((club) => club.category.toLowerCase() === category.toLowerCase()),
+        ),
+      }))
+      .filter((row) => row.clubs.length > 0);
+  }, [clubs]);
 
   const filteredClubs = useMemo(() => {
     const query = search.toLowerCase();
-    return clubs.filter((club) => {
+    const filtered = clubs.filter((club) => {
       const matchesCategory =
         activeCategory === "All" || club.category === activeCategory;
 
@@ -367,11 +531,11 @@ export default function Explore() {
         (club.shortDescription ?? "").toLowerCase().includes(query) ||
         normalizeTags(club.tags).some((tag) => tag.toLowerCase().includes(query));
 
-      return matchesCategory && matchesSearch && matchesSize(club, sizeFilter);
+      return matchesCategory && matchesSearch;
     });
-  }, [clubs, search, activeCategory, sizeFilter]);
+    return sortClubsByActivity(filtered);
+  }, [clubs, search, activeCategory]);
 
-  /** Build a contextual message for the empty state. */
   const emptyStateMessage = useMemo(() => {
     if (search && activeCategory !== "All") {
       return {
@@ -382,7 +546,7 @@ export default function Explore() {
     if (search) {
       return {
         title: "No search results",
-        description: `No clubs match "${search}". Try a different search term.`,
+        description: `No search results for "${search}". Try a different search term.`,
       };
     }
     if (activeCategory !== "All") {
@@ -397,161 +561,66 @@ export default function Explore() {
     };
   }, [search, activeCategory]);
 
+  const categoryCount = Math.max(categories.length - 1, 0);
+
   return (
     <>
-      {/* ──────────── Hero Section ──────────── */}
-      <section
-        className="relative overflow-hidden"
-        style={{
-          background: "linear-gradient(135deg, #1a0505 0%, #2d0808 50%, #1a0505 100%)",
-        }}
-      >
-        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-36">
-          <div className="flex items-center gap-12 lg:gap-16">
-            {/* Left: text content */}
-            <div className="max-w-3xl flex-1">
-              <div className="mb-5">
-                <img
-                  src="/assets/gryph-club-connect-logo.png"
-                  alt="Gryph Club Connect"
-                  className="h-10 w-auto sm:h-11"
-                />
-              </div>
+      {/* Hero */}
+      <section style={{ backgroundColor: PAGE_BG }}>
+        <div
+          style={{
+            maxWidth: "800px",
+            margin: "0 auto",
+            padding: "80px 40px 48px",
+          }}
+        >
+          <div className="min-w-0">
               <h1
-                className="text-5xl tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]"
-                style={{ fontWeight: 700 }}
+                style={{
+                  fontSize: "48px",
+                  fontWeight: 800,
+                  color: "#ffffff",
+                  lineHeight: 1.1,
+                  margin: 0,
+                }}
               >
-                <span className="text-white/60">Discover Your</span>{" "}
-                <span style={{ color: ACCENT_GOLD }}>Club</span>
+                Find Your Club
               </h1>
               <p
-                className="mt-6 max-w-xl leading-relaxed"
-                style={{ color: "#cccccc", fontSize: "16px" }}
+                style={{
+                  fontSize: "15px",
+                  color: "#555555",
+                  marginTop: "10px",
+                  marginBottom: 0,
+                  lineHeight: 1.5,
+                }}
               >
-                Browse {clubs.length > 0 ? `${clubs.length}` : ""} student
-                organizations — from academics and athletics to arts and culture.
-                Find your people and get involved.
+                Browse {clubs.length} student organizations at the University of Guelph
               </p>
-            </div>
 
-            {/* Right: visual anchor — decorative blurred panel */}
-            <div className="hidden flex-shrink-0 lg:block" aria-hidden="true">
-              <div className="relative w-64 xl:w-72">
-                <div className="absolute -inset-4 rounded-3xl bg-[var(--red-dim)] blur-2xl" />
-                <div className="relative rounded-2xl border border-border/60 bg-card/80 p-5 backdrop-blur-sm shadow-elevated">
-                  <div className="mb-3 flex items-center gap-3">
-                    <div className="skeleton h-9 w-9 rounded-xl" />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="skeleton h-2.5 w-20 rounded-full" />
-                      <div className="skeleton h-2 w-14 rounded-full" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="skeleton h-2 w-full rounded-full" />
-                    <div className="skeleton h-2 w-5/6 rounded-full" />
-                  </div>
-                  <div className="mt-4 flex gap-2">
-                    <div className="skeleton h-5 w-14 rounded-full" />
-                    <div className="skeleton h-5 w-10 rounded-full" />
-                  </div>
-                </div>
-                <div className="relative -mt-1.5 ml-3 rounded-2xl border border-border/40 bg-surface-alt/60 p-4 backdrop-blur-sm">
-                  <div className="flex items-center gap-2.5">
-                    <div className="skeleton h-7 w-7 rounded-lg" />
-                    <div className="flex-1 space-y-1">
-                      <div className="skeleton h-2 w-16 rounded-full" />
-                      <div className="skeleton h-1.5 w-12 rounded-full" />
-                    </div>
-                  </div>
-                </div>
+              <div style={{ marginTop: "28px", maxWidth: "560px" }}>
+                <ExploreSearchBar
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search clubs by name, tag, or keyword…"
+                />
               </div>
-            </div>
-          </div>
 
-          {/* Search bar — more prominent */}
-          <div className="mt-10 max-w-2xl">
-            <ExploreSearchBar
-              value={search}
-              onChange={setSearch}
-              placeholder="Search clubs by name, tag, or keyword…"
-            />
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#444444",
+                  marginTop: "16px",
+                  marginBottom: 0,
+                }}
+              >
+                {clubs.length} clubs · {categoryCount} categories
+              </p>
           </div>
-
-          {/* Quick stats */}
-          {clubs.length > 0 && (
-            <div className="mt-8 flex flex-wrap gap-8 text-sm">
-              <span>
-                <strong style={{ fontWeight: 700, color: "#ffffff", fontSize: "1.5rem" }}>
-                  {clubs.length}
-                </strong>{" "}
-                <span style={{ color: "#747676", marginLeft: "4px" }}>clubs</span>
-              </span>
-              <span>
-                <strong style={{ fontWeight: 700, color: "#ffffff", fontSize: "1.5rem" }}>
-                  {categories.length - 1}
-                </strong>{" "}
-                <span style={{ color: "#747676", marginLeft: "4px" }}>categories</span>
-              </span>
-              {featuredClubs.length > 0 && (
-                <span>
-                  <strong style={{ fontWeight: 700, color: "#ffffff", fontSize: "1.5rem" }}>
-                    {featuredClubs.length}
-                  </strong>{" "}
-                  <span style={{ color: "#747676", marginLeft: "4px" }}>featured</span>
-                </span>
-              )}
-            </div>
-          )}
-          <div className="mt-6 border-b border-[var(--border)]" />
         </div>
       </section>
 
-      {/* ──────────── Featured Clubs ──────────── */}
-      {!loading && featuredClubs.length > 0 && !hasActiveFilters && (
-        <section style={{ backgroundColor: PAGE_BG, borderTop: "1px solid #222222" }}>
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-            <FeaturedSectionHeading title="Featured Clubs" />
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {featuredClubs.map((club) => (
-                <ClubCard key={club.id} club={club} variant="explore" />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ──────────── Verified Clubs ──────────── */}
-      {!loading && spotlightClubs.length > 0 && !hasActiveFilters && (
-        <section style={{ backgroundColor: PAGE_BG, borderTop: "1px solid #222222" }}>
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-            <div className="mb-8 flex items-center gap-3">
-              <svg
-                className="h-5 w-5 text-secondary"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <h2 className="text-xl font-bold text-white">
-                Verified Clubs
-              </h2>
-              <div className="divider-gold ml-2" aria-hidden="true" />
-            </div>
-            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-              {spotlightClubs.map((club) => (
-                <SpotlightCard key={club.id} club={club} />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ──────────── Filter Bar ──────────── */}
+      {/* Filters */}
       <section
         className="sticky top-16 z-30 border-t border-b backdrop-blur supports-[backdrop-filter]"
         style={{
@@ -560,180 +629,184 @@ export default function Explore() {
         }}
       >
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap gap-2">
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setActiveCategory(cat)}
-                    style={categoryTabStyle(activeCategory === cat)}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-
-              {hasActiveFilters && (
+          <div className="flex items-center gap-3">
+            <div
+              className="scrollbar-thin flex min-w-0 flex-1 items-center gap-2 overflow-x-auto"
+              style={{ WebkitOverflowScrolling: "touch" }}
+            >
+              {categories.map((cat) => (
                 <button
+                  key={cat}
                   type="button"
-                  onClick={clearFilters}
-                  className="self-start text-sm font-medium text-primary-light transition-colors hover:text-primary cursor-pointer sm:self-center"
+                  onClick={() => setActiveCategory(cat)}
+                  style={filterPillStyle(activeCategory === cat)}
                 >
-                  Clear filters
-                </button>
-              )}
-            </div>
-
-            {/* Size filter */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-muted">Size:</span>
-              {(Object.keys(SIZE_LABELS) as SizeFilter[]).map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => setSizeFilter(size)}
-                  className={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                    sizeFilter === size
-                      ? "bg-secondary/20 text-secondary"
-                      : "bg-surface text-muted hover:bg-surface-alt hover:text-white"
-                  }`}
-                >
-                  {SIZE_LABELS[size]}
+                  {cat}
                 </button>
               ))}
             </div>
+
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="shrink-0 cursor-pointer text-sm font-medium transition-colors"
+                style={{
+                  color: ACCENT_RED,
+                  background: "transparent",
+                  border: "none",
+                  padding: "7px 4px",
+                }}
+              >
+                Clear
+              </button>
+            ) : null}
           </div>
         </div>
       </section>
 
-      {/* ──────────── Discovery Sections ──────────── */}
+      {/* Discovery rows */}
       {!loading && !hasActiveFilters && (
         <div
           className="mx-auto max-w-7xl px-4 pt-10 sm:px-6 lg:px-8"
           style={{ backgroundColor: PAGE_BG }}
         >
-          {/* Recommended for You */}
-          {recommendedClubs.length > 0 && (
+          {mostActiveClubs.length > 0 ? (
             <section className="mb-12">
-              <div className="mb-5 flex items-center gap-3">
-                <span className="text-xl" aria-hidden="true">💡</span>
-                <h2 className="text-xl font-bold text-white">
-                  Recommended for You
-                </h2>
-                <div className="divider-gold ml-2" aria-hidden="true" />
-              </div>
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {recommendedClubs.map((club) => (
-                  <ClubCard key={club.id} club={club} variant="explore" />
+              <h2
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  margin: "0 0 4px",
+                }}
+              >
+                Most Active Clubs
+              </h2>
+              <p style={{ fontSize: "12px", color: MUTED, margin: "0 0 14px" }}>
+                Ranked by member activity
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {mostActiveClubs.map((club) => (
+                  <ExploreClubCard
+                    key={club.id}
+                    club={club}
+                    joined={Boolean(user && isJoined(club.id))}
+                  />
                 ))}
               </div>
             </section>
-          )}
+          ) : null}
 
-          {/* Trending */}
-          {trendingClubs.length > 0 && (
-            <section className="mb-12">
-              <div className="mb-5 flex items-center gap-3">
-                <span className="text-xl" aria-hidden="true">🔥</span>
-                <h2 className="text-xl font-bold text-white">
-                  Trending Clubs
-                </h2>
-                <div className="divider-gold ml-2" aria-hidden="true" />
-              </div>
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {trendingClubs.map((club) => (
-                  <ClubCard key={club.id} club={club} variant="explore" />
-                ))}
-              </div>
+          {featuredCategoryRows.map((row) => (
+            <section key={row.category} className="mb-12">
+              <h2
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  margin: "0 0 14px",
+                }}
+              >
+                {row.category}
+              </h2>
+              <HorizontalClubRow clubs={row.clubs} />
             </section>
-          )}
-
-          {/* New Clubs */}
-          {newClubs.length > 0 && (
-            <section className="mb-12">
-              <div className="mb-5 flex items-center gap-3">
-                <span className="text-xl" aria-hidden="true">✨</span>
-                <h2 className="text-xl font-bold text-white">
-                  Newly Created
-                </h2>
-                <div className="divider-gold ml-2" aria-hidden="true" />
-              </div>
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {newClubs.map((club) => (
-                  <ClubCard key={club.id} club={club} variant="explore" />
-                ))}
-              </div>
-            </section>
-          )}
+          ))}
         </div>
       )}
 
-      {/* ──────────── Main Results ──────────── */}
+      {/* Main grid */}
       <div
         className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8"
         style={{ backgroundColor: PAGE_BG }}
       >
-        {/* Error banner */}
-        {error && (
+        {error ? (
           <div
             role="alert"
-            className="mb-8 rounded-xl border border-primary/30 bg-primary/10 px-5 py-4 text-sm font-medium text-primary-light"
+            style={{
+              marginBottom: "32px",
+              borderRadius: "12px",
+              border: "1px solid rgba(229, 25, 55, 0.35)",
+              background: "rgba(229, 25, 55, 0.1)",
+              padding: "16px 20px",
+              fontSize: "14px",
+              color: "#ff6b6b",
+            }}
           >
-            ⚠️ Could not load clubs from the server. Please check your
-            connection and try again.
+            Could not load clubs from the server. Please check your connection and try again.
           </div>
-        )}
+        ) : null}
 
-        {/* Loading */}
         {loading ? (
           <div className="flex min-h-[40vh] items-center justify-center">
             <Spinner label="Loading clubs…" />
           </div>
         ) : filteredClubs.length > 0 ? (
           <>
-            {/* Result count */}
-            <div className="mb-8 flex items-center justify-between">
-              <p className="text-sm text-muted">
-                Showing{" "}
-                <span className="font-semibold text-white">
-                  {filteredClubs.length}
-                </span>{" "}
-                of {clubs.length} clubs
-                {activeCategory !== "All" && (
-                  <span className="ml-1">
-                    in{" "}
-                    <span className="font-medium text-primary-light">
-                      {activeCategory}
+            <div className="mb-8 flex items-start justify-between gap-4">
+              <div>
+                <h2 style={{ fontSize: "20px", color: "#ffffff", margin: 0, fontWeight: 700 }}>
+                  All Clubs
+                </h2>
+                <p style={{ fontSize: "14px", color: MUTED, margin: "4px 0 0" }}>
+                  Showing{" "}
+                  <span style={{ fontWeight: 600, color: "#ffffff" }}>{filteredClubs.length}</span> of{" "}
+                  {clubs.length} clubs
+                  {activeCategory !== "All" ? (
+                    <span>
+                      {" "}
+                      in <span style={{ color: ACCENT_RED }}>{activeCategory}</span>
                     </span>
-                  </span>
-                )}
-              </p>
-              {hasActiveFilters && (
+                  ) : null}
+                </p>
+              </div>
+              {hasActiveFilters ? (
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-sm font-medium text-primary-light transition-colors hover:text-primary cursor-pointer"
+                  className="cursor-pointer text-sm font-medium"
+                  style={{ color: ACCENT_RED, background: "transparent", border: "none" }}
                 >
                   Clear filters
                 </button>
-              )}
+              ) : null}
             </div>
 
-            {/* Grid */}
-            <div className="grid items-stretch gap-7 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filteredClubs.map((club) => (
-                <ClubCard key={club.id} club={club} variant="explore" />
+                <ExploreClubCard
+                  key={club.id}
+                  club={club}
+                  joined={Boolean(user && isJoined(club.id))}
+                />
               ))}
             </div>
           </>
         ) : (
-          /* Empty state */
-          <div className="rounded-2xl border border-border bg-card py-24 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-alt">
+          <div
+            style={{
+              borderRadius: "12px",
+              border: "1px solid #242424",
+              background: "#1a1a1a",
+              padding: "80px 24px",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                margin: "0 auto",
+                display: "flex",
+                height: "64px",
+                width: "64px",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "50%",
+                background: "#111111",
+              }}
+            >
               <svg
-                className="h-8 w-8 text-muted"
+                style={{ height: "32px", width: "32px", color: MUTED }}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -747,21 +820,22 @@ export default function Explore() {
                 />
               </svg>
             </div>
-            <p className="mt-5 text-xl font-bold text-white">
+            <p style={{ marginTop: "20px", fontSize: "20px", fontWeight: 700, color: "#ffffff" }}>
               {emptyStateMessage.title}
             </p>
-            <p className="mt-2 text-sm text-muted">
+            <p style={{ marginTop: "8px", fontSize: "14px", color: MUTED }}>
               {emptyStateMessage.description}
             </p>
-            {hasActiveFilters && (
+            {hasActiveFilters ? (
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-6 inline-flex items-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark cursor-pointer"
+                className="mt-6 cursor-pointer rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+                style={{ background: ACCENT_RED, border: "none" }}
               >
                 Clear all filters
               </button>
-            )}
+            ) : null}
           </div>
         )}
       </div>
