@@ -32,6 +32,7 @@ import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
 import ClubDocumentsPage from "./pages/app/ClubDocumentsPage";
 import OnboardingPage from "./pages/app/OnboardingPage";
 import ProfilePage from "./pages/app/ProfilePage";
+import PersonalSettingsPage from "./pages/app/PersonalSettingsPage";
 import MemberProfilePage from "./pages/app/MemberProfilePage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminClubs from "./pages/admin/AdminClubs";
@@ -200,6 +201,14 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <ProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/settings"
+                  element={
+                    <ProtectedRoute>
+                      <PersonalSettingsPage />
                     </ProtectedRoute>
                   }
                 />

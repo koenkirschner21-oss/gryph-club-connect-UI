@@ -1,13 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
-import { useClubContext } from "../../context/useClubContext";
+import { supabase } from "../../lib/supabaseClient";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 
 export default function CreateClubPage() {
   const { user } = useAuthContext();
-  const { createClub } = useClubContext();
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
@@ -21,6 +20,7 @@ export default function CreateClubPage() {
   const [instagram, setInstagram] = useState("");
   const [discord, setDiscord] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
@@ -55,7 +55,12 @@ export default function CreateClubPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setSuccessMessage(null);
 
+    if (!user?.id) {
+      setError("You must be signed in to submit a club request.");
+      return;
+    }
     if (!name.trim()) {
       setError("Club name is required");
       return;
@@ -73,24 +78,35 @@ export default function CreateClubPage() {
       if (instagram.trim()) socialLinks.instagram = instagram.trim();
       if (discord.trim()) socialLinks.discord = discord.trim();
 
-      const clubId = await createClub({
-        name: name.trim(),
+      const longDescription = JSON.stringify({
         slug: slug || generateSlug(name),
-        description: description.trim(),
-        category: category.trim(),
-        contactEmail: contactEmail.trim(),
-        meetingSchedule: meetingSchedule.trim(),
-        meetingLocation: meetingLocation.trim(),
-        socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
+        contact_email: contactEmail.trim(),
+        meeting_schedule: meetingSchedule.trim(),
+        meeting_location: meetingLocation.trim(),
+        social_links:
+          Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
       });
 
-      if (clubId) {
-        navigate(`/app/clubs/${clubId}`);
-      } else {
-        setError("Failed to create club. Please try again.");
+      const { error: insertError } = await supabase.from("club_requests").insert({
+        submitted_by: user.id,
+        name: name.trim(),
+        short_description: description.trim() || null,
+        long_description: longDescription,
+        category: category.trim(),
+        status: "pending",
+      });
+
+      if (insertError) {
+        console.error("Failed to submit club request:", insertError.message);
+        setError("Failed to submit club request. Please try again.");
+        return;
       }
+
+      setSuccessMessage(
+        "Your club request has been submitted for review. You'll be notified once it's approved.",
+      );
     } catch {
-      setError("Failed to create club. Please try again.");
+      setError("Failed to submit club request. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -99,6 +115,23 @@ export default function CreateClubPage() {
   return (
     <div className="page-root mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="mb-2 text-[26px] font-semibold tracking-[-0.5px] text-[var(--text-1)]">Create a club</h1>
+
+      {successMessage ? (
+        <div
+          role="status"
+          style={{
+            background: "#0d2b0d",
+            border: "1px solid #1a4a1a",
+            color: "#4ade80",
+            borderRadius: "8px",
+            padding: "16px",
+            marginBottom: "24px",
+            fontSize: "14px",
+          }}
+        >
+          {successMessage}
+        </div>
+      ) : null}
 
       {error && (
         <div
@@ -174,8 +207,8 @@ export default function CreateClubPage() {
               Next →
             </Button>
           ) : (
-            <Button type="submit" disabled={loading}>
-              {loading ? "Creating…" : "Create Club"}
+            <Button type="submit" disabled={loading || !!successMessage}>
+              {loading ? "Submitting…" : "Create Club"}
             </Button>
           )}
         </div>

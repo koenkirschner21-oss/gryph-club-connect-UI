@@ -153,7 +153,7 @@ export default function Navbar() {
                       Profile
                     </Link>
                     <Link
-                      to="/app/profile"
+                      to="/app/settings"
                       onClick={() => setProfileOpen(false)}
                       className="block rounded-[var(--r-sm)] px-3 py-2 text-sm text-[var(--text-2)] hover:bg-[var(--bg-3)] hover:text-[var(--text-1)]"
                     >

@@ -1,7 +1,13 @@
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { Link, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { Calendar, CheckSquare } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
@@ -17,7 +23,7 @@ import {
 // ---------------------------------------------------------------------------
 // Tab types
 // ---------------------------------------------------------------------------
-type DashboardTab = "overview" | "events" | "tasks";
+type DashboardTab = "overview" | "events" | "tasks" | "week";
 
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
@@ -208,6 +214,15 @@ export default function DashboardPage() {
     }).length;
   }, [upcomingEvents]);
 
+  const navigate = useNavigate();
+
+  const handleMyClubsStatClick = () => {
+    navigate("/app");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToDashboardMyClubs);
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -259,6 +274,62 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ── Stat Cards (always visible) ── */}
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="MY CLUBS"
+          accentColor="#E51937"
+          iconColor="#E51937"
+          value={myClubs.length}
+          sublabel="Active memberships"
+          onClick={handleMyClubsStatClick}
+          icon={
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="UPCOMING"
+          accentColor="#FFC429"
+          iconColor="#FFC429"
+          value={eventsThisMonth}
+          sublabel="Events this month"
+          onClick={() => setActiveTab("events")}
+          icon={
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="TASKS"
+          accentColor="#E51937"
+          iconColor="#E51937"
+          value={taskCount}
+          sublabel="Active tasks"
+          onClick={() => setActiveTab("tasks")}
+          icon={
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="UNREAD"
+          accentColor="#747676"
+          iconColor="#747676"
+          value={unreadNotificationCount}
+          sublabel="Notifications"
+          onClick={handleUnreadStatClick}
+          icon={
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+          }
+        />
+      </div>
+
       {/* ── Tab Navigation ── */}
       <div className="mb-8 flex items-center gap-6 border-b border-border">
         <TabButton
@@ -277,6 +348,11 @@ export default function DashboardPage() {
           active={activeTab === "tasks"}
           onClick={() => setActiveTab("tasks")}
         />
+        <TabButton
+          label="This Week"
+          active={activeTab === "week"}
+          onClick={() => setActiveTab("week")}
+        />
       </div>
 
       {/* ── Tab Content ── */}
@@ -286,10 +362,6 @@ export default function DashboardPage() {
           mySavedClubs={mySavedClubs}
           upcomingEvents={upcomingEvents}
           eventsLoading={eventsLoading}
-          eventsThisMonth={eventsThisMonth}
-          taskCount={taskCount}
-          unreadNotificationCount={unreadNotificationCount}
-          onUnreadStatClick={handleUnreadStatClick}
           totalClubs={clubs.length}
           myRsvps={myRsvps}
           rsvpCounts={rsvpCounts}
@@ -301,6 +373,7 @@ export default function DashboardPage() {
           onViewAllTasks={() => setActiveTab("tasks")}
         />
       )}
+      {activeTab === "week" && <ThisWeekTab joinedClubIds={joinedClubs} />}
       {activeTab === "events" && (
         <EventsTab
           upcomingEvents={upcomingEvents}
@@ -367,6 +440,372 @@ const overviewEmptyTextStyle = {
   fontSize: "13px",
   margin: 0,
 } as const;
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysIso(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatWeekDayHeading(isoDate: string): string {
+  const d = new Date(`${isoDate}T12:00:00`);
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function weekDayKeysFromToday(): string[] {
+  const start = todayIsoDate();
+  const keys: string[] = [];
+  for (let i = 0; i <= 7; i += 1) {
+    keys.push(addDaysIso(start, i));
+  }
+  return keys;
+}
+
+const weekItemLabelStyle: CSSProperties = {
+  fontSize: "10px",
+  color: "#747676",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  margin: "0 0 6px",
+};
+
+const highImportanceBadgeStyle: CSSProperties = {
+  background: "#1a0505",
+  border: "1px solid #E51937",
+  color: "#E51937",
+  borderRadius: "20px",
+  padding: "2px 8px",
+  fontSize: "10px",
+  fontWeight: 700,
+  flexShrink: 0,
+  lineHeight: 1.2,
+};
+
+type WeekTaskItem = {
+  kind: "task";
+  id: string;
+  dateKey: string;
+  title: string;
+  clubName: string;
+  clubId: string;
+  priority: string;
+};
+
+type WeekEventItem = {
+  kind: "event";
+  id: string;
+  dateKey: string;
+  title: string;
+  clubName: string;
+  clubId: string;
+  time: string;
+  location: string;
+};
+
+type WeekPlannerItem = WeekTaskItem | WeekEventItem;
+
+function ThisWeekTab({ joinedClubIds }: { joinedClubIds: string[] }) {
+  const [items, setItems] = useState<WeekPlannerItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const todayKey = todayIsoDate();
+
+  useEffect(() => {
+    if (joinedClubIds.length === 0) {
+      queueMicrotask(() => {
+        setItems([]);
+        setLoading(false);
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const start = todayIsoDate();
+    const end = addDaysIso(start, 7);
+
+    async function loadWeek() {
+      setLoading(true);
+
+      const [tasksRes, eventsRes] = await Promise.all([
+        supabase
+          .from("tasks")
+          .select(
+            `
+            id,
+            club_id,
+            title,
+            priority,
+            due_date,
+            clubs:club_id ( name )
+          `,
+          )
+          .in("club_id", joinedClubIds)
+          .gte("due_date", start)
+          .lte("due_date", end)
+          .neq("status", "done")
+          .order("due_date", { ascending: true }),
+        supabase
+          .from("events")
+          .select(
+            `
+            id,
+            club_id,
+            title,
+            date,
+            time,
+            location,
+            clubs:club_id ( name )
+          `,
+          )
+          .in("club_id", joinedClubIds)
+          .gte("date", start)
+          .lte("date", end)
+          .order("date", { ascending: true })
+          .order("time", { ascending: true }),
+      ]);
+
+      if (cancelled) return;
+
+      const plannerItems: WeekPlannerItem[] = [];
+
+      if (!eventsRes.error) {
+        for (const row of eventsRes.data ?? []) {
+          const clubRaw = row.clubs as unknown;
+          const club = (
+            Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
+          ) as Record<string, unknown>;
+          const dateKey = (row.date as string) ?? "";
+          if (!dateKey) continue;
+          plannerItems.push({
+            kind: "event",
+            id: row.id as string,
+            dateKey,
+            title: (row.title as string) ?? "",
+            clubName: (club.name as string) ?? "",
+            clubId: row.club_id as string,
+            time: (row.time as string) ?? "",
+            location: (row.location as string) ?? "",
+          });
+        }
+      }
+
+      if (!tasksRes.error) {
+        for (const row of tasksRes.data ?? []) {
+          const clubRaw = row.clubs as unknown;
+          const club = (
+            Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
+          ) as Record<string, unknown>;
+          const dateKey = (row.due_date as string) ?? "";
+          if (!dateKey) continue;
+          plannerItems.push({
+            kind: "task",
+            id: row.id as string,
+            dateKey,
+            title: (row.title as string) ?? "",
+            clubName: (club.name as string) ?? "",
+            clubId: row.club_id as string,
+            priority: (row.priority as string) ?? "medium",
+          });
+        }
+      }
+
+      setItems(plannerItems);
+      setLoading(false);
+    }
+
+    void loadWeek();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [joinedClubIds]);
+
+  const itemsByDay = useMemo(() => {
+    const map = new Map<string, WeekPlannerItem[]>();
+    for (const item of items) {
+      const existing = map.get(item.dateKey) ?? [];
+      existing.push(item);
+      map.set(item.dateKey, existing);
+    }
+    return map;
+  }, [items]);
+
+  const daysWithItems = useMemo(() => {
+    return weekDayKeysFromToday().filter((key) => (itemsByDay.get(key)?.length ?? 0) > 0);
+  }, [itemsByDay]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner label="Loading your week…" />
+      </div>
+    );
+  }
+
+  if (daysWithItems.length === 0) {
+    return (
+      <p
+        style={{
+          textAlign: "center",
+          color: "#555555",
+          fontSize: "13px",
+          margin: "48px 0",
+        }}
+      >
+        Nothing scheduled this week. Enjoy the break!
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+      {daysWithItems.map((dateKey) => {
+        const dayItems = itemsByDay.get(dateKey) ?? [];
+        const isToday = dateKey === todayKey;
+        const events = dayItems.filter((i) => i.kind === "event");
+        const tasks = dayItems.filter((i) => i.kind === "task");
+
+        return (
+          <section key={dateKey}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "12px",
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: isToday ? "#ffffff" : "#555555",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  margin: 0,
+                }}
+              >
+                {formatWeekDayHeading(dateKey)}
+              </h3>
+              {isToday ? (
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    color: "#E51937",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  TODAY
+                </span>
+              ) : null}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {events.map((event) => (
+                <Link
+                  key={`event-${event.id}`}
+                  to={`/app/clubs/${event.clubId}/events`}
+                  className="block no-underline"
+                >
+                  <div
+                    style={{
+                      background: "#1a1a1a",
+                      border: "1px solid #242424",
+                      borderRadius: "8px",
+                      padding: "12px 16px",
+                      borderLeft: "3px solid #E51937",
+                    }}
+                  >
+                    <p style={weekItemLabelStyle}>EVENT</p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: "#ffffff",
+                        margin: "0 0 4px",
+                      }}
+                    >
+                      {event.title}
+                    </p>
+                    {(event.time?.trim() || event.location?.trim()) && (
+                      <p
+                        style={{
+                          fontSize: "11px",
+                          color: "#555555",
+                          margin: "0 0 4px",
+                        }}
+                      >
+                        {[event.time?.trim(), event.location?.trim()]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    )}
+                    <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
+                      {event.clubName}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+
+              {tasks.map((task) => (
+                <Link
+                  key={`task-${task.id}`}
+                  to={`/app/clubs/${task.clubId}/tasks`}
+                  className="block no-underline"
+                >
+                  <div
+                    style={{
+                      background: "#1a1a1a",
+                      border: "1px solid #242424",
+                      borderRadius: "8px",
+                      padding: "12px 16px",
+                      borderLeft: "3px solid #FFC429",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                      }}
+                    >
+                      <p style={{ ...weekItemLabelStyle, margin: 0 }}>TASK</p>
+                      {task.priority === "high" ? (
+                        <span style={highImportanceBadgeStyle}>!</span>
+                      ) : null}
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: "#ffffff",
+                        margin: "6px 0 4px",
+                      }}
+                    >
+                      {task.title}
+                    </p>
+                    <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
+                      {task.clubName}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
 
 type OverviewTask = {
   id: string;
@@ -657,10 +1096,6 @@ function OverviewTab({
   mySavedClubs,
   upcomingEvents,
   eventsLoading,
-  eventsThisMonth,
-  taskCount,
-  unreadNotificationCount,
-  onUnreadStatClick,
   totalClubs,
   myRsvps,
   rsvpCounts,
@@ -675,10 +1110,6 @@ function OverviewTab({
   mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
-  eventsThisMonth: number;
-  taskCount: number;
-  unreadNotificationCount: number;
-  onUnreadStatClick: () => void;
   totalClubs: number;
   myRsvps: Record<string, string>;
   rsvpCounts: Record<string, import("../../types").RsvpCounts>;
@@ -689,15 +1120,6 @@ function OverviewTab({
   onViewAllEvents: () => void;
   onViewAllTasks: () => void;
 }) {
-  const navigate = useNavigate();
-
-  const handleMyClubsStatClick = () => {
-    navigate("/app");
-    requestAnimationFrame(() => {
-      requestAnimationFrame(scrollToDashboardMyClubs);
-    });
-  };
-
   const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [recentAnnouncements, setRecentAnnouncements] = useState<OverviewAnnouncement[]>(
@@ -827,62 +1249,6 @@ function OverviewTab({
 
   return (
     <>
-      {/* ── Stat Cards ── */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          label="MY CLUBS"
-          accentColor="#E51937"
-          iconColor="#E51937"
-          value={myClubs.length}
-          sublabel="Active memberships"
-          onClick={handleMyClubsStatClick}
-          icon={
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-            </svg>
-          }
-        />
-        <StatCard
-          label="UPCOMING"
-          accentColor="#FFC429"
-          iconColor="#FFC429"
-          value={eventsThisMonth}
-          sublabel="Events this month"
-          onClick={onViewAllEvents}
-          icon={
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-            </svg>
-          }
-        />
-        <StatCard
-          label="TASKS"
-          accentColor="#E51937"
-          iconColor="#E51937"
-          value={taskCount}
-          sublabel="Active tasks"
-          onClick={onViewAllTasks}
-          icon={
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
-        <StatCard
-          label="UNREAD"
-          accentColor="#747676"
-          iconColor="#747676"
-          value={unreadNotificationCount}
-          sublabel="Notifications"
-          onClick={onUnreadStatClick}
-          icon={
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-            </svg>
-          }
-        />
-      </div>
-
       {/* ── Two-column layout ── */}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         {/* Left: My Tasks + Upcoming Events */}
