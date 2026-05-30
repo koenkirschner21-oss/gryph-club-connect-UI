@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, NavLink, Outlet, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  NavLink,
+  Outlet,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { Briefcase, LayoutDashboard } from "lucide-react";
 import AppShell from "./components/layout/AppShell";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -35,7 +44,8 @@ import ClubSettingsPage from "./pages/app/ClubSettingsPage";
 import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
 import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
 import ClubDocumentsPage from "./pages/app/ClubDocumentsPage";
-import OnboardingPage from "./pages/app/OnboardingPage";
+import OnboardingPage from "./pages/onboarding/OnboardingPage";
+import InvitePage from "./pages/InvitePage";
 import ProfilePage from "./pages/app/ProfilePage";
 import PersonalSettingsPage from "./pages/app/PersonalSettingsPage";
 import MemberProfilePage from "./pages/app/MemberProfilePage";
@@ -103,6 +113,71 @@ function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
   }
 
   return children;
+}
+
+const ONBOARDING_EXEMPT_PREFIXES = [
+  "/onboarding",
+  "/login",
+  "/signup",
+  "/invite",
+  "/forgot-password",
+  "/reset-password",
+  "/privacy",
+  "/terms",
+  "/events/",
+];
+
+function isOnboardingExemptPath(pathname: string): boolean {
+  return ONBOARDING_EXEMPT_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix),
+  );
+}
+
+function OnboardingRedirect() {
+  const { user, loading, onboardingCompleted } = useAuthContext();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (loading || !user || onboardingCompleted !== false) return;
+    if (isOnboardingExemptPath(location.pathname)) return;
+    if (location.pathname.startsWith("/admin")) return;
+    navigate("/onboarding", { replace: true });
+  }, [
+    loading,
+    user,
+    onboardingCompleted,
+    location.pathname,
+    navigate,
+  ]);
+
+  return null;
+}
+
+function LoginRedirectHandler() {
+  const { user, loading, onboardingCompleted } = useAuthContext();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (loading || !user) return;
+    if (location.pathname !== "/login") return;
+
+    const redirect = new URLSearchParams(location.search).get("redirect");
+    if (redirect && redirect.startsWith("/")) {
+      navigate(redirect, { replace: true });
+      return;
+    }
+
+    if (onboardingCompleted === false) {
+      navigate("/onboarding", { replace: true });
+      return;
+    }
+
+    navigate("/app", { replace: true });
+  }, [loading, user, location.pathname, location.search, navigate, onboardingCompleted]);
+
+  return null;
 }
 
 function AppMainLayoutPlain() {
@@ -184,6 +259,8 @@ export default function App() {
           <ClubProvider>
             <NotificationsProvider>
             <PreviewModeBanner />
+            <OnboardingRedirect />
+            <LoginRedirectHandler />
             <a
               href="#main-content"
               className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-white focus:shadow-lg"
@@ -192,6 +269,7 @@ export default function App() {
             </a>
             <Routes>
               <Route path="/events/:eventId/rsvp" element={<EventRSVPPage />} />
+              <Route path="/invite/:token" element={<InvitePage />} />
               {/* Public browsing — no auth guard */}
               <Route element={<AppShell />}>
                 <Route path="/explore" element={<Explore />} />
@@ -270,6 +348,10 @@ export default function App() {
                 />
                 <Route
                   path="/app/onboarding"
+                  element={<Navigate to="/onboarding" replace />}
+                />
+                <Route
+                  path="/onboarding"
                   element={
                     <ProtectedRoute>
                       <OnboardingPage />

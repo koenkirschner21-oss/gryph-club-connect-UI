@@ -26,8 +26,6 @@ const DOCUMENT_CATEGORIES = [
   { value: "other", label: "Other" },
 ] as const;
 
-type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number]["value"];
-
 interface ClubDocument {
   id: string;
   club_id: string;
@@ -107,9 +105,64 @@ function normalizeUserRole(role: string): MemberRole {
   return "member";
 }
 
-function categoryLabel(value: string): string {
-  return (
-    DOCUMENT_CATEGORIES.find((c) => c.value === value)?.label ?? "General"
+type CategoryOption = { value: string; label: string };
+
+function categoryLabel(value: string, categories: CategoryOption[]): string {
+  const fromList =
+    categories.find((c) => c.value === value)?.label ??
+    DOCUMENT_CATEGORIES.find((c) => c.value === value)?.label;
+  if (fromList) return fromList;
+  const customFallback = value.replace(/^custom_/, "").replace(/_/g, " ");
+  return customFallback || "General";
+}
+
+function customCategoriesStorageKey(clubId: string): string {
+  return `club_documents_categories_${clubId}`;
+}
+
+function slugifyCategoryName(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  return slug ? `custom_${slug}` : `custom_${Date.now()}`;
+}
+
+function loadCustomCategories(clubId: string): CategoryOption[] {
+  try {
+    const raw = localStorage.getItem(customCategoriesStorageKey(clubId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (typeof item === "string") {
+          return { value: slugifyCategoryName(item), label: item };
+        }
+        if (
+          item &&
+          typeof item === "object" &&
+          "value" in item &&
+          "label" in item
+        ) {
+          return {
+            value: String((item as { value: string }).value),
+            label: String((item as { label: string }).label),
+          };
+        }
+        return null;
+      })
+      .filter((x): x is CategoryOption => x !== null);
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomCategories(clubId: string, categories: CategoryOption[]) {
+  localStorage.setItem(
+    customCategoriesStorageKey(clubId),
+    JSON.stringify(categories),
   );
 }
 
@@ -366,46 +419,98 @@ function ResourceLinkRow({
 function CategoryPills({
   value,
   onChange,
+  categories,
   includeAll = false,
+  customValues = [],
+  onDeleteCustom,
+  onAddClick,
 }: {
   value: string;
   onChange: (value: string) => void;
+  categories: CategoryOption[];
   includeAll?: boolean;
+  customValues?: string[];
+  onDeleteCustom?: (value: string) => void;
+  onAddClick?: () => void;
 }) {
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
+  const [hoveredAdd, setHoveredAdd] = useState(false);
   const options = includeAll
-    ? [{ value: "all", label: "All" }, ...DOCUMENT_CATEGORIES]
-    : DOCUMENT_CATEGORIES;
+    ? [{ value: "all", label: "All" }, ...categories]
+    : categories;
+  const customSet = new Set(customValues);
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
       {options.map((option) => {
         const selected = value === option.value;
         const hovered = hoveredValue === option.value;
+        const isCustom = customSet.has(option.value);
         return (
-          <button
+          <span
             key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            onMouseEnter={() => setHoveredValue(option.value)}
-            onMouseLeave={() => setHoveredValue(null)}
-            style={{
-              background: selected ? "#E51937" : "#1a1a1a",
-              border: selected ? "none" : `1px solid ${hovered ? "#444444" : "#2a2a2a"}`,
-              color: selected ? "#ffffff" : "#777777",
-              borderRadius: "20px",
-              fontSize: "12px",
-              fontWeight: 500,
-              padding: "6px 16px",
-              cursor: "pointer",
-              transition: "border-color 0.15s ease, color 0.15s ease",
-              ...(selected ? null : hovered ? { color: "#cccccc" } : null),
-            }}
+            style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
           >
-            {option.label}
-          </button>
+            <button
+              type="button"
+              onClick={() => onChange(option.value)}
+              onMouseEnter={() => setHoveredValue(option.value)}
+              onMouseLeave={() => setHoveredValue(null)}
+              style={{
+                background: selected ? "#E51937" : "#1a1a1a",
+                border: selected ? "none" : `1px solid ${hovered ? "#444444" : "#2a2a2a"}`,
+                color: selected ? "#ffffff" : "#777777",
+                borderRadius: "20px",
+                fontSize: "12px",
+                fontWeight: 500,
+                padding: "6px 16px",
+                cursor: "pointer",
+                transition: "border-color 0.15s ease, color 0.15s ease",
+                ...(selected ? null : hovered ? { color: "#cccccc" } : null),
+              }}
+            >
+              {option.label}
+            </button>
+            {isCustom && onDeleteCustom ? (
+              <button
+                type="button"
+                aria-label={`Remove ${option.label}`}
+                onClick={() => onDeleteCustom(option.value)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#555555",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  lineHeight: 1,
+                  padding: "0 2px",
+                }}
+              >
+                ×
+              </button>
+            ) : null}
+          </span>
         );
       })}
+      {onAddClick ? (
+        <button
+          type="button"
+          onClick={onAddClick}
+          onMouseEnter={() => setHoveredAdd(true)}
+          onMouseLeave={() => setHoveredAdd(false)}
+          style={{
+            background: "transparent",
+            border: `1px solid ${hoveredAdd ? "#E51937" : "#333333"}`,
+            color: hoveredAdd ? "#E51937" : "#747676",
+            borderRadius: "6px",
+            padding: "5px 12px",
+            fontSize: "12px",
+            cursor: "pointer",
+          }}
+        >
+          +
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -431,6 +536,7 @@ function DocumentCard({
   onEdit,
   onPreview,
   onDownload,
+  categories,
 }: {
   doc: ClubDocument;
   isPrivileged: boolean;
@@ -439,6 +545,7 @@ function DocumentCard({
   onEdit: (doc: ClubDocument) => void;
   onPreview: (doc: ClubDocument) => void;
   onDownload: (doc: ClubDocument) => void;
+  categories: CategoryOption[];
 }) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -517,7 +624,7 @@ function DocumentCard({
               {doc.description}
             </p>
           ) : null}
-          <span style={categoryBadgeStyle()}>{categoryLabel(doc.category)}</span>
+          <span style={categoryBadgeStyle()}>{categoryLabel(doc.category, categories)}</span>
         </Box>
       </Box>
 
@@ -668,8 +775,12 @@ export default function ClubDocumentsPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [docName, setDocName] = useState("");
   const [docDescription, setDocDescription] = useState("");
-  const [uploadCategory, setUploadCategory] =
-    useState<DocumentCategory>("general");
+  const [customCategories, setCustomCategories] = useState<CategoryOption[]>(
+    [],
+  );
+  const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [uploadCategory, setUploadCategory] = useState("general");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [feedback, setFeedback] = useState<{
@@ -690,6 +801,21 @@ export default function ClubDocumentsPage() {
   const [linkDescription, setLinkDescription] = useState("");
   const [savingLink, setSavingLink] = useState(false);
   const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
+
+  const allCategories = useMemo(
+    () => [...DOCUMENT_CATEGORIES, ...customCategories],
+    [customCategories],
+  );
+
+  const customCategoryValues = useMemo(
+    () => customCategories.map((c) => c.value),
+    [customCategories],
+  );
+
+  useEffect(() => {
+    if (!clubId) return;
+    setCustomCategories(loadCustomCategories(clubId));
+  }, [clubId]);
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -817,6 +943,36 @@ export default function ClubDocumentsPage() {
     if (savingLink) return;
     setShowAddLinkModal(false);
     resetLinkForm();
+  }
+
+  function handleCreateCategory() {
+    if (!clubId || !newCategoryName.trim()) return;
+    const label = newCategoryName.trim();
+    const value = slugifyCategoryName(label);
+    const exists = allCategories.some(
+      (c) =>
+        c.value === value ||
+        c.label.toLowerCase() === label.toLowerCase(),
+    );
+    if (exists) {
+      setFeedback({ type: "error", text: "That category already exists." });
+      return;
+    }
+    const next = [...customCategories, { value, label }];
+    setCustomCategories(next);
+    saveCustomCategories(clubId, next);
+    setShowCreateCategoryModal(false);
+    setNewCategoryName("");
+    setFeedback(null);
+  }
+
+  function handleDeleteCustomCategory(value: string) {
+    if (!clubId) return;
+    const next = customCategories.filter((c) => c.value !== value);
+    setCustomCategories(next);
+    saveCustomCategories(clubId, next);
+    if (filterCategory === value) setFilterCategory("all");
+    if (uploadCategory === value) setUploadCategory("general");
   }
 
   async function handleSaveLink() {
@@ -1105,7 +1261,13 @@ export default function ClubDocumentsPage() {
         <CategoryPills
           value={filterCategory}
           onChange={setFilterCategory}
+          categories={allCategories}
           includeAll
+          customValues={customCategoryValues}
+          onDeleteCustom={isPrivileged ? handleDeleteCustomCategory : undefined}
+          onAddClick={
+            isPrivileged ? () => setShowCreateCategoryModal(true) : undefined
+          }
         />
       </Box>
 
@@ -1230,6 +1392,7 @@ export default function ClubDocumentsPage() {
             <DocumentCard
               key={doc.id}
               doc={doc}
+              categories={allCategories}
               isPrivileged={isPrivileged}
               deleting={deletingId === doc.id}
               onDelete={(item) => void handleDelete(item)}
@@ -1474,7 +1637,8 @@ export default function ClubDocumentsPage() {
             </p>
             <CategoryPills
               value={uploadCategory}
-              onChange={(v) => setUploadCategory(v as DocumentCategory)}
+              onChange={setUploadCategory}
+              categories={allCategories}
             />
 
             {uploading ? (
@@ -1740,6 +1904,96 @@ export default function ClubDocumentsPage() {
                 }}
               >
                 {savingEdit ? "Saving…" : "Save"}
+              </button>
+            </Box>
+          </div>
+        </div>
+      ) : null}
+
+      {showCreateCategoryModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-category-title"
+          style={modalOverlayStyle}
+          onClick={() => {
+            setShowCreateCategoryModal(false);
+            setNewCategoryName("");
+          }}
+        >
+          <div
+            style={{
+              ...modalPanelStyle,
+              maxWidth: "400px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <h2
+              id="new-category-title"
+              style={{
+                fontWeight: 600,
+                fontSize: "16px",
+                color: "#ffffff",
+                margin: "0 0 16px",
+              }}
+            >
+              New Category
+            </h2>
+            <label htmlFor="new-category-name" style={labelStyle}>
+              Category name
+            </label>
+            <input
+              id="new-category-name"
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              style={{ ...inputStyle, marginBottom: "20px" }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateCategory();
+              }}
+            />
+            <Box
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateCategoryModal(false);
+                  setNewCategoryName("");
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateCategory}
+                disabled={!newCategoryName.trim()}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: newCategoryName.trim() ? "pointer" : "not-allowed",
+                  opacity: newCategoryName.trim() ? 1 : 0.5,
+                }}
+              >
+                Create
               </button>
             </Box>
           </div>

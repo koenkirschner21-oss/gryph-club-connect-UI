@@ -586,6 +586,11 @@ export default function ClubHomePage() {
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
 
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
@@ -673,6 +678,58 @@ export default function ClubHomePage() {
       () => {
         // Clipboard unavailable — user can still copy manually from the code display.
       },
+    );
+  }
+
+  function closeInviteModal() {
+    setShowInviteModal(false);
+    setInviteEmail("");
+    setInviteError(null);
+    setInviteLink(null);
+    setInviteLinkCopied(false);
+    setInviteCopied(false);
+  }
+
+  function handleCopyInviteLink() {
+    if (!inviteLink) return;
+    navigator.clipboard.writeText(inviteLink).then(
+      () => {
+        setInviteLinkCopied(true);
+        window.setTimeout(() => setInviteLinkCopied(false), 2000);
+      },
+      () => {
+        // Clipboard unavailable
+      },
+    );
+  }
+
+  async function handleSendInvite() {
+    if (!clubId || !user?.id || !inviteEmail.trim()) return;
+    setInviteSending(true);
+    setInviteError(null);
+    setInviteLink(null);
+
+    const { data, error } = await supabase
+      .from("club_invites")
+      .insert({
+        club_id: clubId,
+        invited_email: inviteEmail.trim().toLowerCase(),
+        invited_by: user.id,
+      })
+      .select("token")
+      .single();
+
+    setInviteSending(false);
+
+    if (error || !data?.token) {
+      setInviteError(
+        error?.message ?? "Failed to create invite. Please try again.",
+      );
+      return;
+    }
+
+    setInviteLink(
+      `https://gryphclubconnect.com/invite/${data.token as string}`,
     );
   }
 
@@ -1074,7 +1131,7 @@ export default function ClubHomePage() {
             zIndex: 50,
             padding: "16px",
           }}
-          onClick={() => setShowInviteModal(false)}
+          onClick={closeInviteModal}
         >
           <div
             style={{
@@ -1091,7 +1148,7 @@ export default function ClubHomePage() {
             <button
               type="button"
               aria-label="Close"
-              onClick={() => setShowInviteModal(false)}
+              onClick={closeInviteModal}
               style={{
                 position: "absolute",
                 top: "16px",
@@ -1166,6 +1223,127 @@ export default function ClubHomePage() {
                 settings.
               </p>
             )}
+
+            <div
+              style={{
+                marginTop: "28px",
+                paddingTop: "24px",
+                borderTop: "1px solid #242424",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  margin: "0 0 12px",
+                }}
+              >
+                Or invite by email
+              </p>
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="Enter UofG email address"
+                disabled={inviteSending}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#111111",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "6px",
+                  padding: "10px 14px",
+                  color: "#ffffff",
+                  fontSize: "14px",
+                  marginBottom: "12px",
+                }}
+              />
+              {inviteError ? (
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#E51937",
+                    margin: "0 0 12px",
+                  }}
+                >
+                  {inviteError}
+                </p>
+              ) : null}
+              {inviteLink ? (
+                <div style={{ marginBottom: "12px" }}>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#888888",
+                      margin: "0 0 8px",
+                    }}
+                  >
+                    Invite link created! Share this link:
+                  </p>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      alignItems: "stretch",
+                    }}
+                  >
+                    <input
+                      type="text"
+                      readOnly
+                      value={inviteLink}
+                      style={{
+                        flex: 1,
+                        background: "#111111",
+                        border: "1px solid #2a2a2a",
+                        borderRadius: "6px",
+                        padding: "10px 14px",
+                        color: "#cccccc",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopyInviteLink}
+                      style={{
+                        background: "#1f1f1f",
+                        border: "1px solid #333333",
+                        color: "#ffffff",
+                        borderRadius: "6px",
+                        padding: "10px 14px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {inviteLinkCopied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleSendInvite()}
+                disabled={inviteSending || !inviteEmail.trim()}
+                style={{
+                  width: "100%",
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "10px 24px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  cursor:
+                    inviteSending || !inviteEmail.trim()
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity: inviteSending || !inviteEmail.trim() ? 0.6 : 1,
+                }}
+              >
+                {inviteSending ? "Sending…" : "Send Invite"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
