@@ -5,7 +5,9 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { Calendar } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
+import { getClubInitials } from "../../lib/clubUtils";
 import { supabase } from "../../lib/supabaseClient";
 
 export const POSITION_TYPES = [
@@ -129,6 +131,225 @@ export function deadlineLabel(deadline: string | null): string | null {
   if (days < 0) return "Closed";
   if (days <= 3) return "Closing soon";
   return `${days} days left`;
+}
+
+const BOARD_FILTER_PILLS = [
+  { value: "all", label: "All" },
+  { value: "executive", label: "Executive" },
+  { value: "volunteer", label: "Volunteer" },
+  { value: "general", label: "General" },
+] as const;
+
+const CLUB_AVATAR_BACKGROUNDS = ["#1a0505", "#1a1500", "#0a0a1a", "#0a1a0a", "#1a0a1a"] as const;
+
+const CLUB_AVATAR_BORDERS: Record<(typeof CLUB_AVATAR_BACKGROUNDS)[number], string> = {
+  "#1a0505": "#2a1515",
+  "#1a1500": "#2a2510",
+  "#0a0a1a": "#1a1a2a",
+  "#0a1a0a": "#1a2a1a",
+  "#1a0a1a": "#2a1a2a",
+};
+
+function getClubAvatarColors(clubName: string): { bg: string; border: string } {
+  const bgIndex = clubName.charCodeAt(0) % CLUB_AVATAR_BACKGROUNDS.length;
+  const bg = CLUB_AVATAR_BACKGROUNDS[bgIndex];
+  return { bg, border: CLUB_AVATAR_BORDERS[bg] };
+}
+
+const listingTypeBadgeStyle: CSSProperties = {
+  background: "#111111",
+  border: "1px solid #1e1e1e",
+  color: "#747676",
+  borderRadius: "4px",
+  padding: "2px 8px",
+  fontSize: "10px",
+  fontWeight: 500,
+  display: "inline-block",
+};
+
+function boardPositionTypeLabel(value: string): string {
+  const labels: Record<string, string> = {
+    executive: "Executive",
+    volunteer: "Volunteer",
+    general: "General",
+  };
+  return labels[value] ?? positionTypeLabel(value);
+}
+
+function listingDeadlineDisplay(deadline: string | null): {
+  text: string;
+  color: string;
+} {
+  if (!deadline) {
+    return { text: "No deadline listed", color: "#555555" };
+  }
+  const trimmed = deadline.trim();
+  const end = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T23:59:59`)
+    : new Date(trimmed);
+  if (Number.isNaN(end.getTime())) {
+    return { text: "No deadline listed", color: "#555555" };
+  }
+  if (end.getTime() < Date.now()) {
+    return { text: "Closed", color: "#E51937" };
+  }
+  const formatted = end.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const color = days <= 7 ? "#FFC429" : "#555555";
+  return { text: `Closes ${formatted}`, color };
+}
+
+function HiringListingCard({
+  position,
+  onApply,
+}: {
+  position: BoardPosition;
+  onApply: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const { bg, border } = getClubAvatarColors(position.clubName);
+  const initials = getClubInitials({ name: position.clubName }).slice(0, 3);
+  const deadline = listingDeadlineDisplay(position.deadline);
+
+  return (
+    <article
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "#1a1a1a",
+        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
+        borderRadius: "12px",
+        padding: "24px",
+        cursor: "pointer",
+        transition: "all 0.15s ease",
+        transform: hovered ? "translateY(-2px)" : undefined,
+        boxShadow: hovered ? "0 8px 24px rgba(0,0,0,0.4)" : undefined,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        {position.clubLogoUrl ? (
+          <img
+            src={position.clubLogoUrl}
+            alt=""
+            style={{
+              width: "44px",
+              height: "44px",
+              borderRadius: "10px",
+              objectFit: "cover",
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "44px",
+              height: "44px",
+              borderRadius: "10px",
+              background: bg,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+            aria-hidden
+          >
+            <span
+              style={{
+                fontSize: "14px",
+                fontWeight: 800,
+                color: border,
+                letterSpacing: "0.04em",
+              }}
+            >
+              {initials}
+            </span>
+          </div>
+        )}
+        <span style={{ fontSize: "13px", color: "#777777" }}>{position.clubName}</span>
+      </div>
+
+      <h3
+        style={{
+          fontSize: "18px",
+          fontWeight: 700,
+          color: "#ffffff",
+          margin: "12px 0 0",
+          lineHeight: 1.2,
+        }}
+      >
+        {position.title}
+      </h3>
+
+      <span style={{ ...listingTypeBadgeStyle, marginTop: "8px" }}>
+        {boardPositionTypeLabel(position.positionType)}
+      </span>
+
+      <p
+        style={{
+          fontSize: "13px",
+          color: "#555555",
+          marginTop: "10px",
+          marginBottom: 0,
+          lineHeight: 1.6,
+          overflow: "hidden",
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+        }}
+      >
+        {position.description || "No description provided."}
+      </p>
+
+      <div style={{ height: "1px", background: "#1e1e1e", marginTop: "16px" }} />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: "14px",
+          gap: "12px",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "12px",
+            color: deadline.color,
+          }}
+        >
+          <Calendar size={12} color="#444444" aria-hidden />
+          {deadline.text}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onApply();
+          }}
+          style={{
+            background: "#E51937",
+            color: "#ffffff",
+            borderRadius: "6px",
+            padding: "8px 20px",
+            fontSize: "13px",
+            fontWeight: 600,
+            border: "none",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          Apply Now
+        </button>
+      </div>
+    </article>
+  );
 }
 
 function PillChoice({
@@ -761,222 +982,102 @@ export default function HiringBoardPage() {
     });
   }, [positions, search, typeFilter]);
 
-  const filterPills = [
-    { value: "all", label: "All" },
-    ...POSITION_TYPES.map((t) => ({ value: t.value, label: t.label })),
-  ];
-
   return (
-    <div style={{ background: "#0f0f0f", minHeight: "calc(100vh - 4rem)", padding: "32px" }}>
-      <h1 style={{ fontWeight: 700, fontSize: "26px", color: "#ffffff", margin: "0 0 6px" }}>
-        Hiring Board
-      </h1>
-      <p style={{ fontSize: "14px", color: "#555555", margin: "0 0 24px" }}>
-        Open positions across all clubs
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "24px",
-        }}
-      >
+    <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
+      <header style={{ padding: "60px 48px 32px" }}>
+        <h1
+          style={{
+            fontSize: "40px",
+            fontWeight: 800,
+            color: "#ffffff",
+            margin: 0,
+            textAlign: "left",
+          }}
+        >
+          Club{" "}
+          <span style={{ color: "#E51937" }}>Hiring</span>
+        </h1>
+        <p style={{ fontSize: "15px", color: "#555555", marginTop: "8px", marginBottom: 0 }}>
+          Open roles across University of Guelph student clubs
+        </p>
         <input
           type="search"
           placeholder="Search positions..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
-            background: "#1a1a1a",
-            border: "1px solid #242424",
-            borderRadius: "8px",
-            padding: "10px 16px",
+            display: "block",
+            marginTop: "24px",
+            background: "#111111",
+            border: "1px solid #2a2a2a",
+            borderRadius: "10px",
+            padding: "0 16px",
             color: "#ffffff",
-            width: "300px",
-            maxWidth: "100%",
-            fontSize: "14px",
+            width: "100%",
+            maxWidth: "480px",
+            height: "52px",
+            fontSize: "15px",
+            boxSizing: "border-box",
+            outline: "none",
           }}
         />
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-          {filterPills.map((pill) => {
-            const active = typeFilter === pill.value;
-            return (
-              <button
-                key={pill.value}
-                type="button"
-                onClick={() => setTypeFilter(pill.value)}
-                style={{
-                  background: active ? "#E51937" : "#1a1a1a",
-                  border: active ? "1px solid #E51937" : "1px solid #333333",
-                  color: active ? "#ffffff" : "#777777",
-                  borderRadius: "20px",
-                  padding: "6px 16px",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                }}
-              >
-                {pill.label}
-              </button>
-            );
-          })}
-        </div>
+      </header>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "10px",
+          padding: "0 48px 28px",
+        }}
+      >
+        {BOARD_FILTER_PILLS.map((pill) => {
+          const active = typeFilter === pill.value;
+          return (
+            <button
+              key={pill.value}
+              type="button"
+              onClick={() => setTypeFilter(pill.value)}
+              style={{
+                background: active ? "#E51937" : "#1a1a1a",
+                border: active ? "none" : "1px solid #2a2a2a",
+                color: active ? "#ffffff" : "#777777",
+                borderRadius: "6px",
+                padding: "7px 18px",
+                fontSize: "13px",
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              {pill.label}
+            </button>
+          );
+        })}
       </div>
 
-      {loading ? (
-        <p style={{ color: "#555555", fontSize: "14px" }}>Loading positions…</p>
-      ) : filtered.length === 0 ? (
-        <p style={{ color: "#555555", fontSize: "14px" }}>No open positions found.</p>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: "16px",
-          }}
-        >
-          {filtered.map((position) => {
-            const badge = deadlineLabel(position.deadline);
-            return (
-              <div
+      <div style={{ padding: "0 48px 60px" }}>
+        {loading ? (
+          <p style={{ color: "#555555", fontSize: "14px" }}>Loading positions…</p>
+        ) : filtered.length === 0 ? (
+          <p style={{ color: "#555555", fontSize: "14px" }}>No open positions found.</p>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {filtered.map((position) => (
+              <HiringListingCard
                 key={position.id}
-                style={{
-                  background: "#1a1a1a",
-                  border: "1px solid #242424",
-                  borderRadius: "12px",
-                  padding: "20px",
-                  transition: "border-color 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#333333";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#242424";
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    gap: "8px",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-                    {position.clubLogoUrl ? (
-                      <img
-                        src={position.clubLogoUrl}
-                        alt=""
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: "50%",
-                          objectFit: "cover",
-                          background: "#2a2a2a",
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: "50%",
-                          background: "#2a2a2a",
-                          color: "#747676",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "14px",
-                          fontWeight: 700,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {position.clubName.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <span style={{ fontSize: "13px", color: "#747676" }}>{position.clubName}</span>
-                  </div>
-                  {badge ? (
-                    <span
-                      style={{
-                        background: "#1a0a0a",
-                        border: "1px solid #3a1a1a",
-                        color: "#E51937",
-                        fontSize: "11px",
-                        borderRadius: "20px",
-                        padding: "2px 10px",
-                        whiteSpace: "nowrap",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {badge}
-                    </span>
-                  ) : null}
-                </div>
-
-                <h3
-                  style={{
-                    fontWeight: 700,
-                    fontSize: "16px",
-                    color: "#ffffff",
-                    margin: "8px 0 0",
-                  }}
-                >
-                  {position.title}
-                </h3>
-                <span style={{ ...positionTypeBadgeStyle(position.positionType), marginTop: "8px" }}>
-                  {positionTypeLabel(position.positionType)}
-                </span>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#555555",
-                    marginTop: "6px",
-                    marginBottom: 0,
-                    overflow: "hidden",
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                  }}
-                >
-                  {position.description || "No description provided."}
-                </p>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginTop: "16px",
-                  }}
-                >
-                  <span style={{ fontSize: "12px", color: "#555555" }}>
-                    {position.applicantCount} applicant
-                    {position.applicantCount === 1 ? "" : "s"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setApplyPosition(position)}
-                    style={{
-                      background: "#E51937",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "6px 16px",
-                      fontSize: "13px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Apply Now
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                position={position}
+                onApply={() => setApplyPosition(position)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {applyPosition ? (
         <ApplicationModal

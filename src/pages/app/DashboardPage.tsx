@@ -20,6 +20,12 @@ import {
   registerUnreadCountRefresh,
   requestOpenNotificationsDropdown,
 } from "../../components/ui/NotificationsDropdown";
+import {
+  getTaskDueUrgency,
+  taskDueBadgeConfig,
+  taskDueDateColor,
+  taskDueLeftBorder,
+} from "../../lib/taskDueUrgency";
 
 // ---------------------------------------------------------------------------
 // Tab types
@@ -563,6 +569,18 @@ function weekEventToDashboard(event: WeekEventItem): DashboardEvent {
   };
 }
 
+function TaskDueBadgeInline({
+  dueDate,
+  status,
+}: {
+  dueDate?: string;
+  status: string;
+}) {
+  const badge = taskDueBadgeConfig(getTaskDueUrgency(dueDate, status));
+  if (!badge) return null;
+  return <span style={badge.style}>{badge.label}</span>;
+}
+
 function WeekTaskCard({
   task,
   logoUrl,
@@ -572,6 +590,8 @@ function WeekTaskCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const borderMuted = hovered ? "#333" : "#242424";
+  const dueUrgency = getTaskDueUrgency(task.dateKey, task.status);
+  const leftBorder = taskDueLeftBorder(dueUrgency, taskStatusBorder(task.status));
 
   return (
     <Link
@@ -587,7 +607,7 @@ function WeekTaskCard({
           borderTop: `1px solid ${borderMuted}`,
           borderRight: `1px solid ${borderMuted}`,
           borderBottom: `1px solid ${borderMuted}`,
-          borderLeft: `4px solid ${taskStatusBorder(task.status)}`,
+          borderLeft: `4px solid ${leftBorder}`,
           borderRadius: "8px",
           padding: "14px 16px",
           display: "flex",
@@ -615,16 +635,27 @@ function WeekTaskCard({
               alignItems: "center",
               gap: "4px",
               fontSize: "11px",
-              color: isTaskOverdue(task.dateKey) ? "#E51937" : "#555555",
+              color: taskDueDateColor(dueUrgency),
             }}
           >
             <Calendar size={11} aria-hidden />
             {formatTaskDueDate(task.dateKey)}
           </span>
         </div>
-        <span style={{ ...dashboardTaskStatusBadgeStyle(task.status), alignSelf: "flex-start" }}>
-          {taskStatusLabel(task.status)}
-        </span>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "6px",
+            flexShrink: 0,
+          }}
+        >
+          <TaskDueBadgeInline dueDate={task.dateKey} status={task.status} />
+          <span style={{ ...dashboardTaskStatusBadgeStyle(task.status) }}>
+            {taskStatusLabel(task.status)}
+          </span>
+        </div>
       </div>
     </Link>
   );
@@ -1009,6 +1040,8 @@ type OverviewTask = {
 function OverviewTaskCard({ task }: { task: OverviewTask }) {
   const [hovered, setHovered] = useState(false);
   const borderMuted = hovered ? "#333" : "#242424";
+  const dueUrgency = getTaskDueUrgency(task.dueDate, task.status);
+  const leftBorder = taskDueLeftBorder(dueUrgency, taskStatusBorder(task.status));
 
   return (
     <Link
@@ -1025,7 +1058,7 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
           borderTop: `1px solid ${borderMuted}`,
           borderRight: `1px solid ${borderMuted}`,
           borderBottom: `1px solid ${borderMuted}`,
-          borderLeft: `4px solid ${taskStatusBorder(task.status)}`,
+          borderLeft: `4px solid ${leftBorder}`,
           borderRadius: "8px",
           padding: "14px 16px",
           display: "flex",
@@ -1068,7 +1101,7 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
                 gap: "4px",
                 marginTop: "6px",
                 fontSize: "11px",
-                color: isTaskOverdue(task.dueDate) ? "#E51937" : "#555555",
+                color: taskDueDateColor(dueUrgency),
               }}
             >
               <Calendar size={11} aria-hidden />
@@ -1076,14 +1109,20 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
             </span>
           ) : null}
         </div>
-        <span
+        <div
           style={{
-            ...dashboardTaskStatusBadgeStyle(task.status),
-            alignSelf: "flex-start",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "6px",
+            flexShrink: 0,
           }}
         >
-          {taskStatusLabel(task.status)}
-        </span>
+          <TaskDueBadgeInline dueDate={task.dueDate} status={task.status} />
+          <span style={{ ...dashboardTaskStatusBadgeStyle(task.status) }}>
+            {taskStatusLabel(task.status)}
+          </span>
+        </div>
       </div>
     </Link>
   );
@@ -1209,15 +1248,6 @@ function taskStatusPillStyle(status: string): CSSProperties {
     padding: "2px 8px",
     flexShrink: 0,
   };
-}
-
-function isTaskOverdue(dueDate: string): boolean {
-  const trimmed = dueDate.trim();
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
-    ? new Date(`${trimmed}T23:59:59`)
-    : new Date(trimmed);
-  if (Number.isNaN(d.getTime())) return false;
-  return d.getTime() < Date.now();
 }
 
 function SectionHeadingWithIcon({

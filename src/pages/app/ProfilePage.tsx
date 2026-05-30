@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Link } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
-import { uploadImage } from "../../lib/uploadImage";
 import Spinner from "../../components/ui/Spinner";
 import { showToast } from "../../components/ui/Toast";
+import type { Club, MemberRole } from "../../types";
 
 interface ProfileData {
   full_name: string;
@@ -25,22 +27,10 @@ const EMPTY_PROFILE: ProfileData = {
   avatar_url: "",
 };
 
-const YEAR_OF_STUDY_OPTIONS = [
-  "1st Year",
-  "2nd Year",
-  "3rd Year",
-  "4th Year",
-  "Graduate",
-  "Alumni",
-] as const;
-
-const BIO_MAX_LENGTH = 150;
-
 const PAGE_BG = "#0f0f0f";
 const CARD_BG = "#1a1a1a";
 const CARD_BORDER = "#242424";
 const MUTED = "#555555";
-const ACCENT_RED = "#E51937";
 
 const pageStyle: CSSProperties = {
   backgroundColor: PAGE_BG,
@@ -50,111 +40,137 @@ const pageStyle: CSSProperties = {
   margin: "0 auto",
 };
 
-const cardStyle: CSSProperties = {
-  backgroundColor: CARD_BG,
-  border: `1px solid ${CARD_BORDER}`,
-  borderRadius: "12px",
-  padding: "32px",
-  marginTop: "32px",
-  display: "grid",
-  gap: "24px",
-};
-
-const labelStyle: CSSProperties = {
-  fontSize: "12px",
-  fontWeight: 500,
-  color: "#888888",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  marginBottom: "6px",
-  display: "block",
-};
-
-const inputStyle: CSSProperties = {
-  backgroundColor: "#111111",
-  border: "1px solid #2a2a2a",
-  borderRadius: "6px",
-  padding: "10px 14px",
-  color: "#ffffff",
-  fontSize: "14px",
-  width: "100%",
-  boxSizing: "border-box",
-  outline: "none",
-};
-
-const saveButtonStyle: CSSProperties = {
-  backgroundColor: ACCENT_RED,
-  color: "#ffffff",
-  border: "none",
-  borderRadius: "6px",
-  padding: "10px 24px",
-  fontWeight: 500,
-  fontSize: "14px",
-  cursor: "pointer",
-};
-
-const cancelButtonStyle: CSSProperties = {
-  backgroundColor: "transparent",
-  border: "1px solid #333333",
-  color: "#888888",
-  borderRadius: "6px",
-  padding: "10px 24px",
-  fontWeight: 500,
-  fontSize: "14px",
-  cursor: "pointer",
-};
-
-const verifiedBadgeStyle: CSSProperties = {
-  backgroundColor: "#0d2b0d",
-  color: "#4ade80",
-  border: "1px solid #1a4a1a",
-  borderRadius: "20px",
-  padding: "3px 10px",
-  fontSize: "11px",
-  flexShrink: 0,
-  textTransform: "lowercase",
-};
-
-function setFieldFocus(
-  el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
-  focused: boolean,
-) {
-  el.style.borderColor = focused ? ACCENT_RED : "#2a2a2a";
+function getInitials(name: string, email: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  }
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (email || "GC").slice(0, 2).toUpperCase();
 }
 
-function ProfileField({
-  label,
-  id,
-  ...inputProps
+function formatMemberSince(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `Member since ${d.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  })}`;
+}
+
+function formatClubRoleDisplay(
+  role: MemberRole | null | undefined,
+): { label: string; color: string } {
+  if (role === "owner") return { label: "President", color: "#FFC429" };
+  if (role === "executive") return { label: "Executive", color: "#E51937" };
+  return { label: "Member", color: "#747676" };
+}
+
+function deriveAbbreviation(name: string, maxLen = 3): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, maxLen)
+    .toUpperCase();
+}
+
+function ProfileClubCard({
+  club,
+  logoUrl,
+  roleDisplay,
 }: {
-  label: string;
-  id: string;
-} & React.InputHTMLAttributes<HTMLInputElement>) {
+  club: Club;
+  logoUrl?: string;
+  roleDisplay: { label: string; color: string };
+}) {
+  const [hovered, setHovered] = useState(false);
+  const abbr = club.abbreviation?.trim() || deriveAbbreviation(club.name);
+
   return (
-    <div>
-      <label htmlFor={id} style={labelStyle}>
-        {label}
-      </label>
-      <input
-        id={id}
-        style={inputStyle}
-        onFocus={(e) => setFieldFocus(e.currentTarget, true)}
-        onBlur={(e) => setFieldFocus(e.currentTarget, false)}
-        {...inputProps}
-      />
-    </div>
+    <Link
+      to={`/app/clubs/${club.id}`}
+      className="block no-underline"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        background: hovered ? "#1f1f1f" : "#191919",
+        border: `1px solid ${hovered ? "#333333" : CARD_BORDER}`,
+        borderRadius: "7px",
+        padding: "12px",
+        cursor: "pointer",
+        transition: "all 0.15s ease",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt=""
+          style={{
+            width: "36px",
+            height: "36px",
+            borderRadius: "6px",
+            objectFit: "cover",
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: "36px",
+            height: "36px",
+            borderRadius: "6px",
+            background: "#2a2a2a",
+            border: "1px solid #333333",
+            color: "#888888",
+            fontSize: "11px",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {abbr}
+        </div>
+      )}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p
+          style={{
+            margin: 0,
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#ffffff",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {club.name}
+        </p>
+        <p style={{ margin: "4px 0 0", fontSize: "12px", color: MUTED }}>
+          {club.memberCount} members ·{" "}
+          <span style={{ color: roleDisplay.color }}>{roleDisplay.label}</span>
+        </p>
+      </div>
+      <span style={{ fontSize: "12px", color: MUTED, flexShrink: 0 }}>
+        Open →
+      </span>
+    </Link>
   );
 }
 
 export default function ProfilePage() {
   const { user } = useAuthContext();
+  const { clubs, joinedClubs, getUserRole } = useClubContext();
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch existing profile on mount
   useEffect(() => {
     if (!user) return;
 
@@ -166,7 +182,6 @@ export default function ProfilePage() {
         .single();
 
       if (error && error.code !== "PGRST116") {
-        // PGRST116 = row not found — that's OK for new users
         showToast("Failed to load profile.", "error");
       }
 
@@ -181,7 +196,6 @@ export default function ProfilePage() {
           avatar_url: data.avatar_url ?? "",
         });
       } else {
-        // Pre-fill email from auth
         setProfile((prev) => ({
           ...prev,
           email: user!.email ?? "",
@@ -193,58 +207,16 @@ export default function ProfilePage() {
     fetchProfile();
   }, [user]);
 
-  function handleChange(field: keyof ProfileData, value: string) {
-    setProfile((prev) => ({ ...prev, [field]: value }));
-  }
+  const myClubs = useMemo(
+    () => clubs.filter((c) => joinedClubs.includes(c.id)),
+    [clubs, joinedClubs],
+  );
 
-  async function handleAvatarUpload(file: File) {
-    if (!user) return;
-    setUploading(true);
+  const programLine = [profile.program, profile.year_of_study]
+    .filter((part) => part.trim())
+    .join(" · ");
 
-    const ext = file.name.split(".").pop() ?? "png";
-    const path = `${user.id}.${ext}`;
-    const url = await uploadImage("profile-pictures", path, file);
-
-    if (url) {
-      // Append a cache-busting param so the browser shows the fresh image
-      const freshUrl = `${url}?t=${Date.now()}`;
-      setProfile((prev) => ({ ...prev, avatar_url: freshUrl }));
-      showToast("Photo uploaded. Save changes to keep it.", "success");
-    } else {
-      showToast("Avatar upload failed.", "error");
-    }
-    setUploading(false);
-  }
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user) return;
-
-    setSaving(true);
-
-    const { error } = await supabase.from("profiles").upsert(
-      {
-        id: user.id,
-        full_name: profile.full_name.trim(),
-        email: profile.email.trim(),
-        university: profile.university.trim(),
-        program: profile.program.trim(),
-        bio: profile.bio.trim().slice(0, BIO_MAX_LENGTH) || null,
-        year_of_study: profile.year_of_study.trim() || null,
-        avatar_url: profile.avatar_url.trim(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" },
-    );
-
-    if (error) {
-      showToast("Failed to save profile. Please try again.", "error");
-    } else {
-      showToast("Profile saved.", "success");
-    }
-
-    setSaving(false);
-  }
+  const memberSince = formatMemberSince(user?.created_at);
 
   if (loading) {
     return (
@@ -264,257 +236,132 @@ export default function ProfilePage() {
 
   return (
     <div style={pageStyle}>
-      <h1
+      <div
         style={{
-          fontWeight: 700,
-          fontSize: "22px",
-          color: "#ffffff",
-          margin: 0,
+          background: CARD_BG,
+          border: `1px solid ${CARD_BORDER}`,
+          borderRadius: "12px",
+          padding: "28px",
         }}
       >
-        Profile settings
-      </h1>
-      <p style={{ fontSize: "13px", color: MUTED, margin: "4px 0 0" }}>
-        Manage your personal information
-      </p>
-
-      <form
-        onSubmit={handleSave}
-        noValidate
-        style={cardStyle}
-        className="grid gap-6 md:grid-cols-[280px_1fr]"
-      >
-        <aside
+        <div
           style={{
             display: "flex",
-            flexDirection: "column",
+            flexWrap: "wrap",
             alignItems: "flex-start",
-            borderBottom: "1px solid #2a2a2a",
-            paddingBottom: "24px",
+            gap: "20px",
+            justifyContent: "space-between",
           }}
-          className="md:border-b-0 md:border-r md:border-[#2a2a2a] md:pb-0 md:pr-6"
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleAvatarUpload(file);
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="group relative overflow-hidden"
-            style={{
-              width: "80px",
-              height: "80px",
-              borderRadius: "50%",
-              border: "3px solid #E51937",
-              backgroundColor: "#111111",
-              padding: 0,
-              cursor: "pointer",
-              outline: "1px dashed #333333",
-              outlineOffset: "-4px",
-            }}
-          >
+          <div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
             {profile.avatar_url ? (
               <img
                 src={profile.avatar_url}
                 alt=""
                 style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
+                  width: "80px",
+                  height: "80px",
                   borderRadius: "50%",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                  border: `1px solid ${CARD_BORDER}`,
                 }}
               />
             ) : (
               <div
                 style={{
+                  width: "80px",
+                  height: "80px",
+                  borderRadius: "50%",
+                  background: "#111111",
+                  border: `1px solid ${CARD_BORDER}`,
                   display: "flex",
-                  width: "100%",
-                  height: "100%",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: "20px",
-                  fontWeight: 500,
+                  fontSize: "22px",
+                  fontWeight: 600,
                   color: "#ffffff",
+                  flexShrink: 0,
                 }}
               >
-                {(profile.full_name || profile.email || "GC")
-                  .slice(0, 2)
-                  .toUpperCase()}
+                {getInitials(profile.full_name, profile.email)}
               </div>
             )}
-            <span
-              className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100"
-              style={{
-                backgroundColor: "rgba(0, 0, 0, 0.55)",
-                fontSize: "11px",
-                color: "#ffffff",
-              }}
-            >
-              {uploading ? "Uploading..." : "Change photo"}
-            </span>
-          </button>
-          <div>
-            <p
-              style={{
-                fontWeight: 700,
-                fontSize: "18px",
-                color: "#ffffff",
-                marginTop: "12px",
-                marginBottom: 0,
-              }}
-            >
-              {profile.full_name || "Set your name"}
-            </p>
-            <p
-              style={{
-                fontSize: "13px",
-                color: MUTED,
-                marginTop: "4px",
-                marginBottom: 0,
-              }}
-            >
-              {profile.email}
-            </p>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#747676",
-                marginTop: "4px",
-                marginBottom: 0,
-              }}
-            >
-              {profile.program || "No program set"}
-            </p>
-          </div>
-        </aside>
-
-        <section style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <ProfileField
-            label="Full Name"
-            id="full_name"
-            type="text"
-            placeholder="Jane Doe"
-            autoComplete="name"
-            value={profile.full_name}
-            onChange={(e) => handleChange("full_name", e.target.value)}
-          />
-          <div>
-            <label htmlFor="email" style={labelStyle}>
-              Email
-            </label>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <input
-                id="email"
-                type="email"
-                value={profile.email}
-                readOnly
+            <div>
+              <h1
                 style={{
-                  ...inputStyle,
-                  opacity: 0.7,
-                  cursor: "default",
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  margin: 0,
                 }}
-              />
-              <span style={verifiedBadgeStyle}>verified</span>
+              >
+                {profile.full_name || "Your profile"}
+              </h1>
+              {programLine ? (
+                <p style={{ fontSize: "14px", color: MUTED, margin: "8px 0 0" }}>
+                  {programLine}
+                </p>
+              ) : null}
+              <p style={{ fontSize: "13px", color: MUTED, margin: "6px 0 0" }}>
+                {profile.email}
+              </p>
+              {memberSince ? (
+                <p style={{ fontSize: "12px", color: MUTED, margin: "8px 0 0" }}>
+                  {memberSince}
+                </p>
+              ) : null}
             </div>
           </div>
-          <ProfileField
-            label="University"
-            id="university"
-            type="text"
-            placeholder="University of Guelph"
-            value={profile.university}
-            onChange={(e) => handleChange("university", e.target.value)}
-          />
-          <ProfileField
-            label="Program"
-            id="program"
-            type="text"
-            placeholder="e.g. Computer Science, B.Sc."
-            value={profile.program}
-            onChange={(e) => handleChange("program", e.target.value)}
-          />
-
-          <div>
-            <label htmlFor="bio" style={labelStyle}>
-              Bio
-            </label>
-            <textarea
-              id="bio"
-              value={profile.bio}
-              onChange={(e) =>
-                handleChange("bio", e.target.value.slice(0, BIO_MAX_LENGTH))
-              }
-              placeholder="Tell people about yourself... (optional)"
-              maxLength={BIO_MAX_LENGTH}
-              rows={4}
-              style={{
-                ...inputStyle,
-                resize: "vertical",
-                minHeight: "96px",
-              }}
-              onFocus={(e) => setFieldFocus(e.currentTarget, true)}
-              onBlur={(e) => setFieldFocus(e.currentTarget, false)}
-            />
-            <p
-              style={{
-                fontSize: "11px",
-                color: MUTED,
-                textAlign: "right",
-                margin: "6px 0 0",
-              }}
-            >
-              {profile.bio.length}/{BIO_MAX_LENGTH}
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="year_of_study" style={labelStyle}>
-              Year of Study
-            </label>
-            <select
-              id="year_of_study"
-              value={profile.year_of_study}
-              onChange={(e) => handleChange("year_of_study", e.target.value)}
-              style={{
-                ...inputStyle,
-                cursor: "pointer",
-              }}
-              onFocus={(e) => setFieldFocus(e.currentTarget, true)}
-              onBlur={(e) => setFieldFocus(e.currentTarget, false)}
-            >
-              <option value="">Select year</option>
-              {YEAR_OF_STUDY_OPTIONS.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div
+          <Link
+            to="/app/settings"
             style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "12px",
-              paddingTop: "8px",
+              display: "inline-block",
+              background: "#E51937",
+              color: "#ffffff",
+              borderRadius: "6px",
+              padding: "10px 20px",
+              fontSize: "14px",
+              fontWeight: 500,
+              textDecoration: "none",
             }}
           >
-            <button type="button" style={cancelButtonStyle}>
-              Cancel
-            </button>
-            <button type="submit" disabled={saving} style={saveButtonStyle}>
-              {saving ? "Saving…" : "Save changes"}
-            </button>
+            Edit Profile
+          </Link>
+        </div>
+      </div>
+
+      <div style={{ marginTop: "32px" }}>
+        <h2
+          style={{
+            fontSize: "16px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: "0 0 16px",
+          }}
+        >
+          My Clubs
+        </h2>
+        {myClubs.length === 0 ? (
+          <p style={{ fontSize: "14px", color: MUTED, margin: 0 }}>
+            You haven&apos;t joined any clubs yet.{" "}
+            <Link to="/explore" style={{ color: "#E51937", textDecoration: "none" }}>
+              Explore clubs
+            </Link>
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {myClubs.map((club) => (
+              <ProfileClubCard
+                key={club.id}
+                club={club}
+                logoUrl={club.logoUrl}
+                roleDisplay={formatClubRoleDisplay(getUserRole(club.id))}
+              />
+            ))}
           </div>
-        </section>
-      </form>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import {
+  getTaskDueUrgency,
+  taskDueBadgeConfig,
+  taskDueDateColor,
+  taskDueLeftBorder,
+} from "../../lib/taskDueUrgency";
 import { X } from "lucide-react";
 import { Megaphone, Calendar, Users } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
@@ -417,6 +423,13 @@ function ClubEventCard({
   );
 }
 
+function TaskDueBadge({ dueDate, status }: { dueDate?: string; status: TaskStatus }) {
+  const urgency = getTaskDueUrgency(dueDate, status);
+  const badge = taskDueBadgeConfig(urgency);
+  if (!badge) return null;
+  return <span style={badge.style}>{badge.label}</span>;
+}
+
 function ClubTaskCard({
   task,
   clubName,
@@ -439,6 +452,14 @@ function ClubTaskCard({
         : "To do";
 
   const borderMuted = hovered ? "#333333" : "#242424";
+  const dueUrgency = getTaskDueUrgency(task.dueDate, task.status);
+  const leftBorder = taskDueLeftBorder(dueUrgency, taskStatusAccent(task.status));
+  const dueLabel = task.dueDate
+    ? new Date(task.dueDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })
+    : null;
 
   return (
     <Link to={tasksPath} className="block no-underline">
@@ -454,7 +475,7 @@ function ClubTaskCard({
           borderTop: `1px solid ${borderMuted}`,
           borderRight: `1px solid ${borderMuted}`,
           borderBottom: `1px solid ${borderMuted}`,
-          borderLeft: `4px solid ${taskStatusAccent(task.status)}`,
+          borderLeft: `4px solid ${leftBorder}`,
           borderRadius: "8px",
           padding: "14px 16px 14px 14px",
           marginBottom: "8px",
@@ -481,14 +502,20 @@ function ClubTaskCard({
           <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
             {statusLabel}
             {task.assigneeName ? ` · ${task.assigneeName}` : ""}
-            {task.dueDate
-              ? ` · Due ${new Date(task.dueDate).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}`
-              : ""}
           </p>
+          {dueLabel ? (
+            <p
+              style={{
+                fontSize: "12px",
+                color: taskDueDateColor(dueUrgency),
+                margin: "4px 0 0",
+              }}
+            >
+              Due {dueLabel}
+            </p>
+          ) : null}
         </div>
+        <TaskDueBadge dueDate={task.dueDate} status={task.status} />
       </div>
     </Link>
   );
@@ -751,28 +778,61 @@ export default function ClubHomePage() {
     );
   }
 
+  const navigate = useNavigate();
+  const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
+  const clubPublicPath = club.slug ? `/clubs/${club.slug}` : "/explore";
+
   return (
     <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
       <div className="mb-6">
-        <h1
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate(clubPublicPath)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              navigate(clubPublicPath);
+            }
+          }}
+          onMouseEnter={() => setClubHeaderHovered(true)}
+          onMouseLeave={() => setClubHeaderHovered(false)}
           style={{
-            fontWeight: 700,
-            fontSize: "22px",
-            color: "#ffffff",
-            margin: 0,
+            display: "inline-flex",
+            alignItems: "flex-start",
+            gap: "12px",
+            cursor: "pointer",
+            opacity: clubHeaderHovered ? 0.8 : 1,
+            transition: "opacity 0.15s ease",
           }}
         >
-          {club.name}
-        </h1>
-        <p
-          style={{
-            fontSize: "13px",
-            color: "#555555",
-            margin: "6px 0 0",
-          }}
-        >
-          {club.description}
-        </p>
+          <ClubLogoMark
+            name={club.name}
+            abbreviation={club.abbreviation}
+            logoUrl={club.logoUrl}
+          />
+          <div>
+            <h1
+              style={{
+                fontWeight: 700,
+                fontSize: "22px",
+                color: "#ffffff",
+                margin: 0,
+              }}
+            >
+              {club.name}
+            </h1>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#555555",
+                margin: "6px 0 0",
+              }}
+            >
+              {club.description}
+            </p>
+          </div>
+        </div>
       </div>
 
       {userRole === "owner" ? (

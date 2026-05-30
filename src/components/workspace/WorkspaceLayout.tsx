@@ -380,11 +380,7 @@ export default function WorkspaceLayout() {
   const navigate = useNavigate();
   const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
 
-  const clubProfilePath = club
-    ? club.slug
-      ? `/clubs/${club.slug}`
-      : `/app/clubs/${resolvedClubId}`
-    : "/app";
+  const clubProfilePath = club?.slug ? `/clubs/${club.slug}` : "/explore";
 
   if (loading) {
     return (

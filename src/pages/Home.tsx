@@ -350,6 +350,57 @@ function DashboardHeroMockup() {
   );
 }
 
+function FeaturedClubSkeleton() {
+  return (
+    <article
+      style={{
+        background: "#1a1a1a",
+        border: "1px solid #242424",
+        borderRadius: "12px",
+        overflow: "hidden",
+      }}
+      aria-hidden
+    >
+      <div
+        style={{
+          height: "100px",
+          background: "linear-gradient(90deg, #1a1a1a 0%, #242424 50%, #1a1a1a 100%)",
+          backgroundSize: "200% 100%",
+          animation: "home-skeleton-shimmer 1.4s ease-in-out infinite",
+        }}
+      />
+      <div style={{ padding: "16px" }}>
+        <div
+          style={{
+            height: "14px",
+            width: "70%",
+            borderRadius: "4px",
+            background: "#242424",
+            marginBottom: "10px",
+          }}
+        />
+        <div
+          style={{
+            height: "18px",
+            width: "40%",
+            borderRadius: "4px",
+            background: "#1e1e1e",
+            marginBottom: "12px",
+          }}
+        />
+        <div
+          style={{
+            height: "12px",
+            width: "50%",
+            borderRadius: "4px",
+            background: "#1e1e1e",
+          }}
+        />
+      </div>
+    </article>
+  );
+}
+
 function HomeFeaturedClubCard({ club }: { club: Club }) {
   const [hovered, setHovered] = useState(false);
   const { bg, border } = getClubAvatarColors(club.name);
@@ -543,7 +594,7 @@ export default function Home() {
                 <span style={{ color: "#ffffff" }}>at Guelph</span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
-                Browse 200+ student clubs, find your passion, and connect with
+                Browse 261+ student clubs, find your passion, and connect with
                 like-minded Gryphons. Your university experience starts here.
               </p>
               <div className="mt-10 flex flex-wrap gap-4">
@@ -634,9 +685,21 @@ export default function Home() {
             Discover what&apos;s happening on campus
           </p>
         </div>
+        <style>{`
+          @keyframes home-skeleton-shimmer {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
+          }
+        `}</style>
         {featuredLoading ? (
           <div className="flex justify-center py-12">
             <Spinner label="Loading clubs…" />
+          </div>
+        ) : featuredClubs.length === 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <FeaturedClubSkeleton key={i} />
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

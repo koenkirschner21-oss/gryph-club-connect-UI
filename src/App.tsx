@@ -207,7 +207,7 @@ function AppMainSidebarLayout() {
             Dashboard
           </NavLink>
           <NavLink
-            to="/app/hiring"
+            to="/hiring"
             className={({ isActive }) => appSidebarNavClass(isActive)}
           >
             <Briefcase size={16} strokeWidth={2} aria-hidden />
@@ -231,7 +231,7 @@ function AppMainSidebarLayout() {
             Dashboard
           </NavLink>
           <NavLink
-            to="/app/hiring"
+            to="/hiring"
             className={({ isActive }) =>
               `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 isActive
@@ -274,6 +274,7 @@ export default function App() {
               <Route element={<AppShell />}>
                 <Route path="/explore" element={<Explore />} />
                 <Route path="/clubs/:slug" element={<ClubPublicProfilePage />} />
+                <Route path="/hiring" element={<HiringBoardPage />} />
               </Route>
               <Route element={<AppShell />}>
                 <Route path="/" element={<Home />} />
@@ -304,7 +305,7 @@ export default function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/app/hiring" element={<HiringBoardPage />} />
+                  <Route path="/app/hiring" element={<Navigate to="/hiring" replace />} />
                 </Route>
                 <Route
                   path="/app/create-club"
