@@ -15,6 +15,8 @@ import {
 } from "./authPageStyles";
 
 const ALLOWED_DOMAIN = "uoguelph.ca";
+const EMAIL_DOMAIN_ERROR =
+  "Only University of Guelph email addresses are accepted (@uoguelph.ca)";
 
 export default function Signup() {
   const { signUp } = useAuthContext();
@@ -24,6 +26,10 @@ export default function Signup() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<
+    string | null
+  >(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -34,19 +40,72 @@ export default function Signup() {
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail.endsWith(`@${ALLOWED_DOMAIN}`)) {
-      showToast(`Only @${ALLOWED_DOMAIN} email addresses are permitted to sign up.`, "error");
+      setEmailError(EMAIL_DOMAIN_ERROR);
       return;
     }
 
+    setEmailError(null);
     setLoading(true);
     try {
-      await signUp(normalizedEmail, password);
+      const { needsEmailConfirmation } = await signUp(normalizedEmail, password);
+      if (needsEmailConfirmation) {
+        setPendingConfirmationEmail(normalizedEmail);
+        return;
+      }
       navigate("/app/onboarding");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Sign up failed", "error");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (pendingConfirmationEmail) {
+    return (
+      <div style={pageStyle}>
+        <div
+          style={{
+            ...cardStyle,
+            maxWidth: "480px",
+            borderTop: "1px solid #242424",
+          }}
+        >
+          <h1
+            style={{
+              fontWeight: 700,
+              fontSize: "24px",
+              color: "#ffffff",
+              textAlign: "center",
+              margin: "0 0 16px",
+            }}
+          >
+            Check your UofG email
+          </h1>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#555555",
+              textAlign: "center",
+              margin: "0 0 12px",
+              lineHeight: 1.5,
+            }}
+          >
+            We sent a confirmation link to {pendingConfirmationEmail}. Click it
+            to activate your account.
+          </p>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#444444",
+              textAlign: "center",
+              margin: 0,
+            }}
+          >
+            Check your spam folder if you don&apos;t see it
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -60,16 +119,32 @@ export default function Signup() {
             style={{ border: "none", margin: 0, padding: 0 }}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <AuthField
-                id="email"
-                label="Email"
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-              />
+              <div>
+                <AuthField
+                  id="email"
+                  label="Email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError(null);
+                  }}
+                  placeholder="you@example.com"
+                />
+                {emailError ? (
+                  <p
+                    style={{
+                      margin: "6px 0 0",
+                      fontSize: "13px",
+                      color: "#E51937",
+                    }}
+                  >
+                    {emailError}
+                  </p>
+                ) : null}
+              </div>
 
               <AuthField
                 id="password"

@@ -5,16 +5,18 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { FileText, X } from "lucide-react";
+import { FileText, X, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import Spinner from "../../components/ui/Spinner";
 
-type AdminTab = "requests" | "users" | "moderation" | "stats";
+type AdminTab = "requests" | "users" | "moderation" | "stats" | "bugs";
 type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
 type ReportStatusFilter = "all" | "unreviewed" | "resolved";
+type BugStatusFilter = "all" | "open" | "in_progress" | "resolved";
+type ActivityStatus = "active" | "quiet" | "inactive";
 
 interface PostReportRow {
   id: string;
@@ -56,6 +58,26 @@ interface AdminStats {
   clubs: number;
   events: number;
   messages: number;
+}
+
+interface BugReportRow {
+  id: string;
+  page: string | null;
+  description: string;
+  severity: "minor" | "moderate" | "critical";
+  status: "open" | "in_progress" | "resolved";
+  created_at: string;
+  reporterName: string;
+}
+
+interface ClubActivityRow {
+  id: string;
+  name: string;
+  abbreviation: string | null;
+  logoUrl: string | null;
+  memberCount: number;
+  lastPostAt: string | null;
+  activityStatus: ActivityStatus;
 }
 
 const PAGE_BG = "#0f0f0f";
@@ -111,6 +133,86 @@ function generateSlug(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function deriveClubAbbreviation(name: string, maxLen = 2): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, maxLen)
+    .toUpperCase();
+}
+
+function getActivityStatus(lastPostAt: string | null): ActivityStatus {
+  if (!lastPostAt) return "inactive";
+  const diffDays =
+    (Date.now() - new Date(lastPostAt).getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= 14) return "active";
+  if (diffDays <= 30) return "quiet";
+  return "inactive";
+}
+
+function activitySortOrder(status: ActivityStatus): number {
+  if (status === "inactive") return 0;
+  if (status === "quiet") return 1;
+  return 2;
+}
+
+function formatLastPostDate(value: string | null): string {
+  if (!value) return "Never";
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function activityBadgeStyle(status: ActivityStatus): CSSProperties {
+  if (status === "active") {
+    return {
+      background: "#0a1a0a",
+      border: "1px solid #1a3a1a",
+      color: "#4ade80",
+      borderRadius: "20px",
+      padding: "4px 10px",
+      fontSize: "11px",
+      fontWeight: 600,
+      textTransform: "capitalize",
+      display: "inline-block",
+    };
+  }
+  if (status === "quiet") {
+    return {
+      background: "#1a1500",
+      border: "1px solid #3a2f00",
+      color: "#FFC429",
+      borderRadius: "20px",
+      padding: "4px 10px",
+      fontSize: "11px",
+      fontWeight: 600,
+      textTransform: "capitalize",
+      display: "inline-block",
+    };
+  }
+  return {
+    background: "#1a1a1a",
+    border: "1px solid #333333",
+    color: "#555555",
+    borderRadius: "20px",
+    padding: "4px 10px",
+    fontSize: "11px",
+    fontWeight: 600,
+    textTransform: "capitalize",
+    display: "inline-block",
+  };
+}
+
+function bugSeverityBorderColor(severity: BugReportRow["severity"]): string {
+  if (severity === "critical") return "#E51937";
+  if (severity === "moderate") return "#FFC429";
+  return "#333333";
 }
 
 function parseRequestMeta(longDescription: string | null): {
@@ -312,6 +414,16 @@ export default function AdminPage() {
   const [reportFilter, setReportFilter] = useState<ReportStatusFilter>("all");
   const [reportActionLoadingId, setReportActionLoadingId] = useState<string | null>(null);
 
+  const [showApprovalChecklist, setShowApprovalChecklist] = useState(false);
+
+  const [bugReports, setBugReports] = useState<BugReportRow[]>([]);
+  const [bugReportsLoading, setBugReportsLoading] = useState(true);
+  const [bugFilter, setBugFilter] = useState<BugStatusFilter>("all");
+  const [bugActionLoadingId, setBugActionLoadingId] = useState<string | null>(null);
+
+  const [clubActivity, setClubActivity] = useState<ClubActivityRow[]>([]);
+  const [clubActivityLoading, setClubActivityLoading] = useState(true);
+
   const loadReports = useCallback(async () => {
     setReportsLoading(true);
 
@@ -482,6 +594,122 @@ export default function AdminPage() {
     setStatsLoading(false);
   }, []);
 
+  const loadBugReports = useCallback(async () => {
+    setBugReportsLoading(true);
+
+    const { data, error } = await supabase
+      .from("bug_reports")
+      .select(
+        `
+        id,
+        page,
+        description,
+        severity,
+        status,
+        created_at,
+        profiles!bug_reports_reported_by_fkey ( full_name )
+      `,
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load bug reports:", error.message);
+      setBugReports([]);
+      setBugReportsLoading(false);
+      return;
+    }
+
+    setBugReports(
+      (data ?? []).map((row) => {
+        const record = row as Record<string, unknown>;
+        const profileRaw = record.profiles as unknown;
+        const profile = (
+          Array.isArray(profileRaw) ? profileRaw[0] ?? {} : profileRaw ?? {}
+        ) as Record<string, unknown>;
+        return {
+          id: record.id as string,
+          page: (record.page as string) ?? null,
+          description: (record.description as string) ?? "",
+          severity:
+            (record.severity as BugReportRow["severity"]) ?? "minor",
+          status: (record.status as BugReportRow["status"]) ?? "open",
+          created_at: (record.created_at as string) ?? "",
+          reporterName: (profile.full_name as string)?.trim() || "Unknown",
+        };
+      }),
+    );
+    setBugReportsLoading(false);
+  }, []);
+
+  const loadClubActivity = useCallback(async () => {
+    setClubActivityLoading(true);
+
+    const { data: clubsData, error: clubsError } = await supabase
+      .from("clubs")
+      .select("id, name, abbreviation, logo_url");
+
+    if (clubsError || !clubsData?.length) {
+      if (clubsError) {
+        console.error("Failed to load clubs for activity:", clubsError.message);
+      }
+      setClubActivity([]);
+      setClubActivityLoading(false);
+      return;
+    }
+
+    const clubIds = clubsData.map((club) => club.id as string);
+
+    const [membersRes, postsRes] = await Promise.all([
+      supabase
+        .from("club_members")
+        .select("club_id")
+        .eq("status", "active")
+        .in("club_id", clubIds),
+      supabase
+        .from("posts")
+        .select("club_id, created_at")
+        .in("club_id", clubIds)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const memberCounts: Record<string, number> = {};
+    (membersRes.data ?? []).forEach((row) => {
+      const clubId = row.club_id as string;
+      memberCounts[clubId] = (memberCounts[clubId] ?? 0) + 1;
+    });
+
+    const lastPostByClub: Record<string, string> = {};
+    (postsRes.data ?? []).forEach((row) => {
+      const clubId = row.club_id as string;
+      if (!lastPostByClub[clubId]) {
+        lastPostByClub[clubId] = row.created_at as string;
+      }
+    });
+
+    const rows: ClubActivityRow[] = clubsData.map((club) => {
+      const id = club.id as string;
+      const lastPostAt = lastPostByClub[id] ?? null;
+      const activityStatus = getActivityStatus(lastPostAt);
+      return {
+        id,
+        name: (club.name as string) ?? "",
+        abbreviation: (club.abbreviation as string) ?? null,
+        logoUrl: (club.logo_url as string) ?? null,
+        memberCount: memberCounts[id] ?? 0,
+        lastPostAt,
+        activityStatus,
+      };
+    });
+
+    rows.sort(
+      (a, b) =>
+        activitySortOrder(a.activityStatus) - activitySortOrder(b.activityStatus),
+    );
+
+    setClubActivity(rows);
+    setClubActivityLoading(false);
+  }, []);
+
   useEffect(() => {
     void loadRequests();
   }, [loadRequests]);
@@ -491,12 +719,19 @@ export default function AdminPage() {
   }, [activeTab, loadUsers]);
 
   useEffect(() => {
-    if (activeTab === "stats") void loadStats();
-  }, [activeTab, loadStats]);
+    if (activeTab === "stats") {
+      void loadStats();
+      void loadClubActivity();
+    }
+  }, [activeTab, loadStats, loadClubActivity]);
 
   useEffect(() => {
     if (activeTab === "moderation") void loadReports();
   }, [activeTab, loadReports]);
+
+  useEffect(() => {
+    if (activeTab === "bugs") void loadBugReports();
+  }, [activeTab, loadBugReports]);
 
   const filteredReports = useMemo(() => {
     if (reportFilter === "unreviewed") {
@@ -509,6 +744,11 @@ export default function AdminPage() {
     }
     return reports;
   }, [reports, reportFilter]);
+
+  const filteredBugReports = useMemo(() => {
+    if (bugFilter === "all") return bugReports;
+    return bugReports.filter((report) => report.status === bugFilter);
+  }, [bugReports, bugFilter]);
 
   const filteredRequests = useMemo(() => {
     if (requestFilter === "all") return requests;
@@ -608,6 +848,7 @@ export default function AdminPage() {
 
     setActionLoadingId(null);
     void loadRequests();
+    setShowApprovalChecklist(true);
   }
 
   async function handleReject() {
@@ -700,6 +941,29 @@ export default function AdminPage() {
     void loadReports();
   }
 
+  async function handleBugStatusUpdate(
+    reportId: string,
+    status: BugReportRow["status"],
+  ) {
+    setBugActionLoadingId(reportId);
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("bug_reports")
+      .update({ status })
+      .eq("id", reportId);
+
+    if (error) {
+      console.error("Failed to update bug report:", error.message);
+      setFeedback("Failed to update bug report status.");
+      setBugActionLoadingId(null);
+      return;
+    }
+
+    setBugActionLoadingId(null);
+    void loadBugReports();
+  }
+
   const reportFilterPills: { value: ReportStatusFilter; label: string }[] = [
     { value: "all", label: "All" },
     { value: "unreviewed", label: "Unreviewed" },
@@ -711,6 +975,13 @@ export default function AdminPage() {
     { value: "pending", label: "Pending" },
     { value: "approved", label: "Approved" },
     { value: "rejected", label: "Rejected" },
+  ];
+
+  const bugFilterPills: { value: BugStatusFilter; label: string }[] = [
+    { value: "all", label: "All" },
+    { value: "open", label: "Open" },
+    { value: "in_progress", label: "In Progress" },
+    { value: "resolved", label: "Resolved" },
   ];
 
   const pendingRequestCount = useMemo(
@@ -870,6 +1141,11 @@ export default function AdminPage() {
           label="Stats"
           active={activeTab === "stats"}
           onClick={() => setActiveTab("stats")}
+        />
+        <AdminTabButton
+          label="Bug Reports"
+          active={activeTab === "bugs"}
+          onClick={() => setActiveTab("bugs")}
         />
       </div>
 
@@ -1340,6 +1616,298 @@ export default function AdminPage() {
               />
             </div>
           )}
+
+          <div style={{ marginTop: "40px" }}>
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 16px",
+              }}
+            >
+              Club Activity Monitor
+            </h3>
+
+            {clubActivityLoading ? (
+              <div className="flex justify-center py-12">
+                <Spinner label="Loading club activity…" />
+              </div>
+            ) : clubActivity.length === 0 ? (
+              <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                No clubs found
+              </p>
+            ) : (
+              <div
+                style={{
+                  border: "1px solid #242424",
+                  borderRadius: "10px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                    gap: 0,
+                    padding: "12px 16px",
+                    background: "#111111",
+                  }}
+                >
+                  {["Club", "Members", "Last Post", "Status"].map((heading) => (
+                    <span
+                      key={heading}
+                      style={{
+                        fontSize: "11px",
+                        textTransform: "uppercase",
+                        color: "#555555",
+                        letterSpacing: "0.06em",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {heading}
+                    </span>
+                  ))}
+                </div>
+                {clubActivity.map((club, index) => (
+                  <div
+                    key={club.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr",
+                      gap: 0,
+                      padding: "12px 16px",
+                      alignItems: "center",
+                      background: index % 2 === 0 ? "#111111" : "#1a1a1a",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        minWidth: 0,
+                      }}
+                    >
+                      {club.logoUrl ? (
+                        <img
+                          src={club.logoUrl}
+                          alt=""
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "6px",
+                            objectFit: "cover",
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "6px",
+                            border: "1px solid #2a2a2a",
+                            background: "#2a2a2a",
+                            color: "#888888",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {deriveClubAbbreviation(
+                            club.abbreviation ?? club.name,
+                          )}
+                        </div>
+                      )}
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: "#ffffff",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {club.name}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: "13px", color: "#cccccc" }}>
+                      {club.memberCount}
+                    </span>
+                    <span style={{ fontSize: "13px", color: "#777777" }}>
+                      {formatLastPostDate(club.lastPostAt)}
+                    </span>
+                    <span style={activityBadgeStyle(club.activityStatus)}>
+                      {club.activityStatus}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {activeTab === "bugs" ? (
+        <section>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginBottom: "20px",
+            }}
+          >
+            {bugFilterPills.map((pill) => (
+              <button
+                key={pill.value}
+                type="button"
+                onClick={() => setBugFilter(pill.value)}
+                style={pillButtonStyle(bugFilter === pill.value)}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+
+          {bugReportsLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner label="Loading bug reports…" />
+            </div>
+          ) : filteredBugReports.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 16px" }}>
+              <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+                No bug reports yet
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {filteredBugReports.map((report) => (
+                <div
+                  key={report.id}
+                  style={{
+                    background: "#1a1a1a",
+                    border: "1px solid #242424",
+                    borderRadius: "10px",
+                    padding: "20px",
+                    borderLeft: `3px solid ${bugSeverityBorderColor(report.severity)}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: "8px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "#777777",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {report.page || "Unknown page"}
+                    </span>
+                    <span
+                      style={{
+                        background: "#111111",
+                        border: "1px solid #333333",
+                        color: "#cccccc",
+                        borderRadius: "20px",
+                        padding: "2px 8px",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {report.severity}
+                    </span>
+                    <span
+                      style={{
+                        background: "#111111",
+                        border: "1px solid #333333",
+                        color: "#777777",
+                        borderRadius: "20px",
+                        padding: "2px 8px",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {report.status.replace("_", " ")}
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      color: "#ffffff",
+                      margin: "0 0 10px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {report.description}
+                  </p>
+                  <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 14px" }}>
+                    Reported by {report.reporterName} ·{" "}
+                    {new Date(report.created_at).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </p>
+                  {report.status !== "in_progress" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleBugStatusUpdate(report.id, "in_progress")
+                      }
+                      disabled={bugActionLoadingId === report.id}
+                      style={{
+                        background: "#111111",
+                        border: "1px solid #333333",
+                        color: "#cccccc",
+                        borderRadius: "6px",
+                        padding: "6px 14px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        marginRight: "8px",
+                      }}
+                    >
+                      Mark In Progress
+                    </button>
+                  ) : null}
+                  {report.status !== "resolved" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleBugStatusUpdate(report.id, "resolved")
+                      }
+                      disabled={bugActionLoadingId === report.id}
+                      style={{
+                        background: "#111111",
+                        border: "1px solid #333333",
+                        color: "#cccccc",
+                        borderRadius: "6px",
+                        padding: "6px 14px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Mark Resolved
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       ) : null}
       </div>
@@ -1442,6 +2010,108 @@ export default function AdminPage() {
               }}
             >
               {actionLoadingId ? "Rejecting…" : "Confirm Reject"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {showApprovalChecklist ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: "16px",
+          }}
+          onClick={() => setShowApprovalChecklist(false)}
+        >
+          <div
+            style={{
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "28px",
+              maxWidth: "480px",
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 20px",
+              }}
+            >
+              Club approved — here&apos;s what happens next
+            </h3>
+            <ul
+              style={{
+                listStyle: "none",
+                margin: "0 0 24px",
+                padding: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+              }}
+            >
+              {[
+                { done: true, label: "Club workspace created" },
+                { done: true, label: "Creator assigned as President" },
+                { done: false, label: "Club adds description and logo" },
+                { done: false, label: "Club creates first announcement" },
+                { done: false, label: "Club invites first member" },
+              ].map((item) => (
+                <li
+                  key={item.label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    fontSize: "14px",
+                    color: item.done ? "#ffffff" : "#777777",
+                  }}
+                >
+                  {item.done ? (
+                    <Check size={16} color="#E51937" aria-hidden />
+                  ) : (
+                    <span
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        borderRadius: "50%",
+                        border: "2px solid #333333",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  {item.label}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => setShowApprovalChecklist(false)}
+              style={{
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "10px 24px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Got it
             </button>
           </div>
         </div>

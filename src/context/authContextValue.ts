@@ -7,7 +7,10 @@ export interface AuthContextValue {
   loading: boolean;
   /** null while profile onboarding flag is loading */
   onboardingCompleted: boolean | null;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+  ) => Promise<{ needsEmailConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Path to use after auth when onboarding is incomplete */

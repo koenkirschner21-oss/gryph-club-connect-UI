@@ -9,7 +9,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Calendar, CheckSquare } from "lucide-react";
+import { Calendar, CheckSquare, Bell, Compass } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
@@ -101,6 +101,8 @@ export default function DashboardPage() {
   const { activeCount: taskCount } = useDashboardTasks(joinedClubs);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
+  const [overdueTaskCount, setOverdueTaskCount] = useState(0);
+  const [dueSoonTaskCount, setDueSoonTaskCount] = useState(0);
 
   useEffect(() => {
     if (joinedClubs.length === 0) {
@@ -190,6 +192,61 @@ export default function DashboardPage() {
       supabase.removeChannel(channel);
     };
   }, [authLoading, fetchUnreadNotificationCount, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || joinedClubs.length === 0) {
+      setOverdueTaskCount(0);
+      setDueSoonTaskCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const threeDaysLater = new Date(today);
+    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+
+    const todayStr = today.toISOString().slice(0, 10);
+    const threeDaysStr = threeDaysLater.toISOString().slice(0, 10);
+
+    supabase
+      .from("tasks")
+      .select("id, due_date")
+      .in("club_id", joinedClubs)
+      .neq("status", "done")
+      .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
+      .not("due_date", "is", null)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load task deadline counts:", error.message);
+          setOverdueTaskCount(0);
+          setDueSoonTaskCount(0);
+          return;
+        }
+
+        let overdue = 0;
+        let dueSoon = 0;
+
+        for (const row of data ?? []) {
+          const dueDate = (row.due_date as string) ?? "";
+          if (!dueDate) continue;
+          if (dueDate < todayStr) {
+            overdue += 1;
+          } else if (dueDate <= threeDaysStr) {
+            dueSoon += 1;
+          }
+        }
+
+        setOverdueTaskCount(overdue);
+        setDueSoonTaskCount(dueSoon);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, joinedClubs]);
 
   function handleUnreadStatClick() {
     requestOpenNotificationsDropdown();
@@ -281,6 +338,83 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {joinedClubs.length === 0 ? (
+        <div
+          style={{
+            background: "#0f0f0f",
+            borderRadius: "12px",
+            padding: "64px 24px",
+            textAlign: "center",
+          }}
+        >
+          <Compass
+            size={48}
+            color="#333333"
+            style={{ marginBottom: "16px" }}
+            aria-hidden
+          />
+          <h2
+            style={{
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
+            You haven&apos;t joined any clubs yet
+          </h2>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#555555",
+              marginTop: "8px",
+              marginBottom: 0,
+            }}
+          >
+            Explore clubs on campus and join ones that match your interests
+          </p>
+          <div
+            style={{
+              marginTop: "24px",
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: "12px",
+            }}
+          >
+            <Link
+              to="/explore"
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                borderRadius: "8px",
+                padding: "10px 24px",
+                fontSize: "14px",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Explore Clubs
+            </Link>
+            <Link
+              to="/hiring"
+              style={{
+                background: "transparent",
+                border: "1px solid #333333",
+                color: "#cccccc",
+                borderRadius: "8px",
+                padding: "10px 24px",
+                fontSize: "14px",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Browse Hiring
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* ── Stat Cards (always visible) ── */}
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -336,6 +470,58 @@ export default function DashboardPage() {
           }
         />
       </div>
+
+      {overdueTaskCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setActiveTab("tasks")}
+          style={{
+            width: "100%",
+            background: "#1a0505",
+            border: "1px solid #3a1010",
+            borderRadius: "8px",
+            padding: "10px 16px",
+            marginBottom: "8px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <Bell size={14} color="#E51937" aria-hidden />
+          <span style={{ fontSize: "13px", color: "#E51937" }}>
+            You have {overdueTaskCount} overdue task
+            {overdueTaskCount === 1 ? "" : "s"}
+          </span>
+        </button>
+      ) : null}
+
+      {dueSoonTaskCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setActiveTab("tasks")}
+          style={{
+            width: "100%",
+            background: "#1a1500",
+            border: "1px solid #3a2f00",
+            borderRadius: "8px",
+            padding: "10px 16px",
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <Bell size={14} color="#FFC429" aria-hidden />
+          <span style={{ fontSize: "13px", color: "#FFC429" }}>
+            You have {dueSoonTaskCount} task
+            {dueSoonTaskCount === 1 ? "" : "s"} due in the next 3 days
+          </span>
+        </button>
+      ) : null}
 
       {/* ── Tab Navigation ── */}
       <div className="mb-8 flex items-center gap-6 border-b border-border">
@@ -397,6 +583,8 @@ export default function DashboardPage() {
         />
       )}
       {activeTab === "tasks" && <TasksTab joinedClubs={joinedClubs} />}
+        </>
+      )}
     </div>
   );
 }

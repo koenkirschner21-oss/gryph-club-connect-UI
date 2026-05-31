@@ -14,12 +14,20 @@ const wordmarkFont: CSSProperties = {
 
 const navLinks = [
   { to: "/", label: "Home" },
-  { to: "/explore", label: "Explore Clubs" },
+  { to: "/explore", label: "Explore" },
+  { to: "/hiring", label: "Hiring" },
 ];
 
-function isNavLinkActive(pathname: string, to: string): boolean {
-  if (to === "/app") return pathname === "/app";
+function isPublicNavLinkActive(pathname: string, to: string): boolean {
+  if (to === "/") return pathname === "/";
   return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+function publicNavLinkStyle(isActive: boolean): CSSProperties {
+  return {
+    color: isActive ? "#ffffff" : "#777777",
+    fontWeight: isActive ? 600 : 400,
+  };
 }
 
 export default function Navbar() {
@@ -114,47 +122,42 @@ export default function Navbar() {
               <Link
                 to="/explore"
                 aria-current={
-                  isNavLinkActive(location.pathname, "/explore")
+                  isPublicNavLinkActive(location.pathname, "/explore")
                     ? "page"
                     : undefined
                 }
-                className={`border-b-2 px-0 py-2 text-sm font-medium text-white transition-all ${
-                  isNavLinkActive(location.pathname, "/explore")
-                    ? "border-[#E51937]"
-                    : "border-transparent hover:border-[#E51937]"
-                }`}
+                className="px-0 py-2 text-sm transition-colors"
+                style={publicNavLinkStyle(
+                  isPublicNavLinkActive(location.pathname, "/explore"),
+                )}
               >
                 Explore
               </Link>
               <Link
-                to="/app/hiring"
+                to="/hiring"
                 aria-current={
-                  isNavLinkActive(location.pathname, "/app/hiring")
+                  isPublicNavLinkActive(location.pathname, "/hiring")
                     ? "page"
                     : undefined
                 }
-                className={`border-b-2 px-0 py-2 text-sm transition-all ${
-                  isNavLinkActive(location.pathname, "/app/hiring")
-                    ? "border-[#FFC429] font-semibold text-[#FFC429]"
-                    : "border-transparent font-semibold text-[#FFC429] hover:border-[#FFC429]"
-                }`}
+                className="px-0 py-2 text-sm transition-colors"
+                style={publicNavLinkStyle(
+                  isPublicNavLinkActive(location.pathname, "/hiring"),
+                )}
               >
                 Hiring
               </Link>
             </>
           ) : (
             navLinks.map((link) => {
-              const isActive = location.pathname === link.to;
+              const isActive = isPublicNavLinkActive(location.pathname, link.to);
               return (
                 <Link
                   key={link.to}
                   to={link.to}
                   aria-current={isActive ? "page" : undefined}
-                  className={`border-b-2 px-0 py-2 text-sm transition-all ${
-                    isActive
-                      ? "border-[var(--red)] font-medium text-[var(--text-1)]"
-                      : "border-transparent text-[var(--text-2)] hover:text-[var(--text-1)]"
-                  }`}
+                  className="px-0 py-2 text-sm transition-colors"
+                  style={publicNavLinkStyle(isActive)}
                 >
                   {link.label}
                 </Link>
@@ -297,31 +300,29 @@ export default function Navbar() {
                   to="/explore"
                   onClick={() => setMobileOpen(false)}
                   aria-current={
-                    isNavLinkActive(location.pathname, "/explore")
+                    isPublicNavLinkActive(location.pathname, "/explore")
                       ? "page"
                       : undefined
                   }
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isNavLinkActive(location.pathname, "/explore")
-                      ? "bg-white/10 text-white"
-                      : "text-muted hover:bg-white/5 hover:text-white"
-                  }`}
+                  className="block rounded-lg px-3 py-2.5 text-sm transition-colors"
+                  style={publicNavLinkStyle(
+                    isPublicNavLinkActive(location.pathname, "/explore"),
+                  )}
                 >
                   Explore
                 </Link>
                 <Link
-                  to="/app/hiring"
+                  to="/hiring"
                   onClick={() => setMobileOpen(false)}
                   aria-current={
-                    isNavLinkActive(location.pathname, "/app/hiring")
+                    isPublicNavLinkActive(location.pathname, "/hiring")
                       ? "page"
                       : undefined
                   }
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                    isNavLinkActive(location.pathname, "/app/hiring")
-                      ? "bg-[#FFC429]/15 text-[#FFC429]"
-                      : "text-[#FFC429] hover:bg-white/5"
-                  }`}
+                  className="block rounded-lg px-3 py-2.5 text-sm transition-colors"
+                  style={publicNavLinkStyle(
+                    isPublicNavLinkActive(location.pathname, "/hiring"),
+                  )}
                 >
                   Hiring
                 </Link>
@@ -344,18 +345,15 @@ export default function Navbar() {
               </>
             ) : (
               navLinks.map((link) => {
-                const isActive = location.pathname === link.to;
+                const isActive = isPublicNavLinkActive(location.pathname, link.to);
                 return (
                   <Link
                     key={link.to}
                     to={link.to}
                     onClick={() => setMobileOpen(false)}
                     aria-current={isActive ? "page" : undefined}
-                    className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-white/10 text-white"
-                        : "text-muted hover:bg-white/5 hover:text-white"
-                    }`}
+                    className="block rounded-lg px-3 py-2.5 text-sm transition-colors"
+                    style={publicNavLinkStyle(isActive)}
                   >
                     {link.label}
                   </Link>

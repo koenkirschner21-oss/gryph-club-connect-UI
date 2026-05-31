@@ -6,7 +6,7 @@ import {
   taskDueDateColor,
   taskDueLeftBorder,
 } from "../../lib/taskDueUrgency";
-import { X } from "lucide-react";
+import { X, Check } from "lucide-react";
 import { Megaphone, Calendar, Users } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -781,9 +781,101 @@ export default function ClubHomePage() {
   const navigate = useNavigate();
   const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
   const clubPublicPath = club.slug ? `/clubs/${club.slug}` : "/explore";
+  const settingsPath = `${clubBasePath}/settings`;
+
+  const hasLogo = Boolean(club.logoUrl);
+  const hasDescription = Boolean(club.description?.trim());
+  const hasExtraMembers = club.memberCount > 1;
+  const showSetupBanner =
+    userRole === "owner" && !hasLogo && !hasDescription && !hasExtraMembers;
 
   return (
     <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
+      {showSetupBanner ? (
+        <div
+          style={{
+            background: "linear-gradient(135deg, #1a1500, #2a2000)",
+            border: "1px solid #3a2f00",
+            borderRadius: "10px",
+            padding: "16px 20px",
+            marginBottom: "20px",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+          }}
+        >
+          <div>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#FFC429",
+                margin: "0 0 10px",
+                fontWeight: 600,
+              }}
+            >
+              Complete your club setup to start attracting members
+            </p>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "16px",
+                alignItems: "center",
+              }}
+            >
+              {[
+                { done: hasLogo, label: "Add a logo" },
+                { done: hasDescription, label: "Write a description" },
+                { done: hasExtraMembers, label: "Invite your first member" },
+              ].map((item) => (
+                <span
+                  key={item.label}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "12px",
+                    color: item.done ? "#cccccc" : "#777777",
+                  }}
+                >
+                  {item.done ? (
+                    <Check size={12} color="#E51937" aria-hidden />
+                  ) : (
+                    <span
+                      style={{
+                        width: "6px",
+                        height: "6px",
+                        borderRadius: "50%",
+                        background: "#555555",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <Link
+            to={settingsPath}
+            style={{
+              background: "#FFC429",
+              color: "#000000",
+              borderRadius: "6px",
+              padding: "6px 14px",
+              fontSize: "12px",
+              fontWeight: 600,
+              textDecoration: "none",
+              flexShrink: 0,
+            }}
+          >
+            Go to Settings
+          </Link>
+        </div>
+      ) : null}
+
       <div className="mb-6">
         <div
           role="button"

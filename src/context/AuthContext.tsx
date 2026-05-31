@@ -143,9 +143,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
       );
     }
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/login`,
+      },
+    });
     if (error) throw error;
-    setOnboardingCompleted(false);
+    const needsEmailConfirmation = Boolean(data.user && !data.session);
+    if (!needsEmailConfirmation) {
+      setOnboardingCompleted(false);
+    }
+    return { needsEmailConfirmation };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {

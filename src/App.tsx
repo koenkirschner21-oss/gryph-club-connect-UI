@@ -19,6 +19,7 @@ import { useAuthContext } from "./context/useAuthContext";
 import { supabase } from "./lib/supabaseClient";
 import Spinner from "./components/ui/Spinner";
 import PreviewModeBanner from "./components/ui/PreviewModeBanner";
+import BugReportButton from "./components/ui/BugReportButton";
 import { ClubProvider } from "./context/ClubContext";
 import { NotificationsProvider } from "./context/NotificationsProvider";
 import Home from "./pages/Home";
@@ -259,6 +260,7 @@ export default function App() {
           <ClubProvider>
             <NotificationsProvider>
             <PreviewModeBanner />
+            <BugReportButton />
             <OnboardingRedirect />
             <LoginRedirectHandler />
             <a
