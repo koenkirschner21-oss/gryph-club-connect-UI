@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import {
   Bar,
   BarChart,
@@ -83,11 +84,11 @@ interface InsightItem {
   dotColor: string;
 }
 
-const pageStyle: CSSProperties = {
+const pageStyle = (isMobile: boolean): CSSProperties => ({
   backgroundColor: PAGE_BG,
   minHeight: "100%",
-  padding: "24px",
-};
+  padding: isMobile ? "16px" : "24px",
+});
 
 const chartCardStyle: CSSProperties = {
   background: CARD_BG,
@@ -400,6 +401,7 @@ function ChartSkeleton() {
 
 export default function ClubAnalyticsPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
@@ -563,7 +565,7 @@ export default function ClubAnalyticsPage() {
 
   if (!isPrivileged) {
     return (
-      <div style={pageStyle}>
+      <div style={pageStyle(isMobile)}>
         <div
           style={{
             background: CARD_BG,
@@ -594,7 +596,7 @@ export default function ClubAnalyticsPage() {
 
   if (loading) {
     return (
-      <div style={pageStyle}>
+      <div style={pageStyle(isMobile)}>
         <div style={{ marginBottom: "24px" }}>
           <div
             style={{
@@ -617,7 +619,7 @@ export default function ClubAnalyticsPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(200px, 1fr))",
             gap: "16px",
             marginBottom: "24px",
           }}
@@ -638,7 +640,7 @@ export default function ClubAnalyticsPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))",
             gap: "16px",
           }}
         >
@@ -651,7 +653,7 @@ export default function ClubAnalyticsPage() {
   }
 
   return (
-    <div style={pageStyle}>
+    <div style={pageStyle(isMobile)}>
       <div style={{ marginBottom: "24px" }}>
         <h1
           style={{
@@ -689,7 +691,7 @@ export default function ClubAnalyticsPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(200px, 1fr))",
           gap: "16px",
           marginBottom: "24px",
         }}
@@ -720,7 +722,7 @@ export default function ClubAnalyticsPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(320px, 1fr))",
           gap: "16px",
           marginBottom: "24px",
         }}
@@ -797,7 +799,7 @@ export default function ClubAnalyticsPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))",
           gap: "16px",
         }}
       >

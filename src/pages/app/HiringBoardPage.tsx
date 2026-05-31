@@ -8,6 +8,7 @@ import {
 import { X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { getClubInitials } from "../../lib/clubUtils";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -475,6 +476,7 @@ function HiringDetailModal({
   onClose,
   onApply,
   onViewClub,
+  isMobile,
 }: {
   position: BoardPosition;
   user: { id: string } | null;
@@ -482,6 +484,7 @@ function HiringDetailModal({
   onClose: () => void;
   onApply: () => void;
   onViewClub: () => void;
+  isMobile: boolean;
 }) {
   const deadline = listingDeadlineDisplay(position.deadline);
   const deadlineColor = deadline.passed
@@ -500,27 +503,29 @@ function HiringDetailModal({
         background: "rgba(0,0,0,0.8)",
         zIndex: 1000,
         display: "flex",
-        alignItems: "center",
+        alignItems: isMobile ? "stretch" : "center",
         justifyContent: "center",
-        padding: "24px",
+        padding: isMobile ? 0 : "24px",
       }}
       onClick={onClose}
     >
       <div
         style={{
           background: "#111111",
-          border: "1px solid #242424",
-          borderRadius: "16px",
-          maxWidth: "680px",
+          border: isMobile ? "none" : "1px solid #242424",
+          borderRadius: isMobile ? 0 : "16px",
+          maxWidth: isMobile ? "none" : "680px",
           width: "100%",
-          maxHeight: "85vh",
+          maxHeight: isMobile ? "none" : "85vh",
+          height: isMobile ? "100%" : undefined,
           overflowY: "auto",
           position: "relative",
+          boxSizing: "border-box",
         }}
         onClick={(e) => e.stopPropagation()}
         role="presentation"
       >
-        <div style={{ padding: "28px 28px 0" }}>
+        <div style={{ padding: isMobile ? "16px 16px 0" : "28px 28px 0" }}>
           <div
             style={{
               display: "flex",
@@ -608,7 +613,7 @@ function HiringDetailModal({
 
         <div style={{ height: "1px", background: "#1e1e1e", margin: "20px 0" }} />
 
-        <div style={{ padding: "0 28px" }}>
+        <div style={{ padding: isMobile ? "0 16px" : "0 28px" }}>
           <p style={sectionHeadingStyle}>About this role</p>
           <p
             style={{
@@ -713,7 +718,7 @@ function HiringDetailModal({
 
         <div
           style={{
-            padding: "24px 28px 28px",
+            padding: isMobile ? "16px" : "24px 28px 28px",
             borderTop: "1px solid #1e1e1e",
             marginTop: "20px",
           }}
@@ -1323,6 +1328,7 @@ export function ApplicationModal({
 }
 
 export default function HiringBoardPage() {
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const [positions, setPositions] = useState<BoardPosition[]>([]);
@@ -1454,10 +1460,10 @@ export default function HiringBoardPage() {
 
   return (
     <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
-      <header style={{ padding: "60px 48px 32px" }}>
+      <header style={{ padding: isMobile ? "32px 16px 24px" : "60px 48px 32px" }}>
         <h1
           style={{
-            fontSize: "40px",
+            fontSize: isMobile ? "28px" : "40px",
             fontWeight: 800,
             color: "#ffffff",
             margin: 0,
@@ -1484,7 +1490,7 @@ export default function HiringBoardPage() {
             padding: "0 16px",
             color: "#ffffff",
             width: "100%",
-            maxWidth: "480px",
+            maxWidth: isMobile ? "none" : "480px",
             height: "52px",
             fontSize: "15px",
             boxSizing: "border-box",
@@ -1498,7 +1504,7 @@ export default function HiringBoardPage() {
           display: "flex",
           flexWrap: "wrap",
           gap: "10px",
-          padding: "0 48px 28px",
+          padding: isMobile ? "0 16px 28px" : "0 48px 28px",
         }}
       >
         {BOARD_FILTER_PILLS.map((pill) => {
@@ -1525,7 +1531,7 @@ export default function HiringBoardPage() {
         })}
       </div>
 
-      <div style={{ padding: "0 48px 60px" }}>
+      <div style={{ padding: isMobile ? "0 16px 60px" : "0 48px 60px" }}>
         {loading ? (
           <p style={{ color: "#555555", fontSize: "14px" }}>Loading positions…</p>
         ) : filtered.length === 0 ? (
@@ -1534,7 +1540,7 @@ export default function HiringBoardPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
               gap: "20px",
               width: "100%",
             }}
@@ -1563,6 +1569,7 @@ export default function HiringBoardPage() {
               navigate(`/clubs/${selectedPosition.clubSlug}`);
             }
           }}
+          isMobile={isMobile}
         />
       ) : null}
 

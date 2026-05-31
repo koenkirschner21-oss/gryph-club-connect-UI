@@ -8,7 +8,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { BarChart2, Pencil, Pin, Search, SquarePen, Star, X } from "lucide-react";
+import { BarChart2, Menu, Pencil, Pin, Search, SquarePen, Star, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
@@ -19,6 +19,7 @@ import {
   type ConversationMember,
   type DirectMessage,
 } from "../../hooks/useConversations";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { notifyUnreadCountRefresh } from "../../components/ui/NotificationsDropdown";
 import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
@@ -673,7 +674,21 @@ export default function ClubChatPage() {
   const [showMentionPopup, setShowMentionPopup] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionMembers, setMentionMembers] = useState<ConversationMember[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (!isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+
+  const selectConversation = useCallback(
+    (id: string) => {
+      setActiveConversationId(id);
+      if (isMobile) setSidebarOpen(false);
+    },
+    [isMobile, setActiveConversationId],
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarEditRef = useRef<HTMLInputElement>(null);
@@ -1105,8 +1120,21 @@ export default function ClubChatPage() {
   return (
     <div
       className="flex h-[calc(100vh-4rem)] overflow-hidden"
-      style={{ backgroundColor: "#0f0f0f" }}
+      style={{ backgroundColor: "#0f0f0f", position: "relative" }}
     >
+      {isMobile && sidebarOpen ? (
+        <div
+          role="presentation"
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            zIndex: 99,
+          }}
+        />
+      ) : null}
+
       {/* Left panel */}
       <aside
         style={{
@@ -1114,10 +1142,19 @@ export default function ClubChatPage() {
           flexShrink: 0,
           background: "#111111",
           borderRight: "1px solid #1e1e1e",
-          display: "flex",
+          display: isMobile ? (sidebarOpen ? "flex" : "none") : undefined,
           flexDirection: "column",
+          ...(isMobile && sidebarOpen
+            ? {
+                position: "fixed",
+                top: 0,
+                left: 0,
+                height: "100%",
+                zIndex: 100,
+              }
+            : {}),
         }}
-        className="hidden sm:flex"
+        className={isMobile ? undefined : "hidden sm:flex"}
       >
         <div
           style={{
@@ -1234,7 +1271,7 @@ export default function ClubChatPage() {
                       <div
                         key={convo.id}
                         role="button"
-                        onClick={() => setActiveConversationId(convo.id)}
+                        onClick={() => selectConversation(convo.id)}
                         style={{
                           width: "100%",
                           padding: "12px 16px",
@@ -1416,7 +1453,7 @@ export default function ClubChatPage() {
                       <div
                         key={convo.id}
                         role="button"
-                        onClick={() => setActiveConversationId(convo.id)}
+                        onClick={() => selectConversation(convo.id)}
                         style={{
                           width: "100%",
                           padding: "12px 16px",
@@ -1581,7 +1618,7 @@ export default function ClubChatPage() {
                 <div
                   key={convo.id}
                   role="button"
-                  onClick={() => setActiveConversationId(convo.id)}
+                  onClick={() => selectConversation(convo.id)}
                   style={{
                     width: "100%",
                     padding: "12px 16px",
@@ -1757,7 +1794,24 @@ export default function ClubChatPage() {
           className="flex items-center justify-between border-b px-4 py-3 sm:hidden"
           style={{ borderColor: "#1e1e1e" }}
         >
-          <span style={{ fontWeight: 700, color: "#ffffff" }}>Messages</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button
+              type="button"
+              aria-label={sidebarOpen ? "Hide conversations" : "Show conversations"}
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#ffffff",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+              }}
+            >
+              <Menu size={20} aria-hidden />
+            </button>
+            <span style={{ fontWeight: 700, color: "#ffffff" }}>Messages</span>
+          </div>
           <button
             type="button"
             onClick={openModal}

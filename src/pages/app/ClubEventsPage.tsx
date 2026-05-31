@@ -10,6 +10,7 @@ import { MoreHorizontal, Repeat } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { supabase } from "../../lib/supabaseClient";
 import type { ClubEvent, MemberRole, RsvpStatus } from "../../types";
@@ -1411,6 +1412,7 @@ function FormQuestionBuilder({
 
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const { events, loading, createEvent, updateEvent, deleteEvent, refresh } =
     useClubEvents(clubId);
@@ -2216,8 +2218,22 @@ export default function ClubEventsPage() {
   }
 
   return (
-    <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="mb-6 flex items-center justify-between">
+    <div
+      style={{
+        backgroundColor: "#0f0f0f",
+        padding: isMobile ? "16px" : "24px",
+      }}
+    >
+      <div
+        style={{
+          marginBottom: "24px",
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "stretch" : "center",
+          justifyContent: "space-between",
+          gap: isMobile ? "12px" : undefined,
+        }}
+      >
         <div>
           <h1
             style={{
@@ -2317,8 +2333,14 @@ export default function ClubEventsPage() {
               value={visibility}
               onChange={setVisibility}
             />
-            <div className="flex gap-4">
-              <div className="flex-1">
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                gap: isMobile ? "12px" : "16px",
+              }}
+            >
+              <div style={{ flex: 1 }}>
                 <FormInput
                   id="eventDate"
                   label="Date"
@@ -2328,7 +2350,7 @@ export default function ClubEventsPage() {
                   required
                 />
               </div>
-              <div className="flex-1">
+              <div style={{ flex: 1 }}>
                 <FormInput
                   id="eventTime"
                   label="Time"

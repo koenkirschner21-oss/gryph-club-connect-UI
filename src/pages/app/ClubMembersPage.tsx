@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { normalizeJoinType } from "../../lib/clubJoinUtils";
 import { notifyUsers } from "../../lib/notifyUsers";
@@ -549,6 +550,7 @@ export default function ClubMembersPage() {
 
   const { members, pendingMembers, loading, removeMember, approveRequest, rejectRequest, refresh } =
     useClubMembers(clubId);
+  const isMobile = useIsMobile();
 
   const [viewMode, setViewMode] = useState<ViewMode>("orgChart");
   const [orgChartMembers, setOrgChartMembers] = useState<OrgChartMember[]>([]);
@@ -1118,7 +1120,12 @@ export default function ClubMembersPage() {
   };
 
   return (
-    <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
+    <div
+      style={{
+        backgroundColor: "#0f0f0f",
+        padding: isMobile ? "16px" : "24px",
+      }}
+    >
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1
@@ -1659,8 +1666,55 @@ export default function ClubMembersPage() {
             const normalizedRole = normalizeMemberRole(member.role);
             const isEditing = editingMemberId === member.id;
 
+            const adminActions = renderAdminActions(member);
+
             return (
             <div key={member.id} style={memberCardStyle}>
+              {isMobile ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                    <MemberAvatar
+                      avatarUrl={member.avatarUrl}
+                      name={member.fullName ?? member.email ?? "U"}
+                    />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                        <MemberNameLink userId={member.userId}>
+                          {member.fullName ?? "Unknown"}
+                        </MemberNameLink>
+                        <span style={roleBadgeStyle(normalizedRole)}>
+                          {roleBadgeLabel(normalizedRole, memberTitle)}
+                        </span>
+                      </div>
+                      {memberTitle ? (
+                        <p style={{ fontSize: "11px", color: "#747676", fontStyle: "italic", margin: "4px 0 0" }}>
+                          {memberTitle}
+                        </p>
+                      ) : null}
+                      {member.program ? (
+                        <p style={{ fontSize: "12px", color: "#747676", margin: "4px 0 0" }}>
+                          {member.program}
+                        </p>
+                      ) : null}
+                      <p style={{ fontSize: "12px", color: "#555555", margin: "4px 0 0" }}>
+                        {member.email}
+                      </p>
+                      <p style={{ fontSize: "11px", color: "#555555", margin: "8px 0 0" }}>
+                        Joined{" "}
+                        {new Date(member.joinedAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  {adminActions ? (
+                    <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {adminActions}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
               <div className="flex items-center gap-3">
                 <MemberAvatar
                   avatarUrl={member.avatarUrl}
@@ -1716,7 +1770,7 @@ export default function ClubMembersPage() {
                   )}
                 </div>
 
-                {renderAdminActions(member) ?? (
+                {adminActions ?? (
                   <span
                     className="ml-auto shrink-0 text-right"
                     style={{
@@ -1732,6 +1786,7 @@ export default function ClubMembersPage() {
                   </span>
                 )}
               </div>
+              )}
 
               {isEditing ? (
                 <div

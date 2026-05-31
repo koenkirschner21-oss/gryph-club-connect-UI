@@ -10,6 +10,7 @@ import {
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
 import { useAuthContext } from "../context/useAuthContext";
+import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
 import type { Club, ClubEvent, ClubJoinType, JoinAnswer, JoinQuestion } from "../types";
 import Button from "../components/ui/Button";
@@ -344,6 +345,7 @@ function SocialLinkRow({
 }
 
 export default function ClubPublicProfilePage() {
+  const isMobile = useIsMobile();
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const {
@@ -717,13 +719,13 @@ export default function ClubPublicProfilePage() {
       </div>
 
       <div
-        className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
-        style={{ paddingBottom: "64px" }}
+        className="mx-auto max-w-7xl sm:px-6 lg:px-8"
+        style={{ paddingBottom: "64px", paddingLeft: isMobile ? 16 : undefined, paddingRight: isMobile ? 16 : undefined }}
       >
         <div className="relative mb-6">
           <div
             className="relative z-10 flex-shrink-0"
-            style={{ marginTop: "-36px", marginLeft: "24px" }}
+            style={{ marginTop: "-36px", marginLeft: isMobile ? 0 : "24px" }}
           >
             {club.logoUrl ? (
               <img
@@ -762,18 +764,27 @@ export default function ClubPublicProfilePage() {
             )}
           </div>
 
-          <div className="relative z-10" style={{ marginLeft: "24px" }}>
+          <div className="relative z-10" style={{ marginLeft: isMobile ? 0 : "24px" }}>
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
+                flexDirection: isMobile ? "column" : "row",
+                alignItems: isMobile ? "stretch" : "center",
                 justifyContent: "space-between",
                 marginTop: "16px",
                 gap: "16px",
               }}
             >
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="mb-1 flex flex-wrap items-center gap-2">
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : undefined,
+                    gap: isMobile ? "8px" : undefined,
+                    marginBottom: isMobile ? "8px" : undefined,
+                  }}
+                  className={isMobile ? undefined : "mb-1 flex flex-wrap items-center gap-2"}
+                >
                   <span style={categoryBadgeStyle()}>{club.category || "Club"}</span>
                   <span style={{ fontSize: "13px", color: "#747676" }}>
                     {formatMemberCount(memberCount)}
@@ -820,10 +831,11 @@ export default function ClubPublicProfilePage() {
               <div
                 style={{
                   display: "flex",
-                  flexDirection: "row",
+                  flexDirection: isMobile ? "column" : "row",
                   gap: "12px",
-                  alignItems: "center",
+                  alignItems: isMobile ? "stretch" : "center",
                   flexShrink: 0,
+                  width: isMobile ? "100%" : undefined,
                 }}
               >
                 <button
@@ -884,6 +896,7 @@ export default function ClubPublicProfilePage() {
                   onOpenJoin={() => void handleJoinOrLeave()}
                   onOpenApplication={openApplicationFlow}
                   onRequestVote={() => void handleRequestVoteJoin()}
+                  fullWidth={isMobile}
                 />
               </div>
             </div>
@@ -952,7 +965,7 @@ export default function ClubPublicProfilePage() {
             />
           </div>
 
-          <aside style={{ width: "280px", flexShrink: 0 }}>
+          <aside style={{ width: isMobile ? "100%" : "280px", flexShrink: 0 }}>
             <div
               style={{
                 background: "#1a1a1a",
@@ -1387,6 +1400,7 @@ function ClubJoinAction({
   onOpenJoin,
   onOpenApplication,
   onRequestVote,
+  fullWidth,
 }: {
   joinType: ClubJoinType;
   joined: boolean;
@@ -1397,6 +1411,7 @@ function ClubJoinAction({
   onOpenJoin: () => void;
   onOpenApplication: () => void;
   onRequestVote: () => void;
+  fullWidth?: boolean;
 }) {
   if (joined) {
     return (
@@ -1414,6 +1429,8 @@ function ClubJoinAction({
           fontSize: "14px",
           cursor: joining ? "wait" : "pointer",
           whiteSpace: "nowrap",
+          width: fullWidth ? "100%" : undefined,
+          boxSizing: "border-box",
         }}
       >
         {joining ? "Leaving…" : "Leave Club"}
@@ -1463,6 +1480,8 @@ function ClubJoinAction({
           fontSize: "14px",
           cursor: submittingApplication ? "wait" : "pointer",
           whiteSpace: "nowrap",
+          width: fullWidth ? "100%" : undefined,
+          boxSizing: "border-box",
         }}
       >
         {submittingApplication ? "Submitting…" : "Apply to Join"}
@@ -1512,6 +1531,8 @@ function ClubJoinAction({
           fontSize: "14px",
           cursor: submittingApplication ? "wait" : "pointer",
           whiteSpace: "nowrap",
+          width: fullWidth ? "100%" : undefined,
+          boxSizing: "border-box",
         }}
       >
         {submittingApplication ? "Submitting…" : "Request to Join"}
@@ -1536,6 +1557,8 @@ function ClubJoinAction({
               fontSize: "14px",
               cursor: joining ? "wait" : "pointer",
               whiteSpace: "nowrap",
+              width: fullWidth ? "100%" : undefined,
+              boxSizing: "border-box",
             }
           : {
               background: "#E51937",
@@ -1547,6 +1570,8 @@ function ClubJoinAction({
               fontSize: "14px",
               cursor: joining ? "wait" : "pointer",
               whiteSpace: "nowrap",
+              width: fullWidth ? "100%" : undefined,
+              boxSizing: "border-box",
             }
       }
     >

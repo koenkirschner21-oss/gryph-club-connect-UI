@@ -26,8 +26,9 @@ import {
   ExternalLink,
   type IconProps,
 } from "../icons/WorkspaceIcons";
-import { Briefcase, FileText } from "lucide-react";
+import { Briefcase, FileText, Menu, X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole } from "../../types";
@@ -378,6 +379,8 @@ export default function WorkspaceLayout() {
 
   const club = getClubById(resolvedClubId);
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
 
   const clubProfilePath = club?.slug ? `/clubs/${club.slug}` : "/explore";
@@ -394,170 +397,223 @@ export default function WorkspaceLayout() {
     return <Navigate to="/app" replace />;
   }
 
-  return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
-      {/* Sidebar */}
-      <aside
-        className="hidden w-44 flex-shrink-0 border-r md:block"
-        style={{ backgroundColor: "#111111", borderColor: "#1e1e1e" }}
-      >
-        <div className="flex h-full flex-col">
-          {/* Club header */}
-          <div className="border-b p-4" style={{ borderColor: "#1e1e1e" }}>
-            <div
-              role="button"
-              tabIndex={0}
-              className="flex items-center gap-3"
-              onClick={() => navigate(clubProfilePath)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  navigate(clubProfilePath);
-                }
-              }}
-              onMouseEnter={() => setClubHeaderHovered(true)}
-              onMouseLeave={() => setClubHeaderHovered(false)}
+  const closeDrawer = () => setDrawerOpen(false);
+
+  const sidebarContent = (
+    <div className="flex h-full flex-col">
+      <div className="border-b p-4" style={{ borderColor: "#1e1e1e" }}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="flex items-center gap-3"
+          onClick={() => {
+            closeDrawer();
+            navigate(clubProfilePath);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              closeDrawer();
+              navigate(clubProfilePath);
+            }
+          }}
+          onMouseEnter={() => setClubHeaderHovered(true)}
+          onMouseLeave={() => setClubHeaderHovered(false)}
+          style={{
+            cursor: "pointer",
+            opacity: clubHeaderHovered ? 0.8 : 1,
+            transition: "opacity 0.15s ease",
+          }}
+        >
+          <img
+            src={club.imageUrl}
+            alt=""
+            className="h-10 w-10 shrink-0 object-cover"
+            style={{ borderRadius: "8px", backgroundColor: "#1a1a1a" }}
+          />
+          <div className="min-w-0 flex-1">
+            <h2
+              className="truncate"
               style={{
-                cursor: "pointer",
-                opacity: clubHeaderHovered ? 0.8 : 1,
-                transition: "opacity 0.15s ease",
+                fontWeight: 600,
+                fontSize: "13px",
+                color: "#ffffff",
               }}
             >
-              <img
-                src={club.imageUrl}
-                alt=""
-                className="h-10 w-10 shrink-0 object-cover"
-                style={{ borderRadius: "8px", backgroundColor: "#1a1a1a" }}
-              />
-              <div className="min-w-0 flex-1">
-                <h2
-                  className="truncate"
-                  style={{
-                    fontWeight: 600,
-                    fontSize: "13px",
-                    color: "#ffffff",
-                  }}
-                >
-                  {club.name}
-                </h2>
-                <p
-                  className="truncate"
-                  style={{
-                    fontSize: "11px",
-                    color: "#555555",
-                  }}
-                >
-                  {club.category}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Nav links */}
-          <nav
-            className="flex flex-1 flex-col space-y-0.5 p-3"
-            aria-label="Workspace navigation"
-          >
-            {workspaceLinks.map(({ to, label, end, Icon, badgeKey }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) => workspaceNavClass(isActive)}
-                onClick={() => handleBadgeNavClick(badgeKey)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  width: "100%",
-                }}
-              >
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    minWidth: 0,
-                  }}
-                >
-                  <Icon size={16} strokeWidth={2} aria-hidden />
-                  {label}
-                </span>
-                <NavCountBadge count={badgeCountFor(badgeKey)} />
-              </NavLink>
-            ))}
-            <div className="flex-1" aria-hidden />
-            {showAnalytics ? (
-              <NavLink
-                to={analyticsLink.to}
-                className={({ isActive }) => workspaceNavClass(isActive)}
-              >
-                <analyticsLink.Icon size={16} strokeWidth={2} aria-hidden />
-                {analyticsLink.label}
-              </NavLink>
-            ) : null}
-          </nav>
-
-          {/* Public profile link */}
-          <div className="border-t p-3" style={{ borderColor: "#1e1e1e" }}>
-            <NavLink
-              to={`/clubs/${club.slug}`}
-              className="flex items-center gap-1.5 rounded-[6px] px-[14px] py-2 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
+              {club.name}
+            </h2>
+            <p
+              className="truncate"
               style={{
-                fontSize: "12px",
+                fontSize: "11px",
                 color: "#555555",
               }}
             >
-              <ExternalLink size={14} strokeWidth={2} aria-hidden />
-              View Public Profile
-            </NavLink>
+              {club.category}
+            </p>
           </div>
         </div>
-      </aside>
+      </div>
 
-      {/* Mobile workspace tabs */}
+      <nav
+        className="flex flex-1 flex-col space-y-0.5 overflow-y-auto p-3"
+        aria-label="Workspace navigation"
+      >
+        {workspaceLinks.map(({ to, label, end, Icon, badgeKey }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) => workspaceNavClass(isActive)}
+            onClick={() => {
+              handleBadgeNavClick(badgeKey);
+              closeDrawer();
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+            }}
+          >
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                minWidth: 0,
+              }}
+            >
+              <Icon size={16} strokeWidth={2} aria-hidden />
+              {label}
+            </span>
+            <NavCountBadge count={badgeCountFor(badgeKey)} />
+          </NavLink>
+        ))}
+        <div className="flex-1" aria-hidden />
+        {showAnalytics ? (
+          <NavLink
+            to={analyticsLink.to}
+            className={({ isActive }) => workspaceNavClass(isActive)}
+            onClick={closeDrawer}
+          >
+            <analyticsLink.Icon size={16} strokeWidth={2} aria-hidden />
+            {analyticsLink.label}
+          </NavLink>
+        ) : null}
+      </nav>
+
+      <div className="border-t p-3" style={{ borderColor: "#1e1e1e" }}>
+        <NavLink
+          to={`/clubs/${club.slug}`}
+          className="flex items-center gap-1.5 rounded-[6px] px-[14px] py-2 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
+          style={{
+            fontSize: "12px",
+            color: "#555555",
+          }}
+          onClick={closeDrawer}
+        >
+          <ExternalLink size={14} strokeWidth={2} aria-hidden />
+          View Public Profile
+        </NavLink>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-[calc(100vh-4rem)]">
+      {!isMobile ? (
+        <aside
+          className="hidden w-44 flex-shrink-0 border-r md:block"
+          style={{ backgroundColor: "#111111", borderColor: "#1e1e1e" }}
+        >
+          {sidebarContent}
+        </aside>
+      ) : null}
+
       <div className="flex flex-1 flex-col">
-        <nav className="flex gap-1 overflow-x-auto border-b border-border bg-card px-4 py-2 md:hidden">
-          {workspaceLinks.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.end}
-              className={({ isActive }) =>
-                `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted hover:bg-surface-alt"
-                }`
-              }
+        {isMobile ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "12px 16px",
+              borderBottom: "1px solid #1e1e1e",
+              backgroundColor: "#0f0f0f",
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Open navigation menu"
+              onClick={() => setDrawerOpen(true)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#ffffff",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+                alignItems: "center",
+              }}
             >
-              {link.label}
-              {link.badgeKey && badgeCountFor(link.badgeKey) > 0
-                ? ` (${badgeCountFor(link.badgeKey)})`
-                : ""}
-            </NavLink>
-          ))}
-          {showAnalytics && (
-            <NavLink
-              to={analyticsLink.to}
-              className={({ isActive }) =>
-                `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted hover:bg-surface-alt"
-                }`
-              }
-            >
-              {analyticsLink.label}
-            </NavLink>
-          )}
-        </nav>
+              <Menu size={22} aria-hidden />
+            </button>
+          </div>
+        ) : null}
 
-        {/* Workspace content */}
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>
+
+      {isMobile && drawerOpen ? (
+        <>
+          <div
+            role="presentation"
+            onClick={closeDrawer}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.5)",
+              zIndex: 99,
+            }}
+          />
+          <aside
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "280px",
+              height: "100%",
+              background: "#111111",
+              zIndex: 100,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Close navigation menu"
+              onClick={closeDrawer}
+              style={{
+                position: "absolute",
+                top: "12px",
+                right: "12px",
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+                zIndex: 1,
+              }}
+            >
+              <X size={20} aria-hidden />
+            </button>
+            {sidebarContent}
+          </aside>
+        </>
+      ) : null}
     </div>
   );
 }

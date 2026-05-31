@@ -3,6 +3,7 @@ import { Bookmark, Download, Heart } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubPosts } from "../../hooks/useClubPosts";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
 import Spinner from "../../components/ui/Spinner";
@@ -384,6 +385,7 @@ function PostAttachment({
 
 export default function ClubAnnouncementsPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
 
@@ -788,6 +790,7 @@ export default function ClubAnnouncementsPage() {
       <div
         style={{
           ...pageStyle,
+          padding: isMobile ? "16px" : pageStyle.padding,
           display: "flex",
           minHeight: "40vh",
           alignItems: "center",
@@ -806,7 +809,7 @@ export default function ClubAnnouncementsPage() {
       : "No file selected";
 
   return (
-    <div style={pageStyle}>
+    <div style={{ ...pageStyle, padding: isMobile ? "16px" : pageStyle.padding }}>
       <div
         style={{
           marginBottom: "24px",
@@ -943,7 +946,14 @@ export default function ClubAnnouncementsPage() {
             : "No announcements yet. Be the first to post."}
         </p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+            width: "100%",
+          }}
+        >
           {pinnedPosts.length > 0 ? (
             <div style={{ marginBottom: "4px" }}>
               <p
@@ -1118,6 +1128,8 @@ export default function ClubAnnouncementsPage() {
           overflow: "hidden",
           marginBottom: "16px",
           transition: "all 0.15s ease",
+          width: "100%",
+          boxSizing: "border-box",
         }}
       >
         <div

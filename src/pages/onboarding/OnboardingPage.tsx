@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Compass, Users, Check } from "lucide-react";
 import BrandLogo from "../../components/ui/BrandLogo";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { notifyOnboardingCompleted } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -95,10 +96,11 @@ function ProgressDots({ step }: { step: Step }) {
   );
 }
 
-function pathCardStyle(selected: boolean, hovered: boolean): CSSProperties {
+function pathCardStyle(selected: boolean, hovered: boolean, isMobile: boolean): CSSProperties {
   return {
-    flex: 1,
-    minWidth: "200px",
+    flex: isMobile ? "1 1 100%" : 1,
+    minWidth: isMobile ? undefined : "200px",
+    width: isMobile ? "100%" : undefined,
     background: selected ? "#1f0a0a" : "#1a1a1a",
     border: `1px solid ${selected || hovered ? "#E51937" : "#242424"}`,
     borderRadius: "12px",
@@ -106,6 +108,7 @@ function pathCardStyle(selected: boolean, hovered: boolean): CSSProperties {
     cursor: "pointer",
     textAlign: "left",
     transition: "border-color 0.15s ease, background 0.15s ease",
+    boxSizing: "border-box",
   };
 }
 
@@ -125,6 +128,7 @@ async function markProfileOnboardingComplete(userId: string) {
 }
 
 export default function OnboardingPage() {
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const navigate = useNavigate();
 
@@ -272,7 +276,12 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div style={shellStyle}>
+    <div
+      style={{
+        ...shellStyle,
+        padding: isMobile ? "24px 16px" : shellStyle.padding,
+      }}
+    >
       <div style={innerStyle}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "40px" }}>
           <BrandLogo variant="hero" />
@@ -309,13 +318,14 @@ export default function OnboardingPage() {
               style={{
                 display: "flex",
                 flexWrap: "wrap",
+                flexDirection: isMobile ? "column" : "row",
                 gap: "16px",
                 marginBottom: "32px",
               }}
             >
               <button
                 type="button"
-                style={pathCardStyle(path === "explore", hoveredPath === "explore")}
+                style={pathCardStyle(path === "explore", hoveredPath === "explore", isMobile)}
                 onClick={() => setPath("explore")}
                 onMouseEnter={() => setHoveredPath("explore")}
                 onMouseLeave={() => setHoveredPath(null)}
@@ -337,7 +347,7 @@ export default function OnboardingPage() {
               </button>
               <button
                 type="button"
-                style={pathCardStyle(path === "manage", hoveredPath === "manage")}
+                style={pathCardStyle(path === "manage", hoveredPath === "manage", isMobile)}
                 onClick={() => setPath("manage")}
                 onMouseEnter={() => setHoveredPath("manage")}
                 onMouseLeave={() => setHoveredPath(null)}

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
 import Spinner from "../../components/ui/Spinner";
 import { showToast } from "../../components/ui/Toast";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import type { Club, MemberRole } from "../../types";
 
 interface ProfileData {
@@ -31,14 +32,6 @@ const PAGE_BG = "#0f0f0f";
 const CARD_BG = "#1a1a1a";
 const CARD_BORDER = "#242424";
 const MUTED = "#555555";
-
-const pageStyle: CSSProperties = {
-  backgroundColor: PAGE_BG,
-  minHeight: "100%",
-  padding: "40px 24px",
-  maxWidth: "72rem",
-  margin: "0 auto",
-};
 
 function getInitials(name: string, email: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -166,6 +159,7 @@ function ProfileClubCard({
 }
 
 export default function ProfilePage() {
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const { clubs, joinedClubs, getUserRole } = useClubContext();
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
@@ -218,13 +212,18 @@ export default function ProfilePage() {
 
   const memberSince = formatMemberSince(user?.created_at);
 
+  const pagePadding = isMobile ? "16px" : "40px 24px";
+
   if (loading) {
     return (
       <div
         style={{
-          ...pageStyle,
-          display: "flex",
+          backgroundColor: PAGE_BG,
           minHeight: "60vh",
+          padding: pagePadding,
+          maxWidth: "72rem",
+          margin: "0 auto",
+          display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
@@ -235,25 +234,42 @@ export default function ProfilePage() {
   }
 
   return (
-    <div style={pageStyle}>
+    <div
+      style={{
+        backgroundColor: PAGE_BG,
+        minHeight: "100%",
+        padding: pagePadding,
+        maxWidth: "72rem",
+        margin: "0 auto",
+      }}
+    >
       <div
         style={{
           background: CARD_BG,
           border: `1px solid ${CARD_BORDER}`,
           borderRadius: "12px",
-          padding: "28px",
+          padding: isMobile ? "20px 16px" : "28px",
         }}
       >
         <div
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            alignItems: "flex-start",
+            flexDirection: isMobile ? "column" : "row",
+            flexWrap: isMobile ? undefined : "wrap",
+            alignItems: isMobile ? "center" : "flex-start",
             gap: "20px",
-            justifyContent: "space-between",
+            justifyContent: isMobile ? "center" : "space-between",
+            textAlign: isMobile ? "center" : undefined,
           }}
         >
-          <div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              gap: "20px",
+              alignItems: isMobile ? "center" : "flex-start",
+            }}
+          >
             {profile.avatar_url ? (
               <img
                 src={profile.avatar_url}

@@ -13,6 +13,7 @@ import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useClubTasks } from "../../hooks/useClubTasks";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole, Task, TaskStatus } from "../../types";
 import Spinner from "../../components/ui/Spinner";
@@ -788,9 +789,15 @@ export default function ClubHomePage() {
   const hasExtraMembers = club.memberCount > 1;
   const showSetupBanner =
     userRole === "owner" && !hasLogo && !hasDescription && !hasExtraMembers;
+  const isMobile = useIsMobile();
 
   return (
-    <div className="p-6" style={{ backgroundColor: "#0f0f0f" }}>
+    <div
+      style={{
+        backgroundColor: "#0f0f0f",
+        padding: isMobile ? "16px" : "24px",
+      }}
+    >
       {showSetupBanner ? (
         <div
           style={{
@@ -966,8 +973,12 @@ export default function ClubHomePage() {
       ) : null}
 
       <div
-        className={`grid grid-cols-1 items-stretch gap-4 ${
-          userRole === "member" ? "sm:grid-cols-2" : "sm:grid-cols-3"
+        className={`grid items-stretch gap-4 ${
+          isMobile
+            ? "grid-cols-2"
+            : userRole === "member"
+              ? "grid-cols-1 sm:grid-cols-2"
+              : "grid-cols-1 sm:grid-cols-3"
         }`}
       >
         {userRole !== "member" ? (

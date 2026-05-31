@@ -5,6 +5,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
 import { useClubMembers } from "../../hooks/useClubMembers";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole, Task, TaskStatus, TaskPriority } from "../../types";
 import Card from "../../components/ui/Card";
@@ -654,6 +655,7 @@ export default function ClubTasksPage() {
   const { members } = useClubMembers(clubId);
 
   const club = clubId ? getClubById(clubId) : undefined;
+  const isMobile = useIsMobile();
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
@@ -1644,12 +1646,22 @@ export default function ClubTasksPage() {
         </Card>
       ) : viewMode === "board" ? (
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: "12px",
-            alignItems: "stretch",
-          }}
+          style={
+            isMobile
+              ? {
+                  display: "flex",
+                  gap: "12px",
+                  overflowX: "auto",
+                  paddingBottom: "8px",
+                  WebkitOverflowScrolling: "touch",
+                }
+              : {
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: "12px",
+                  alignItems: "stretch",
+                }
+          }
         >
           {BOARD_COLUMNS.map((columnStatus) => (
             <div
@@ -1658,9 +1670,16 @@ export default function ClubTasksPage() {
                 background: "#111111",
                 borderRadius: "10px",
                 padding: "12px",
-                minHeight: "calc(100vh - 280px)",
+                minHeight: isMobile ? "calc(100vh - 280px)" : "calc(100vh - 280px)",
                 display: "flex",
                 flexDirection: "column",
+                ...(isMobile
+                  ? {
+                      minWidth: "260px",
+                      flexShrink: 0,
+                      width: "260px",
+                    }
+                  : {}),
               }}
             >
               <div

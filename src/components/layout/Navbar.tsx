@@ -280,15 +280,15 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {mobileOpen && (
-        <div className="border-t border-border bg-page-bg md:hidden">
-          <div className="space-y-1 px-4 py-3">
+        <div className="w-full border-t border-border bg-page-bg md:hidden">
+          <div className="w-full space-y-1 py-3">
             {user ? (
               <>
                 <Link
                   to="/app"
                   onClick={() => setMobileOpen(false)}
                   aria-current={location.pathname === "/app" ? "page" : undefined}
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  className={`block min-h-[44px] rounded-lg px-4 py-[14px] text-sm font-medium transition-colors ${
                     location.pathname === "/app"
                       ? "bg-white/10 text-white"
                       : "text-muted hover:bg-white/5 hover:text-white"
@@ -304,7 +304,7 @@ export default function Navbar() {
                       ? "page"
                       : undefined
                   }
-                  className="block rounded-lg px-3 py-2.5 text-sm transition-colors"
+                  className="block min-h-[44px] rounded-lg px-4 py-[14px] text-sm transition-colors"
                   style={publicNavLinkStyle(
                     isPublicNavLinkActive(location.pathname, "/explore"),
                   )}
@@ -319,7 +319,7 @@ export default function Navbar() {
                       ? "page"
                       : undefined
                   }
-                  className="block rounded-lg px-3 py-2.5 text-sm transition-colors"
+                  className="block min-h-[44px] rounded-lg px-4 py-[14px] text-sm transition-colors"
                   style={publicNavLinkStyle(
                     isPublicNavLinkActive(location.pathname, "/hiring"),
                   )}
@@ -332,7 +332,7 @@ export default function Navbar() {
                   aria-current={
                     location.pathname === "/app/profile" ? "page" : undefined
                   }
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  className={`block min-h-[44px] rounded-lg px-4 py-[14px] text-sm font-medium transition-colors ${
                     location.pathname === "/app/profile"
                       ? "bg-white/10 text-white"
                       : "text-muted hover:bg-white/5 hover:text-white"
@@ -346,7 +346,7 @@ export default function Navbar() {
                   aria-current={
                     location.pathname === "/app/settings" ? "page" : undefined
                   }
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  className={`block min-h-[44px] rounded-lg px-4 py-[14px] text-sm font-medium transition-colors ${
                     location.pathname === "/app/settings"
                       ? "bg-white/10 text-white"
                       : "text-muted hover:bg-white/5 hover:text-white"
@@ -361,7 +361,7 @@ export default function Navbar() {
                     aria-current={
                       location.pathname === "/admin" ? "page" : undefined
                     }
-                    className={`block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    className={`block min-h-[44px] rounded-lg px-4 py-[14px] text-sm font-semibold transition-colors ${
                       location.pathname === "/admin"
                         ? "bg-[#FFC429]/15 text-[#FFC429]"
                         : "text-[#FFC429] hover:bg-white/5"
@@ -380,7 +380,7 @@ export default function Navbar() {
                     to={link.to}
                     onClick={() => setMobileOpen(false)}
                     aria-current={isActive ? "page" : undefined}
-                    className="block rounded-lg px-3 py-2.5 text-sm transition-colors"
+                    className="block min-h-[44px] rounded-lg px-4 py-[14px] text-sm transition-colors"
                     style={publicNavLinkStyle(isActive)}
                   >
                     {link.label}
@@ -393,7 +393,7 @@ export default function Navbar() {
 
             {user ? (
               <>
-                <span className="block px-3 py-2 text-sm text-muted">
+                <span className="block px-4 py-[14px] text-sm text-muted">
                   {user.email}
                 </span>
                 <button
@@ -402,7 +402,7 @@ export default function Navbar() {
                     setMobileOpen(false);
                     handleLogout();
                   }}
-                  className="block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-medium text-muted transition-colors hover:bg-white/5 hover:text-primary"
+                  className="block min-h-[44px] w-full cursor-pointer rounded-lg px-4 py-[14px] text-left text-sm font-medium text-muted transition-colors hover:bg-white/5 hover:text-primary"
                 >
                   Logout
                 </button>
@@ -412,14 +412,14 @@ export default function Navbar() {
                 <Link
                   to="/login"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-lg px-3 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-white/5 hover:text-white"
+                  className="block min-h-[44px] rounded-lg px-4 py-[14px] text-sm font-medium text-muted transition-colors hover:bg-white/5 hover:text-white"
                 >
                   Login
                 </Link>
                 <Link
                   to="/signup"
                   onClick={() => setMobileOpen(false)}
-                  className="block rounded-lg bg-primary px-3 py-2.5 text-center text-sm font-bold text-white transition-colors hover:bg-primary-dark"
+                  className="block min-h-[44px] w-full rounded-lg bg-primary px-4 py-[14px] text-center text-sm font-bold text-white transition-colors hover:bg-primary-dark"
                 >
                   Sign Up
                 </Link>

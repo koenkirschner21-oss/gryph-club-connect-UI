@@ -26,6 +26,7 @@ import {
   taskDueDateColor,
   taskDueLeftBorder,
 } from "../../lib/taskDueUrgency";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 
 // ---------------------------------------------------------------------------
 // Tab types
@@ -45,7 +46,10 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
 // ---------------------------------------------------------------------------
 // Main Dashboard
 // ---------------------------------------------------------------------------
+const CALENDAR_MOBILE_LABELS = ["M", "T", "W", "T", "F", "S", "S"] as const;
+
 export default function DashboardPage() {
+  const isMobile = useIsMobile();
   const { user, loading: authLoading } = useAuthContext();
   const { clubs, joinedClubs, savedClubs, loading, getUserRole } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
@@ -296,7 +300,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div
+      className={`mx-auto max-w-7xl py-8 ${isMobile ? "px-4" : "px-4 sm:px-6 lg:px-8"}`}
+    >
       {/* ── Header ── */}
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -524,7 +530,13 @@ export default function DashboardPage() {
       ) : null}
 
       {/* ── Tab Navigation ── */}
-      <div className="mb-8 flex items-center gap-6 border-b border-border">
+      <div
+        className={`mb-8 border-b border-border ${
+          isMobile
+            ? "flex flex-nowrap items-center gap-6 overflow-x-auto"
+            : "flex items-center gap-6"
+        }`}
+      >
         <TabButton
           label="Overview"
           active={activeTab === "overview"}
@@ -784,7 +796,7 @@ function WeekTaskCard({
   return (
     <Link
       to={`/app/clubs/${task.clubId}/tasks`}
-      className="block no-underline"
+      className="block w-full no-underline"
       style={{ cursor: "pointer" }}
     >
       <div
@@ -860,6 +872,7 @@ function ThisWeekTab({
   onViewAllTasks: () => void;
   onViewAllEvents: () => void;
 }) {
+  const isMobile = useIsMobile();
   const [items, setItems] = useState<WeekPlannerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
@@ -1044,11 +1057,11 @@ function ThisWeekTab({
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(7, 1fr)",
-          gap: "8px",
+          gap: isMobile ? "4px" : "8px",
           marginBottom: "24px",
         }}
       >
-        {weekDays.map((day) => {
+        {weekDays.map((day, index) => {
           const meta = dayMeta.get(day.dateKey);
           const isToday = day.dateKey === todayKey;
           const isSelected = selectedDayKey === day.dateKey;
@@ -1071,29 +1084,32 @@ function ThisWeekTab({
               type="button"
               onClick={() => handleDayClick(day.dateKey)}
               style={{
-                height: "64px",
+                height: isMobile ? "48px" : "64px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: "4px",
+                gap: isMobile ? "2px" : "4px",
                 cursor: hasItems ? "pointer" : "default",
                 background,
                 border,
-                borderRadius: "8px",
+                borderRadius: isMobile ? "6px" : "8px",
                 padding: 0,
               }}
             >
               <span
                 style={{
-                  fontSize: "10px",
+                  fontSize: isMobile ? "11px" : "10px",
                   textTransform: "uppercase",
-                  color: "#555555",
-                  letterSpacing: "0.04em",
+                  color: isToday ? "#ffffff" : "#555555",
+                  letterSpacing: isMobile ? 0 : "0.04em",
+                  fontWeight: isMobile ? 600 : 400,
+                  lineHeight: 1,
                 }}
               >
-                {day.label}
+                {isMobile ? CALENDAR_MOBILE_LABELS[index] : day.label}
               </span>
+              {!isMobile ? (
               <span
                 style={{
                   fontSize: "14px",
@@ -1104,6 +1120,7 @@ function ThisWeekTab({
               >
                 {day.dayNum}
               </span>
+              ) : null}
               {showDots ? (
                 <span
                   style={{
@@ -1234,7 +1251,7 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
   return (
     <Link
       to={`/app/clubs/${task.clubId}/tasks`}
-      className="block no-underline"
+      className="block w-full no-underline"
       style={{ cursor: "pointer" }}
     >
       <div
@@ -1694,7 +1711,7 @@ function OverviewTab({
   return (
     <>
       {/* ── Two-column layout ── */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
         {/* Left: My Tasks + Upcoming Events */}
         <div className="space-y-6">
           <Card className="p-6">
@@ -2214,7 +2231,7 @@ function TasksTabTaskCard({
   return (
     <Link
       to={`/app/clubs/${task.clubId}/tasks`}
-      className="block"
+      className="block w-full"
       style={{ cursor: "pointer" }}
     >
       <div

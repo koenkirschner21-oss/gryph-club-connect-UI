@@ -520,16 +520,7 @@ function HomeUpcomingEventsBlock() {
   if (hasEvents !== true) return null;
 
   return (
-    <div
-      style={{
-        paddingTop: 60,
-        paddingBottom: 60,
-        maxWidth: 1100,
-        margin: "0 auto",
-        paddingLeft: 24,
-        paddingRight: 24,
-      }}
-    >
+    <div className="mx-auto max-w-[1100px] px-4 py-[60px]">
       <UpcomingEventsSection />
     </div>
   );
@@ -581,7 +572,7 @@ export default function Home() {
         style={{ background: "#0f0f0f" }}
       >
         <div className="relative mx-auto max-w-7xl px-4 py-28 sm:px-6 sm:py-36 lg:px-8">
-          <div className="flex items-center gap-12 lg:gap-16">
+          <div className="flex flex-col items-center gap-12 md:flex-row lg:gap-16">
             <div className="max-w-3xl flex-1">
               <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <BrandLogo variant="hero" />
@@ -597,28 +588,22 @@ export default function Home() {
                   University of Guelph
                 </span>
               </div>
-              <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl leading-[1.05]">
+              <h1 className="text-[32px] font-extrabold leading-[1.05] tracking-tight md:text-5xl">
                 <span style={{ color: "#ffffff" }}>Discover Your</span>{" "}
                 <span style={{ color: "#FFC429" }}>Community</span>{" "}
                 <span style={{ color: "#ffffff" }}>at Guelph</span>
               </h1>
-              <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted">
+              <p className="mt-6 max-w-xl text-sm leading-relaxed text-muted md:text-lg">
                 Browse 261+ student clubs, find your passion, and connect with
                 like-minded Gryphons. Your university experience starts here.
               </p>
-              <div className="mt-10 flex flex-wrap gap-4">
+              <div className="mt-10 flex w-full flex-col gap-4 sm:flex-row sm:flex-wrap">
                 <Link
                   to="/explore"
+                  className="inline-flex min-h-[44px] w-full items-center justify-center rounded-md px-7 py-3 text-[15px] font-semibold text-white no-underline sm:w-auto"
                   style={{
-                    display: "inline-block",
                     backgroundColor: "#E51937",
-                    color: "#ffffff",
                     border: "none",
-                    borderRadius: "6px",
-                    padding: "12px 28px",
-                    fontWeight: 600,
-                    fontSize: "15px",
-                    textDecoration: "none",
                   }}
                 >
                   Explore Clubs
@@ -709,7 +694,7 @@ export default function Home() {
       ) : null}
 
       {/* How it works */}
-      <section style={{ background: "#0f0f0f", padding: "60px 24px" }}>
+      <section className="bg-[#0f0f0f] px-4 py-[60px]">
         <div className="mx-auto max-w-7xl">
           <h2
             style={{
@@ -852,13 +837,7 @@ function CtaSection() {
   };
 
   return (
-    <section
-      style={{
-        background: "#0f0f0f",
-        padding: "60px 40px",
-        textAlign: "center",
-      }}
-    >
+    <section className="bg-[#0f0f0f] px-4 py-[60px] text-center sm:px-10">
       <div className="mx-auto max-w-7xl">
         <h2
           style={{
@@ -880,32 +859,19 @@ function CtaSection() {
         >
           Join thousands of Guelph students already on GryphClubConnect
         </p>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "center",
-            gap: "12px",
-            marginTop: "24px",
-          }}
-        >
+        <div className="mt-6 flex w-full flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <Link
             to="/explore"
+            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-7 py-3 text-sm font-semibold text-white no-underline sm:w-auto"
             style={{
-              display: "inline-block",
               background: "#E51937",
-              color: "#ffffff",
-              borderRadius: "8px",
-              padding: "12px 28px",
-              fontSize: "14px",
-              fontWeight: 600,
-              textDecoration: "none",
             }}
           >
             Explore Clubs
           </Link>
           <Link
             to="/signup"
+            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-7 py-3 text-sm font-semibold no-underline sm:w-auto"
             style={signupButtonStyle}
             onMouseEnter={() => setSignupHovered(true)}
             onMouseLeave={() => setSignupHovered(false)}

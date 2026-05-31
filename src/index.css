@@ -44,10 +44,12 @@
 html {
   scroll-behavior: smooth;
   font-family: var(--font-sans);
+  overflow-x: hidden;
 }
 
 body {
   font-family: var(--font-sans);
+  overflow-x: hidden;
   font-size: 15px;
   line-height: 1.6;
   color: var(--text-1);

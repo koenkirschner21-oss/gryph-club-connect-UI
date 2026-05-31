@@ -11,6 +11,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import Spinner from "../../components/ui/Spinner";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 
 type AdminTab = "requests" | "users" | "moderation" | "stats" | "bugs";
 type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
@@ -324,6 +325,8 @@ function AdminTabButton({
         cursor: "pointer",
         marginBottom: "-1px",
         transition: "color 0.15s ease",
+        flexShrink: 0,
+        whiteSpace: "nowrap",
       }}
     >
       {label}
@@ -384,6 +387,7 @@ function startRolePreview(role: "member" | "executive" | "owner", navigate: (pat
 }
 
 export default function AdminPage() {
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>("requests");
@@ -1116,12 +1120,15 @@ export default function AdminPage() {
         style={{
           background: "#111111",
           borderBottom: "1px solid #1e1e1e",
-          padding: "0 40px",
+          padding: isMobile ? "0 16px" : "0 40px",
           display: "flex",
           alignItems: "flex-end",
           gap: "4px",
+          overflowX: isMobile ? "auto" : undefined,
+          flexWrap: isMobile ? "nowrap" : undefined,
         }}
       >
+        <div style={{ display: "flex", flexWrap: isMobile ? "nowrap" : undefined, flexShrink: isMobile ? 0 : undefined }}>
         <AdminTabButton
           label="Club Requests"
           active={activeTab === "requests"}
@@ -1147,9 +1154,10 @@ export default function AdminPage() {
           active={activeTab === "bugs"}
           onClick={() => setActiveTab("bugs")}
         />
+        </div>
       </div>
 
-      <div style={{ padding: "32px 40px" }}>
+      <div style={{ padding: isMobile ? "24px 16px" : "32px 40px" }}>
         {feedback ? (
           <p
             role="alert"
@@ -1590,7 +1598,9 @@ export default function AdminPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile
+                  ? "repeat(2, minmax(0, 1fr))"
+                  : "repeat(4, minmax(0, 1fr))",
                 gap: "16px",
               }}
             >
@@ -1637,6 +1647,118 @@ export default function AdminPage() {
               <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
                 No clubs found
               </p>
+            ) : isMobile ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {clubActivity.map((club) => (
+                  <div
+                    key={club.id}
+                    style={{
+                      background: "#1a1a1a",
+                      border: "1px solid #242424",
+                      borderRadius: "10px",
+                      padding: "14px 16px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        marginBottom: "12px",
+                        minWidth: 0,
+                      }}
+                    >
+                      {club.logoUrl ? (
+                        <img
+                          src={club.logoUrl}
+                          alt=""
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "6px",
+                            objectFit: "cover",
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "6px",
+                            border: "1px solid #2a2a2a",
+                            background: "#2a2a2a",
+                            color: "#888888",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {deriveClubAbbreviation(club.abbreviation ?? club.name)}
+                        </div>
+                      )}
+                      <span
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          color: "#ffffff",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {club.name}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "8px 12px",
+                      }}
+                    >
+                      <div>
+                        <p
+                          style={{
+                            margin: "0 0 2px",
+                            color: "#555555",
+                            fontSize: "10px",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Members
+                        </p>
+                        <p style={{ margin: 0, color: "#cccccc", fontSize: "13px" }}>
+                          {club.memberCount}
+                        </p>
+                      </div>
+                      <div>
+                        <p
+                          style={{
+                            margin: "0 0 2px",
+                            color: "#555555",
+                            fontSize: "10px",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Last Post
+                        </p>
+                        <p style={{ margin: 0, color: "#777777", fontSize: "13px" }}>
+                          {formatLastPostDate(club.lastPostAt)}
+                        </p>
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <span style={activityBadgeStyle(club.activityStatus)}>
+                          {club.activityStatus}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div
                 style={{
@@ -1919,12 +2041,12 @@ export default function AdminPage() {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0, 0, 0, 0.65)",
+            background: isMobile ? "#1a1a1a" : "rgba(0, 0, 0, 0.65)",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            alignItems: isMobile ? "stretch" : "center",
+            justifyContent: isMobile ? "stretch" : "center",
             zIndex: 50,
-            padding: "16px",
+            padding: isMobile ? 0 : "16px",
           }}
           onClick={() => {
             if (!actionLoadingId) setRejectTarget(null);
@@ -1934,11 +2056,13 @@ export default function AdminPage() {
             style={{
               position: "relative",
               background: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "12px",
-              padding: "24px",
-              maxWidth: "420px",
+              border: isMobile ? "none" : "1px solid #242424",
+              borderRadius: isMobile ? 0 : "12px",
+              padding: isMobile ? "24px 16px" : "24px",
+              maxWidth: isMobile ? "none" : "420px",
               width: "100%",
+              minHeight: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -2022,23 +2146,25 @@ export default function AdminPage() {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0, 0, 0, 0.65)",
+            background: isMobile ? "#1a1a1a" : "rgba(0, 0, 0, 0.65)",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            alignItems: isMobile ? "stretch" : "center",
+            justifyContent: isMobile ? "stretch" : "center",
             zIndex: 50,
-            padding: "16px",
+            padding: isMobile ? 0 : "16px",
           }}
           onClick={() => setShowApprovalChecklist(false)}
         >
           <div
             style={{
               background: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "12px",
-              padding: "28px",
-              maxWidth: "480px",
+              border: isMobile ? "none" : "1px solid #242424",
+              borderRadius: isMobile ? 0 : "12px",
+              padding: isMobile ? "28px 16px" : "28px",
+              maxWidth: isMobile ? "none" : "480px",
               width: "100%",
+              minHeight: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
             }}
             onClick={(e) => e.stopPropagation()}
           >

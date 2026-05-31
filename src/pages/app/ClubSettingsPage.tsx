@@ -7,6 +7,7 @@ import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
 import { parseJoinQuestions } from "../../lib/clubJoinUtils";
 import { useClubMembers } from "../../hooks/useClubMembers";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import type { ClubJoinType, JoinQuestion, MemberRole } from "../../types";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
@@ -208,6 +209,7 @@ export default function ClubSettingsPage() {
   const { user } = useAuthContext();
   const { getClubById, updateClub, leaveClub } = useClubContext();
   const { members } = useClubMembers(clubId);
+  const isMobile = useIsMobile();
 
   const club = getClubById(clubId ?? "");
 
@@ -591,7 +593,7 @@ export default function ClubSettingsPage() {
 
   if (roleLoading) {
     return (
-      <div className="p-6">
+      <div style={{ padding: isMobile ? "16px" : "24px" }}>
         <p className="text-sm text-muted">Loading settings…</p>
       </div>
     );
@@ -607,7 +609,7 @@ export default function ClubSettingsPage() {
 
   if (userRole === "member") {
     return (
-      <div className="p-6">
+      <div style={{ padding: isMobile ? "16px" : "24px" }}>
         <h1 className="mb-1 text-xl font-bold text-white">Personal Settings</h1>
         <p className="mb-6 text-sm text-muted">
           Manage your membership in this club.
@@ -734,7 +736,7 @@ export default function ClubSettingsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div style={{ padding: isMobile ? "16px" : "24px" }}>
       <h1 className="mb-1 text-xl font-bold text-white">Club Settings</h1>
       <p className="mb-6 text-sm text-muted">
         Manage your club&apos;s profile and details.
@@ -1035,6 +1037,7 @@ export default function ClubSettingsPage() {
             <div
               style={{
                 display: "flex",
+                flexDirection: isMobile ? "column" : "row",
                 gap: "12px",
                 flexWrap: "wrap",
               }}

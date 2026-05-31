@@ -19,6 +19,7 @@ import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
 import { getClubInitials } from "../lib/clubUtils";
 import { supabase } from "../lib/supabaseClient";
+import { useIsMobile, useWindowWidth } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
 
@@ -50,13 +51,15 @@ function ExploreSearchBar({
   value,
   onChange,
   placeholder,
+  fullWidth,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  fullWidth?: boolean;
 }) {
   return (
-    <div className="relative w-full" style={{ maxWidth: "500px" }}>
+    <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "500px" }}>
       <svg
         className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2"
         style={{ color: "#555555" }}
@@ -118,10 +121,12 @@ function CategoryFilterDropdown({
   categories,
   activeCategory,
   onSelect,
+  fullWidth,
 }: {
   categories: string[];
   activeCategory: string;
   onSelect: (category: string) => void;
+  fullWidth?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -149,7 +154,7 @@ function CategoryFilterDropdown({
   );
 
   return (
-    <div ref={rootRef} style={{ position: "relative", display: "inline-block" }}>
+    <div ref={rootRef} style={{ position: "relative", display: fullWidth ? "block" : "inline-block", width: fullWidth ? "100%" : undefined }}>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -166,6 +171,9 @@ function CategoryFilterDropdown({
           alignItems: "center",
           gap: "8px",
           cursor: "pointer",
+          width: fullWidth ? "100%" : undefined,
+          justifyContent: fullWidth ? "space-between" : undefined,
+          boxSizing: "border-box",
         }}
       >
         Filter by Category
@@ -477,6 +485,14 @@ function sortClubsByActivity(clubs: Club[]): Club[] {
 
 // ─── Main Explore page ──────────────────────────────────────────────────────
 export default function Explore() {
+  const isMobile = useIsMobile();
+  const width = useWindowWidth();
+  const allClubsGridColumns =
+    width < 768
+      ? "1fr"
+      : width < 1024
+        ? "repeat(2, minmax(0, 1fr))"
+        : "repeat(3, minmax(0, 1fr))";
   const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined } =
     useClubContext();
   const { user } = useAuthContext();
@@ -611,10 +627,15 @@ export default function Explore() {
     <>
       {/* Hero */}
       <section style={{ backgroundColor: PAGE_BG }}>
-        <div style={{ padding: "80px 48px 48px", textAlign: "left" }}>
+        <div
+          style={{
+            padding: isMobile ? "24px 16px 32px" : "80px 48px 48px",
+            textAlign: "left",
+          }}
+        >
           <h1
             style={{
-              fontSize: "56px",
+              fontSize: isMobile ? "28px" : "56px",
               fontWeight: 800,
               color: "#ffffff",
               lineHeight: 1,
@@ -635,11 +656,12 @@ export default function Explore() {
             Browse {clubs.length} student organizations at the University of Guelph
           </p>
 
-          <div style={{ marginTop: "24px", maxWidth: "500px" }}>
+          <div style={{ marginTop: "24px", width: "100%" }}>
             <ExploreSearchBar
               value={search}
               onChange={setSearch}
               placeholder="Search clubs by name, tag, or keyword…"
+              fullWidth={isMobile}
             />
           </div>
 
@@ -665,6 +687,7 @@ export default function Explore() {
             categories={categories}
             activeCategory={activeCategory}
             onSelect={setActiveCategory}
+            fullWidth={isMobile}
           />
         </div>
 
@@ -689,10 +712,11 @@ export default function Explore() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(3, minmax(0, 1fr))",
                     gap: "16px",
                   }}
-                  className="max-lg:grid-cols-2 max-sm:grid-cols-1"
                 >
                   {mostActiveClubs.map((club) => (
                     <ExploreClubCard
@@ -780,10 +804,9 @@ export default function Explore() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gridTemplateColumns: allClubsGridColumns,
                   gap: "16px",
                 }}
-                className="max-xl:grid-cols-3 max-md:grid-cols-2 max-sm:grid-cols-1"
               >
                 {filteredClubs.map((club) => (
                   <ExploreClubCard

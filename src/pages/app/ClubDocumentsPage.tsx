@@ -10,6 +10,7 @@ import {
 import { FileText, Globe, MoreHorizontal, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole } from "../../types";
 
@@ -763,6 +764,7 @@ function DocumentCard({
 
 export default function ClubDocumentsPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
@@ -1183,14 +1185,17 @@ export default function ClubDocumentsPage() {
 
   const gridStyle: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
+    gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
     gap: "16px",
   };
 
   return (
     <div
-      className="p-6"
-      style={{ backgroundColor: "#0f0f0f", minHeight: "100%" }}
+      style={{
+        backgroundColor: "#0f0f0f",
+        minHeight: "100%",
+        padding: isMobile ? "16px" : "24px",
+      }}
     >
       <Box
         style={{
