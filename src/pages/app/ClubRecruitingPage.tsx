@@ -37,6 +37,28 @@ interface ClubPosition {
   deadline: string | null;
   isOpen: boolean;
   applicantCount: number;
+  hiringListingId: string | null;
+}
+
+function mapRoleType(positionType: string): "executive" | "volunteer" | "general" {
+  if (positionType === "executive") return "executive";
+  if (positionType === "volunteer") return "volunteer";
+  return "general";
+}
+
+function formQuestionsToJson(drafts: PositionQuestionDraft[]): unknown[] {
+  return drafts
+    .filter((q) => q.question.trim())
+    .map((q, index) => ({
+      question: q.question.trim(),
+      question_type: q.question_type,
+      options:
+        q.question_type === "multiple_choice"
+          ? parseOptionsText(q.optionsText)
+          : null,
+      required: q.required,
+      order_index: index,
+    }));
 }
 
 interface JobApplicationRow {
@@ -459,7 +481,7 @@ export default function ClubRecruitingPage() {
     let query = supabase
       .from("club_positions")
       .select(
-        "id, title, description, requirements, position_type, commitment_level, weekly_hours, deadline, is_open",
+        "id, title, description, requirements, position_type, commitment_level, weekly_hours, deadline, is_open, hiring_listing_id",
       )
       .eq("club_id", clubId)
       .order("created_at", { ascending: false });
@@ -505,6 +527,7 @@ export default function ClubRecruitingPage() {
         deadline: (row.deadline as string) ?? null,
         isOpen: Boolean(row.is_open),
         applicantCount: counts[row.id as string] ?? 0,
+        hiringListingId: (row.hiring_listing_id as string | null) ?? null,
       })),
     );
 
@@ -608,6 +631,110 @@ export default function ClubRecruitingPage() {
     }
   }
 
+  async function syncNewHiringListing(
+    positionId: string,
+    listingPayload: {
+      title: string;
+      description: string;
+      requirements: string | null;
+      position_type: string;
+      commitment_level: CommitmentLevel;
+      weekly_hours: number | null;
+      deadline: string | null;
+    },
+  ) {
+    if (!clubId || !user?.id) return;
+
+    const { data: listing, error } = await supabase
+      .from("hiring_listings")
+      .insert({
+        club_id: clubId,
+        created_by: user.id,
+        title: listingPayload.title,
+        description: listingPayload.description,
+        role_type: mapRoleType(listingPayload.position_type),
+        deadline: deadline || null,
+        is_open: true,
+        questions: formQuestionsToJson(formQuestions),
+        requirements: listingPayload.requirements,
+        commitment_level: listingPayload.commitment_level || "flexible",
+        weekly_hours: listingPayload.weekly_hours,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Failed to sync hiring_listings:", error.message);
+      return;
+    }
+
+    if (listing?.id) {
+      const { error: linkError } = await supabase
+        .from("club_positions")
+        .update({ hiring_listing_id: listing.id })
+        .eq("id", positionId);
+
+      if (linkError) {
+        console.error(
+          "Failed to link club_positions to hiring_listings:",
+          linkError.message,
+        );
+      }
+    }
+  }
+
+  async function syncCloseHiringListing(position: ClubPosition) {
+    if (!clubId) return;
+
+    if (position.hiringListingId) {
+      const { error } = await supabase
+        .from("hiring_listings")
+        .update({ is_open: false })
+        .eq("id", position.hiringListingId);
+
+      if (error) {
+        console.error("Failed to close hiring_listings row:", error.message);
+      }
+      return;
+    }
+
+    const { error } = await supabase
+      .from("hiring_listings")
+      .update({ is_open: false })
+      .eq("club_id", clubId)
+      .eq("title", position.title);
+
+    if (error) {
+      console.error("Failed to close hiring_listings by title:", error.message);
+    }
+  }
+
+  async function syncDeleteHiringListing(position: ClubPosition | undefined) {
+    if (!clubId || !position) return;
+
+    if (position.hiringListingId) {
+      const { error } = await supabase
+        .from("hiring_listings")
+        .delete()
+        .eq("id", position.hiringListingId);
+
+      if (error) {
+        console.error("Failed to delete hiring_listings row:", error.message);
+      }
+      return;
+    }
+
+    const { error } = await supabase
+      .from("hiring_listings")
+      .delete()
+      .eq("club_id", clubId)
+      .eq("title", position.title);
+
+    if (error) {
+      console.error("Failed to delete hiring_listings by title:", error.message);
+    }
+  }
+
   async function handleSavePosition() {
     if (!clubId || !user?.id || !title.trim()) return;
     setSaving(true);
@@ -663,6 +790,15 @@ export default function ClubRecruitingPage() {
         return;
       }
       await savePositionQuestions(data.id as string, formQuestions);
+      void syncNewHiringListing(data.id as string, {
+        title: payload.title,
+        description: payload.description,
+        requirements: payload.requirements,
+        position_type: payload.position_type,
+        commitment_level: payload.commitment_level,
+        weekly_hours: payload.weekly_hours,
+        deadline: payload.deadline,
+      });
     }
 
     setSaving(false);
@@ -676,14 +812,19 @@ export default function ClubRecruitingPage() {
       .from("club_positions")
       .update({ is_open: false })
       .eq("id", position.id);
-    if (!error) void loadPositions();
+    if (!error) {
+      void syncCloseHiringListing(position);
+      void loadPositions();
+    }
     setOpenMenuId(null);
   }
 
   async function deletePosition(positionId: string) {
     if (!window.confirm("Delete this position and all applications?")) return;
+    const position = positions.find((p) => p.id === positionId);
     const { error } = await supabase.from("club_positions").delete().eq("id", positionId);
     if (!error) {
+      void syncDeleteHiringListing(position);
       if (expandedPositionId === positionId) {
         setExpandedPositionId(null);
         setApplications([]);
