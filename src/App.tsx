@@ -25,7 +25,6 @@ import { NotificationsProvider } from "./context/NotificationsProvider";
 import Home from "./pages/Home";
 import Explore from "./pages/Explore";
 import ClubPublicProfilePage from "./pages/ClubPublicProfilePage";
-import ClubDetails from "./pages/ClubDetails";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -287,8 +286,8 @@ export default function App() {
                 <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/terms" element={<TermsOfService />} />
 
-                {/* Legacy route — redirect old explore/:id links */}
-                <Route path="/explore/:slug" element={<ClubDetails />} />
+                {/* Legacy route — same public profile as /clubs/:slug */}
+                <Route path="/explore/:slug" element={<ClubPublicProfilePage />} />
 
                 {/* ───── Authenticated routes (/app/*) ───── */}
                 <Route
@@ -375,7 +374,9 @@ export default function App() {
                   path="/app/admin"
                   element={
                     <ProtectedRoute>
-                      <AdminDashboard />
+                      <PlatformAdminRoute>
+                        <AdminDashboard />
+                      </PlatformAdminRoute>
                     </ProtectedRoute>
                   }
                 />
@@ -383,7 +384,9 @@ export default function App() {
                   path="/app/admin/clubs"
                   element={
                     <ProtectedRoute>
-                      <AdminClubs />
+                      <PlatformAdminRoute>
+                        <AdminClubs />
+                      </PlatformAdminRoute>
                     </ProtectedRoute>
                   }
                 />
@@ -391,7 +394,9 @@ export default function App() {
                   path="/app/admin/users"
                   element={
                     <ProtectedRoute>
-                      <AdminUsers />
+                      <PlatformAdminRoute>
+                        <AdminUsers />
+                      </PlatformAdminRoute>
                     </ProtectedRoute>
                   }
                 />

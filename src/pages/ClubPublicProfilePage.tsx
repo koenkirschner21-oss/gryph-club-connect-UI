@@ -1342,7 +1342,7 @@ function SidebarDetails({
               navigate(
                 user && joined
                   ? `/app/clubs/${club.id}/recruiting`
-                  : "/app/hiring",
+                  : "/hiring",
               )
             }
             style={{

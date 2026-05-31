@@ -114,9 +114,6 @@ export default function UpcomingEventsSection() {
         .lte("date", endDate)
         .order("date", { ascending: true });
 
-      console.log("Raw query result:", data);
-      console.log("Query error:", error);
-
       if (cancelled) return;
 
       if (error) {
@@ -150,8 +147,6 @@ export default function UpcomingEventsSection() {
           } satisfies CampusEvent;
         })
         .filter((ev) => ev.visibility === "featured");
-
-      console.log("Filtered events:", filtered);
 
       setEvents(filtered);
       setLoading(false);

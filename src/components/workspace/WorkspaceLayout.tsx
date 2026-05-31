@@ -146,7 +146,7 @@ export default function WorkspaceLayout() {
     userRole === "owner" || userRole === "executive";
 
   const workspaceBasePath = resolvedClubId
-    ? `/app/workspace/${resolvedClubId}`
+    ? `/app/clubs/${resolvedClubId}`
     : "";
 
   const loadBadgeCounts = useCallback(async () => {

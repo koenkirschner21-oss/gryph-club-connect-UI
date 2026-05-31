@@ -596,6 +596,7 @@ function NextEventBanner({
 
 export default function ClubHomePage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const navigate = useNavigate();
   const { user } = useAuthContext();
   const { getClubById, getUserRole, userRoles } = useClubContext();
   const club = getClubById(clubId ?? "");
@@ -618,6 +619,10 @@ export default function ClubHomePage() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
+  const [memberRsvps, setMemberRsvps] = useState<
+    Record<string, "going" | "maybe" | "not_going" | null>
+  >({});
 
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
@@ -691,9 +696,6 @@ export default function ClubHomePage() {
   const previewPosts = posts.slice(0, postsCap);
   const eventsCap = userRole === "member" ? 4 : 3;
   const previewEvents = upcomingEvents.slice(0, eventsCap);
-  const [memberRsvps, setMemberRsvps] = useState<
-    Record<string, "going" | "maybe" | "not_going" | null>
-  >({});
 
   function handleCopyInviteCode() {
     if (!club?.joinCode) return;
@@ -756,7 +758,7 @@ export default function ClubHomePage() {
     }
 
     setInviteLink(
-      `https://gryphclubconnect.com/invite/${data.token as string}`,
+      `${window.location.origin}/invite/${data.token as string}`,
     );
   }
 
@@ -778,8 +780,6 @@ export default function ClubHomePage() {
     );
   }
 
-  const navigate = useNavigate();
-  const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
   const clubPublicPath = club.slug ? `/clubs/${club.slug}` : "/explore";
   const settingsPath = `${clubBasePath}/settings`;
 

@@ -326,6 +326,34 @@ export default function Navbar() {
                 >
                   Hiring
                 </Link>
+                <Link
+                  to="/app/profile"
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={
+                    location.pathname === "/app/profile" ? "page" : undefined
+                  }
+                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    location.pathname === "/app/profile"
+                      ? "bg-white/10 text-white"
+                      : "text-muted hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  Profile
+                </Link>
+                <Link
+                  to="/app/settings"
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={
+                    location.pathname === "/app/settings" ? "page" : undefined
+                  }
+                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    location.pathname === "/app/settings"
+                      ? "bg-white/10 text-white"
+                      : "text-muted hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  Settings
+                </Link>
                 {isPlatformAdmin ? (
                   <Link
                     to="/admin"
