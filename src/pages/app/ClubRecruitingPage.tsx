@@ -15,11 +15,13 @@ import Spinner from "../../components/ui/Spinner";
 import {
   POSITION_TYPES,
   PositionQuestionBuilder,
+  commitmentLabel,
   darkInputStyle,
   deadlineLabel,
   modalOverlayStyle,
   normalizeOptions,
   parseOptionsText,
+  type CommitmentLevel,
   type PositionQuestionDraft,
   type PositionType,
 } from "./HiringBoardPage";
@@ -30,6 +32,8 @@ interface ClubPosition {
   description: string;
   requirements: string;
   positionType: string;
+  commitmentLevel: CommitmentLevel;
+  weeklyHours: number | null;
   deadline: string | null;
   isOpen: boolean;
   applicantCount: number;
@@ -417,6 +421,8 @@ export default function ClubRecruitingPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [requirements, setRequirements] = useState("");
+  const [commitmentLevel, setCommitmentLevel] = useState<CommitmentLevel>("flexible");
+  const [weeklyHours, setWeeklyHours] = useState("");
   const [positionType, setPositionType] = useState<PositionType>("executive");
   const [deadline, setDeadline] = useState("");
   const [formQuestions, setFormQuestions] = useState<PositionQuestionDraft[]>([]);
@@ -452,7 +458,9 @@ export default function ClubRecruitingPage() {
 
     let query = supabase
       .from("club_positions")
-      .select("id, title, description, requirements, position_type, deadline, is_open")
+      .select(
+        "id, title, description, requirements, position_type, commitment_level, weekly_hours, deadline, is_open",
+      )
       .eq("club_id", clubId)
       .order("created_at", { ascending: false });
 
@@ -492,6 +500,8 @@ export default function ClubRecruitingPage() {
         description: (row.description as string) ?? "",
         requirements: (row.requirements as string) ?? "",
         positionType: (row.position_type as string) ?? "executive",
+        commitmentLevel: ((row.commitment_level as CommitmentLevel) ?? "flexible"),
+        weeklyHours: (row.weekly_hours as number | null) ?? null,
         deadline: (row.deadline as string) ?? null,
         isOpen: Boolean(row.is_open),
         applicantCount: counts[row.id as string] ?? 0,
@@ -533,6 +543,8 @@ export default function ClubRecruitingPage() {
     setTitle("");
     setDescription("");
     setRequirements("");
+    setCommitmentLevel("flexible");
+    setWeeklyHours("");
     setPositionType("executive");
     setDeadline("");
     setFormQuestions([]);
@@ -549,6 +561,12 @@ export default function ClubRecruitingPage() {
     setTitle(position.title);
     setDescription(position.description);
     setRequirements(position.requirements);
+    setCommitmentLevel(position.commitmentLevel);
+    setWeeklyHours(
+      position.weeklyHours != null && position.weeklyHours > 0
+        ? String(position.weeklyHours)
+        : "",
+    );
     setPositionType(position.positionType as PositionType);
     setDeadline(
       position.deadline
@@ -594,12 +612,20 @@ export default function ClubRecruitingPage() {
     if (!clubId || !user?.id || !title.trim()) return;
     setSaving(true);
 
+    const parsedWeeklyHours =
+      commitmentLevel === "weekly_hours" && weeklyHours.trim()
+        ? Math.max(1, parseInt(weeklyHours, 10) || 0)
+        : null;
+
     const payload = {
       club_id: clubId,
       title: title.trim(),
       description: description.trim(),
       requirements: requirements.trim() || null,
       position_type: positionType,
+      commitment_level: commitmentLevel,
+      weekly_hours:
+        commitmentLevel === "weekly_hours" ? parsedWeeklyHours : null,
       deadline: deadline ? new Date(deadline).toISOString() : null,
       created_by: user.id,
     };
@@ -612,6 +638,8 @@ export default function ClubRecruitingPage() {
           description: payload.description,
           requirements: payload.requirements,
           position_type: payload.position_type,
+          commitment_level: payload.commitment_level,
+          weekly_hours: payload.weekly_hours,
           deadline: payload.deadline,
         })
         .eq("id", editingPosition.id);
@@ -876,6 +904,20 @@ export default function ClubRecruitingPage() {
                       </h3>
                       <span style={roleTypeBadgeStyle(position.positionType)}>
                         {roleTypeLabel(position.positionType)}
+                      </span>
+                      <span
+                        style={{
+                          background: "#111111",
+                          border: "1px solid #1e1e1e",
+                          color: "#747676",
+                          borderRadius: "4px",
+                          padding: "2px 8px",
+                          fontSize: "10px",
+                          fontWeight: 500,
+                          display: "inline-block",
+                        }}
+                      >
+                        {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
                       </span>
                       <span style={openStatusPillStyle(position.isOpen)}>
                         {position.isOpen ? "Open" : "Closed"}
@@ -1260,21 +1302,95 @@ export default function ClubRecruitingPage() {
               }}
             />
 
-            <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
-              Requirements (optional)
+            <label
+              style={{
+                display: "block",
+                fontSize: "13px",
+                color: "#cccccc",
+                marginBottom: "4px",
+              }}
+            >
+              Requirements
             </label>
+            <p style={{ fontSize: "11px", color: "#555555", margin: "0 0 8px" }}>
+              What skills or experience are you looking for?
+            </p>
             <textarea
               value={requirements}
               onChange={(e) => setRequirements(e.target.value)}
-              placeholder="One requirement per line"
+              rows={3}
               style={{
                 ...darkInputStyle,
                 width: "100%",
-                minHeight: "80px",
                 marginBottom: "14px",
                 resize: "vertical",
               }}
             />
+
+            <label
+              style={{
+                display: "block",
+                fontSize: "13px",
+                color: "#cccccc",
+                marginTop: "16px",
+                marginBottom: "8px",
+              }}
+            >
+              Commitment
+            </label>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "8px",
+                marginBottom: "14px",
+              }}
+            >
+              {(
+                [
+                  { value: "flexible" as const, label: "Flexible" },
+                  { value: "part_time" as const, label: "Part-time" },
+                  { value: "weekly_hours" as const, label: "Set Hours/Week" },
+                ] as const
+              ).map((pill) => {
+                const selected = commitmentLevel === pill.value;
+                return (
+                  <button
+                    key={pill.value}
+                    type="button"
+                    onClick={() => setCommitmentLevel(pill.value)}
+                    style={{
+                      background: selected ? "#E51937" : "#1a1a1a",
+                      border: selected ? "1px solid #E51937" : "1px solid #333333",
+                      color: selected ? "#ffffff" : "#777777",
+                      borderRadius: "20px",
+                      padding: "6px 16px",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              })}
+              {commitmentLevel === "weekly_hours" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={weeklyHours}
+                    onChange={(e) => setWeeklyHours(e.target.value)}
+                    style={{ ...darkInputStyle, width: "80px" }}
+                  />
+                  <span style={{ fontSize: "12px", color: "#777777" }}>
+                    hours per week
+                  </span>
+                </div>
+              ) : null}
+            </div>
 
             <p style={{ fontSize: "12px", color: "#888888", marginBottom: "8px" }}>Position type</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "14px" }}>

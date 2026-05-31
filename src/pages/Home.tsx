@@ -2,11 +2,11 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import Button from "../components/ui/Button";
 import { useClubContext } from "../context/useClubContext";
+import { useAuthContext } from "../context/useAuthContext";
 import { getClubInitials } from "../lib/clubUtils";
 import { supabase } from "../lib/supabaseClient";
 import BrandLogo from "../components/ui/BrandLogo";
 import UpcomingEventsSection from "../components/ui/UpcomingEventsSection";
-import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
 
 const CLUB_AVATAR_BACKGROUNDS = ["#1a0505", "#1a1500", "#0a0a1a", "#0a1a0a", "#1a0a1a"] as const;
@@ -163,7 +163,7 @@ function DashboardHeroMockup() {
 
         <div style={{ flex: 1, padding: "16px", minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: "10px", color: "#555555" }}>
-            Welcome back
+            Welcome back,
           </p>
           <p
             style={{
@@ -173,7 +173,7 @@ function DashboardHeroMockup() {
               color: "#ffffff",
             }}
           >
-            Koen
+            Alex
           </p>
 
           <div
@@ -350,57 +350,6 @@ function DashboardHeroMockup() {
   );
 }
 
-function FeaturedClubSkeleton() {
-  return (
-    <article
-      style={{
-        background: "#1a1a1a",
-        border: "1px solid #242424",
-        borderRadius: "12px",
-        overflow: "hidden",
-      }}
-      aria-hidden
-    >
-      <div
-        style={{
-          height: "100px",
-          background: "linear-gradient(90deg, #1a1a1a 0%, #242424 50%, #1a1a1a 100%)",
-          backgroundSize: "200% 100%",
-          animation: "home-skeleton-shimmer 1.4s ease-in-out infinite",
-        }}
-      />
-      <div style={{ padding: "16px" }}>
-        <div
-          style={{
-            height: "14px",
-            width: "70%",
-            borderRadius: "4px",
-            background: "#242424",
-            marginBottom: "10px",
-          }}
-        />
-        <div
-          style={{
-            height: "18px",
-            width: "40%",
-            borderRadius: "4px",
-            background: "#1e1e1e",
-            marginBottom: "12px",
-          }}
-        />
-        <div
-          style={{
-            height: "12px",
-            width: "50%",
-            borderRadius: "4px",
-            background: "#1e1e1e",
-          }}
-        />
-      </div>
-    </article>
-  );
-}
-
 function HomeFeaturedClubCard({ club }: { club: Club }) {
   const [hovered, setHovered] = useState(false);
   const { bg, border } = getClubAvatarColors(club.name);
@@ -527,7 +476,67 @@ const HOW_IT_WORKS = [
   },
 ] as const;
 
+function HomeUpcomingEventsBlock() {
+  const [hasEvents, setHasEvents] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const end = new Date(today);
+      end.setDate(end.getDate() + 30);
+      const todayStr = today.toISOString().slice(0, 10);
+      const endDate = end.toISOString().slice(0, 10);
+
+      const { data, error } = await supabase
+        .from("events")
+        .select("id, visibility")
+        .gte("date", todayStr)
+        .lte("date", endDate);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Failed to load campus events for home:", error.message);
+        setHasEvents(false);
+        return;
+      }
+
+      const featuredCount = (data ?? []).filter(
+        (row) => row.visibility === "featured",
+      ).length;
+      setHasEvents(featuredCount > 0);
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (hasEvents !== true) return null;
+
+  return (
+    <div
+      style={{
+        paddingTop: 60,
+        paddingBottom: 60,
+        maxWidth: 1100,
+        margin: "0 auto",
+        paddingLeft: 24,
+        paddingRight: 24,
+      }}
+    >
+      <UpcomingEventsSection />
+    </div>
+  );
+}
+
 export default function Home() {
+  const { user } = useAuthContext();
   const { clubs, savedClubs } = useClubContext();
   const [featuredClubs, setFeaturedClubs] = useState<Club[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState(true);
@@ -659,6 +668,7 @@ export default function Home() {
       </section>
 
       {/* Featured Clubs */}
+      {!featuredLoading && featuredClubs.length > 0 ? (
       <section
         className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8"
         style={{ backgroundColor: "#0f0f0f" }}
@@ -682,38 +692,21 @@ export default function Home() {
               marginBottom: 0,
             }}
           >
-            Discover what&apos;s happening on campus
+            A few clubs you might like
           </p>
         </div>
-        <style>{`
-          @keyframes home-skeleton-shimmer {
-            0% { background-position: 100% 0; }
-            100% { background-position: -100% 0; }
-          }
-        `}</style>
-        {featuredLoading ? (
-          <div className="flex justify-center py-12">
-            <Spinner label="Loading clubs…" />
-          </div>
-        ) : featuredClubs.length === 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <FeaturedClubSkeleton key={i} />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {featuredClubs.map((club) => (
-              <HomeFeaturedClubCard key={club.id} club={club} />
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {featuredClubs.map((club) => (
+            <HomeFeaturedClubCard key={club.id} club={club} />
+          ))}
+        </div>
         <div className="mt-10 text-center">
           <Link to="/explore">
             <Button variant="outline">View All Clubs</Button>
           </Link>
         </div>
       </section>
+      ) : null}
 
       {/* How it works */}
       <section style={{ background: "#0f0f0f", padding: "60px 24px" }}>
@@ -748,25 +741,39 @@ export default function Home() {
                   border: "1px solid #242424",
                   borderRadius: "10px",
                   padding: "24px",
-                  textAlign: "center",
+                  textAlign: "left",
                 }}
               >
-                <p
+                <div
                   style={{
-                    fontSize: "32px",
-                    fontWeight: 800,
-                    color: "#E51937",
-                    margin: "0 0 8px",
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "8px",
+                    background: "#1a0505",
+                    border: "1px solid #E51937",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  {item.step}
-                </p>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: 700,
+                      color: "#E51937",
+                    }}
+                  >
+                    {item.step}
+                  </span>
+                </div>
                 <p
                   style={{
                     fontSize: "15px",
                     fontWeight: 600,
                     color: "#ffffff",
-                    margin: "0 0 8px",
+                    marginTop: "12px",
+                    marginBottom: 0,
+                    textAlign: "left",
                   }}
                 >
                   {item.title}
@@ -776,7 +783,9 @@ export default function Home() {
                     fontSize: "13px",
                     color: "#555555",
                     lineHeight: 1.6,
-                    margin: 0,
+                    marginTop: "6px",
+                    marginBottom: 0,
+                    textAlign: "left",
                   }}
                 >
                   {item.description}
@@ -787,21 +796,10 @@ export default function Home() {
         </div>
       </section>
 
-      <div
-        style={{
-          paddingTop: 60,
-          paddingBottom: 60,
-          maxWidth: 1100,
-          margin: "0 auto",
-          paddingLeft: 24,
-          paddingRight: 24,
-        }}
-      >
-        <UpcomingEventsSection />
-      </div>
+      <HomeUpcomingEventsBlock />
 
       {/* Saved Clubs */}
-      {savedClubList.length > 0 && (
+      {user && savedClubList.length > 0 ? (
         <section className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8">
           <div className="mb-10 text-center">
             <h2 className="text-3xl font-extrabold text-white">Your Saved Clubs</h2>
@@ -829,7 +827,7 @@ export default function Home() {
             </p>
           )}
         </section>
-      )}
+      ) : null}
 
       {/* CTA Section */}
       <CtaSection />
