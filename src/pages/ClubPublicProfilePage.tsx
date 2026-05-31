@@ -3,12 +3,19 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { Globe, Users } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { getClubInitials } from "../lib/clubUtils";
+import {
+  joinTypeBadgeLabel,
+  joinTypeBadgeStyle,
+  normalizeJoinType,
+  parseJoinQuestions,
+} from "../lib/clubJoinUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { supabase } from "../lib/supabaseClient";
-import type { Club, ClubEvent } from "../types";
+import type { Club, ClubEvent, ClubJoinType, JoinAnswer, JoinQuestion } from "../types";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
+import { darkInputStyle, modalOverlayStyle } from "./app/HiringBoardPage";
 
 interface PublicClubProfile {
   id: string;
@@ -25,7 +32,11 @@ interface PublicClubProfile {
   twitterUrl?: string;
   websiteUrl?: string;
   createdAt?: string;
+  joinType: ClubJoinType;
+  joinQuestions: JoinQuestion[];
 }
+
+type JoinApplicationStatus = "pending" | "approved" | "rejected" | null;
 
 interface ClubOwnerContact {
   fullName: string;
@@ -360,6 +371,10 @@ export default function ClubPublicProfilePage() {
   const [joinError, setJoinError] = useState(false);
   const [joining, setJoining] = useState(false);
   const [bookmarkHovered, setBookmarkHovered] = useState(false);
+  const [applicationStatus, setApplicationStatus] =
+    useState<JoinApplicationStatus>(null);
+  const [showApplicationModal, setShowApplicationModal] = useState(false);
+  const [submittingApplication, setSubmittingApplication] = useState(false);
 
   const clubId = profile?.id ?? contextClub?.id;
   const joined = clubId ? isJoined(clubId) : false;
@@ -413,21 +428,40 @@ export default function ClubPublicProfilePage() {
         twitterUrl: (clubRow.twitter_url as string) ?? undefined,
         websiteUrl: (clubRow.website_url as string) ?? undefined,
         createdAt: (clubRow.created_at as string) ?? undefined,
+        joinType: normalizeJoinType(clubRow.join_type),
+        joinQuestions: parseJoinQuestions(clubRow.join_questions),
       };
 
       setProfile(loaded);
 
       let isMember = false;
+      let userApplicationStatus: JoinApplicationStatus = null;
       if (user?.id) {
-        const { data: membership } = await supabase
-          .from("club_members")
-          .select("id")
-          .eq("club_id", loaded.id)
-          .eq("user_id", user.id)
-          .eq("status", "active")
-          .maybeSingle();
+        const [{ data: membership }, { data: application }] = await Promise.all([
+          supabase
+            .from("club_members")
+            .select("id")
+            .eq("club_id", loaded.id)
+            .eq("user_id", user.id)
+            .eq("status", "active")
+            .maybeSingle(),
+          supabase
+            .from("club_join_applications")
+            .select("status")
+            .eq("club_id", loaded.id)
+            .eq("applicant_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
         isMember = !!membership;
+        if (application?.status === "pending" ||
+            application?.status === "approved" ||
+            application?.status === "rejected") {
+          userApplicationStatus = application.status;
+        }
       }
+      setApplicationStatus(userApplicationStatus);
 
       const [{ count: members }, { count: positions }, eventsRes, ownersRes] =
         await Promise.all([
@@ -506,6 +540,8 @@ export default function ClubPublicProfilePage() {
 
   async function handleJoinOrLeave() {
     if (!clubId) return;
+    const joinType = profile?.joinType ?? contextClub?.joinType ?? "open";
+    if (joinType !== "open") return;
     if (joined || pending) {
       leaveClub(clubId);
       return;
@@ -515,6 +551,62 @@ export default function ClubPublicProfilePage() {
     const ok = await joinClub(clubId);
     if (!ok) setJoinError(true);
     setJoining(false);
+  }
+
+  async function handleRequestVoteJoin() {
+    if (!clubId || !user?.id) {
+      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+    if (applicationStatus === "pending" || joined) return;
+
+    setSubmittingApplication(true);
+    setJoinError(false);
+    const { error } = await supabase.from("club_join_applications").insert({
+      club_id: clubId,
+      applicant_id: user.id,
+      answers: [],
+      status: "pending",
+    });
+
+    setSubmittingApplication(false);
+    if (error) {
+      console.error("Failed to submit join request:", error.message);
+      setJoinError(true);
+      return;
+    }
+    setApplicationStatus("pending");
+  }
+
+  async function handleSubmitJoinApplication(answers: JoinAnswer[]) {
+    if (!clubId || !user?.id) return;
+
+    setSubmittingApplication(true);
+    setJoinError(false);
+    const { error } = await supabase.from("club_join_applications").insert({
+      club_id: clubId,
+      applicant_id: user.id,
+      answers,
+      status: "pending",
+    });
+
+    setSubmittingApplication(false);
+    if (error) {
+      console.error("Failed to submit application:", error.message);
+      setJoinError(true);
+      return;
+    }
+
+    setApplicationStatus("pending");
+    setShowApplicationModal(false);
+  }
+
+  function openApplicationFlow() {
+    if (!user?.id) {
+      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+    setShowApplicationModal(true);
   }
 
   const loading = user ? contextLoading || pageLoading : pageLoading;
@@ -552,7 +644,14 @@ export default function ClubPublicProfilePage() {
     imageUrl: contextClub!.imageUrl,
     category: contextClub!.category,
     createdAt: contextClub!.createdAt,
+    joinType: contextClub!.joinType ?? "open",
+    joinQuestions: contextClub!.joinQuestions ?? [],
   };
+
+  const joinType = club.joinType ?? "open";
+  const joinQuestions = club.joinQuestions ?? [];
+  const joinBadgeStyle = joinTypeBadgeStyle(joinType);
+  const joinBadgeLabel = joinTypeBadgeLabel(joinType);
 
   const aboutText =
     club.longDescription?.trim() || club.shortDescription?.trim() || "";
@@ -711,6 +810,11 @@ export default function ClubPublicProfilePage() {
                 >
                   {club.name}
                 </h1>
+                {joinBadgeStyle && joinBadgeLabel ? (
+                  <span style={{ ...joinBadgeStyle, marginTop: "8px" }}>
+                    {joinBadgeLabel}
+                  </span>
+                ) : null}
               </div>
 
               <div
@@ -770,65 +874,36 @@ export default function ClubPublicProfilePage() {
                     Open Workspace
                   </Link>
                 )}
-                <button
-                  type="button"
-                  disabled={joining}
-                  onClick={() => void handleJoinOrLeave()}
-                  style={
-                    joined
-                      ? {
-                          background: "transparent",
-                          border: "1px solid #E51937",
-                          color: "#E51937",
-                          borderRadius: "8px",
-                          padding: "10px 24px",
-                          fontWeight: 600,
-                          fontSize: "14px",
-                          cursor: joining ? "wait" : "pointer",
-                          whiteSpace: "nowrap",
-                        }
-                      : pending
-                        ? {
-                            background: "transparent",
-                            border: "1px solid #333333",
-                            color: "#888888",
-                            borderRadius: "8px",
-                            padding: "10px 24px",
-                            fontWeight: 600,
-                            fontSize: "14px",
-                            cursor: joining ? "wait" : "pointer",
-                            whiteSpace: "nowrap",
-                          }
-                        : {
-                            background: "#E51937",
-                            color: "#ffffff",
-                            border: "none",
-                            borderRadius: "8px",
-                            padding: "10px 24px",
-                            fontWeight: 600,
-                            fontSize: "14px",
-                            cursor: joining ? "wait" : "pointer",
-                            whiteSpace: "nowrap",
-                          }
-                  }
-                >
-                  {joining
-                    ? "Joining…"
-                    : joined
-                      ? "Leave Club"
-                      : pending
-                        ? "Cancel Request"
-                        : "Join Club"}
-                </button>
+                <ClubJoinAction
+                  joinType={joinType}
+                  joined={joined}
+                  pending={pending}
+                  joining={joining}
+                  submittingApplication={submittingApplication}
+                  applicationStatus={applicationStatus}
+                  onOpenJoin={() => void handleJoinOrLeave()}
+                  onOpenApplication={openApplicationFlow}
+                  onRequestVote={() => void handleRequestVoteJoin()}
+                />
               </div>
             </div>
             {joinError ? (
               <p className="mt-2 text-sm text-primary" role="alert">
-                Failed to join club. Please try again.
+                Something went wrong. Please try again.
               </p>
             ) : null}
           </div>
         </div>
+
+        {showApplicationModal ? (
+          <ClubJoinApplicationModal
+            clubName={club.name}
+            questions={joinQuestions}
+            submitting={submittingApplication}
+            onClose={() => setShowApplicationModal(false)}
+            onSubmit={(answers) => void handleSubmitJoinApplication(answers)}
+          />
+        ) : null}
 
         <div
           className="mt-8 flex flex-col gap-6 lg:flex-row"
@@ -1288,5 +1363,352 @@ function SidebarDetails({
         </div>
       ) : null}
     </>
+  );
+}
+
+function statusBadgeStyle(base: CSSProperties): CSSProperties {
+  return {
+    borderRadius: "6px",
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+    ...base,
+  };
+}
+
+function ClubJoinAction({
+  joinType,
+  joined,
+  pending,
+  joining,
+  submittingApplication,
+  applicationStatus,
+  onOpenJoin,
+  onOpenApplication,
+  onRequestVote,
+}: {
+  joinType: ClubJoinType;
+  joined: boolean;
+  pending: boolean;
+  joining: boolean;
+  submittingApplication: boolean;
+  applicationStatus: JoinApplicationStatus;
+  onOpenJoin: () => void;
+  onOpenApplication: () => void;
+  onRequestVote: () => void;
+}) {
+  if (joined) {
+    return (
+      <button
+        type="button"
+        disabled={joining}
+        onClick={onOpenJoin}
+        style={{
+          background: "transparent",
+          border: "1px solid #E51937",
+          color: "#E51937",
+          borderRadius: "8px",
+          padding: "10px 24px",
+          fontWeight: 600,
+          fontSize: "14px",
+          cursor: joining ? "wait" : "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {joining ? "Leaving…" : "Leave Club"}
+      </button>
+    );
+  }
+
+  if (joinType === "application") {
+    if (applicationStatus === "pending") {
+      return (
+        <span
+          style={statusBadgeStyle({
+            background: "#1a1500",
+            border: "1px solid #FFC429",
+            color: "#FFC429",
+          })}
+        >
+          Application Submitted
+        </span>
+      );
+    }
+    if (applicationStatus === "rejected") {
+      return (
+        <span
+          style={statusBadgeStyle({
+            background: "#1a1a1a",
+            border: "1px solid #333333",
+            color: "#747676",
+          })}
+        >
+          Application Declined
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        disabled={submittingApplication}
+        onClick={onOpenApplication}
+        style={{
+          background: "#E51937",
+          color: "#ffffff",
+          border: "none",
+          borderRadius: "8px",
+          padding: "10px 24px",
+          fontWeight: 600,
+          fontSize: "14px",
+          cursor: submittingApplication ? "wait" : "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {submittingApplication ? "Submitting…" : "Apply to Join"}
+      </button>
+    );
+  }
+
+  if (joinType === "vote") {
+    if (applicationStatus === "pending") {
+      return (
+        <span
+          style={statusBadgeStyle({
+            background: "#0a0a1a",
+            border: "1px solid #6b7cff",
+            color: "#6b7cff",
+          })}
+        >
+          Vote in Progress
+        </span>
+      );
+    }
+    if (applicationStatus === "rejected") {
+      return (
+        <span
+          style={statusBadgeStyle({
+            background: "#1a1a1a",
+            border: "1px solid #333333",
+            color: "#747676",
+          })}
+        >
+          Declined
+        </span>
+      );
+    }
+    return (
+      <button
+        type="button"
+        disabled={submittingApplication}
+        onClick={onRequestVote}
+        style={{
+          background: "#E51937",
+          color: "#ffffff",
+          border: "none",
+          borderRadius: "8px",
+          padding: "10px 24px",
+          fontWeight: 600,
+          fontSize: "14px",
+          cursor: submittingApplication ? "wait" : "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {submittingApplication ? "Submitting…" : "Request to Join"}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={joining}
+      onClick={onOpenJoin}
+      style={
+        pending
+          ? {
+              background: "transparent",
+              border: "1px solid #333333",
+              color: "#888888",
+              borderRadius: "8px",
+              padding: "10px 24px",
+              fontWeight: 600,
+              fontSize: "14px",
+              cursor: joining ? "wait" : "pointer",
+              whiteSpace: "nowrap",
+            }
+          : {
+              background: "#E51937",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "10px 24px",
+              fontWeight: 600,
+              fontSize: "14px",
+              cursor: joining ? "wait" : "pointer",
+              whiteSpace: "nowrap",
+            }
+      }
+    >
+      {joining
+        ? "Joining…"
+        : pending
+          ? "Cancel Request"
+          : "Join Club"}
+    </button>
+  );
+}
+
+function ClubJoinApplicationModal({
+  clubName,
+  questions,
+  submitting,
+  onClose,
+  onSubmit,
+}: {
+  clubName: string;
+  questions: JoinQuestion[];
+  submitting: boolean;
+  onClose: () => void;
+  onSubmit: (answers: JoinAnswer[]) => void;
+}) {
+  const effectiveQuestions =
+    questions.length > 0
+      ? questions
+      : [
+          {
+            id: "default-why",
+            question: "Why do you want to join?",
+            question_type: "long" as const,
+            required: true,
+            order_index: 0,
+          },
+        ];
+
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function validate(): boolean {
+    const next: Record<string, string> = {};
+    for (const q of effectiveQuestions) {
+      if (q.required && !(answers[q.id] ?? "").trim()) {
+        next[q.id] = "This field is required.";
+      }
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }
+
+  function handleSubmit() {
+    if (!validate()) return;
+    const payload: JoinAnswer[] = effectiveQuestions
+      .map((q) => ({
+        id: q.id,
+        question: q.question,
+        answer: (answers[q.id] ?? "").trim(),
+      }))
+      .filter((row) => row.answer);
+    onSubmit(payload);
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{ ...modalOverlayStyle, zIndex: 60 }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#1a1a1a",
+          border: "1px solid #242424",
+          borderRadius: "12px",
+          padding: "28px",
+          maxWidth: "520px",
+          width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          style={{
+            fontWeight: 700,
+            fontSize: "18px",
+            color: "#ffffff",
+            margin: "0 0 20px",
+          }}
+        >
+          Apply to Join {clubName}
+        </h2>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {effectiveQuestions.map((q) => (
+            <div key={q.id}>
+              <label
+                htmlFor={`join-q-${q.id}`}
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#cccccc",
+                  marginBottom: "6px",
+                }}
+              >
+                {q.question}
+                {q.required ? " *" : ""}
+              </label>
+              {q.question_type === "long" ? (
+                <textarea
+                  id={`join-q-${q.id}`}
+                  rows={4}
+                  value={answers[q.id] ?? ""}
+                  onChange={(e) =>
+                    setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
+                  }
+                  style={{ ...darkInputStyle, width: "100%", resize: "vertical" }}
+                />
+              ) : (
+                <input
+                  id={`join-q-${q.id}`}
+                  type="text"
+                  value={answers[q.id] ?? ""}
+                  onChange={(e) =>
+                    setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
+                  }
+                  style={{ ...darkInputStyle, width: "100%" }}
+                />
+              )}
+              {errors[q.id] ? (
+                <p style={{ fontSize: "12px", color: "#E51937", margin: "4px 0 0" }}>
+                  {errors[q.id]}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={handleSubmit}
+          style={{
+            width: "100%",
+            marginTop: "20px",
+            background: "#E51937",
+            color: "#ffffff",
+            border: "none",
+            borderRadius: "6px",
+            padding: "10px 16px",
+            fontSize: "14px",
+            fontWeight: 600,
+            cursor: submitting ? "wait" : "pointer",
+            opacity: submitting ? 0.7 : 1,
+          }}
+        >
+          {submitting ? "Submitting…" : "Submit Application"}
+        </button>
+      </div>
+    </div>
   );
 }

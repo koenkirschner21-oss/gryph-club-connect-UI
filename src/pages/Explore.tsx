@@ -8,6 +8,12 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown } from "lucide-react";
+import {
+  joinTypeBadgeLabel,
+  joinTypeBadgeStyle,
+  normalizeJoinType,
+  parseJoinQuestions,
+} from "../lib/clubJoinUtils";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
@@ -331,23 +337,35 @@ function ExploreClubCard({
             {club.name}
           </h3>
 
-          {club.category ? (
-            <span
-              style={{
-                display: "inline-block",
-                marginTop: "4px",
-                background: "#111111",
-                border: "1px solid #1e1e1e",
-                color: "#555555",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "10px",
-                width: "fit-content",
-              }}
-            >
-              {club.category}
-            </span>
-          ) : null}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px",
+              marginTop: "4px",
+            }}
+          >
+            {club.category ? (
+              <span
+                style={{
+                  display: "inline-block",
+                  background: "#111111",
+                  border: "1px solid #1e1e1e",
+                  color: "#555555",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "10px",
+                }}
+              >
+                {club.category}
+              </span>
+            ) : null}
+            {club.joinType && club.joinType !== "open" ? (
+              <span style={joinTypeBadgeStyle(club.joinType) ?? undefined}>
+                {joinTypeBadgeLabel(club.joinType)}
+              </span>
+            ) : null}
+          </div>
 
           {description ? (
             <p
@@ -442,6 +460,8 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
     socialLinks: (row.social_links as Club["socialLinks"]) ?? undefined,
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
+    joinType: normalizeJoinType(row.join_type),
+    joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
   };

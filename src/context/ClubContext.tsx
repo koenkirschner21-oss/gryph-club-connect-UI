@@ -7,6 +7,7 @@ import {
 } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { normalizeTags } from "../lib/normalizeTags";
+import { parseJoinQuestions } from "../lib/clubJoinUtils";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club, MemberRole } from "../types";
@@ -60,6 +61,8 @@ function mapRow(row: Record<string, unknown>): Club {
     socialLinks: (row.social_links as Club["socialLinks"]) ?? undefined,
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
+    joinType: ((row.join_type as string) ?? "open") as Club["joinType"],
+    joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
   };

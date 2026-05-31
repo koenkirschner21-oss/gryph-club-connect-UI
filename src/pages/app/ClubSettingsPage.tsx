@@ -1,15 +1,18 @@
 import { useState, useEffect, type FormEvent, type CSSProperties } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { Users, ClipboardList, Vote } from "lucide-react";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
+import { parseJoinQuestions } from "../../lib/clubJoinUtils";
 import { useClubMembers } from "../../hooks/useClubMembers";
-import type { MemberRole } from "../../types";
+import type { ClubJoinType, JoinQuestion, MemberRole } from "../../types";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Card from "../../components/ui/Card";
 import ImageUpload from "../../components/ui/ImageUpload";
+import { showToast } from "../../components/ui/Toast";
 
 function normalizeMemberRole(role: string): MemberRole {
   if (role === "executive" || role === "exec") return "executive";
@@ -42,6 +45,162 @@ const modalPanelStyle: CSSProperties = {
   maxWidth: "400px",
   width: "100%",
 };
+
+const JOIN_TYPE_OPTIONS: {
+  value: ClubJoinType;
+  label: string;
+  description: string;
+  icon: typeof Users;
+}[] = [
+  {
+    value: "open",
+    label: "Open",
+    description: "Anyone can join instantly",
+    icon: Users,
+  },
+  {
+    value: "application",
+    label: "Application",
+    description: "Members must apply and be approved by the president",
+    icon: ClipboardList,
+  },
+  {
+    value: "vote",
+    label: "Vote",
+    description: "Executives vote yes/no, majority wins",
+    icon: Vote,
+  },
+];
+
+function JoinQuestionBuilder({
+  questions,
+  onChange,
+}: {
+  questions: JoinQuestion[];
+  onChange: (questions: JoinQuestion[]) => void;
+}) {
+  const update = (id: string, patch: Partial<JoinQuestion>) => {
+    onChange(questions.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+  };
+
+  const remove = (id: string) => {
+    onChange(
+      questions
+        .filter((q) => q.id !== id)
+        .map((q, index) => ({ ...q, order_index: index })),
+    );
+  };
+
+  const add = (question_type: "short" | "long") => {
+    onChange([
+      ...questions,
+      {
+        id: crypto.randomUUID(),
+        question: "",
+        question_type,
+        required: false,
+        order_index: questions.length,
+      },
+    ]);
+  };
+
+  const inputStyle: CSSProperties = {
+    background: "#111111",
+    border: "1px solid #2a2a2a",
+    borderRadius: "6px",
+    padding: "8px 12px",
+    color: "#ffffff",
+    fontSize: "13px",
+    width: "100%",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        {questions.map((q) => (
+          <div
+            key={q.id}
+            style={{
+              background: "#111111",
+              border: "1px solid #2a2a2a",
+              borderRadius: "8px",
+              padding: "12px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+              <input
+                type="text"
+                value={q.question}
+                onChange={(e) => update(q.id, { question: e.target.value })}
+                placeholder="Question text"
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <select
+                value={q.question_type}
+                onChange={(e) =>
+                  update(q.id, {
+                    question_type: e.target.value as "short" | "long",
+                  })
+                }
+                style={{ ...inputStyle, width: "140px" }}
+              >
+                <option value="short">Short answer</option>
+                <option value="long">Long answer</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => remove(q.id)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#E51937",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  padding: "8px",
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: "8px", marginTop: "12px", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => add("short")}
+          style={{
+            background: "transparent",
+            border: "1px solid #333333",
+            color: "#cccccc",
+            borderRadius: "6px",
+            padding: "6px 14px",
+            fontSize: "12px",
+            cursor: "pointer",
+          }}
+        >
+          + Short answer
+        </button>
+        <button
+          type="button"
+          onClick={() => add("long")}
+          style={{
+            background: "transparent",
+            border: "1px solid #333333",
+            color: "#cccccc",
+            borderRadius: "6px",
+            padding: "6px 14px",
+            fontSize: "12px",
+            cursor: "pointer",
+          }}
+        >
+          + Long answer
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ClubSettingsPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -98,6 +257,11 @@ export default function ClubSettingsPage() {
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [twitterUrl, setTwitterUrl] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
+
+  const [joinType, setJoinType] = useState<ClubJoinType>("open");
+  const [joinQuestions, setJoinQuestions] = useState<JoinQuestion[]>([]);
+  const [savingJoinQuestions, setSavingJoinQuestions] = useState(false);
+  const [updatingJoinType, setUpdatingJoinType] = useState(false);
 
   const socialInputStyle: CSSProperties = {
     background: "#111111",
@@ -170,6 +334,12 @@ export default function ClubSettingsPage() {
         setLinkedinUrl((data.linkedin_url as string) ?? "");
         setTwitterUrl((data.twitter_url as string) ?? "");
         setWebsiteUrl((data.website_url as string) ?? "");
+        setJoinType(
+          data.join_type === "application" || data.join_type === "vote"
+            ? data.join_type
+            : "open",
+        );
+        setJoinQuestions(parseJoinQuestions(data.join_questions));
       });
 
     return () => {
@@ -365,6 +535,54 @@ export default function ClubSettingsPage() {
     setLeaving(false);
     setShowLeaveModal(false);
     navigate("/app", { replace: true });
+  }
+
+  async function handleJoinTypeChange(nextType: ClubJoinType) {
+    if (!clubId || joinType === nextType) return;
+    setUpdatingJoinType(true);
+    const { error } = await supabase
+      .from("clubs")
+      .update({ join_type: nextType })
+      .eq("id", clubId);
+
+    setUpdatingJoinType(false);
+    if (error) {
+      console.error("Failed to update join type:", error.message);
+      showToast("Failed to update membership type", "error");
+      return;
+    }
+
+    setJoinType(nextType);
+    showToast("Membership type updated", "success");
+  }
+
+  async function handleSaveJoinQuestions() {
+    if (!clubId) return;
+    setSavingJoinQuestions(true);
+    const payload = joinQuestions
+      .filter((q) => q.question.trim())
+      .map((q, index) => ({
+        id: q.id,
+        question: q.question.trim(),
+        question_type: q.question_type,
+        required: q.required ?? false,
+        order_index: index,
+      }));
+
+    const { error } = await supabase
+      .from("clubs")
+      .update({ join_questions: payload })
+      .eq("id", clubId);
+
+    setSavingJoinQuestions(false);
+    if (error) {
+      console.error("Failed to save join questions:", error.message);
+      showToast("Failed to save questions", "error");
+      return;
+    }
+
+    setJoinQuestions(parseJoinQuestions(payload));
+    showToast("Application questions saved", "success");
   }
 
   if (!club) {
@@ -803,6 +1021,115 @@ export default function ClubSettingsPage() {
 
       {isOwner ? (
         <>
+          <Card className="mt-6 p-6">
+            <h2
+              style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "#ffffff",
+                marginBottom: "12px",
+              }}
+            >
+              Membership Type
+            </h2>
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              {JOIN_TYPE_OPTIONS.map((option) => {
+                const selected = joinType === option.value;
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={updatingJoinType}
+                    onClick={() => void handleJoinTypeChange(option.value)}
+                    style={{
+                      background: selected ? "#1f0a0a" : "#1a1a1a",
+                      border: selected
+                        ? "1px solid #E51937"
+                        : "1px solid #242424",
+                      borderRadius: "10px",
+                      padding: "16px",
+                      cursor: updatingJoinType ? "wait" : "pointer",
+                      flex: "1 1 180px",
+                      textAlign: "left",
+                    }}
+                  >
+                    <Icon
+                      size={20}
+                      color={selected ? "#E51937" : "#555555"}
+                      aria-hidden
+                    />
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        color: "#ffffff",
+                        margin: "10px 0 0",
+                      }}
+                    >
+                      {option.label}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#555555",
+                        marginTop: "4px",
+                        marginBottom: 0,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {option.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {joinType === "application" ? (
+              <div style={{ marginTop: "20px" }}>
+                <h3
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "#ffffff",
+                    margin: "0 0 12px",
+                  }}
+                >
+                  Application Questions
+                </h3>
+                <JoinQuestionBuilder
+                  questions={joinQuestions}
+                  onChange={setJoinQuestions}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSaveJoinQuestions()}
+                  disabled={savingJoinQuestions}
+                  style={{
+                    marginTop: "16px",
+                    background: "#E51937",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "8px 20px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: savingJoinQuestions ? "wait" : "pointer",
+                    opacity: savingJoinQuestions ? 0.7 : 1,
+                  }}
+                >
+                  {savingJoinQuestions ? "Saving…" : "Save Questions"}
+                </button>
+              </div>
+            ) : null}
+          </Card>
+
           <Card className="mt-6 p-6">
             <h2 className="mb-1 text-lg font-bold text-white">Join Code</h2>
             <p className="mb-4 text-sm text-muted">

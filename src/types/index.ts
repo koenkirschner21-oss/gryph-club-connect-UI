@@ -1,6 +1,22 @@
 // ---------------------------------------------------------------------------
 // Public-facing Club (used for discovery / explore)
 // ---------------------------------------------------------------------------
+export type ClubJoinType = "open" | "application" | "vote";
+
+export interface JoinQuestion {
+  id: string;
+  question: string;
+  question_type: "short" | "long";
+  required?: boolean;
+  order_index: number;
+}
+
+export interface JoinAnswer {
+  id?: string;
+  question: string;
+  answer: string;
+}
+
 export interface Club {
   id: string;
   name: string;
@@ -31,6 +47,8 @@ export interface Club {
   };
   events: ClubEvent[];
   requiresApproval?: boolean;
+  joinType?: ClubJoinType;
+  joinQuestions?: JoinQuestion[];
   createdBy?: string;
   createdAt?: string;
 }
