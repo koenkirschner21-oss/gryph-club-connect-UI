@@ -544,6 +544,7 @@ export default function ClubMembersPage() {
 
   const role = getUserRole(clubId ?? "");
   const isOwner = role === "owner";
+  const isExecutive = role === "executive";
   /** Admin or owner may change member roles / remove members; exec sees queue only. */
   const canReorderRoster = isTopClubModeratorRole(role);
   const canUseMembershipQueue = isPrivilegedClubRole(role);
@@ -1537,7 +1538,7 @@ export default function ClubMembersPage() {
                       </div>
                     ) : null}
 
-                    {application.status === "pending" && joinType === "application" && isOwner ? (
+                    {application.status === "pending" && joinType === "application" && (isOwner || isExecutive) ? (
                       <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
                         <button
                           type="button"

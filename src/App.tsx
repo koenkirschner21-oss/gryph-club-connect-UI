@@ -55,6 +55,8 @@ import AdminClubs from "./pages/admin/AdminClubs";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminPage from "./pages/admin/AdminPage";
 import EventRSVPPage from "./pages/public/EventRSVPPage";
+import PublicEventsPage from "./pages/PublicEventsPage";
+import PublicEventDetailPage from "./pages/PublicEventDetailPage";
 import HiringBoardPage from "./pages/app/HiringBoardPage";
 import ClubRecruitingPage from "./pages/app/ClubRecruitingPage";
 
@@ -276,6 +278,8 @@ export default function App() {
               {/* Public browsing — no auth guard */}
               <Route element={<AppShell />}>
                 <Route path="/explore" element={<Explore />} />
+                <Route path="/events" element={<PublicEventsPage />} />
+                <Route path="/events/:eventId" element={<PublicEventDetailPage />} />
                 <Route path="/clubs/:slug" element={<ClubPublicProfilePage />} />
                 <Route path="/hiring" element={<HiringBoardPage />} />
               </Route>

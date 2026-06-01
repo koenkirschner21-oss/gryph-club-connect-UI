@@ -15,6 +15,7 @@ const wordmarkFont: CSSProperties = {
 const navLinks = [
   { to: "/", label: "Home" },
   { to: "/explore", label: "Explore" },
+  { to: "/events", label: "Events" },
   { to: "/hiring", label: "Hiring" },
 ];
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 
 type ViewMode = "list" | "calendar";
@@ -414,6 +415,10 @@ function EventCard({ event }: { event: CampusEvent }) {
   const { month, day } = formatMonthDay(event.date);
 
   return (
+    <Link
+      to={`/events/${event.id}`}
+      style={{ textDecoration: "none", color: "inherit", display: "block" }}
+    >
     <article
       style={{
         background: "#1a1a1a",
@@ -424,6 +429,7 @@ function EventCard({ event }: { event: CampusEvent }) {
         alignItems: "flex-start",
         gap: 14,
         transition: "border-color 0.15s ease",
+        cursor: "pointer",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = "#333333";
@@ -519,5 +525,6 @@ function EventCard({ event }: { event: CampusEvent }) {
         </p>
       </div>
     </article>
+    </Link>
   );
 }

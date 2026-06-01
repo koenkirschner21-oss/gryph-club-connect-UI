@@ -12,6 +12,7 @@ import {
 import { useAuthContext } from "../context/useAuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
+import { notifyUsers } from "../lib/notifyUsers";
 import type { Club, ClubEvent, ClubJoinType, JoinAnswer, JoinQuestion } from "../types";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -371,6 +372,7 @@ export default function ClubPublicProfilePage() {
   const [pageLoading, setPageLoading] = useState(true);
 
   const [joinError, setJoinError] = useState(false);
+  const [joinNotice, setJoinNotice] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [bookmarkHovered, setBookmarkHovered] = useState(false);
   const [applicationStatus, setApplicationStatus] =
@@ -555,6 +557,26 @@ export default function ClubPublicProfilePage() {
     setJoining(false);
   }
 
+  async function notifyClubOwnerJoin(targetClubId: string, message: string) {
+    const { data: owner } = await supabase
+      .from("club_members")
+      .select("user_id")
+      .eq("club_id", targetClubId)
+      .eq("role", "owner")
+      .maybeSingle();
+
+    if (owner?.user_id) {
+      await notifyUsers([
+        {
+          user_id: owner.user_id as string,
+          type: "club_update",
+          message,
+          club_id: targetClubId,
+        },
+      ]);
+    }
+  }
+
   async function handleRequestVoteJoin() {
     if (!clubId || !user?.id) {
       navigate(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
@@ -564,6 +586,23 @@ export default function ClubPublicProfilePage() {
 
     setSubmittingApplication(true);
     setJoinError(false);
+    setJoinNotice(null);
+
+    const { data: existing } = await supabase
+      .from("club_join_applications")
+      .select("id")
+      .eq("club_id", clubId)
+      .eq("applicant_id", user.id)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existing) {
+      setSubmittingApplication(false);
+      setJoinNotice("Your request is already pending");
+      setApplicationStatus("pending");
+      return;
+    }
+
     const { error } = await supabase.from("club_join_applications").insert({
       club_id: clubId,
       applicant_id: user.id,
@@ -578,6 +617,13 @@ export default function ClubPublicProfilePage() {
       return;
     }
     setApplicationStatus("pending");
+
+    const name =
+      profile?.name ?? contextClub?.name ?? "your club";
+    await notifyClubOwnerJoin(
+      clubId,
+      `Someone has requested to join ${name}. Executives can vote in the members page.`,
+    );
   }
 
   async function handleSubmitJoinApplication(answers: JoinAnswer[]) {
@@ -585,6 +631,7 @@ export default function ClubPublicProfilePage() {
 
     setSubmittingApplication(true);
     setJoinError(false);
+    setJoinNotice(null);
     const { error } = await supabase.from("club_join_applications").insert({
       club_id: clubId,
       applicant_id: user.id,
@@ -601,6 +648,13 @@ export default function ClubPublicProfilePage() {
 
     setApplicationStatus("pending");
     setShowApplicationModal(false);
+
+    const name =
+      profile?.name ?? contextClub?.name ?? "your club";
+    await notifyClubOwnerJoin(
+      clubId,
+      `Someone has applied to join ${name}. Review it in your members page.`,
+    );
   }
 
   function openApplicationFlow() {
@@ -900,6 +954,11 @@ export default function ClubPublicProfilePage() {
                 />
               </div>
             </div>
+            {joinNotice ? (
+              <p className="mt-2 text-sm text-[#FFC429]" role="status">
+                {joinNotice}
+              </p>
+            ) : null}
             {joinError ? (
               <p className="mt-2 text-sm text-primary" role="alert">
                 Something went wrong. Please try again.
