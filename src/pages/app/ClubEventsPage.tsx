@@ -18,33 +18,15 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
+import {
+  DEFAULT_EVENT_CATEGORY,
+  EVENT_CATEGORIES,
+  eventCategoryLabel,
+  normalizeEventCategory,
+  type EventCategory,
+} from "../../lib/eventCategories";
 
 type EventVisibility = "public" | "members_only" | "featured";
-
-const EVENT_CATEGORIES = [
-  { value: "general", label: "General" },
-  { value: "weekly_meeting", label: "Weekly Meeting" },
-  { value: "team_social", label: "Team Social" },
-  { value: "conference", label: "Conference" },
-  { value: "workshop", label: "Workshop" },
-  { value: "public_event", label: "Public Event" },
-  { value: "fundraiser", label: "Fundraiser" },
-] as const;
-
-type EventCategory = (typeof EVENT_CATEGORIES)[number]["value"];
-
-const DEFAULT_EVENT_CATEGORY: EventCategory = "general";
-
-function normalizeEventCategory(value: string | null | undefined): EventCategory {
-  const match = EVENT_CATEGORIES.find((c) => c.value === value);
-  return match?.value ?? DEFAULT_EVENT_CATEGORY;
-}
-
-function eventCategoryLabel(value: string): string {
-  return (
-    EVENT_CATEGORIES.find((c) => c.value === value)?.label ?? "General"
-  );
-}
 
 function categoryBadgeStyle(category: string, featured = false): CSSProperties {
   const base: CSSProperties = {

@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import Spinner from "./ui/Spinner";
 
@@ -8,6 +8,7 @@ export default function ProtectedRoute({
   children: React.ReactNode;
 }) {
   const { user, loading } = useAuthContext();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -18,7 +19,10 @@ export default function ProtectedRoute({
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    const redirect = encodeURIComponent(
+      `${location.pathname}${location.search}`,
+    );
+    return <Navigate to={`/login?redirect=${redirect}`} replace />;
   }
 
   return children;

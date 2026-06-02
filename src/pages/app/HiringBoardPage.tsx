@@ -5,7 +5,6 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -314,8 +313,8 @@ function ClubAvatar({
     >
       <span
         style={{
-          fontSize: size <= 44 ? "14px" : "16px",
-          fontWeight: 800,
+          fontSize: size <= 36 ? "12px" : size <= 44 ? "14px" : "16px",
+          fontWeight: 700,
           color: border,
           letterSpacing: "0.04em",
         }}
@@ -326,16 +325,16 @@ function ClubAvatar({
   );
 }
 
-function PositionTagsRow({ position }: { position: BoardPosition }) {
+function CompactPositionTagsRow({ position }: { position: BoardPosition }) {
   const deadline = listingDeadlineDisplay(position.deadline);
 
   return (
     <div
       style={{
         display: "flex",
-        gap: "8px",
-        marginTop: "8px",
+        gap: "6px",
         flexWrap: "wrap",
+        marginTop: "6px",
       }}
     >
       <span style={listingTypeBadgeStyle}>
@@ -345,6 +344,47 @@ function PositionTagsRow({ position }: { position: BoardPosition }) {
         {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
       </span>
       <span style={deadlineBadgeStyle(position.deadline)}>{deadline.text}</span>
+    </div>
+  );
+}
+
+const detailTagBadgeStyle: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #242424",
+  color: "#747676",
+  borderRadius: "4px",
+  padding: "4px 10px",
+  fontSize: "11px",
+  display: "inline-block",
+};
+
+function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
+  const deadline = listingDeadlineDisplay(position.deadline);
+  const deadlineStyle = deadline.withinSevenDays
+    ? {
+        ...detailTagBadgeStyle,
+        background: "#1a1500",
+        border: "1px solid #3a2f00",
+        color: "#FFC429",
+      }
+    : { ...detailTagBadgeStyle, color: "#555555" };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: "8px",
+        flexWrap: "wrap",
+        marginTop: "12px",
+      }}
+    >
+      <span style={detailTagBadgeStyle}>
+        {boardPositionTypeLabel(position.positionType)}
+      </span>
+      <span style={detailTagBadgeStyle}>
+        {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+      </span>
+      <span style={deadlineStyle}>{deadline.text}</span>
     </div>
   );
 }
@@ -360,6 +400,7 @@ function HiringListingCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const posted = postedDateLabel(position.createdAt);
+  const description = position.description?.trim();
 
   return (
     <article
@@ -367,124 +408,150 @@ function HiringListingCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: selected ? "#1a0a0a" : "#1a1a1a",
+        background: selected ? "#1a1a1a" : hovered ? "#1a1a1a" : "#111111",
         border: selected
-          ? "1px solid #E51937"
-          : `1px solid ${hovered ? "#333333" : "#242424"}`,
-        borderRadius: "12px",
-        padding: "20px",
-        width: "100%",
-        boxSizing: "border-box",
+          ? "1px solid #333333"
+          : `1px solid ${hovered ? "#333333" : "#1e1e1e"}`,
+        borderLeft: selected ? "3px solid #E51937" : undefined,
+        borderRadius: "10px",
+        padding: "18px",
+        marginBottom: "12px",
         cursor: "pointer",
         transition: "all 0.15s ease",
-        transform: hovered && !selected ? "translateY(-2px)" : undefined,
-        boxShadow:
-          hovered && !selected ? "0 8px 24px rgba(0,0,0,0.3)" : undefined,
+        boxSizing: "border-box",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <ClubAvatar
-            clubName={position.clubName}
-            logoUrl={position.clubLogoUrl}
-            size={44}
-            borderRadius={10}
-          />
-          <span style={{ fontSize: "12px", color: "#777777" }}>
-            {position.clubName}
-          </span>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <ClubAvatar
+          clubName={position.clubName}
+          logoUrl={position.clubLogoUrl}
+          size={36}
+          borderRadius={8}
+        />
+        <span style={{ fontSize: "12px", color: "#777777" }}>
+          {position.clubName}
+        </span>
         {posted ? (
-          <span style={{ fontSize: "11px", color: "#444444" }}>{posted}</span>
+          <span
+            style={{
+              fontSize: "11px",
+              color: "#444444",
+              marginLeft: "auto",
+              flexShrink: 0,
+            }}
+          >
+            {posted}
+          </span>
         ) : null}
       </div>
 
       <h3
         style={{
-          fontSize: "17px",
+          fontSize: "15px",
           fontWeight: 700,
           color: "#ffffff",
-          marginTop: "10px",
+          marginTop: "8px",
           marginBottom: 0,
-          lineHeight: 1.2,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}
       >
         {position.title}
       </h3>
 
-      <PositionTagsRow position={position} />
+      <CompactPositionTagsRow position={position} />
 
-      <p
-        style={{
-          fontSize: "13px",
-          color: "#555555",
-          marginTop: "10px",
-          marginBottom: 0,
-          lineHeight: 1.5,
-          overflow: "hidden",
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-        }}
-      >
-        {position.description || "No description provided."}
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          marginTop: "14px",
-          paddingTop: "14px",
-          borderTop: "1px solid #1e1e1e",
-        }}
-      >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect();
-          }}
+      {description ? (
+        <p
           style={{
-            color: "#E51937",
-            fontSize: "13px",
-            fontWeight: 500,
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 0,
+            fontSize: "12px",
+            color: "#555555",
+            marginTop: "8px",
+            marginBottom: 0,
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            lineHeight: 1.5,
           }}
         >
-          View Details →
-        </button>
-      </div>
+          {description}
+        </p>
+      ) : null}
     </article>
   );
 }
 
-function HiringDetailModal({
+function HiringDetailApplyButton({
+  user,
+  alreadyApplied,
+  onApply,
+  fullWidth = false,
+}: {
+  user: { id: string } | null;
+  alreadyApplied: boolean;
+  onApply: () => void;
+  fullWidth?: boolean;
+}) {
+  const baseStyle: CSSProperties = {
+    background: "#E51937",
+    color: "#ffffff",
+    borderRadius: "8px",
+    padding: fullWidth ? "14px" : "12px 32px",
+    fontSize: fullWidth ? "15px" : "14px",
+    fontWeight: 600,
+    border: "none",
+    cursor: "pointer",
+    width: fullWidth ? "100%" : undefined,
+  };
+
+  if (!user) {
+    return (
+      <button type="button" onClick={onApply} style={baseStyle}>
+        Sign In to Apply
+      </button>
+    );
+  }
+
+  if (alreadyApplied) {
+    return (
+      <button
+        type="button"
+        disabled
+        style={{
+          ...baseStyle,
+          background: "#1a1500",
+          border: "1px solid #FFC429",
+          color: "#FFC429",
+          cursor: "not-allowed",
+          width: fullWidth ? "100%" : undefined,
+        }}
+      >
+        Application Submitted ✓
+      </button>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onApply} style={baseStyle}>
+      Apply Now
+    </button>
+  );
+}
+
+function HiringDetailContent({
   position,
   user,
   alreadyApplied,
-  onClose,
   onApply,
   onViewClub,
-  isMobile,
 }: {
   position: BoardPosition;
   user: { id: string } | null;
   alreadyApplied: boolean;
-  onClose: () => void;
   onApply: () => void;
   onViewClub: () => void;
-  isMobile: boolean;
 }) {
   const deadline = listingDeadlineDisplay(position.deadline);
   const deadlineColor = deadline.passed
@@ -493,6 +560,219 @@ function HiringDetailModal({
       ? "#FFC429"
       : "#cccccc";
 
+  const deadlineText = deadline.passed
+    ? "Closed"
+    : position.deadline
+      ? (() => {
+          const end = parseDeadlineDate(position.deadline);
+          return end
+            ? end.toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "No deadline listed";
+        })()
+      : "No deadline listed";
+
+  return (
+    <>
+      <div
+        style={{
+          paddingBottom: "24px",
+          borderBottom: "1px solid #1e1e1e",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          <ClubAvatar
+            clubName={position.clubName}
+            logoUrl={position.clubLogoUrl}
+            size={52}
+            borderRadius={12}
+          />
+          <div>
+            <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+              {position.clubName}
+            </p>
+            {position.clubSlug ? (
+              <button
+                type="button"
+                onClick={onViewClub}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  marginTop: "4px",
+                  fontSize: "12px",
+                  color: "#E51937",
+                  cursor: "pointer",
+                }}
+              >
+                View Club →
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <h2
+          style={{
+            fontSize: "28px",
+            fontWeight: 800,
+            color: "#ffffff",
+            marginTop: "16px",
+            marginBottom: 0,
+            lineHeight: 1.1,
+          }}
+        >
+          {position.title}
+        </h2>
+
+        <DetailPositionTagsRow position={position} />
+
+        <div style={{ marginTop: "20px" }}>
+          <HiringDetailApplyButton
+            user={user}
+            alreadyApplied={alreadyApplied}
+            onApply={onApply}
+          />
+        </div>
+      </div>
+
+      <div style={{ paddingTop: "24px" }}>
+        <p style={sectionHeadingStyle}>About this role</p>
+        <p
+          style={{
+            fontSize: "14px",
+            color: "#cccccc",
+            lineHeight: 1.7,
+            whiteSpace: "pre-wrap",
+            margin: 0,
+          }}
+        >
+          {position.description || "No description provided."}
+        </p>
+      </div>
+
+      {position.requirements?.trim() ? (
+        <div style={{ paddingTop: "24px" }}>
+          <p style={sectionHeadingStyle}>Requirements</p>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#cccccc",
+              lineHeight: 1.7,
+              whiteSpace: "pre-wrap",
+              margin: 0,
+            }}
+          >
+            {position.requirements}
+          </p>
+        </div>
+      ) : null}
+
+      <div style={{ paddingTop: "24px" }}>
+        <p style={sectionHeadingStyle}>Commitment</p>
+        <p
+          style={{
+            fontSize: "14px",
+            color: "#cccccc",
+            lineHeight: 1.7,
+            margin: 0,
+          }}
+        >
+          {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+        </p>
+      </div>
+
+      <div style={{ paddingTop: "24px" }}>
+        <p style={sectionHeadingStyle}>Application Deadline</p>
+        <p
+          style={{
+            fontSize: "14px",
+            color: deadlineColor,
+            lineHeight: 1.7,
+            margin: 0,
+          }}
+        >
+          {deadlineText}
+        </p>
+      </div>
+
+      {position.clubDescription?.trim() ? (
+        <div style={{ paddingTop: "24px" }}>
+          <p style={sectionHeadingStyle}>About the club</p>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#666666",
+              lineHeight: 1.6,
+              marginBottom: "8px",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {position.clubDescription}
+          </p>
+          {position.clubSlug ? (
+            <button
+              type="button"
+              onClick={onViewClub}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                fontSize: "13px",
+                color: "#E51937",
+                cursor: "pointer",
+              }}
+            >
+              View Club Profile →
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function HiringDetailPanel({
+  position,
+  user,
+  alreadyApplied,
+  onApply,
+  onViewClub,
+}: {
+  position: BoardPosition;
+  user: { id: string } | null;
+  alreadyApplied: boolean;
+  onApply: () => void;
+  onViewClub: () => void;
+}) {
+  return (
+    <HiringDetailContent
+      position={position}
+      user={user}
+      alreadyApplied={alreadyApplied}
+      onApply={onApply}
+      onViewClub={onViewClub}
+    />
+  );
+}
+
+function HiringDetailMobileModal({
+  position,
+  user,
+  alreadyApplied,
+  onClose,
+  onApply,
+  onViewClub,
+}: {
+  position: BoardPosition;
+  user: { id: string } | null;
+  alreadyApplied: boolean;
+  onClose: () => void;
+  onApply: () => void;
+  onViewClub: () => void;
+}) {
   return (
     <div
       role="dialog"
@@ -500,285 +780,35 @@ function HiringDetailModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.8)",
+        background: "#111111",
         zIndex: 1000,
-        display: "flex",
-        alignItems: isMobile ? "stretch" : "center",
-        justifyContent: "center",
-        padding: isMobile ? 0 : "24px",
+        overflowY: "auto",
+        padding: "24px",
+        boxSizing: "border-box",
       }}
-      onClick={onClose}
     >
-      <div
+      <button
+        type="button"
+        onClick={onClose}
         style={{
-          background: "#111111",
-          border: isMobile ? "none" : "1px solid #242424",
-          borderRadius: isMobile ? 0 : "16px",
-          maxWidth: isMobile ? "none" : "680px",
-          width: "100%",
-          maxHeight: isMobile ? "none" : "85vh",
-          height: isMobile ? "100%" : undefined,
-          overflowY: "auto",
-          position: "relative",
-          boxSizing: "border-box",
+          background: "none",
+          border: "none",
+          padding: 0,
+          marginBottom: "20px",
+          fontSize: "13px",
+          color: "#E51937",
+          cursor: "pointer",
         }}
-        onClick={(e) => e.stopPropagation()}
-        role="presentation"
       >
-        <div style={{ padding: isMobile ? "16px 16px 0" : "28px 28px 0" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "14px",
-              paddingRight: "36px",
-            }}
-          >
-            <ClubAvatar
-              clubName={position.clubName}
-              logoUrl={position.clubLogoUrl}
-              size={48}
-              borderRadius={10}
-            />
-            <div>
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: "#777777",
-                  margin: 0,
-                }}
-              >
-                {position.clubName}
-              </p>
-              {position.clubSlug ? (
-                <button
-                  type="button"
-                  onClick={onViewClub}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    marginTop: "4px",
-                    fontSize: "12px",
-                    color: "#E51937",
-                    cursor: "pointer",
-                  }}
-                >
-                  View Club →
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              position: "absolute",
-              top: "24px",
-              right: "24px",
-              background: "none",
-              border: "none",
-              color: "#555555",
-              cursor: "pointer",
-              padding: "4px",
-              display: "flex",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "#ffffff";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "#555555";
-            }}
-          >
-            <X size={20} />
-          </button>
-
-          <h2
-            style={{
-              fontSize: "24px",
-              fontWeight: 800,
-              color: "#ffffff",
-              marginTop: "16px",
-              marginBottom: 0,
-              lineHeight: 1.1,
-            }}
-          >
-            {position.title}
-          </h2>
-
-          <PositionTagsRow position={position} />
-        </div>
-
-        <div style={{ height: "1px", background: "#1e1e1e", margin: "20px 0" }} />
-
-        <div style={{ padding: isMobile ? "0 16px" : "0 28px" }}>
-          <p style={sectionHeadingStyle}>About this role</p>
-          <p
-            style={{
-              fontSize: "14px",
-              color: "#cccccc",
-              lineHeight: 1.7,
-              whiteSpace: "pre-wrap",
-              margin: "0 0 20px",
-            }}
-          >
-            {position.description || "No description provided."}
-          </p>
-
-          {position.requirements?.trim() ? (
-            <>
-              <p style={sectionHeadingStyle}>Requirements</p>
-              <p
-                style={{
-                  fontSize: "14px",
-                  color: "#cccccc",
-                  lineHeight: 1.7,
-                  whiteSpace: "pre-wrap",
-                  margin: "0 0 20px",
-                }}
-              >
-                {position.requirements}
-              </p>
-            </>
-          ) : null}
-
-          <p style={sectionHeadingStyle}>Commitment</p>
-          <p
-            style={{
-              fontSize: "14px",
-              color: "#cccccc",
-              lineHeight: 1.7,
-              margin: "0 0 20px",
-            }}
-          >
-            {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-          </p>
-
-          <p style={sectionHeadingStyle}>Application Deadline</p>
-          <p
-            style={{
-              fontSize: "14px",
-              color: deadlineColor,
-              lineHeight: 1.7,
-              margin: "0 0 20px",
-            }}
-          >
-            {deadline.passed
-              ? "Closed"
-              : position.deadline
-                ? (() => {
-                    const end = parseDeadlineDate(position.deadline);
-                    return end
-                      ? end.toLocaleDateString("en-US", {
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric",
-                        })
-                      : "No deadline listed";
-                  })()
-                : "No deadline listed"}
-          </p>
-
-          {position.clubDescription?.trim() ? (
-            <>
-              <p style={sectionHeadingStyle}>About the club</p>
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: "#666666",
-                  lineHeight: 1.6,
-                  marginBottom: "8px",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {position.clubDescription}
-              </p>
-              {position.clubSlug ? (
-                <button
-                  type="button"
-                  onClick={onViewClub}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    fontSize: "13px",
-                    color: "#E51937",
-                    cursor: "pointer",
-                    marginBottom: "8px",
-                  }}
-                >
-                  View Club Profile →
-                </button>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-
-        <div
-          style={{
-            padding: isMobile ? "16px" : "24px 28px 28px",
-            borderTop: "1px solid #1e1e1e",
-            marginTop: "20px",
-          }}
-        >
-          {!user ? (
-            <button
-              type="button"
-              onClick={onApply}
-              style={{
-                width: "100%",
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "14px",
-                fontSize: "15px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Sign In to Apply
-            </button>
-          ) : alreadyApplied ? (
-            <div
-              style={{
-                width: "100%",
-                background: "#1a1500",
-                border: "1px solid #FFC429",
-                color: "#FFC429",
-                borderRadius: "8px",
-                padding: "14px",
-                fontSize: "15px",
-                fontWeight: 600,
-                textAlign: "center",
-                boxSizing: "border-box",
-              }}
-            >
-              Application Submitted ✓
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={onApply}
-              style={{
-                width: "100%",
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "14px",
-                fontSize: "15px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Apply Now
-            </button>
-          )}
-        </div>
-      </div>
+        ← Back to listings
+      </button>
+      <HiringDetailContent
+        position={position}
+        user={user}
+        alreadyApplied={alreadyApplied}
+        onApply={onApply}
+        onViewClub={onViewClub}
+      />
     </div>
   );
 }
@@ -1335,7 +1365,8 @@ export default function HiringBoardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [selectedPosition, setSelectedPosition] = useState<BoardPosition | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [applyPosition, setApplyPosition] = useState<BoardPosition | null>(null);
   const [myApplications, setMyApplications] = useState<Record<string, boolean>>({});
 
@@ -1458,9 +1489,31 @@ export default function HiringBoardPage() {
     });
   }, [positions, search, typeFilter]);
 
+  useEffect(() => {
+    if (filtered.length === 0) {
+      setSelectedId(null);
+      setMobileDetailOpen(false);
+      return;
+    }
+    setSelectedId((current) => {
+      if (current && filtered.some((p) => p.id === current)) return current;
+      return filtered[0].id;
+    });
+  }, [filtered]);
+
+  const activePosition =
+    filtered.find((p) => p.id === selectedId) ?? filtered[0] ?? null;
+
   return (
-    <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
-      <header style={{ padding: isMobile ? "32px 16px 24px" : "60px 48px 32px" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100vh",
+        background: "#0f0f0f",
+      }}
+    >
+      <header style={{ padding: isMobile ? "32px 16px 20px" : "40px 48px 24px" }}>
         <h1
           style={{
             fontSize: isMobile ? "28px" : "40px",
@@ -1483,7 +1536,7 @@ export default function HiringBoardPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{
             display: "block",
-            marginTop: "24px",
+            marginTop: "16px",
             background: "#111111",
             border: "1px solid #2a2a2a",
             borderRadius: "10px",
@@ -1504,7 +1557,8 @@ export default function HiringBoardPage() {
           display: "flex",
           flexWrap: "wrap",
           gap: "10px",
-          padding: isMobile ? "0 16px 28px" : "0 48px 28px",
+          marginTop: "12px",
+          padding: isMobile ? "0 16px 16px" : "0 48px 16px",
         }}
       >
         {BOARD_FILTER_PILLS.map((pill) => {
@@ -1531,45 +1585,98 @@ export default function HiringBoardPage() {
         })}
       </div>
 
-      <div style={{ padding: isMobile ? "0 16px 60px" : "0 48px 60px" }}>
-        {loading ? (
-          <p style={{ color: "#555555", fontSize: "14px" }}>Loading positions…</p>
-        ) : filtered.length === 0 ? (
-          <p style={{ color: "#555555", fontSize: "14px" }}>No open positions found.</p>
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-              gap: "20px",
-              width: "100%",
-            }}
-          >
-            {filtered.map((position) => (
+      <div
+        style={{
+          display: "flex",
+          gap: 0,
+          flex: 1,
+          height: "calc(100vh - 200px)",
+          minHeight: 0,
+        }}
+      >
+        <div
+          style={{
+            width: isMobile ? "100%" : "40%",
+            minWidth: isMobile ? undefined : "320px",
+            overflowY: "auto",
+            borderRight: isMobile ? "none" : "1px solid #1e1e1e",
+            padding: "16px",
+            boxSizing: "border-box",
+            scrollbarWidth: "thin",
+            scrollbarColor: "#333 transparent",
+          }}
+        >
+          {loading ? (
+            <p style={{ color: "#555555", fontSize: "14px" }}>Loading positions…</p>
+          ) : filtered.length === 0 ? (
+            <p style={{ color: "#555555", fontSize: "14px" }}>No open positions found.</p>
+          ) : (
+            filtered.map((position) => (
               <HiringListingCard
                 key={position.id}
                 position={position}
-                selected={selectedPosition?.id === position.id}
-                onSelect={() => setSelectedPosition(position)}
+                selected={activePosition?.id === position.id}
+                onSelect={() => {
+                  setSelectedId(position.id);
+                  if (isMobile) setMobileDetailOpen(true);
+                }}
               />
-            ))}
+            ))
+          )}
+        </div>
+
+        {!isMobile ? (
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "32px",
+              position: "sticky",
+              top: 0,
+              height: "calc(100vh - 200px)",
+              boxSizing: "border-box",
+            }}
+          >
+            {activePosition ? (
+              <HiringDetailPanel
+                position={activePosition}
+                user={user}
+                alreadyApplied={Boolean(myApplications[activePosition.id])}
+                onApply={() => handleApplyFromDetail(activePosition)}
+                onViewClub={() => {
+                  if (activePosition.clubSlug) {
+                    navigate(`/clubs/${activePosition.clubSlug}`);
+                  }
+                }}
+              />
+            ) : (
+              <p
+                style={{
+                  color: "#444444",
+                  fontSize: "14px",
+                  textAlign: "center",
+                  marginTop: "48px",
+                }}
+              >
+                Select a position to view details
+              </p>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
 
-      {selectedPosition ? (
-        <HiringDetailModal
-          position={selectedPosition}
+      {isMobile && mobileDetailOpen && activePosition ? (
+        <HiringDetailMobileModal
+          position={activePosition}
           user={user}
-          alreadyApplied={Boolean(myApplications[selectedPosition.id])}
-          onClose={() => setSelectedPosition(null)}
-          onApply={() => handleApplyFromDetail(selectedPosition)}
+          alreadyApplied={Boolean(myApplications[activePosition.id])}
+          onClose={() => setMobileDetailOpen(false)}
+          onApply={() => handleApplyFromDetail(activePosition)}
           onViewClub={() => {
-            if (selectedPosition.clubSlug) {
-              navigate(`/clubs/${selectedPosition.clubSlug}`);
+            if (activePosition.clubSlug) {
+              navigate(`/clubs/${activePosition.clubSlug}`);
             }
           }}
-          isMobile={isMobile}
         />
       ) : null}
 

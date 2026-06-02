@@ -128,6 +128,7 @@ const ONBOARDING_EXEMPT_PREFIXES = [
   "/privacy",
   "/terms",
   "/events/",
+  "/events",
 ];
 
 function isOnboardingExemptPath(pathname: string): boolean {

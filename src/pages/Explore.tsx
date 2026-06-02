@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useRef,
-  type CSSProperties,
 } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown } from "lucide-react";
@@ -17,35 +16,18 @@ import {
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
-import { getClubInitials } from "../lib/clubUtils";
+import {
+  getClubBannerBrandBackground,
+  isUploadedClubBanner,
+} from "../lib/clubUtils";
 import { supabase } from "../lib/supabaseClient";
-import { useIsMobile, useWindowWidth } from "../hooks/useWindowWidth";
+import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
 
 const PAGE_BG = "#0f0f0f";
 const ACCENT_RED = "#E51937";
 const MUTED = "#555555";
-
-const CLUB_AVATAR_BACKGROUNDS = ["#1a0505", "#1a1500", "#0a0a1a", "#0a1a0a", "#1a0a1a"] as const;
-
-const CLUB_AVATAR_BORDERS: Record<(typeof CLUB_AVATAR_BACKGROUNDS)[number], string> = {
-  "#1a0505": "#2a1515",
-  "#1a1500": "#2a2510",
-  "#0a0a1a": "#1a1a2a",
-  "#0a1a0a": "#1a2a1a",
-  "#1a0a1a": "#2a1a2a",
-};
-
-function getClubAvatarColors(clubName: string): { bg: string; border: string } {
-  const bgIndex = clubName.charCodeAt(0) % CLUB_AVATAR_BACKGROUNDS.length;
-  const bg = CLUB_AVATAR_BACKGROUNDS[bgIndex];
-  return { bg, border: CLUB_AVATAR_BORDERS[bg] };
-}
-
-function exploreInitials(club: Pick<Club, "abbreviation" | "name">): string {
-  return getClubInitials(club).slice(0, 3);
-}
 
 function ExploreSearchBar({
   value,
@@ -59,7 +41,7 @@ function ExploreSearchBar({
   fullWidth?: boolean;
 }) {
   return (
-    <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "500px" }}>
+    <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "600px" }}>
       <svg
         className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2"
         style={{ color: "#555555" }}
@@ -246,19 +228,6 @@ function CategoryFilterDropdown({
   );
 }
 
-const cardActionButtonStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  background: ACCENT_RED,
-  color: "#ffffff",
-  borderRadius: "6px",
-  padding: "6px 14px",
-  fontSize: "12px",
-  fontWeight: 600,
-  border: "none",
-};
-
 function ExploreClubCard({
   club,
   joined,
@@ -267,74 +236,108 @@ function ExploreClubCard({
   joined: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const description = club.shortDescription || club.description;
-  const { bg, border } = getClubAvatarColors(club.name);
-  const logoUrl = club.logoUrl?.trim();
+  const description = (club.shortDescription || club.description)?.trim();
+  const bannerUrl = club.bannerUrl?.trim();
+  const showBannerImage = isUploadedClubBanner(bannerUrl);
+  const brandBannerBg = getClubBannerBrandBackground(club.name);
 
   return (
     <Link
       to={`/clubs/${club.slug}`}
       className="block no-underline"
-      style={{ cursor: "pointer", height: "100%" }}
+      style={{
+        cursor: "pointer",
+        width: "100%",
+        minWidth: 0,
+        display: "block",
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <article
         style={{
+          width: "100%",
+          minWidth: 0,
+          height: "320px",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           background: "#1a1a1a",
           border: `1px solid ${hovered ? "#333333" : "#242424"}`,
           borderRadius: "12px",
-          overflow: "hidden",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
           transition: "all 0.15s ease",
           transform: hovered ? "translateY(-2px)" : undefined,
           boxShadow: hovered ? "0 8px 24px rgba(0,0,0,0.4)" : undefined,
           boxSizing: "border-box",
         }}
       >
-        {logoUrl ? (
-          <img
-            src={logoUrl}
-            alt=""
-            style={{
-              width: "100%",
-              height: "100px",
-              objectFit: "cover",
-              display: "block",
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              height: "100px",
-              background: bg,
-              borderBottom: `1px solid ${border}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            aria-hidden="true"
-          >
-            <span
+        <div
+          style={{
+            height: "160px",
+            flexShrink: 0,
+            overflow: "hidden",
+            width: "100%",
+            position: "relative",
+          }}
+        >
+          {showBannerImage ? (
+            <img
+              src={bannerUrl}
+              alt=""
               style={{
-                fontSize: "32px",
-                fontWeight: 800,
-                color: border,
-                letterSpacing: "0.04em",
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                display: "block",
               }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: brandBannerBg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "12px 16px",
+                boxSizing: "border-box",
+              }}
+              aria-hidden="true"
             >
-              {exploreInitials(club)}
-            </span>
-          </div>
-        )}
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  textAlign: "center",
+                  lineHeight: 1.35,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {club.name}
+              </span>
+            </div>
+          )}
+        </div>
 
-        <div style={{ padding: "16px", display: "flex", flexDirection: "column", flex: 1 }}>
+        <div
+          style={{
+            flex: 1,
+            padding: "16px",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}
+        >
           <h3
             style={{
               margin: 0,
-              fontSize: "14px",
+              fontSize: "15px",
               fontWeight: 700,
               color: "#ffffff",
               overflow: "hidden",
@@ -345,40 +348,22 @@ function ExploreClubCard({
             {club.name}
           </h3>
 
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "6px",
-              marginTop: "4px",
-            }}
-          >
-            {club.category ? (
-              <span
-                style={{
-                  display: "inline-block",
-                  background: "#111111",
-                  border: "1px solid #1e1e1e",
-                  color: "#555555",
-                  borderRadius: "4px",
-                  padding: "2px 8px",
-                  fontSize: "10px",
-                }}
-              >
-                {club.category}
-              </span>
-            ) : null}
-            {club.joinType && club.joinType !== "open" ? (
-              <span style={joinTypeBadgeStyle(club.joinType) ?? undefined}>
-                {joinTypeBadgeLabel(club.joinType)}
-              </span>
-            ) : null}
-          </div>
+          {club.joinType && club.joinType !== "open" ? (
+            <span
+              style={{
+                ...(joinTypeBadgeStyle(club.joinType) ?? {}),
+                marginTop: "6px",
+                alignSelf: "flex-start",
+              }}
+            >
+              {joinTypeBadgeLabel(club.joinType)}
+            </span>
+          ) : null}
 
           {description ? (
             <p
               style={{
-                margin: "8px 0 0",
+                margin: "6px 0 0",
                 fontSize: "12px",
                 color: "#555555",
                 lineHeight: 1.5,
@@ -386,23 +371,48 @@ function ExploreClubCard({
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
-                flex: 1,
               }}
             >
               {description}
             </p>
-          ) : (
-            <div style={{ flex: 1 }} />
-          )}
+          ) : club.category ? (
+            <p
+              style={{
+                margin: "6px 0 0",
+                fontSize: "12px",
+                color: "#444444",
+                lineHeight: 1.5,
+              }}
+            >
+              {club.category}
+            </p>
+          ) : null}
 
-          <div style={{ marginTop: "12px" }}>
+          <div style={{ marginTop: "auto", paddingTop: "8px" }}>
             {joined ? (
-              <span style={cardActionButtonStyle}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  color: ACCENT_RED,
+                  fontSize: "12px",
+                  fontWeight: 500,
+                }}
+              >
                 <Check size={14} strokeWidth={2.5} aria-hidden />
                 Joined
               </span>
             ) : (
-              <span style={cardActionButtonStyle}>View Club</span>
+              <span
+                style={{
+                  color: ACCENT_RED,
+                  fontSize: "12px",
+                  fontWeight: 500,
+                }}
+              >
+                View Club →
+              </span>
             )}
           </div>
         </div>
@@ -486,13 +496,6 @@ function sortClubsByActivity(clubs: Club[]): Club[] {
 // ─── Main Explore page ──────────────────────────────────────────────────────
 export default function Explore() {
   const isMobile = useIsMobile();
-  const width = useWindowWidth();
-  const allClubsGridColumns =
-    width < 768
-      ? "1fr"
-      : width < 1024
-        ? "repeat(2, minmax(0, 1fr))"
-        : "repeat(3, minmax(0, 1fr))";
   const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined } =
     useClubContext();
   const { user } = useAuthContext();
@@ -629,13 +632,13 @@ export default function Explore() {
       <section style={{ backgroundColor: PAGE_BG }}>
         <div
           style={{
-            padding: isMobile ? "24px 16px 32px" : "80px 48px 48px",
+            padding: isMobile ? "24px 16px 32px" : "100px 48px 60px",
             textAlign: "left",
           }}
         >
           <h1
             style={{
-              fontSize: isMobile ? "28px" : "56px",
+              fontSize: isMobile ? "28px" : "52px",
               fontWeight: 800,
               color: "#ffffff",
               lineHeight: 1,
@@ -653,7 +656,7 @@ export default function Explore() {
               lineHeight: 1.5,
             }}
           >
-            Browse {clubs.length} student organizations at the University of Guelph
+            Browse 260+ student organizations at the University of Guelph
           </p>
 
           <div style={{ marginTop: "24px", width: "100%" }}>
@@ -673,7 +676,7 @@ export default function Explore() {
               marginBottom: 0,
             }}
           >
-            {clubs.length} clubs · {categoryCount} categories
+            260+ clubs · {categoryCount} categories
           </p>
         </div>
       </section>
@@ -712,10 +715,9 @@ export default function Explore() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "1fr"
-                      : "repeat(3, minmax(0, 1fr))",
-                    gap: "16px",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "20px",
+                    width: "100%",
                   }}
                 >
                   {mostActiveClubs.map((club) => (
@@ -780,7 +782,7 @@ export default function Explore() {
                   <p style={{ fontSize: "14px", color: MUTED, margin: "4px 0 0" }}>
                     Showing{" "}
                     <span style={{ fontWeight: 600, color: "#ffffff" }}>{filteredClubs.length}</span>{" "}
-                    of {clubs.length} clubs
+                    of 260+ clubs
                     {activeCategory !== "All" ? (
                       <span>
                         {" "}
@@ -804,8 +806,9 @@ export default function Explore() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: allClubsGridColumns,
-                  gap: "16px",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "20px",
+                  width: "100%",
                 }}
               >
                 {filteredClubs.map((club) => (

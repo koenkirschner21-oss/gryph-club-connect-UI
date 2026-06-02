@@ -135,6 +135,20 @@ export default function Navbar() {
                 Explore
               </Link>
               <Link
+                to="/events"
+                aria-current={
+                  isPublicNavLinkActive(location.pathname, "/events")
+                    ? "page"
+                    : undefined
+                }
+                className="px-0 py-2 text-sm transition-colors"
+                style={publicNavLinkStyle(
+                  isPublicNavLinkActive(location.pathname, "/events"),
+                )}
+              >
+                Events
+              </Link>
+              <Link
                 to="/hiring"
                 aria-current={
                   isPublicNavLinkActive(location.pathname, "/hiring")
@@ -311,6 +325,21 @@ export default function Navbar() {
                   )}
                 >
                   Explore
+                </Link>
+                <Link
+                  to="/events"
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={
+                    isPublicNavLinkActive(location.pathname, "/events")
+                      ? "page"
+                      : undefined
+                  }
+                  className="block min-h-[44px] rounded-lg px-4 py-[14px] text-sm transition-colors"
+                  style={publicNavLinkStyle(
+                    isPublicNavLinkActive(location.pathname, "/events"),
+                  )}
+                >
+                  Events
                 </Link>
                 <Link
                   to="/hiring"
