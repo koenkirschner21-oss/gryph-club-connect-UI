@@ -1537,7 +1537,11 @@ export default function ClubEventsPage() {
         .eq("event_id", eventId);
 
       if (deleteError) {
-        console.error("Failed to clear form questions:", deleteError.message);
+        console.error(
+          "Failed to delete event_form_questions before save:",
+          deleteError.message,
+          deleteError,
+        );
         return false;
       }
 
@@ -1994,10 +1998,23 @@ export default function ClubEventsPage() {
     }
 
     if (ok && savedEventId) {
-      const questionsSaved = await saveEventQuestions(
-        savedEventId,
-        formQuestions,
-      );
+      const { error: preDeleteError } = await supabase
+        .from("event_form_questions")
+        .delete()
+        .eq("event_id", savedEventId);
+
+      if (preDeleteError) {
+        console.error(
+          "Failed to delete event_form_questions before save:",
+          preDeleteError.message,
+          preDeleteError,
+        );
+        ok = false;
+      }
+
+      const questionsSaved = ok
+        ? await saveEventQuestions(savedEventId, formQuestions)
+        : false;
       if (!questionsSaved) {
         ok = false;
       }

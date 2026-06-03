@@ -7,6 +7,11 @@ import { useClubTasks } from "../../hooks/useClubTasks";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  formatTaskDate,
+  getTaskDueUrgency,
+  taskDueDateColor,
+} from "../../lib/taskDueUrgency";
 import type { MemberRole, Task, TaskStatus, TaskPriority } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
@@ -140,22 +145,8 @@ function listQuickActionLabel(status: TaskStatus): string | null {
   return null;
 }
 
-function formatDueDateLabel(dueDate: string): string {
-  return new Date(dueDate).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function dueDateColor(dueDate: string | undefined, status: TaskStatus): string {
-  if (!dueDate || status === "done") return "#555555";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate);
-  due.setHours(0, 0, 0, 0);
-  if (due < today) return "#E51937";
-  if (due.getTime() === today.getTime()) return "#FFC429";
-  return "#555555";
+  return taskDueDateColor(getTaskDueUrgency(dueDate, status));
 }
 
 interface TaskComment {
@@ -1151,7 +1142,7 @@ export default function ClubTasksPage() {
                 color: dueDateColor(task.dueDate, task.status),
               }}
             >
-              Due {formatDueDateLabel(task.dueDate)}
+              Due {formatTaskDate(task.dueDate)}
             </span>
           ) : (
             <span />
@@ -1333,7 +1324,7 @@ export default function ClubTasksPage() {
                   color: dueDateColor(task.dueDate, task.status),
                 }}
               >
-                · Due {formatDueDateLabel(task.dueDate)}
+                · Due {formatTaskDate(task.dueDate)}
               </span>
             ) : null}
             {canViewComments ? (

@@ -59,6 +59,7 @@ export default function BugReportButton() {
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<Severity>("minor");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [previewActive, setPreviewActive] = useState(false);
   const [hovered, setHovered] = useState(false);
 
@@ -80,6 +81,7 @@ export default function BugReportButton() {
     setPage(window.location.pathname);
     setDescription("");
     setSeverity("minor");
+    setSubmitError(null);
     setOpen(true);
   }
 
@@ -87,11 +89,13 @@ export default function BugReportButton() {
     if (!user?.id) return;
     const trimmed = description.trim();
     if (!trimmed) {
-      showToast("Please describe what went wrong", "error");
+      setSubmitError("Please describe what went wrong.");
       return;
     }
 
     setSubmitting(true);
+    setSubmitError(null);
+
     const { error } = await supabase.from("bug_reports").insert({
       reported_by: user.id,
       page: page.trim() || window.location.pathname,
@@ -102,12 +106,14 @@ export default function BugReportButton() {
     setSubmitting(false);
 
     if (error) {
-      console.error("Failed to submit bug report:", error.message);
-      showToast("Failed to submit bug report", "error");
+      console.error("Failed to submit bug report:", error.message, error);
+      setSubmitError(
+        error.message || "Failed to submit bug report. Please try again.",
+      );
       return;
     }
 
-    showToast("Bug report submitted — thank you!", "success");
+    showToast("Bug report submitted", "success");
     setOpen(false);
   }
 
@@ -245,6 +251,18 @@ export default function BugReportButton() {
                 })}
               </div>
             </div>
+
+            {submitError ? (
+              <p
+                style={{
+                  color: "#E51937",
+                  fontSize: "13px",
+                  marginBottom: "12px",
+                }}
+              >
+                {submitError}
+              </p>
+            ) : null}
 
             <button
               type="button"

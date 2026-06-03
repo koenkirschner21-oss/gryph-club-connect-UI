@@ -21,6 +21,7 @@ import {
   requestOpenNotificationsDropdown,
 } from "../../components/ui/NotificationsDropdown";
 import {
+  formatTaskDate,
   getTaskDueUrgency,
   taskDueBadgeConfig,
   taskDueDateColor,
@@ -208,11 +209,7 @@ export default function DashboardPage() {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const threeDaysLater = new Date(today);
-    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
-
-    const todayStr = today.toISOString().slice(0, 10);
-    const threeDaysStr = threeDaysLater.toISOString().slice(0, 10);
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
 
     supabase
       .from("tasks")
@@ -236,9 +233,16 @@ export default function DashboardPage() {
         for (const row of data ?? []) {
           const dueDate = (row.due_date as string) ?? "";
           if (!dueDate) continue;
-          if (dueDate < todayStr) {
+          const trimmed = dueDate.trim();
+          const due = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+            ? new Date(`${trimmed}T00:00:00`)
+            : new Date(trimmed);
+          if (Number.isNaN(due.getTime())) continue;
+          due.setHours(0, 0, 0, 0);
+          const diffMs = due.getTime() - today.getTime();
+          if (diffMs < 0) {
             overdue += 1;
-          } else if (dueDate <= threeDaysStr) {
+          } else if (diffMs <= threeDaysMs) {
             dueSoon += 1;
           }
         }
@@ -839,7 +843,7 @@ function WeekTaskCard({
             }}
           >
             <Calendar size={11} aria-hidden />
-            {formatTaskDueDate(task.dateKey)}
+            {formatTaskDate(task.dateKey)}
           </span>
         </div>
         <div
@@ -1310,7 +1314,7 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
               }}
             >
               <Calendar size={11} aria-hidden />
-              {formatTaskDueDate(task.dueDate)}
+              {formatTaskDate(task.dueDate)}
             </span>
           ) : null}
         </div>
@@ -1511,14 +1515,6 @@ function formatClubRoleDisplay(
   return { label: "Member", color: "#747676" };
 }
 
-function formatTaskDueDate(dateStr: string): string {
-  const trimmed = dateStr.trim();
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
-    ? new Date(`${trimmed}T12:00:00`)
-    : new Date(trimmed);
-  if (Number.isNaN(d.getTime())) return trimmed;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 type OverviewAnnouncement = {
   id: string;

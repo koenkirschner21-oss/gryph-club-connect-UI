@@ -2,6 +2,30 @@ import type { CSSProperties } from "react";
 
 export type TaskDueUrgency = "overdue" | "due_today" | "due_soon";
 
+export function formatTaskDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const trimmed = dateStr.trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T00:00:00`)
+    : new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function parseTaskDueDate(dateStr: string): Date | null {
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T00:00:00`)
+    : new Date(trimmed);
+  if (Number.isNaN(due.getTime())) return null;
+  return due;
+}
+
 export function getTaskDueUrgency(
   dueDate: string | undefined,
   status?: string,
@@ -9,11 +33,8 @@ export function getTaskDueUrgency(
   if (!dueDate?.trim()) return null;
   if (status === "done") return null;
 
-  const trimmed = dueDate.trim();
-  const due = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
-    ? new Date(`${trimmed}T12:00:00`)
-    : new Date(trimmed);
-  if (Number.isNaN(due.getTime())) return null;
+  const due = parseTaskDueDate(dueDate);
+  if (!due) return null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

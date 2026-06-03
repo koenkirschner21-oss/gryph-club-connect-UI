@@ -37,7 +37,6 @@ interface ClubPosition {
   deadline: string | null;
   isOpen: boolean;
   applicantCount: number;
-  hiringListingId: string | null;
 }
 
 function mapRoleType(positionType: string): "executive" | "volunteer" | "general" {
@@ -59,6 +58,28 @@ function formQuestionsToJson(drafts: PositionQuestionDraft[]): unknown[] {
       required: q.required,
       order_index: index,
     }));
+}
+
+function formQuestionsFromJson(raw: unknown): PositionQuestionDraft[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item, index) => {
+    const row = item as Record<string, unknown>;
+    const opts = normalizeOptions(row.options);
+    const questionType = row.question_type as PositionQuestionDraft["question_type"];
+    return {
+      localId: crypto.randomUUID(),
+      question: (row.question as string) ?? "",
+      question_type:
+        questionType === "multiple_choice" ||
+        questionType === "yes_no" ||
+        questionType === "text"
+          ? questionType
+          : "text",
+      optionsText: opts.join(", "),
+      required: Boolean(row.required),
+      order_index: (row.order_index as number) ?? index,
+    };
+  });
 }
 
 interface JobApplicationRow {
@@ -177,25 +198,6 @@ function requirementLines(text: string): string[] {
     .split(/\n/)
     .map((line) => line.replace(/^[-•*]\s*/, "").trim())
     .filter(Boolean);
-}
-
-function questionRowFromDraft(
-  positionId: string,
-  q: PositionQuestionDraft,
-  index: number,
-): Record<string, unknown> {
-  const options =
-    q.question_type === "multiple_choice"
-      ? parseOptionsText(q.optionsText)
-      : null;
-  return {
-    position_id: positionId,
-    question: q.question.trim(),
-    question_type: q.question_type,
-    options: options && options.length > 0 ? options : null,
-    required: q.required,
-    order_index: index,
-  };
 }
 
 function StatCard({
@@ -449,6 +451,7 @@ export default function ClubRecruitingPage() {
   const [deadline, setDeadline] = useState("");
   const [formQuestions, setFormQuestions] = useState<PositionQuestionDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [savePositionError, setSavePositionError] = useState<string | null>(null);
 
   const [expandedPositionId, setExpandedPositionId] = useState<string | null>(null);
   const [applications, setApplications] = useState<JobApplicationRow[]>([]);
@@ -479,9 +482,9 @@ export default function ClubRecruitingPage() {
     setLoading(true);
 
     let query = supabase
-      .from("club_positions")
+      .from("hiring_listings")
       .select(
-        "id, title, description, requirements, position_type, commitment_level, weekly_hours, deadline, is_open, hiring_listing_id",
+        "id, title, description, requirements, role_type, commitment_level, weekly_hours, deadline, is_open",
       )
       .eq("club_id", clubId)
       .order("created_at", { ascending: false });
@@ -521,13 +524,12 @@ export default function ClubRecruitingPage() {
         title: row.title as string,
         description: (row.description as string) ?? "",
         requirements: (row.requirements as string) ?? "",
-        positionType: (row.position_type as string) ?? "executive",
+        positionType: (row.role_type as string) ?? "general",
         commitmentLevel: ((row.commitment_level as CommitmentLevel) ?? "flexible"),
         weeklyHours: (row.weekly_hours as number | null) ?? null,
         deadline: (row.deadline as string) ?? null,
         isOpen: Boolean(row.is_open),
         applicantCount: counts[row.id as string] ?? 0,
-        hiringListingId: (row.hiring_listing_id as string | null) ?? null,
       })),
     );
 
@@ -576,6 +578,7 @@ export default function ClubRecruitingPage() {
 
   function openCreateModal() {
     resetPostForm();
+    setSavePositionError(null);
     setShowPostModal(true);
   }
 
@@ -593,227 +596,92 @@ export default function ClubRecruitingPage() {
     setPositionType(position.positionType as PositionType);
     setDeadline(
       position.deadline
-        ? new Date(position.deadline).toISOString().slice(0, 10)
+        ? String(position.deadline).slice(0, 10)
         : "",
     );
 
-    const { data } = await supabase
-      .from("position_questions")
-      .select("*")
-      .eq("position_id", position.id)
-      .order("order_index", { ascending: true });
+    const { data: listingRow } = await supabase
+      .from("hiring_listings")
+      .select("questions")
+      .eq("id", position.id)
+      .maybeSingle();
 
-    setFormQuestions(
-      (data ?? []).map((row) => {
-        const opts = normalizeOptions(row.options);
-        return {
-          localId: row.id as string,
-          id: row.id as string,
-          question: row.question as string,
-          question_type: row.question_type as PositionQuestionDraft["question_type"],
-          optionsText: opts.join(", "),
-          required: Boolean(row.required),
-          order_index: (row.order_index as number) ?? 0,
-        };
-      }),
-    );
+    setFormQuestions(formQuestionsFromJson(listingRow?.questions));
+    setSavePositionError(null);
     setShowPostModal(true);
     setOpenMenuId(null);
-  }
-
-  async function savePositionQuestions(positionId: string, drafts: PositionQuestionDraft[]) {
-    await supabase.from("position_questions").delete().eq("position_id", positionId);
-    const rows = drafts
-      .filter((q) => q.question.trim())
-      .map((q, index) => questionRowFromDraft(positionId, q, index));
-    if (rows.length > 0) {
-      await supabase.from("position_questions").insert(rows);
-    }
-  }
-
-  async function syncNewHiringListing(
-    positionId: string,
-    listingPayload: {
-      title: string;
-      description: string;
-      requirements: string | null;
-      position_type: string;
-      commitment_level: CommitmentLevel;
-      weekly_hours: number | null;
-      deadline: string | null;
-    },
-  ) {
-    if (!clubId || !user?.id) return;
-
-    const { data: listing, error } = await supabase
-      .from("hiring_listings")
-      .insert({
-        club_id: clubId,
-        created_by: user.id,
-        title: listingPayload.title,
-        description: listingPayload.description,
-        role_type: mapRoleType(listingPayload.position_type),
-        deadline: deadline || null,
-        is_open: true,
-        questions: formQuestionsToJson(formQuestions),
-        requirements: listingPayload.requirements,
-        commitment_level: listingPayload.commitment_level || "flexible",
-        weekly_hours: listingPayload.weekly_hours,
-      })
-      .select("id")
-      .single();
-
-    if (error) {
-      console.error("Failed to sync hiring_listings:", error.message);
-      return;
-    }
-
-    if (listing?.id) {
-      const { error: linkError } = await supabase
-        .from("club_positions")
-        .update({ hiring_listing_id: listing.id })
-        .eq("id", positionId);
-
-      if (linkError) {
-        console.error(
-          "Failed to link club_positions to hiring_listings:",
-          linkError.message,
-        );
-      }
-    }
-  }
-
-  async function syncCloseHiringListing(position: ClubPosition) {
-    if (!clubId) return;
-
-    if (position.hiringListingId) {
-      const { error } = await supabase
-        .from("hiring_listings")
-        .update({ is_open: false })
-        .eq("id", position.hiringListingId);
-
-      if (error) {
-        console.error("Failed to close hiring_listings row:", error.message);
-      }
-      return;
-    }
-
-    const { error } = await supabase
-      .from("hiring_listings")
-      .update({ is_open: false })
-      .eq("club_id", clubId)
-      .eq("title", position.title);
-
-    if (error) {
-      console.error("Failed to close hiring_listings by title:", error.message);
-    }
-  }
-
-  async function syncDeleteHiringListing(position: ClubPosition | undefined) {
-    if (!clubId || !position) return;
-
-    if (position.hiringListingId) {
-      const { error } = await supabase
-        .from("hiring_listings")
-        .delete()
-        .eq("id", position.hiringListingId);
-
-      if (error) {
-        console.error("Failed to delete hiring_listings row:", error.message);
-      }
-      return;
-    }
-
-    const { error } = await supabase
-      .from("hiring_listings")
-      .delete()
-      .eq("club_id", clubId)
-      .eq("title", position.title);
-
-    if (error) {
-      console.error("Failed to delete hiring_listings by title:", error.message);
-    }
   }
 
   async function handleSavePosition() {
     if (!clubId || !user?.id || !title.trim()) return;
     setSaving(true);
+    setSavePositionError(null);
 
     const parsedWeeklyHours =
       commitmentLevel === "weekly_hours" && weeklyHours.trim()
         ? Math.max(1, parseInt(weeklyHours, 10) || 0)
         : null;
 
-    const payload = {
-      club_id: clubId,
+    const deadlineValue = deadline.trim() || null;
+
+    const listingFields = {
       title: title.trim(),
       description: description.trim(),
+      role_type: mapRoleType(positionType),
+      deadline: deadlineValue,
+      questions: formQuestionsToJson(formQuestions),
       requirements: requirements.trim() || null,
-      position_type: positionType,
       commitment_level: commitmentLevel,
       weekly_hours:
         commitmentLevel === "weekly_hours" ? parsedWeeklyHours : null,
-      deadline: deadline ? new Date(deadline).toISOString() : null,
-      created_by: user.id,
     };
 
     if (editingPosition) {
       const { error } = await supabase
-        .from("club_positions")
-        .update({
-          title: payload.title,
-          description: payload.description,
-          requirements: payload.requirements,
-          position_type: payload.position_type,
-          commitment_level: payload.commitment_level,
-          weekly_hours: payload.weekly_hours,
-          deadline: payload.deadline,
-        })
+        .from("hiring_listings")
+        .update(listingFields)
         .eq("id", editingPosition.id);
 
       if (error) {
-        console.error(error.message);
+        console.error("Failed to update hiring listing:", error.message, error);
+        setSavePositionError(
+          error.message || "Failed to save position. Please try again.",
+        );
         setSaving(false);
         return;
       }
-      await savePositionQuestions(editingPosition.id, formQuestions);
     } else {
-      const { data, error } = await supabase
-        .from("club_positions")
-        .insert(payload)
-        .select("id")
-        .single();
+      const { error } = await supabase.from("hiring_listings").insert({
+        club_id: clubId,
+        created_by: user.id,
+        is_open: true,
+        ...listingFields,
+      });
 
-      if (error || !data) {
-        console.error(error?.message);
+      if (error) {
+        console.error("Failed to create hiring listing:", error.message, error);
+        setSavePositionError(
+          error.message ||
+            "Failed to save position. Check that hiring_listings is set up correctly.",
+        );
         setSaving(false);
         return;
       }
-      await savePositionQuestions(data.id as string, formQuestions);
-      void syncNewHiringListing(data.id as string, {
-        title: payload.title,
-        description: payload.description,
-        requirements: payload.requirements,
-        position_type: payload.position_type,
-        commitment_level: payload.commitment_level,
-        weekly_hours: payload.weekly_hours,
-        deadline: payload.deadline,
-      });
     }
 
     setSaving(false);
     setShowPostModal(false);
+    setSavePositionError(null);
     resetPostForm();
     void loadPositions();
   }
 
   async function closePosition(position: ClubPosition) {
     const { error } = await supabase
-      .from("club_positions")
+      .from("hiring_listings")
       .update({ is_open: false })
       .eq("id", position.id);
     if (!error) {
-      void syncCloseHiringListing(position);
       void loadPositions();
     }
     setOpenMenuId(null);
@@ -821,10 +689,11 @@ export default function ClubRecruitingPage() {
 
   async function deletePosition(positionId: string) {
     if (!window.confirm("Delete this position and all applications?")) return;
-    const position = positions.find((p) => p.id === positionId);
-    const { error } = await supabase.from("club_positions").delete().eq("id", positionId);
+    const { error } = await supabase
+      .from("hiring_listings")
+      .delete()
+      .eq("id", positionId);
     if (!error) {
-      void syncDeleteHiringListing(position);
       if (expandedPositionId === positionId) {
         setExpandedPositionId(null);
         setApplications([]);
@@ -1572,6 +1441,19 @@ export default function ClubRecruitingPage() {
               questions={formQuestions}
               onChange={setFormQuestions}
             />
+
+            {savePositionError ? (
+              <p
+                style={{
+                  color: "#E51937",
+                  fontSize: "13px",
+                  marginTop: "16px",
+                  marginBottom: 0,
+                }}
+              >
+                {savePositionError}
+              </p>
+            ) : null}
 
             <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
               <button
