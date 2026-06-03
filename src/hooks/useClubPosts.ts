@@ -11,6 +11,7 @@ const POST_SELECT = `
   title,
   content,
   created_at,
+  updated_at,
   attachment_url,
   attachment_type,
   author:profiles!posts_author_profile_fkey (
@@ -28,6 +29,7 @@ function mapPostRow(row: Record<string, unknown>): Post {
     title: (row.title as string) ?? "",
     content: (row.content as string) ?? "",
     createdAt: (row.created_at as string) ?? "",
+    updatedAt: (row.updated_at as string | null) ?? null,
     authorName: (profile.full_name as string) ?? undefined,
     attachmentUrl: (row.attachment_url as string | null) ?? null,
     attachmentType: (row.attachment_type as string | null) ?? null,
@@ -153,28 +155,36 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           content: fields.content,
           attachment_url: fields.attachmentUrl ?? null,
           attachment_type: fields.attachmentType ?? null,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", postId)
-        .select("id");
+        .select(POST_SELECT);
 
       if (err || !data?.length) {
         console.error("Failed to update post:", err?.message ?? "no rows updated");
         return false;
       }
 
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                title: fields.title,
-                content: fields.content,
-                attachmentUrl: fields.attachmentUrl ?? null,
-                attachmentType: fields.attachmentType ?? null,
-              }
-            : p,
-        ),
-      );
+      if (data?.[0]) {
+        setPosts((prev) =>
+          prev.map((p) => (p.id === postId ? mapPostRow(data[0]) : p)),
+        );
+      } else {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId
+              ? {
+                  ...p,
+                  title: fields.title,
+                  content: fields.content,
+                  attachmentUrl: fields.attachmentUrl ?? null,
+                  attachmentType: fields.attachmentType ?? null,
+                  updatedAt: new Date().toISOString(),
+                }
+              : p,
+          ),
+        );
+      }
       return true;
     },
     [],

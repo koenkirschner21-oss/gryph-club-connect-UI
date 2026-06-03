@@ -56,6 +56,9 @@ export interface DirectMessage {
   createdAt: string;
   senderName?: string;
   senderAvatar?: string;
+  replyToId?: string | null;
+  replyToContent?: string | null;
+  replyToSender?: string | null;
 }
 
 export interface Conversation {
@@ -64,6 +67,7 @@ export interface Conversation {
   type: "direct" | "group";
   name: string;
   avatarUrl?: string | null;
+  createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
   isPinned: boolean;
@@ -210,6 +214,9 @@ function mapMessageRow(row: Record<string, unknown>): DirectMessage {
     attachmentType: (row.attachment_type as string | null) ?? null,
     readBy: (row.read_by as string[]) ?? [],
     createdAt: (row.created_at as string) ?? "",
+    replyToId: (row.reply_to_id as string | null) ?? null,
+    replyToContent: (row.reply_to_content as string | null) ?? null,
+    replyToSender: (row.reply_to_sender as string | null) ?? null,
   };
 }
 
@@ -362,6 +369,11 @@ export interface UseConversationsReturn {
     conversationId: string,
     content: string,
     attachment?: { url: string; type: string } | null,
+    reply?: {
+      id: string;
+      content: string;
+      senderName: string;
+    } | null,
   ) => Promise<boolean>;
   createPoll: (
     conversationId: string,
@@ -382,6 +394,10 @@ export interface UseConversationsReturn {
   toggleConversationPin: (conversationId: string) => Promise<boolean>;
   toggleConversationFavorite: (conversationId: string) => Promise<boolean>;
   fetchConversationMembers: (conversationId: string) => Promise<ConversationMember[]>;
+  addConversationMember: (
+    conversationId: string,
+    userId: string,
+  ) => Promise<boolean>;
   refresh: () => void;
 }
 
@@ -515,7 +531,7 @@ export function useConversations(
 
     const { data: convoRows, error: convoErr } = await supabase
       .from("conversations")
-      .select("id, club_id, type, name, avatar_url, created_at, updated_at, is_pinned, is_favorite")
+      .select("id, club_id, type, name, avatar_url, created_by, created_at, updated_at, is_pinned, is_favorite")
       .eq("club_id", clubId)
       .in("id", conversationIds)
       .order("updated_at", { ascending: false });
@@ -575,6 +591,7 @@ export function useConversations(
           type: row.type as "direct" | "group",
           name: displayName,
           avatarUrl: row.avatar_url,
+          createdBy: (row.created_by as string | null) ?? null,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
           isPinned: Boolean(row.is_pinned),
@@ -970,6 +987,32 @@ export function useConversations(
     return (data ?? []).map((row) => mapMemberRow(row as Record<string, unknown>));
   }, []);
 
+  const addConversationMember = useCallback(
+    async (conversationId: string, memberUserId: string): Promise<boolean> => {
+      const { error } = await supabase.from("conversation_members").insert({
+        conversation_id: conversationId,
+        user_id: memberUserId,
+      });
+
+      if (error) {
+        console.error("Failed to add conversation member:", error.message);
+        return false;
+      }
+
+      await loadConversations();
+      if (activeConversationId === conversationId) {
+        const members = await fetchConversationMembers(conversationId);
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conversationId ? { ...c, members } : c,
+          ),
+        );
+      }
+      return true;
+    },
+    [loadConversations, activeConversationId, fetchConversationMembers],
+  );
+
   const toggleConversationPin = useCallback(
     async (conversationId: string): Promise<boolean> => {
       const current = conversations.find((c) => c.id === conversationId);
@@ -1025,6 +1068,11 @@ export function useConversations(
       conversationId: string,
       content: string,
       attachment?: { url: string; type: string } | null,
+      reply?: {
+        id: string;
+        content: string;
+        senderName: string;
+      } | null,
     ): Promise<boolean> => {
       if (!user?.id) return false;
 
@@ -1051,6 +1099,9 @@ export function useConversations(
         createdAt: new Date().toISOString(),
         senderName: currentUserName,
         senderAvatar: currentUserAvatar,
+        replyToId: reply?.id ?? null,
+        replyToContent: reply?.content ?? null,
+        replyToSender: reply?.senderName ?? null,
       };
 
       setMessages((prev) => [...prev, optimisticMessage]);
@@ -1064,6 +1115,9 @@ export function useConversations(
           attachment_url: attachment?.url ?? null,
           attachment_type: attachment?.type ?? null,
           read_by: [user.id],
+          reply_to_id: reply?.id ?? null,
+          reply_to_content: reply?.content ?? null,
+          reply_to_sender: reply?.senderName ?? null,
         })
         .select("*")
         .single();
@@ -1206,6 +1260,7 @@ export function useConversations(
     toggleConversationPin,
     toggleConversationFavorite,
     fetchConversationMembers,
+    addConversationMember,
     refresh,
   };
 }

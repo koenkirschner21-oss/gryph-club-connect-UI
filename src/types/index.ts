@@ -185,6 +185,7 @@ export interface Post {
   title: string;
   content: string;
   createdAt: string;
+  updatedAt?: string | null;
   authorName?: string;
   attachmentUrl?: string | null;
   attachmentType?: string | null;

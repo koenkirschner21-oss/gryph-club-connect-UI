@@ -8,7 +8,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { BarChart2, Menu, Pencil, Pin, Search, SquarePen, Star, X } from "lucide-react";
+import { BarChart2, Menu, Pencil, Pin, Reply, Search, SquarePen, Star, UserPlus, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
@@ -503,6 +503,51 @@ function PollBubble({
   );
 }
 
+function ReplyQuote({
+  sender,
+  content,
+}: {
+  sender: string;
+  content: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#111111",
+        borderLeft: "3px solid #E51937",
+        borderRadius: "4px",
+        padding: "6px 10px",
+        marginBottom: "6px",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "11px",
+          color: "#E51937",
+          margin: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {sender}
+      </p>
+      <p
+        style={{
+          fontSize: "11px",
+          color: "#555555",
+          margin: "2px 0 0",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {content}
+      </p>
+    </div>
+  );
+}
+
 function MessageAttachment({ msg }: { msg: DirectMessage }) {
   if (!msg.attachmentUrl || !msg.attachmentType) return null;
   if (msg.attachmentType.startsWith("image/")) {
@@ -539,10 +584,15 @@ function MessageAttachment({ msg }: { msg: DirectMessage }) {
 function MessageBubble({
   msg,
   isOwn,
+  isGroupChat,
+  onReply,
 }: {
   msg: DirectMessage;
   isOwn: boolean;
+  isGroupChat: boolean;
+  onReply?: (msg: DirectMessage) => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const profilePath = `/app/profile/${msg.senderId}`;
 
   return (
@@ -584,19 +634,52 @@ function MessageBubble({
           </Link>
         )}
         <div
-          style={{
-            background: isOwn ? "#E51937" : "#1a1a1a",
-            color: isOwn ? "#ffffff" : "#cccccc",
-            borderRadius: isOwn ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-            padding: "10px 14px",
-            fontSize: "14px",
-            lineHeight: 1.5,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
+          style={{ position: "relative" }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
         >
-          {msg.content}
-          <MessageAttachment msg={msg} />
+          <div
+            style={{
+              background: isOwn ? "#E51937" : "#1a1a1a",
+              color: isOwn ? "#ffffff" : "#cccccc",
+              borderRadius: isOwn ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+              padding: "10px 14px",
+              fontSize: "14px",
+              lineHeight: 1.5,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {msg.replyToId && msg.replyToContent ? (
+              <ReplyQuote
+                sender={msg.replyToSender ?? "Member"}
+                content={msg.replyToContent}
+              />
+            ) : null}
+            {msg.content}
+            <MessageAttachment msg={msg} />
+          </div>
+          {isGroupChat && onReply && hovered ? (
+            <button
+              type="button"
+              aria-label="Reply"
+              onClick={() => onReply(msg)}
+              style={{
+                position: "absolute",
+                top: "4px",
+                right: isOwn ? "auto" : "4px",
+                left: isOwn ? "4px" : "auto",
+                background: "transparent",
+                border: "none",
+                color: "#ffffff",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+              }}
+            >
+              <Reply size={14} aria-hidden />
+            </button>
+          ) : null}
         </div>
         <span
           style={{
@@ -614,6 +697,7 @@ function MessageBubble({
 }
 
 type ModalStep = "type" | "members";
+type ChatContentFilter = "all" | "polls" | "files";
 
 export default function ClubChatPage() {
   const { clubId } = useParams<{ clubId: string }>();
@@ -640,6 +724,7 @@ export default function ClubChatPage() {
     uploadAttachment,
     uploadGroupAvatar,
     updateGroupConversation,
+    addConversationMember,
     toggleConversationPin,
     toggleConversationFavorite,
     fetchConversationMembers,
@@ -661,6 +746,18 @@ export default function ClubChatPage() {
   const [avatarCropTarget, setAvatarCropTarget] = useState<
     "create-group" | "edit-group" | null
   >(null);
+  const [replyingTo, setReplyingTo] = useState<{
+    id: string;
+    content: string;
+    senderName: string;
+  } | null>(null);
+  const [chatContentFilter, setChatContentFilter] =
+    useState<ChatContentFilter>("all");
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+  const [addingMemberId, setAddingMemberId] = useState<string | null>(null);
+  const [recentlyAddedMemberIds, setRecentlyAddedMemberIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -734,6 +831,29 @@ export default function ClubChatPage() {
       (a, b) => new Date(a.sortAt).getTime() - new Date(b.sortAt).getTime(),
     );
   }, [messages, polls]);
+
+  const filteredChatTimeline = useMemo(() => {
+    if (chatContentFilter === "all") return chatTimeline;
+    if (chatContentFilter === "polls") {
+      return chatTimeline.filter((item) => item.kind === "poll");
+    }
+    return chatTimeline.filter(
+      (item) => item.kind === "message" && Boolean(item.message.attachmentUrl),
+    );
+  }, [chatTimeline, chatContentFilter]);
+
+  const canAddMembers =
+    activeConversation?.type === "group" &&
+    Boolean(user?.id) &&
+    (activeConversation.createdBy === user?.id ||
+      userRole === "owner" ||
+      userRole === "executive");
+
+  const membersAvailableToAdd = useMemo(() => {
+    if (!activeConversation) return [];
+    const inChat = new Set(activeConversation.members.map((m) => m.userId));
+    return clubMembers.filter((m) => !inChat.has(m.userId));
+  }, [activeConversation, clubMembers]);
 
   const pinnedConversations = useMemo(
     () => conversations.filter((c) => c.isPinned),
@@ -827,8 +947,14 @@ export default function ClubChatPage() {
   }, [activeConversationId, conversations, setActiveConversationId]);
 
   useEffect(() => {
+    setReplyingTo(null);
+    setChatContentFilter("all");
+    setShowAddMembersModal(false);
+  }, [activeConversationId]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatTimeline.length, activeConversationId]);
+  }, [filteredChatTimeline.length, activeConversationId]);
 
   useEffect(() => {
     if (!activeConversationId || !user?.id || !clubId) return;
@@ -1051,6 +1177,36 @@ export default function ClubChatPage() {
     }
   }
 
+  function startReply(msg: DirectMessage) {
+    const preview =
+      msg.content?.trim() ||
+      (msg.attachmentUrl ? "Attachment" : "Message");
+    setReplyingTo({
+      id: msg.id,
+      content: preview,
+      senderName: msg.senderName ?? "Unknown",
+    });
+  }
+
+  async function handleAddMemberToChat(memberUserId: string) {
+    if (!activeConversationId) return;
+    setAddingMemberId(memberUserId);
+    const ok = await addConversationMember(activeConversationId, memberUserId);
+    setAddingMemberId(null);
+    if (!ok) {
+      setSendError(true);
+      return;
+    }
+    setRecentlyAddedMemberIds((prev) => new Set(prev).add(memberUserId));
+    window.setTimeout(() => {
+      setRecentlyAddedMemberIds((prev) => {
+        const next = new Set(prev);
+        next.delete(memberUserId);
+        return next;
+      });
+    }, 2000);
+  }
+
   async function handleSend() {
     if (!activeConversationId || !user) return;
     const text = draft.trim();
@@ -1069,10 +1225,16 @@ export default function ClubChatPage() {
       }
     }
 
-    const ok = await sendMessage(activeConversationId, text, attachment);
+    const ok = await sendMessage(
+      activeConversationId,
+      text,
+      attachment,
+      replyingTo,
+    );
     if (ok) {
       setDraft("");
       setPendingFile(null);
+      setReplyingTo(null);
     } else {
       setSendError(true);
     }
@@ -1959,7 +2121,57 @@ export default function ClubChatPage() {
                     {formatMemberCount(activeConversation.members.length)}
                   </p>
                 ) : null}
+                <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
+                  {(["all", "polls", "files"] as const).map((filter) => {
+                    const active = chatContentFilter === filter;
+                    const label =
+                      filter === "all" ? "All" : filter === "polls" ? "Polls" : "Files";
+                    return (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setChatContentFilter(filter)}
+                        style={{
+                          background: active ? "#E51937" : "#1a1a1a",
+                          border: active ? "none" : "1px solid #242424",
+                          color: active ? "#ffffff" : "#777777",
+                          borderRadius: "20px",
+                          padding: "4px 12px",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+              {canAddMembers ? (
+                <button
+                  type="button"
+                  title="Add Members"
+                  aria-label="Add Members"
+                  onClick={() => setShowAddMembersModal(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#777777",
+                    cursor: "pointer",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "#ffffff";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "#777777";
+                  }}
+                >
+                  <UserPlus size={16} aria-hidden />
+                </button>
+              ) : null}
             </header>
 
             <div
@@ -1973,7 +2185,7 @@ export default function ClubChatPage() {
                 <div className="flex justify-center py-8">
                   <Spinner label="Loading messages…" />
                 </div>
-              ) : chatTimeline.length === 0 ? (
+              ) : filteredChatTimeline.length === 0 ? (
                 <p
                   style={{
                     textAlign: "center",
@@ -1982,15 +2194,23 @@ export default function ClubChatPage() {
                     marginTop: "40px",
                   }}
                 >
-                  No messages yet. Say hello!
+                  {chatContentFilter === "all"
+                    ? "No messages yet. Say hello!"
+                    : chatContentFilter === "polls"
+                      ? "No polls in this conversation."
+                      : "No files shared in this conversation."}
                 </p>
               ) : (
-                chatTimeline.map((item) =>
+                filteredChatTimeline.map((item) =>
                   item.kind === "message" ? (
                     <MessageBubble
                       key={item.id}
                       msg={item.message}
                       isOwn={item.message.senderId === user?.id}
+                      isGroupChat={activeConversation.type === "group"}
+                      onReply={
+                        activeConversation.type === "group" ? startReply : undefined
+                      }
                     />
                   ) : (
                     <PollBubble
@@ -2013,12 +2233,67 @@ export default function ClubChatPage() {
                 background: "#111111",
                 borderTop: "1px solid #1e1e1e",
                 padding: "12px 16px",
-                display: "flex",
-                gap: "8px",
-                alignItems: "center",
                 position: "relative",
               }}
             >
+              {replyingTo ? (
+                <div
+                  style={{
+                    background: "#1a1a1a",
+                    border: "1px solid #242424",
+                    borderLeft: "3px solid #E51937",
+                    borderRadius: "6px",
+                    padding: "8px 12px",
+                    marginBottom: "8px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ fontSize: "12px", color: "#777777", margin: 0 }}>
+                      Replying to {replyingTo.senderName}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#555555",
+                        margin: "2px 0 0",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {replyingTo.content}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Cancel reply"
+                    onClick={() => setReplyingTo(null)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#777777",
+                      cursor: "pointer",
+                      padding: "4px",
+                      display: "flex",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                </div>
+              ) : null}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "center",
+                  position: "relative",
+                }}
+              >
               {showMentionPopup && activeConversation ? (
                 <div
                   ref={mentionPopupRef}
@@ -2199,6 +2474,7 @@ export default function ClubChatPage() {
                 Failed to send. Please try again.
               </p>
             ) : null}
+            </div>
           </>
         )}
       </div>
@@ -2886,6 +3162,141 @@ export default function ClubChatPage() {
           onComplete={completeAvatarCrop}
           onCancel={cancelAvatarCrop}
         />
+      ) : null}
+
+      {showAddMembersModal && activeConversation ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: "16px",
+          }}
+          onClick={() => setShowAddMembersModal(false)}
+        >
+          <div
+            style={{
+              position: "relative",
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "420px",
+              width: "100%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowAddMembersModal(false)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+              }}
+            >
+              <X size={18} aria-hidden />
+            </button>
+            <h2
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 16px",
+              }}
+            >
+              Add Members
+            </h2>
+            {membersAvailableToAdd.length === 0 ? (
+              <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                All club members are already in this chat.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {membersAvailableToAdd.map((member) => {
+                  const wasAdded = recentlyAddedMemberIds.has(member.userId);
+                  const isAdding = addingMemberId === member.userId;
+                  return (
+                    <div
+                      key={member.userId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          minWidth: 0,
+                        }}
+                      >
+                        <Avatar
+                          url={member.avatarUrl}
+                          name={member.fullName ?? member.mentionUsername}
+                          size={32}
+                        />
+                        <span
+                          style={{
+                            fontSize: "14px",
+                            color: "#ffffff",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {member.fullName ?? member.mentionUsername}
+                        </span>
+                      </div>
+                      {wasAdded ? (
+                        <span style={{ fontSize: "12px", color: "#4ade80", flexShrink: 0 }}>
+                          Added ✓
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isAdding}
+                          onClick={() => void handleAddMemberToChat(member.userId)}
+                          style={{
+                            background: "#E51937",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "4px 12px",
+                            fontSize: "12px",
+                            cursor: isAdding ? "not-allowed" : "pointer",
+                            opacity: isAdding ? 0.6 : 1,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {isAdding ? "Adding…" : "Add"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       ) : null}
     </div>
   );
