@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Bookmark, Download, Heart } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -385,6 +385,7 @@ function PostAttachment({
 
 export default function ClubAnnouncementsPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
@@ -625,6 +626,16 @@ export default function ClubAnnouncementsPage() {
     setShowForm(true);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
+
+  useEffect(() => {
+    if (searchParams.get("create") !== "true" || !isPrivileged || loading || roleLoading) {
+      return;
+    }
+    openCreateForm();
+    const next = new URLSearchParams(searchParams);
+    next.delete("create");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading, roleLoading]);
 
   function openEditForm(post: Post) {
     setEditingPostId(post.id);

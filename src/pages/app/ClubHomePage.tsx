@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   getTaskDueUrgency,
@@ -7,15 +14,20 @@ import {
   taskDueLeftBorder,
 } from "../../lib/taskDueUrgency";
 import { X, Check } from "lucide-react";
-import { Megaphone, Calendar, Users } from "../../components/icons/WorkspaceIcons";
+import { Megaphone, Calendar } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useClubTasks } from "../../hooks/useClubTasks";
+import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { useIsMobile } from "../../hooks/useWindowWidth";
+import {
+  getUpcomingEventOccurrences,
+  type EventRecurringMeta,
+} from "../../lib/eventRecurrence";
 import { supabase } from "../../lib/supabaseClient";
-import type { MemberRole, Task, TaskStatus } from "../../types";
+import type { ClubEvent, MemberRole, Post, Task, TaskStatus } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 
 const sectionHeadingRow: CSSProperties = {
@@ -69,21 +81,6 @@ const quickActionOutlineButton: CSSProperties = {
   backgroundColor: "transparent",
   border: "1px solid #E51937",
   color: "#E51937",
-  borderRadius: "6px",
-  padding: "8px 16px",
-  fontSize: "13px",
-  fontWeight: 500,
-  textDecoration: "none",
-};
-
-const quickActionNeutralButton: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
-  background: "transparent",
-  backgroundColor: "transparent",
-  border: "1px solid #333333",
-  color: "#cccccc",
   borderRadius: "6px",
   padding: "8px 16px",
   fontSize: "13px",
@@ -431,18 +428,102 @@ function TaskDueBadge({ dueDate, status }: { dueDate?: string; status: TaskStatu
   return <span style={badge.style}>{badge.label}</span>;
 }
 
+const detailModalOverlay: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0, 0, 0, 0.7)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 50,
+  padding: "16px",
+};
+
+const detailModalPanel: CSSProperties = {
+  position: "relative",
+  background: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "12px",
+  padding: "28px",
+  maxWidth: "520px",
+  width: "100%",
+  maxHeight: "90vh",
+  overflowY: "auto",
+};
+
+function DashboardItemModal({
+  onClose,
+  children,
+  footerLink,
+}: {
+  onClose: () => void;
+  children: ReactNode;
+  footerLink: { label: string; to: string };
+}) {
+  const navigate = useNavigate();
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={detailModalOverlay}
+      onClick={onClose}
+    >
+      <div style={detailModalPanel} onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            top: "20px",
+            right: "20px",
+            background: "transparent",
+            border: "none",
+            color: "#777777",
+            cursor: "pointer",
+            padding: "4px",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          <X size={18} aria-hidden />
+        </button>
+        {children}
+        <button
+          type="button"
+          onClick={() => navigate(footerLink.to)}
+          style={{
+            marginTop: "24px",
+            width: "100%",
+            background: "transparent",
+            border: "1px solid #333333",
+            color: "#E51937",
+            borderRadius: "6px",
+            padding: "10px 16px",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          {footerLink.label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ClubTaskCard({
   task,
   clubName,
   clubAbbreviation,
   clubLogoUrl,
-  tasksPath,
+  onClick,
 }: {
   task: Task;
   clubName: string;
   clubAbbreviation?: string;
   clubLogoUrl?: string;
-  tasksPath: string;
+  onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const statusLabel =
@@ -463,7 +544,18 @@ function ClubTaskCard({
     : null;
 
   return (
-    <Link to={tasksPath} className="block no-underline">
+    <div
+      role="button"
+      tabIndex={0}
+      className="block cursor-pointer no-underline"
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+    >
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -518,7 +610,7 @@ function ClubTaskCard({
         </div>
         <TaskDueBadge dueDate={task.dueDate} status={task.status} />
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -544,8 +636,8 @@ function NextEventBanner({
   return (
     <div
       style={{
-        background: "linear-gradient(135deg, #1a0505, #2d0808)",
-        border: "1px solid #3a1010",
+        background: "#1a1a1a",
+        border: "1px solid #E51937",
         borderRadius: "10px",
         padding: "16px 20px",
         display: "flex",
@@ -613,16 +705,18 @@ export default function ClubHomePage() {
     : null;
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteCopied, setInviteCopied] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteSending, setInviteSending] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
   const [memberRsvps, setMemberRsvps] = useState<
     Record<string, "going" | "maybe" | "not_going" | null>
+  >({});
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<
+    (ClubEvent & { occurrenceDate: string }) | null
+  >(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [recurringColumnReady, setRecurringColumnReady] = useState(false);
+  const [eventRecurring, setEventRecurring] = useState<
+    Record<string, EventRecurringMeta>
   >({});
 
   useEffect(() => {
@@ -654,17 +748,115 @@ export default function ClubHomePage() {
   const { posts, loading: postsLoading } = useClubPosts(clubId);
   const { tasks, loading: tasksLoading } = useClubTasks(clubId);
 
-  const upcomingEvents = useMemo(
-    () =>
-      events
-        .filter((e) => new Date(e.date) >= new Date())
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-    [events],
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkRecurringColumn() {
+      const { error } = await supabase.from("events").select("is_recurring").limit(1);
+      if (cancelled) return;
+      setRecurringColumnReady(!error);
+    }
+
+    void checkRecurringColumn();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadEventRecurring = useCallback(async () => {
+    if (!clubId || !recurringColumnReady) return;
+    const { data, error } = await supabase
+      .from("events")
+      .select(
+        "id, is_recurring, recurrence_frequency, recurrence_end_date, parent_event_id",
+      )
+      .eq("club_id", clubId);
+
+    if (error) {
+      console.error("Failed to load recurring event metadata:", error.message);
+      return;
+    }
+
+    const map: Record<string, EventRecurringMeta> = {};
+    (data ?? []).forEach((row) => {
+      const freq = row.recurrence_frequency as string | null;
+      const normalizedFreq =
+        freq === "weekly" || freq === "biweekly" || freq === "monthly"
+          ? freq
+          : null;
+      map[row.id as string] = {
+        isRecurring: Boolean(row.is_recurring),
+        frequency: normalizedFreq,
+        recurrenceEndDate: (row.recurrence_end_date as string | null) ?? null,
+        parentEventId: (row.parent_event_id as string | null) ?? null,
+      };
+    });
+    setEventRecurring(map);
+  }, [clubId, recurringColumnReady]);
+
+  useEffect(() => {
+    if (!eventsLoading && recurringColumnReady) {
+      void loadEventRecurring();
+    }
+  }, [eventsLoading, events, recurringColumnReady, loadEventRecurring]);
+
+  const upcomingOccurrences = useMemo(
+    () => getUpcomingEventOccurrences(events, eventRecurring),
+    [events, eventRecurring],
   );
 
-  const nextEvent = upcomingEvents[0];
-  const meetingSublabel =
-    club?.location && !isHiddenLocation(club.location) ? club.location.trim() : "";
+  const nextEvent = upcomingOccurrences[0];
+
+  const nextMeetingDisplay = useMemo(() => {
+    const scheduleText = club?.meetingSchedule?.trim() ?? "";
+    const recurringOccurrences = upcomingOccurrences.filter((e) => {
+      const meta = eventRecurring[e.id];
+      return meta?.isRecurring && meta.frequency;
+    });
+    const weeklyFirst = recurringOccurrences.find((e) => {
+      const meta = eventRecurring[e.id];
+      return meta?.frequency === "weekly";
+    });
+    const nextRecurring = weeklyFirst ?? recurringOccurrences[0];
+
+    if (nextRecurring) {
+      const d = new Date(`${nextRecurring.occurrenceDate}T12:00:00`);
+      const value = d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+      const timeLabel =
+        nextRecurring.time &&
+        nextRecurring.time.trim() !== "" &&
+        nextRecurring.time.toUpperCase() !== "TBD"
+          ? formatEventTime12h(nextRecurring.time)
+          : "";
+      const locationLabel =
+        nextRecurring.location && !isHiddenLocation(nextRecurring.location)
+          ? nextRecurring.location.trim()
+          : "";
+      const sublabelParts = [weekday, timeLabel, locationLabel].filter(Boolean);
+      return {
+        value,
+        sublabel: sublabelParts.join(" · "),
+        scheduled: true,
+      };
+    }
+
+    if (scheduleText) {
+      return {
+        value: scheduleText,
+        sublabel:
+          club?.location && !isHiddenLocation(club.location)
+            ? club.location.trim()
+            : "",
+        scheduled: true,
+      };
+    }
+
+    return { value: "Not scheduled", sublabel: "", scheduled: false };
+  }, [club, upcomingOccurrences, eventRecurring]);
 
   const executiveTasks = useMemo(() => {
     return tasks.filter((t) => t.assignedTo === user?.id || t.createdBy === user?.id);
@@ -696,73 +888,12 @@ export default function ClubHomePage() {
   const postsCap = userRole === "member" ? 4 : 2;
   const previewPosts = posts.slice(0, postsCap);
   const eventsCap = userRole === "member" ? 4 : 3;
-  const previewEvents = upcomingEvents.slice(0, eventsCap);
-
-  function handleCopyInviteCode() {
-    if (!club?.joinCode) return;
-    navigator.clipboard.writeText(club.joinCode).then(
-      () => {
-        setInviteCopied(true);
-        window.setTimeout(() => setInviteCopied(false), 2000);
-      },
-      () => {
-        // Clipboard unavailable — user can still copy manually from the code display.
-      },
-    );
-  }
-
-  function closeInviteModal() {
-    setShowInviteModal(false);
-    setInviteEmail("");
-    setInviteError(null);
-    setInviteLink(null);
-    setInviteLinkCopied(false);
-    setInviteCopied(false);
-  }
-
-  function handleCopyInviteLink() {
-    if (!inviteLink) return;
-    navigator.clipboard.writeText(inviteLink).then(
-      () => {
-        setInviteLinkCopied(true);
-        window.setTimeout(() => setInviteLinkCopied(false), 2000);
-      },
-      () => {
-        // Clipboard unavailable
-      },
-    );
-  }
-
-  async function handleSendInvite() {
-    if (!clubId || !user?.id || !inviteEmail.trim()) return;
-    setInviteSending(true);
-    setInviteError(null);
-    setInviteLink(null);
-
-    const { data, error } = await supabase
-      .from("club_invites")
-      .insert({
-        club_id: clubId,
-        invited_email: inviteEmail.trim().toLowerCase(),
-        invited_by: user.id,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      })
-      .select("token")
-      .single();
-
-    setInviteSending(false);
-
-    if (error || !data?.token) {
-      setInviteError(
-        error?.message ?? "Failed to create invite. Please try again.",
-      );
-      return;
-    }
-
-    setInviteLink(
-      `${window.location.origin}/invite/${data.token as string}`,
-    );
-  }
+  const previewEvents = upcomingOccurrences.slice(0, eventsCap);
+  const previewEventIds = useMemo(
+    () => previewEvents.map((e) => e.id),
+    [previewEvents],
+  );
+  const { counts: eventRsvpCounts } = useEventRsvps(previewEventIds);
 
   if (!club) {
     return (
@@ -937,39 +1068,61 @@ export default function ClubHomePage() {
 
       {userRole === "owner" ? (
         <div className="mb-6 flex flex-wrap gap-2">
-          <Link to={announcementsPath} style={quickActionButton}>
-            <Megaphone size={16} strokeWidth={2} aria-hidden />
-            New Announcement
-          </Link>
-          <Link to={eventsPath} style={quickActionOutlineButton}>
-            <Calendar size={16} strokeWidth={2} aria-hidden />
-            New Event
-          </Link>
           <button
             type="button"
-            onClick={() => setShowInviteModal(true)}
+            onClick={() => navigate(`${announcementsPath}?create=true`)}
             style={{
-              ...quickActionNeutralButton,
+              ...quickActionButton,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              border: "none",
+            }}
+          >
+            <Megaphone size={16} strokeWidth={2} aria-hidden />
+            New Announcement
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`${eventsPath}?create=true`)}
+            style={{
+              ...quickActionOutlineButton,
               cursor: "pointer",
               fontFamily: "inherit",
             }}
           >
-            <Users size={16} strokeWidth={2} aria-hidden />
-            Invite Member
+            <Calendar size={16} strokeWidth={2} aria-hidden />
+            New Event
           </button>
         </div>
       ) : null}
 
       {userRole === "executive" ? (
         <div className="mb-6 flex flex-wrap gap-2">
-          <Link to={announcementsPath} style={quickActionButton}>
+          <button
+            type="button"
+            onClick={() => navigate(`${announcementsPath}?create=true`)}
+            style={{
+              ...quickActionButton,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              border: "none",
+            }}
+          >
             <Megaphone size={16} strokeWidth={2} aria-hidden />
             New Announcement
-          </Link>
-          <Link to={eventsPath} style={quickActionOutlineButton}>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`${eventsPath}?create=true`)}
+            style={{
+              ...quickActionOutlineButton,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
             <Calendar size={16} strokeWidth={2} aria-hidden />
             New Event
-          </Link>
+          </button>
         </div>
       ) : null}
 
@@ -993,29 +1146,36 @@ export default function ClubHomePage() {
         ) : null}
         <ClubStatCard
           label="Upcoming Events"
-          value={eventsLoading ? "…" : upcomingEvents.length}
+          value={eventsLoading ? "…" : upcomingOccurrences.length}
           sublabel="Scheduled events"
           accentColor="#FFC429"
           to={eventsPath}
         />
         <ClubStatCard
           label="Meeting"
-          value={club.meetingSchedule?.trim() || "Not scheduled"}
-          sublabel={meetingSublabel}
+          value={nextMeetingDisplay.value}
+          sublabel={nextMeetingDisplay.sublabel}
           accentColor="#747676"
           to={eventsPath}
-          valueFontSize={club.meetingSchedule?.trim() ? "2rem" : "13px"}
-          valueColor={club.meetingSchedule?.trim() ? "#ffffff" : "#555555"}
-          valueFontStyle={club.meetingSchedule?.trim() ? undefined : "italic"}
+          valueFontSize={nextMeetingDisplay.scheduled ? "2rem" : "13px"}
+          valueColor={nextMeetingDisplay.scheduled ? "#ffffff" : "#555555"}
+          valueFontStyle={nextMeetingDisplay.scheduled ? undefined : "italic"}
           valueHint={
-            club.meetingSchedule?.trim() ? undefined : "Click to schedule →"
+            nextMeetingDisplay.scheduled ? undefined : "Click to schedule →"
           }
         />
       </div>
 
       {nextEvent ? (
         <div className="mt-8">
-          <NextEventBanner event={nextEvent} eventsPath={eventsPath} />
+          <NextEventBanner
+            event={{
+              title: nextEvent.title,
+              date: nextEvent.occurrenceDate,
+              time: nextEvent.time,
+            }}
+            eventsPath={eventsPath}
+          />
         </div>
       ) : null}
 
@@ -1048,18 +1208,27 @@ export default function ClubHomePage() {
         ) : (
           <div className="space-y-3">
             {previewPosts.map((post) => (
-              <Link key={post.id} to={announcementsPath} className="block no-underline">
-                <article
-                  style={{
-                    backgroundColor: "#1a1a1a",
-                    border: "1px solid #242424",
-                    borderLeft: "3px solid #E51937",
-                    borderRadius: "8px",
-                    padding: userRole === "member" ? "20px" : "16px",
-                    transition: "all 0.15s ease",
-                    cursor: "pointer",
-                  }}
-                >
+              <article
+                key={post.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedAnnouncement(post)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedAnnouncement(post);
+                  }
+                }}
+                style={{
+                  backgroundColor: "#1a1a1a",
+                  border: "1px solid #242424",
+                  borderLeft: "3px solid #E51937",
+                  borderRadius: "8px",
+                  padding: userRole === "member" ? "20px" : "16px",
+                  transition: "all 0.15s ease",
+                  cursor: "pointer",
+                }}
+              >
                 <h3
                   style={{
                     fontSize: userRole === "member" ? "15px" : "14px",
@@ -1103,8 +1272,7 @@ export default function ClubHomePage() {
                 >
                   {post.content}
                 </p>
-                </article>
-              </Link>
+              </article>
             ))}
           </div>
         )}
@@ -1181,7 +1349,7 @@ export default function ClubHomePage() {
                 clubName={club.name}
                 clubAbbreviation={club.abbreviation}
                 clubLogoUrl={club.logoUrl}
-                tasksPath={tasksPath}
+                onClick={() => setSelectedTask(task)}
               />
             ))}
           </div>
@@ -1192,13 +1360,13 @@ export default function ClubHomePage() {
       <div className="mt-8">
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>Upcoming Events</h2>
-          {upcomingEvents.length > 0 ? (
+          {upcomingOccurrences.length > 0 ? (
             <Link to={eventsPath} style={viewAllLink}>
               View All →
             </Link>
           ) : null}
         </div>
-        {upcomingEvents.length === 0 ? (
+        {upcomingOccurrences.length === 0 ? (
           <div
             className="p-6 text-center"
             style={{
@@ -1217,17 +1385,29 @@ export default function ClubHomePage() {
         ) : (
           <div>
             {previewEvents.map((event) => (
-              <Link key={event.id} to={eventsPath} className="block no-underline">
-                <div style={{ cursor: "pointer" }}>
+              <div key={event.id}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="block cursor-pointer no-underline"
+                  onClick={() => setSelectedEvent(event)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedEvent(event);
+                    }
+                  }}
+                >
                   <ClubEventCard
                     title={event.title}
-                    date={event.date}
+                    date={event.occurrenceDate}
                     time={event.time}
                     location={event.location}
                     clubName={club.name}
                     clubAbbreviation={club.abbreviation}
                     clubLogoUrl={club.logoUrl}
                   />
+                </div>
                   {userRole === "member" ? (
                     <div
                       style={{
@@ -1251,7 +1431,7 @@ export default function ClubHomePage() {
                             key={status}
                             type="button"
                             onClick={(e) => {
-                              e.preventDefault();
+                              e.stopPropagation();
                               setMemberRsvps((prev) => ({
                                 ...prev,
                                 [event.id]: prev[event.id] === status ? null : status,
@@ -1273,243 +1453,161 @@ export default function ClubHomePage() {
                       })}
                     </div>
                   ) : null}
-                </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
       </div>
 
-      {showInviteModal ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="invite-club-title"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0, 0, 0, 0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 50,
-            padding: "16px",
+      {selectedAnnouncement ? (
+        <DashboardItemModal
+          onClose={() => setSelectedAnnouncement(null)}
+          footerLink={{
+            label: "View All Announcements →",
+            to: announcementsPath,
           }}
-          onClick={closeInviteModal}
         >
-          <div
+          <h2
             style={{
-              position: "relative",
-              background: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "12px",
-              padding: "24px",
-              maxWidth: "400px",
-              width: "100%",
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: "0 0 12px",
+              paddingRight: "28px",
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={closeInviteModal}
-              style={{
-                position: "absolute",
-                top: "16px",
-                right: "16px",
-                background: "transparent",
-                border: "none",
-                color: "#777777",
-                cursor: "pointer",
-                padding: "4px",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <X size={18} aria-hidden />
-            </button>
-            <h2
-              id="invite-club-title"
-              style={{
-                fontSize: "16px",
-                fontWeight: 700,
-                color: "#ffffff",
-                margin: "0 0 20px",
-              }}
-            >
-              Invite to Club
-            </h2>
-            {club.joinCode ? (
-              <>
-                <p
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: 700,
-                    color: "#FFC429",
-                    letterSpacing: "0.15em",
-                    textAlign: "center",
-                    margin: "0 0 12px",
-                  }}
-                >
-                  {club.joinCode}
-                </p>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#555555",
-                    textAlign: "center",
-                    margin: "0 0 20px",
-                  }}
-                >
-                  Share this code with anyone to join your club
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCopyInviteCode}
-                  style={{
-                    width: "100%",
-                    background: "#E51937",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "6px",
-                    padding: "10px 24px",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  {inviteCopied ? "Copied!" : "Copy Code"}
-                </button>
-              </>
-            ) : (
-              <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                No invite code is set for this club yet. Generate one in club
-                settings.
-              </p>
-            )}
+            {selectedAnnouncement.title}
+          </h2>
+          <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 16px" }}>
+            {selectedAnnouncement.authorName ?? "Unknown"} ·{" "}
+            {new Date(selectedAnnouncement.createdAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </p>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#cccccc",
+              lineHeight: 1.6,
+              margin: 0,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {selectedAnnouncement.content}
+          </p>
+        </DashboardItemModal>
+      ) : null}
 
-            <div
+      {selectedEvent ? (
+        <DashboardItemModal
+          onClose={() => setSelectedEvent(null)}
+          footerLink={{ label: "View All Events →", to: eventsPath }}
+        >
+          <h2
+            style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: "0 0 16px",
+              paddingRight: "28px",
+            }}
+          >
+            {selectedEvent.title}
+          </h2>
+          <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
+            <span style={{ color: "#555555" }}>Date: </span>
+            {formatEventDateShort(selectedEvent.occurrenceDate)}
+          </p>
+          {selectedEvent.time &&
+          selectedEvent.time.trim() !== "" &&
+          selectedEvent.time.toUpperCase() !== "TBD" ? (
+            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
+              <span style={{ color: "#555555" }}>Time: </span>
+              {formatEventTime12h(selectedEvent.time)}
+            </p>
+          ) : null}
+          {selectedEvent.location && !isHiddenLocation(selectedEvent.location) ? (
+            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
+              <span style={{ color: "#555555" }}>Location: </span>
+              {selectedEvent.location.trim()}
+            </p>
+          ) : null}
+          {selectedEvent.description?.trim() ? (
+            <p
               style={{
-                marginTop: "28px",
-                paddingTop: "24px",
-                borderTop: "1px solid #242424",
+                fontSize: "14px",
+                color: "#cccccc",
+                lineHeight: 1.6,
+                margin: "12px 0 0",
+                whiteSpace: "pre-wrap",
               }}
             >
-              <p
-                style={{
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  color: "#ffffff",
-                  margin: "0 0 12px",
-                }}
-              >
-                Or invite by email
-              </p>
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="Enter UofG email address"
-                disabled={inviteSending}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  background: "#111111",
-                  border: "1px solid #2a2a2a",
-                  borderRadius: "6px",
-                  padding: "10px 14px",
-                  color: "#ffffff",
-                  fontSize: "14px",
-                  marginBottom: "12px",
-                }}
-              />
-              {inviteError ? (
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#E51937",
-                    margin: "0 0 12px",
-                  }}
-                >
-                  {inviteError}
-                </p>
-              ) : null}
-              {inviteLink ? (
-                <div style={{ marginBottom: "12px" }}>
-                  <p
-                    style={{
-                      fontSize: "13px",
-                      color: "#888888",
-                      margin: "0 0 8px",
-                    }}
-                  >
-                    Invite link created! Share this link:
-                  </p>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "8px",
-                      alignItems: "stretch",
-                    }}
-                  >
-                    <input
-                      type="text"
-                      readOnly
-                      value={inviteLink}
-                      style={{
-                        flex: 1,
-                        background: "#111111",
-                        border: "1px solid #2a2a2a",
-                        borderRadius: "6px",
-                        padding: "10px 14px",
-                        color: "#cccccc",
-                        fontSize: "12px",
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleCopyInviteLink}
-                      style={{
-                        background: "#1f1f1f",
-                        border: "1px solid #333333",
-                        color: "#ffffff",
-                        borderRadius: "6px",
-                        padding: "10px 14px",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {inviteLinkCopied ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void handleSendInvite()}
-                disabled={inviteSending || !inviteEmail.trim()}
-                style={{
-                  width: "100%",
-                  background: "#E51937",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "10px 24px",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  cursor:
-                    inviteSending || !inviteEmail.trim()
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity: inviteSending || !inviteEmail.trim() ? 0.6 : 1,
-                }}
-              >
-                {inviteSending ? "Sending…" : "Send Invite"}
-              </button>
-            </div>
-          </div>
-        </div>
+              {selectedEvent.description}
+            </p>
+          ) : null}
+          <p style={{ fontSize: "13px", color: "#888888", margin: "16px 0 0" }}>
+            <span style={{ color: "#555555" }}>RSVPs: </span>
+            {(eventRsvpCounts[selectedEvent.id]?.going ?? 0)} going
+          </p>
+        </DashboardItemModal>
+      ) : null}
+
+      {selectedTask ? (
+        <DashboardItemModal
+          onClose={() => setSelectedTask(null)}
+          footerLink={{ label: "View All Tasks →", to: tasksPath }}
+        >
+          <h2
+            style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: "0 0 16px",
+              paddingRight: "28px",
+            }}
+          >
+            {selectedTask.title}
+          </h2>
+          {selectedTask.description?.trim() ? (
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#cccccc",
+                lineHeight: 1.6,
+                margin: "0 0 12px",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {selectedTask.description}
+            </p>
+          ) : null}
+          {selectedTask.assigneeName ? (
+            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
+              <span style={{ color: "#555555" }}>Assignee: </span>
+              {selectedTask.assigneeName}
+            </p>
+          ) : null}
+          {selectedTask.dueDate ? (
+            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
+              <span style={{ color: "#555555" }}>Due: </span>
+              {new Date(selectedTask.dueDate).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </p>
+          ) : null}
+          <p style={{ fontSize: "13px", color: "#888888", margin: 0 }}>
+            <span style={{ color: "#555555" }}>Status: </span>
+            {selectedTask.status === "in_progress"
+              ? "In progress"
+              : selectedTask.status === "done"
+                ? "Done"
+                : "To do"}
+          </p>
+        </DashboardItemModal>
       ) : null}
     </div>
   );

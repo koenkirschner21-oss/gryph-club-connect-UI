@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { MoreHorizontal, Repeat } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -1449,6 +1449,7 @@ export default function ClubEventsPage() {
     useEventRsvps(eventIds);
   const [expandedAttendees, setExpandedAttendees] = useState<string | null>(null);
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -1676,6 +1677,21 @@ export default function ClubEventsPage() {
       void loadEventRecurring();
     }
   }, [loading, events, recurringColumnReady, loadEventRecurring]);
+
+  useEffect(() => {
+    if (searchParams.get("create") !== "true" || !isPrivileged || loading) return;
+    setFormQuestions([]);
+    setEditingId(null);
+    setShowForm(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("create");
+    setSearchParams(next, { replace: true });
+  }, [
+    searchParams,
+    setSearchParams,
+    isPrivileged,
+    loading,
+  ]);
 
   async function saveEventCategory(
     eventId: string,

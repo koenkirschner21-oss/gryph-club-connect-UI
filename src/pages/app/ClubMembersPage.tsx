@@ -13,6 +13,7 @@ import {
   isTopClubModeratorRole,
 } from "../../lib/clubRoles";
 import Button from "../../components/ui/Button";
+import ClubInviteModal from "../../components/club/ClubInviteModal";
 import Spinner from "../../components/ui/Spinner";
 
 const memberProfileLinkStyle: CSSProperties = {
@@ -567,6 +568,7 @@ export default function ClubMembersPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   const [joinType, setJoinType] = useState<ClubJoinType>("open");
   const [applications, setApplications] = useState<JoinApplicationRow[]>([]);
@@ -1148,7 +1150,25 @@ export default function ClubMembersPage() {
             {club?.name ?? "this club"}
           </p>
         </div>
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+          {isOwner ? (
+            <button
+              type="button"
+              onClick={() => setShowInviteModal(true)}
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "9px 20px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Invite Member
+            </button>
+          ) : null}
           {viewToggleButton("list", "List")}
           {viewToggleButton("orgChart", "Org Chart")}
           {canUseMembershipQueue && joinType !== "open"
@@ -1926,6 +1946,15 @@ export default function ClubMembersPage() {
             );
           })}
         </div>
+      ) : null}
+
+      {clubId ? (
+        <ClubInviteModal
+          open={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          clubId={clubId}
+          joinCode={club?.joinCode}
+        />
       ) : null}
     </div>
   );
