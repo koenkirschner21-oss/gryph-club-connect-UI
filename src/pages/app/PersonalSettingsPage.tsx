@@ -6,7 +6,7 @@ import {
   type InputHTMLAttributes,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { X } from "lucide-react";
+import { X, Camera } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
@@ -208,6 +208,7 @@ export default function PersonalSettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
+  const [avatarHovered, setAvatarHovered] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -532,8 +533,11 @@ export default function PersonalSettingsPage() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
+            onMouseEnter={() => setAvatarHovered(true)}
+            onMouseLeave={() => setAvatarHovered(false)}
             aria-label="Change profile photo"
             style={{
+              position: "relative",
               width: "80px",
               height: "80px",
               borderRadius: "50%",
@@ -567,6 +571,22 @@ export default function PersonalSettingsPage() {
                 {initials}
               </span>
             )}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                borderRadius: "50%",
+                background: "rgba(0,0,0,0.5)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: avatarHovered ? 1 : 0,
+                transition: "opacity 0.15s ease",
+                pointerEvents: "none",
+              }}
+            >
+              <Camera size={20} color="#ffffff" aria-hidden />
+            </div>
           </button>
           <div>
             <button

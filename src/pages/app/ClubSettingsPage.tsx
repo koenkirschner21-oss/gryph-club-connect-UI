@@ -1,6 +1,6 @@
-import { useState, useEffect, type FormEvent, type CSSProperties } from "react";
+import { useState, useEffect, useRef, type FormEvent, type CSSProperties } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
-import { Users, ClipboardList, Vote } from "lucide-react";
+import { Users, ClipboardList, Vote, Camera } from "lucide-react";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
@@ -240,6 +240,8 @@ export default function ClubSettingsPage() {
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [logoCropFile, setLogoCropFile] = useState<File | null>(null);
   const [logoUploadKey, setLogoUploadKey] = useState(0);
+  const [logoPreviewHovered, setLogoPreviewHovered] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -853,14 +855,101 @@ export default function ClubSettingsPage() {
                 <label className="mb-1.5 block text-sm font-medium text-white">
                   Club Logo
                 </label>
-                <ImageUpload
-                  key={logoUploadKey}
-                  currentUrl={logoUrl}
-                  onFileSelected={(file) => setLogoCropFile(file)}
-                  uploading={uploadingLogo}
-                  label="Upload Logo"
-                  shape="circle"
-                />
+                <div key={logoUploadKey} className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    onMouseEnter={() => setLogoPreviewHovered(true)}
+                    onMouseLeave={() => setLogoPreviewHovered(false)}
+                    aria-label="Upload Logo"
+                    disabled={uploadingLogo}
+                    style={{
+                      position: "relative",
+                      width: "80px",
+                      height: "80px",
+                      borderRadius: "50%",
+                      border: "1px solid #242424",
+                      padding: 0,
+                      cursor: uploadingLogo ? "not-allowed" : "pointer",
+                      overflow: "hidden",
+                      background: "#1a1a1a",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt="Club logo preview"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <svg
+                        className="h-8 w-8 text-muted"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        style={{ color: "#555555" }}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"
+                        />
+                      </svg>
+                    )}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        borderRadius: "50%",
+                        background: "rgba(0,0,0,0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        opacity: logoPreviewHovered ? 1 : 0,
+                        transition: "opacity 0.15s ease",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <Camera size={20} color="#ffffff" aria-hidden />
+                    </div>
+                  </button>
+                  <div>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      aria-label="Upload Logo"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) setLogoCropFile(file);
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingLogo}
+                      onClick={() => logoInputRef.current?.click()}
+                    >
+                      {uploadingLogo ? "Uploading…" : "Upload Logo"}
+                    </Button>
+                  </div>
+                </div>
                 <div className="mt-2">
                   <FormInput
                     id="logo-url"
