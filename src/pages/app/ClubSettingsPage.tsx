@@ -13,6 +13,7 @@ import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Card from "../../components/ui/Card";
 import ImageUpload from "../../components/ui/ImageUpload";
+import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
 
 function normalizeMemberRole(role: string): MemberRole {
@@ -237,6 +238,8 @@ export default function ClubSettingsPage() {
   const [bannerUrl, setBannerUrl] = useState(club?.bannerUrl ?? "");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [logoCropFile, setLogoCropFile] = useState<File | null>(null);
+  const [logoUploadKey, setLogoUploadKey] = useState(0);
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -851,8 +854,9 @@ export default function ClubSettingsPage() {
                   Club Logo
                 </label>
                 <ImageUpload
+                  key={logoUploadKey}
                   currentUrl={logoUrl}
-                  onFileSelected={handleLogoUpload}
+                  onFileSelected={(file) => setLogoCropFile(file)}
                   uploading={uploadingLogo}
                   label="Upload Logo"
                   shape="circle"
@@ -1440,6 +1444,24 @@ export default function ClubSettingsPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {logoCropFile ? (
+        <ImageCropModal
+          imageFile={logoCropFile}
+          aspectRatio={1}
+          circular={false}
+          onComplete={(blob) => {
+            const file = new File([blob], "logo.jpg", { type: "image/jpeg" });
+            setLogoCropFile(null);
+            setLogoUploadKey((k) => k + 1);
+            void handleLogoUpload(file);
+          }}
+          onCancel={() => {
+            setLogoCropFile(null);
+            setLogoUploadKey((k) => k + 1);
+          }}
+        />
       ) : null}
     </div>
   );

@@ -24,6 +24,7 @@ import { notifyUnreadCountRefresh } from "../../components/ui/NotificationsDropd
 import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
 import Spinner from "../../components/ui/Spinner";
+import ImageCropModal from "../../components/ui/ImageCropModal";
 
 const ACCEPTED_FILE_TYPES =
   "image/jpeg,image/png,image/gif,image/webp,application/pdf,application/octet-stream";
@@ -656,6 +657,10 @@ export default function ClubChatPage() {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState("");
   const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null);
+  const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
+  const [avatarCropTarget, setAvatarCropTarget] = useState<
+    "create-group" | "edit-group" | null
+  >(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -692,6 +697,7 @@ export default function ClubChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarEditRef = useRef<HTMLInputElement>(null);
+  const groupAvatarCreateRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   const mentionPopupRef = useRef<HTMLDivElement>(null);
 
@@ -915,6 +921,36 @@ export default function ClubChatPage() {
         ? prev.filter((id) => id !== userId)
         : [...prev, userId],
     );
+  }
+
+  function openAvatarCrop(
+    file: File,
+    target: "create-group" | "edit-group",
+  ) {
+    setAvatarCropTarget(target);
+    setAvatarCropFile(file);
+  }
+
+  function cancelAvatarCrop() {
+    if (avatarCropTarget === "edit-group" && groupAvatarEditRef.current) {
+      groupAvatarEditRef.current.value = "";
+    }
+    if (avatarCropTarget === "create-group" && groupAvatarCreateRef.current) {
+      groupAvatarCreateRef.current.value = "";
+    }
+    setAvatarCropFile(null);
+    setAvatarCropTarget(null);
+  }
+
+  function completeAvatarCrop(blob: Blob) {
+    const file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+    if (avatarCropTarget === "create-group") {
+      setGroupAvatarFile(file);
+    } else if (avatarCropTarget === "edit-group") {
+      setEditGroupAvatarFile(file);
+    }
+    setAvatarCropFile(null);
+    setAvatarCropTarget(null);
   }
 
   async function handleCreateConversation() {
@@ -2566,11 +2602,14 @@ export default function ClubChatPage() {
                         Avatar (optional)
                       </span>
                       <input
+                        ref={groupAvatarCreateRef}
                         type="file"
                         accept="image/jpeg,image/png,image/gif,image/webp"
-                        onChange={(e) =>
-                          setGroupAvatarFile(e.target.files?.[0] ?? null)
-                        }
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (file) openAvatarCrop(file, "create-group");
+                        }}
                       />
                     </label>
                   </>
@@ -2744,9 +2783,11 @@ export default function ClubChatPage() {
               type="file"
               accept="image/jpeg,image/png,image/gif,image/webp"
               style={{ display: "none" }}
-              onChange={(e) =>
-                setEditGroupAvatarFile(e.target.files?.[0] ?? null)
-              }
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) openAvatarCrop(file, "edit-group");
+              }}
             />
             <button
               type="button"
@@ -2835,6 +2876,16 @@ export default function ClubChatPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {avatarCropFile ? (
+        <ImageCropModal
+          imageFile={avatarCropFile}
+          aspectRatio={1}
+          circular
+          onComplete={completeAvatarCrop}
+          onCancel={cancelAvatarCrop}
+        />
       ) : null}
     </div>
   );

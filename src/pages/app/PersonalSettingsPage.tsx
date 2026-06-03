@@ -11,6 +11,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
 import Spinner from "../../components/ui/Spinner";
+import ImageCropModal from "../../components/ui/ImageCropModal";
 
 const YEAR_OPTIONS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "Graduate"] as const;
 
@@ -206,6 +207,7 @@ export default function PersonalSettingsPage() {
 
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -523,8 +525,8 @@ export default function PersonalSettingsPage() {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) void handleAvatarChange(file);
               e.target.value = "";
+              if (file) setAvatarCropFile(file);
             }}
           />
           <button
@@ -895,6 +897,23 @@ export default function PersonalSettingsPage() {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {avatarCropFile ? (
+        <ImageCropModal
+          imageFile={avatarCropFile}
+          aspectRatio={1}
+          circular
+          onComplete={(blob) => {
+            const file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+            setAvatarCropFile(null);
+            void handleAvatarChange(file);
+          }}
+          onCancel={() => {
+            setAvatarCropFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+        />
       ) : null}
     </div>
   );
