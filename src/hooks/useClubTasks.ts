@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
-import { notifyUsers } from "../lib/notifyUsers";
 import type { Task, TaskStatus, TaskPriority } from "../types";
 
 /** Map a Supabase `tasks` row (with optional profile join) to our Task type. */
@@ -37,7 +36,7 @@ export interface UseClubTasksReturn {
     priority: TaskPriority;
     assignedTo?: string;
     dueDate?: string;
-  }) => Promise<boolean>;
+  }) => Promise<string | null>;
   updateTask: (
     taskId: string,
     fields: Partial<{
@@ -157,8 +156,8 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
       priority: TaskPriority;
       assignedTo?: string;
       dueDate?: string;
-    }): Promise<boolean> => {
-      if (!clubId || !user) return false;
+    }): Promise<string | null> => {
+      if (!clubId || !user) return null;
 
       const { data, error: err } = await supabase
         .from("tasks")
@@ -198,33 +197,11 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
 
       if (err || !data) {
         console.error("Failed to create task:", err?.message);
-        return false;
+        return null;
       }
 
       setTasks((prev) => [mapTaskRow(data), ...prev]);
-
-      // Notify the assigned user (fire-and-forget)
-      if (fields.assignedTo && fields.assignedTo !== user.id) {
-        Promise.resolve(
-          notifyUsers([
-            {
-              user_id: fields.assignedTo,
-              type: "task_assigned",
-              message: `You were assigned a task: ${fields.title}`,
-              club_id: clubId,
-              reference_id: data.id as string,
-            },
-          ]).then((ok) => {
-            if (!ok) {
-              console.error("Failed to send task notification.");
-            }
-          }),
-        ).catch((err: unknown) => {
-          console.error("Failed to send task notification:", err);
-        });
-      }
-
-      return true;
+      return data.id as string;
     },
     [clubId, user],
   );

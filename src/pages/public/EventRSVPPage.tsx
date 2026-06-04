@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
+import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 
 type QuestionType = "text" | "multiple_choice" | "yes_no";
@@ -194,7 +195,9 @@ function CheckIcon() {
 
 export default function EventRSVPPage() {
   const { eventId } = useParams<{ eventId: string }>();
+  const { user } = useAuthContext();
   const [loading, setLoading] = useState(true);
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [event, setEvent] = useState<PublicEvent | null>(null);
   const [clubName, setClubName] = useState("");
@@ -275,6 +278,19 @@ export default function EventRSVPPage() {
             order_index: (row.order_index as number) ?? 0,
           })),
         );
+        if (user?.id) {
+          const { data: existing } = await supabase
+            .from("event_rsvps")
+            .select("id")
+            .eq("event_id", eventId)
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (!cancelled && existing) {
+            setAlreadyRegistered(true);
+          }
+        }
+
         setLoading(false);
       }
     }
@@ -283,7 +299,7 @@ export default function EventRSVPPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, user?.id]);
 
   function validate(): boolean {
     const next: Record<string, string> = {};
@@ -313,6 +329,60 @@ export default function EventRSVPPage() {
     for (const q of questions) {
       const value = (answers[q.id] ?? "").trim();
       if (value) answersPayload[q.id] = value;
+    }
+
+    if (user?.id) {
+      const { data: existing } = await supabase
+        .from("event_rsvps")
+        .select("id")
+        .eq("event_id", eventId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existing) {
+        setSubmitting(false);
+        setAlreadyRegistered(true);
+        return;
+      }
+
+      const { error: rsvpError } = await supabase.from("event_rsvps").insert({
+        event_id: eventId,
+        user_id: user.id,
+        status: "going",
+      });
+
+      setSubmitting(false);
+      if (rsvpError) {
+        setErrors({
+          form: rsvpError.message || "Could not submit RSVP. Please try again.",
+        });
+        return;
+      }
+
+      const dateLabel = formatEventDateTime(event.date, event.time);
+      await supabase.from("notifications").insert({
+        user_id: user.id,
+        type: "club_update",
+        message: `[Event Registration Confirmed] You're registered for ${event.title} on ${dateLabel}. Location: ${event.location?.trim() || "TBD"}`,
+        club_id: event.clubId,
+        reference_id: event.id,
+      });
+
+      setSubmitted(true);
+      return;
+    }
+
+    const { data: existingExternal } = await supabase
+      .from("event_external_rsvps")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("email", email.trim())
+      .maybeSingle();
+
+    if (existingExternal) {
+      setSubmitting(false);
+      setErrors({ form: "You're already registered for this event." });
+      return;
     }
 
     const { error } = await supabase.from("event_external_rsvps").insert({
@@ -466,7 +536,20 @@ export default function EventRSVPPage() {
             padding: "24px",
           }}
         >
-          {submitted ? (
+          {alreadyRegistered ? (
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <p
+                style={{
+                  fontWeight: 700,
+                  fontSize: "20px",
+                  color: "#FFC429",
+                  margin: 0,
+                }}
+              >
+                You&apos;re already registered for this event ✓
+              </p>
+            </div>
+          ) : submitted ? (
             <div style={{ textAlign: "center", padding: "16px 0" }}>
               <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
                 <CheckIcon />

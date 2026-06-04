@@ -7,6 +7,7 @@ import { useClubTasks } from "../../hooks/useClubTasks";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
+import { notifyUsers } from "../../lib/notifyUsers";
 import {
   formatTaskDate,
   getTaskDueUrgency,
@@ -315,6 +316,10 @@ function ClubLogoMark({
 
 function TaskCommentsSection({
   taskId,
+  taskTitle,
+  assigneeId,
+  clubId,
+  commenterName,
   userId,
   expanded,
   onToggle,
@@ -324,6 +329,10 @@ function TaskCommentsSection({
   canDeleteAnyComment,
 }: {
   taskId: string;
+  taskTitle: string;
+  assigneeId?: string;
+  clubId?: string;
+  commenterName: string;
   userId?: string;
   expanded: boolean;
   onToggle: () => void;
@@ -395,6 +404,18 @@ function TaskCommentsSection({
       return next;
     });
     setDraft("");
+
+    if (assigneeId && assigneeId !== userId && clubId) {
+      void notifyUsers([
+        {
+          user_id: assigneeId,
+          type: "task_assigned",
+          message: `${commenterName} commented on "${taskTitle}"`,
+          club_id: clubId,
+          reference_id: taskId,
+        },
+      ]);
+    }
   }
 
   async function handleDelete(commentId: string) {
@@ -647,6 +668,8 @@ export default function ClubTasksPage() {
 
   const club = clubId ? getClubById(clubId) : undefined;
   const isMobile = useIsMobile();
+  const myCommenterName =
+    members.find((m) => m.userId === user?.id)?.fullName ?? "A member";
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
@@ -845,7 +868,7 @@ export default function ClubTasksPage() {
 
     const priority: TaskPriority = highImportance ? "high" : "medium";
 
-    let ok: boolean;
+    let ok = false;
     if (editingId) {
       ok = await updateTask(editingId, {
         title: title.trim(),
@@ -855,13 +878,34 @@ export default function ClubTasksPage() {
         dueDate: dueDate || null,
       });
     } else {
-      ok = await createTask({
+      const taskId = await createTask({
         title: title.trim(),
         description: description.trim(),
         priority,
         assignedTo: assignedTo || undefined,
         dueDate: dueDate || undefined,
       });
+      ok = Boolean(taskId);
+      if (
+        taskId &&
+        assignedTo &&
+        assignedTo !== user?.id &&
+        clubId &&
+        club?.name
+      ) {
+        const dueLabel = dueDate.trim()
+          ? formatTaskDate(dueDate)
+          : "No due date";
+        void notifyUsers([
+          {
+            user_id: assignedTo,
+            type: "task_assigned",
+            message: `You've been assigned "${title.trim()}" in ${club.name}. Due: ${dueLabel}`,
+            club_id: clubId,
+            reference_id: taskId,
+          },
+        ]);
+      }
     }
 
     setSaving(false);
@@ -1212,6 +1256,10 @@ export default function ClubTasksPage() {
           <div onClick={(e) => e.stopPropagation()}>
             <TaskCommentsSection
               taskId={task.id}
+              taskTitle={task.title}
+              assigneeId={task.assignedTo}
+              clubId={clubId}
+              commenterName={myCommenterName}
               userId={user?.id}
               expanded
               onToggle={() => toggleComments(task.id)}
@@ -1344,6 +1392,10 @@ export default function ClubTasksPage() {
           {canViewComments ? (
             <TaskCommentsSection
               taskId={task.id}
+              taskTitle={task.title}
+              assigneeId={task.assignedTo}
+              clubId={clubId}
+              commenterName={myCommenterName}
               userId={user?.id}
               expanded={!!expandedComments[task.id]}
               onToggle={() => toggleComments(task.id)}

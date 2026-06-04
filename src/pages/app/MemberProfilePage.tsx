@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { MessageCircle } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import Spinner from "../../components/ui/Spinner";
@@ -68,10 +69,15 @@ function ProfileAvatar({
 
 export default function MemberProfilePage() {
   const { userId } = useParams<{ userId: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { user } = useAuthContext();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [dmClubId, setDmClubId] = useState<string | null>(
+    searchParams.get("clubId"),
+  );
 
   const isOwnProfile = Boolean(userId && user?.id === userId);
 
@@ -123,6 +129,43 @@ export default function MemberProfilePage() {
       cancelled = true;
     };
   }, [userId]);
+
+  useEffect(() => {
+    if (dmClubId || !user?.id || !userId || userId === user.id) return;
+
+    let cancelled = false;
+
+    const viewerId = user.id;
+
+    async function resolveSharedClub() {
+      const { data: myMemberships } = await supabase
+        .from("club_members")
+        .select("club_id")
+        .eq("user_id", viewerId)
+        .eq("status", "active");
+
+      const clubIds = (myMemberships ?? []).map((row) => row.club_id as string);
+      if (clubIds.length === 0) return;
+
+      const { data: shared } = await supabase
+        .from("club_members")
+        .select("club_id")
+        .eq("user_id", userId)
+        .in("club_id", clubIds)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+
+      if (!cancelled && shared?.club_id) {
+        setDmClubId(shared.club_id as string);
+      }
+    }
+
+    void resolveSharedClub();
+    return () => {
+      cancelled = true;
+    };
+  }, [dmClubId, user?.id, userId]);
 
   if (loading) {
     return (
@@ -207,6 +250,30 @@ export default function MemberProfilePage() {
           >
             {profile.yearOfStudy}
           </p>
+        ) : null}
+        {!isOwnProfile && dmClubId && userId ? (
+          <button
+            type="button"
+            onClick={() =>
+              navigate(`/app/clubs/${dmClubId}/chat?dm=${userId}`)
+            }
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              marginTop: "16px",
+              background: "#E51937",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "10px 24px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            <MessageCircle size={16} style={{ marginRight: "8px" }} aria-hidden />
+            Send Message
+          </button>
         ) : null}
         {profile.bio ? (
           <p

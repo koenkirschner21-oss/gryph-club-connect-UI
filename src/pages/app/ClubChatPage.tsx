@@ -8,8 +8,20 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { BarChart2, Menu, Pencil, Pin, Reply, Search, SquarePen, Star, UserPlus, X } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import {
+  BarChart2,
+  Menu,
+  Pencil,
+  Pin,
+  Reply,
+  Search,
+  SquarePen,
+  Star,
+  ThumbsUp,
+  UserPlus,
+  X,
+} from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
   useConversations,
@@ -43,6 +55,25 @@ const pdfLinkStyle: CSSProperties = {
   fontSize: "13px",
   textDecoration: "none",
 };
+
+function formatMessageTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000);
+
+  const timeStr = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  if (diffDays === 0) return timeStr;
+  if (diffDays < 7) {
+    return `${date.toLocaleDateString("en-US", { weekday: "short" })} ${timeStr}`;
+  }
+  return `${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${timeStr}`;
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -581,19 +612,27 @@ function MessageAttachment({ msg }: { msg: DirectMessage }) {
   );
 }
 
+type MessageReactionSummary = { count: number; liked: boolean };
+
 function MessageBubble({
   msg,
   isOwn,
   isGroupChat,
   onReply,
+  reaction,
+  onToggleReaction,
 }: {
   msg: DirectMessage;
   isOwn: boolean;
   isGroupChat: boolean;
   onReply?: (msg: DirectMessage) => void;
+  reaction?: MessageReactionSummary;
+  onToggleReaction?: (messageId: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const profilePath = `/app/profile/${msg.senderId}`;
+  const liked = reaction?.liked ?? false;
+  const reactionCount = reaction?.count ?? 0;
 
   return (
     <div
@@ -659,27 +698,71 @@ function MessageBubble({
             {msg.content}
             <MessageAttachment msg={msg} />
           </div>
-          {isGroupChat && onReply && hovered ? (
-            <button
-              type="button"
-              aria-label="Reply"
-              onClick={() => onReply(msg)}
-              style={{
-                position: "absolute",
-                top: "4px",
-                right: isOwn ? "auto" : "4px",
-                left: isOwn ? "4px" : "auto",
-                background: "transparent",
-                border: "none",
-                color: "#ffffff",
-                cursor: "pointer",
-                padding: "2px",
-                display: "flex",
-              }}
-            >
-              <Reply size={14} aria-hidden />
-            </button>
-          ) : null}
+          <div
+            style={{
+              position: "absolute",
+              top: "4px",
+              right: isOwn ? "auto" : "4px",
+              left: isOwn ? "4px" : "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              opacity: hovered ? 1 : 0,
+              transition: "opacity 0.15s ease",
+            }}
+          >
+            {onToggleReaction ? (
+              <button
+                type="button"
+                aria-label={liked ? "Remove like" : "Like message"}
+                onClick={() => onToggleReaction(msg.id)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: liked ? "#FFC429" : "#555555",
+                  cursor: "pointer",
+                  padding: "2px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "3px",
+                }}
+                onMouseEnter={(e) => {
+                  if (!liked) e.currentTarget.style.color = "#ffffff";
+                }}
+                onMouseLeave={(e) => {
+                  if (!liked) e.currentTarget.style.color = "#555555";
+                }}
+              >
+                <ThumbsUp
+                  size={14}
+                  aria-hidden
+                  fill={liked ? "#FFC429" : "none"}
+                />
+                {reactionCount > 0 ? (
+                  <span style={{ fontSize: "11px", color: "#FFC429" }}>
+                    {reactionCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+            {isGroupChat && onReply ? (
+              <button
+                type="button"
+                aria-label="Reply"
+                onClick={() => onReply(msg)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  padding: "2px",
+                  display: "flex",
+                }}
+              >
+                <Reply size={14} aria-hidden />
+              </button>
+            ) : null}
+          </div>
         </div>
         <span
           style={{
@@ -689,7 +772,7 @@ function MessageBubble({
             textAlign: isOwn ? "right" : "left",
           }}
         >
-          {formatTime(msg.createdAt)}
+          {formatMessageTime(msg.createdAt)}
         </span>
       </div>
     </div>
@@ -701,6 +784,7 @@ type ChatContentFilter = "all" | "polls" | "files";
 
 export default function ClubChatPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
   const {
     conversations,
@@ -771,6 +855,10 @@ export default function ClubChatPage() {
   const [pollEndsAt, setPollEndsAt] = useState("");
   const [creatingPoll, setCreatingPoll] = useState(false);
   const [votingPollId, setVotingPollId] = useState<string | null>(null);
+  const [messageReactions, setMessageReactions] = useState<
+    Record<string, MessageReactionSummary>
+  >({});
+  const [dmHandled, setDmHandled] = useState(false);
   const [hoveredConversationId, setHoveredConversationId] = useState<string | null>(null);
   const [conversationSearch, setConversationSearch] = useState("");
   const [showMentionPopup, setShowMentionPopup] = useState(false);
@@ -977,6 +1065,95 @@ export default function ClubChatPage() {
         notifyUnreadCountRefresh();
       });
   }, [activeConversationId, user?.id, clubId]);
+
+  const loadMessageReactions = useCallback(
+    async (messageIds: string[]) => {
+      if (!user?.id || messageIds.length === 0) {
+        setMessageReactions({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("message_reactions")
+        .select("message_id, user_id")
+        .in("message_id", messageIds)
+        .eq("reaction", "👍");
+
+      if (error) {
+        console.error("Failed to load message reactions:", error.message);
+        return;
+      }
+
+      const map: Record<string, MessageReactionSummary> = {};
+      for (const row of data ?? []) {
+        const messageId = row.message_id as string;
+        if (!map[messageId]) {
+          map[messageId] = { count: 0, liked: false };
+        }
+        map[messageId].count += 1;
+        if (row.user_id === user.id) {
+          map[messageId].liked = true;
+        }
+      }
+      setMessageReactions(map);
+    },
+    [user?.id],
+  );
+
+  useEffect(() => {
+    void loadMessageReactions(messages.map((m) => m.id));
+  }, [messages, loadMessageReactions]);
+
+  const toggleMessageReaction = useCallback(
+    async (messageId: string) => {
+      if (!user?.id) return;
+      const current = messageReactions[messageId];
+      if (current?.liked) {
+        await supabase
+          .from("message_reactions")
+          .delete()
+          .eq("message_id", messageId)
+          .eq("user_id", user.id)
+          .eq("reaction", "👍");
+      } else {
+        await supabase.from("message_reactions").insert({
+          message_id: messageId,
+          user_id: user.id,
+          reaction: "👍",
+        });
+      }
+      await loadMessageReactions(messages.map((m) => m.id));
+    },
+    [user?.id, messageReactions, messages, loadMessageReactions],
+  );
+
+  useEffect(() => {
+    setDmHandled(false);
+  }, [clubId]);
+
+  useEffect(() => {
+    const dmUserId = searchParams.get("dm");
+    if (!dmUserId || dmHandled || loading || !user?.id) return;
+
+    setDmHandled(true);
+    void (async () => {
+      const convId = await createDirectMessage(dmUserId);
+      if (convId) {
+        setActiveConversationId(convId);
+      }
+      const next = new URLSearchParams(searchParams);
+      next.delete("dm");
+      setSearchParams(next, { replace: true });
+    })();
+  }, [
+    searchParams,
+    dmHandled,
+    loading,
+    user?.id,
+    createDirectMessage,
+    setActiveConversationId,
+    setSearchParams,
+  ]);
 
   function resetPollModal() {
     setShowPollModal(false);
@@ -2211,6 +2388,8 @@ export default function ClubChatPage() {
                       onReply={
                         activeConversation.type === "group" ? startReply : undefined
                       }
+                      reaction={messageReactions[item.message.id]}
+                      onToggleReaction={(id) => void toggleMessageReaction(id)}
                     />
                   ) : (
                     <PollBubble

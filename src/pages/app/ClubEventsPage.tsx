@@ -718,6 +718,48 @@ const sectionHeadingStyle: CSSProperties = {
   marginBottom: "12px",
 };
 
+async function fetchExistingRsvp(
+  eventId: string,
+  userId: string,
+): Promise<{ id: string } | null> {
+  const { data } = await supabase
+    .from("event_rsvps")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data ? { id: data.id as string } : null;
+}
+
+function formatEventRegistrationDate(date: string, time: string): string {
+  const parsed = new Date(date);
+  const datePart = Number.isNaN(parsed.getTime())
+    ? date
+    : parsed.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+  const timePart = formatEventTime(time);
+  return timePart ? `${datePart} · ${timePart}` : datePart;
+}
+
+async function sendEventRegistrationNotification(
+  event: ClubEvent,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase.from("notifications").insert({
+    user_id: userId,
+    type: "club_update",
+    message: `[Event Registration Confirmed] You're registered for ${event.title} on ${formatEventRegistrationDate(event.date, event.time)}. Location: ${cleanEventLocation(event.location) ?? "TBD"}`,
+    club_id: event.clubId ?? null,
+    reference_id: event.id,
+  });
+  if (error) {
+    console.error("Failed to send RSVP notification:", error.message);
+  }
+}
+
 function formatEventTime(value: string): string | null {
   const raw = value.trim();
   if (!raw || raw.toUpperCase() === "TBD") return null;
@@ -875,16 +917,32 @@ function EventCard({
 
           {!past ? (
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
-              {RSVP_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => onRsvp(event.id, opt.value)}
-                  style={rsvpButtonStyle(opt.value, myStatus === opt.value)}
+              {myStatus ? (
+                <span
+                  style={{
+                    background: "#1a0505",
+                    border: "1px solid #FFC429",
+                    color: "#FFC429",
+                    borderRadius: "20px",
+                    padding: "6px 14px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                  }}
                 >
-                  {opt.label}
-                </button>
-              ))}
+                  Registered ✓
+                </span>
+              ) : (
+                RSVP_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onRsvp(event.id, opt.value)}
+                    style={rsvpButtonStyle(opt.value, myStatus === opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))
+              )}
             </div>
           ) : null}
 
@@ -2062,6 +2120,25 @@ export default function ClubEventsPage() {
       return;
     }
 
+    if (!user?.id) return;
+
+    if (status === "going" && myRsvps[eventId]) {
+      setFeedback({
+        type: "error",
+        text: "You're already registered for this event.",
+      });
+      return;
+    }
+
+    const existing = await fetchExistingRsvp(eventId, user.id);
+    if (existing && status === "going") {
+      setFeedback({
+        type: "error",
+        text: "You're already registered for this event.",
+      });
+      return;
+    }
+
     if (status === "going") {
       const questions = eventQuestionsMap[eventId] ?? [];
       if (questions.length > 0) {
@@ -2072,11 +2149,27 @@ export default function ClubEventsPage() {
       }
     }
 
-    await setRsvp(eventId, status);
+    const hadRsvp = Boolean(myRsvps[eventId]);
+    const ok = await setRsvp(eventId, status);
+    if (ok && status === "going" && !hadRsvp && !existing) {
+      const event = events.find((e) => e.id === eventId);
+      if (event) {
+        await sendEventRegistrationNotification(event, user.id);
+      }
+    }
   }
 
   async function submitRsvpWithForm() {
     if (!rsvpModalEvent || !user?.id) return;
+
+    const existing = await fetchExistingRsvp(rsvpModalEvent.id, user.id);
+    if (existing || myRsvps[rsvpModalEvent.id]) {
+      setFeedback({
+        type: "error",
+        text: "You're already registered for this event.",
+      });
+      return;
+    }
 
     const questions = eventQuestionsMap[rsvpModalEvent.id] ?? [];
     for (const q of questions) {
@@ -2120,6 +2213,7 @@ export default function ClubEventsPage() {
     setRsvpSubmitting(false);
 
     if (ok) {
+      await sendEventRegistrationNotification(rsvpModalEvent, user.id);
       setRsvpModalEvent(null);
       setRsvpAnswers({});
     } else {

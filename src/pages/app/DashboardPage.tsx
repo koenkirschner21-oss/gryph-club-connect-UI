@@ -1367,8 +1367,21 @@ function MyClubSidebarItem({
         name={club.name}
         logoUrl={logoUrl}
       />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-white">{club.name}</p>
+      <div className="min-w-0 flex-1" style={{ overflow: "visible" }}>
+        <p
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: 0,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {club.name}
+        </p>
         <p className="text-xs text-[var(--text-2)]">
           {club.memberCount} members ·{" "}
           <span style={{ color: roleDisplay.color }}>{roleDisplay.label}</span>

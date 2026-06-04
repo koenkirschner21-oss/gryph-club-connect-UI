@@ -13,7 +13,7 @@ import {
   taskDueDateColor,
   taskDueLeftBorder,
 } from "../../lib/taskDueUrgency";
-import { X, Check } from "lucide-react";
+import { X, Check, CheckSquare } from "lucide-react";
 import { Megaphone, Calendar } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -204,6 +204,7 @@ function ClubStatCard({
   sublabel,
   accentColor,
   to,
+  icon,
   valueFontSize = "2rem",
   valueColor = "#ffffff",
   valueFontStyle,
@@ -214,6 +215,7 @@ function ClubStatCard({
   sublabel: string;
   accentColor: string;
   to?: string;
+  icon?: ReactNode;
   valueFontSize?: string;
   valueColor?: string;
   valueFontStyle?: CSSProperties["fontStyle"];
@@ -249,8 +251,12 @@ function ClubStatCard({
           color: "#747676",
           margin: 0,
           textTransform: "uppercase",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
         }}
       >
+        {icon}
         {label}
       </p>
       <p
@@ -695,7 +701,6 @@ export default function ClubHomePage() {
   const club = getClubById(clubId ?? "");
 
   const clubBasePath = clubId ? `/app/clubs/${clubId}` : "";
-  const membersPath = `${clubBasePath}/members`;
   const eventsPath = `${clubBasePath}/events`;
   const announcementsPath = `${clubBasePath}/announcements`;
   const tasksPath = `${clubBasePath}/tasks`;
@@ -718,6 +723,7 @@ export default function ClubHomePage() {
   const [eventRecurring, setEventRecurring] = useState<
     Record<string, EventRecurringMeta>
   >({});
+  const [openTaskCount, setOpenTaskCount] = useState(0);
 
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
@@ -805,6 +811,54 @@ export default function ClubHomePage() {
     [events, eventRecurring],
   );
 
+  const eventsThisMonth = useMemo(() => {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const endOfMonth = new Date();
+    endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+    endOfMonth.setDate(0);
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    const startYmd = startOfMonth.toISOString().slice(0, 10);
+    const endYmd = endOfMonth.toISOString().slice(0, 10);
+
+    return upcomingOccurrences.filter(
+      (e) => e.occurrenceDate >= startYmd && e.occurrenceDate <= endYmd,
+    );
+  }, [upcomingOccurrences]);
+
+  useEffect(() => {
+    if (!clubId) {
+      setOpenTaskCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadOpenTaskCount() {
+      const { count, error } = await supabase
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .neq("status", "done");
+
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to load open task count:", error.message);
+        setOpenTaskCount(0);
+        return;
+      }
+      setOpenTaskCount(count ?? 0);
+    }
+
+    void loadOpenTaskCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, tasks.length]);
+
   const nextEvent = upcomingOccurrences[0];
 
   const nextMeetingDisplay = useMemo(() => {
@@ -888,10 +942,10 @@ export default function ClubHomePage() {
   const postsCap = userRole === "member" ? 4 : 2;
   const previewPosts = posts.slice(0, postsCap);
   const eventsCap = userRole === "member" ? 4 : 3;
-  const previewEvents = upcomingOccurrences.slice(0, eventsCap);
+  const previewEvents = eventsThisMonth.slice(0, eventsCap);
   const previewEventIds = useMemo(
-    () => previewEvents.map((e) => e.id),
-    [previewEvents],
+    () => eventsThisMonth.slice(0, eventsCap).map((e) => e.id),
+    [eventsThisMonth, eventsCap],
   );
   const { counts: eventRsvpCounts } = useEventRsvps(previewEventIds);
 
@@ -1137,17 +1191,18 @@ export default function ClubHomePage() {
       >
         {userRole !== "member" ? (
           <ClubStatCard
-            label="Members"
-            value={club.memberCount}
-            sublabel="Active members"
+            label="Open Tasks"
+            value={openTaskCount}
+            sublabel="Incomplete tasks"
             accentColor="#E51937"
-            to={membersPath}
+            to={tasksPath}
+            icon={<CheckSquare size={18} strokeWidth={2} aria-hidden />}
           />
         ) : null}
         <ClubStatCard
-          label="Upcoming Events"
-          value={eventsLoading ? "…" : upcomingOccurrences.length}
-          sublabel="Scheduled events"
+          label="Events This Month"
+          value={eventsLoading ? "…" : eventsThisMonth.length}
+          sublabel="Scheduled this month"
           accentColor="#FFC429"
           to={eventsPath}
         />
@@ -1359,14 +1414,14 @@ export default function ClubHomePage() {
 
       <div className="mt-8">
         <div style={sectionHeadingRow}>
-          <h2 style={sectionHeading}>Upcoming Events</h2>
-          {upcomingOccurrences.length > 0 ? (
+          <h2 style={sectionHeading}>Events This Month</h2>
+          {eventsThisMonth.length > 0 ? (
             <Link to={eventsPath} style={viewAllLink}>
               View All →
             </Link>
           ) : null}
         </div>
-        {upcomingOccurrences.length === 0 ? (
+        {eventsThisMonth.length === 0 ? (
           <div
             className="p-6 text-center"
             style={{
@@ -1376,7 +1431,7 @@ export default function ClubHomePage() {
             }}
           >
             <p className="text-sm" style={{ color: "#555555" }}>
-              No upcoming events scheduled.
+              No events scheduled this month.
             </p>
             <Link to={eventsPath} className="mt-3 inline-block" style={viewAllLink}>
               View Events Page →
