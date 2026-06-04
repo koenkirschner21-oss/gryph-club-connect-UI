@@ -28,6 +28,9 @@ export function notifyUnreadCountRefresh(): void {
 }
 
 function mapRow(row: Record<string, unknown>): Notification {
+  const clubRaw = row.clubs as { name?: string } | { name?: string }[] | null | undefined;
+  const clubRecord = Array.isArray(clubRaw) ? clubRaw[0] : clubRaw;
+
   return {
     id: row.id as string,
     userId: row.user_id as string,
@@ -36,8 +39,33 @@ function mapRow(row: Record<string, unknown>): Notification {
     read: (row.read as boolean) ?? false,
     clubId: (row.club_id as string) ?? undefined,
     referenceId: (row.reference_id as string) ?? undefined,
+    link: (row.link as string) ?? undefined,
+    clubName: (clubRecord?.name as string) ?? undefined,
     createdAt: (row.created_at as string) ?? "",
   };
+}
+
+function resolveNotificationLink(notification: Notification): string | null {
+  if (notification.link?.trim()) {
+    return notification.link.trim();
+  }
+  if (!notification.clubId) return null;
+
+  const base = `/app/clubs/${notification.clubId}`;
+  switch (notification.type as string) {
+    case "new_event":
+    case "event":
+      return `${base}/events`;
+    case "announcement":
+      return `${base}/announcements`;
+    case "task_assigned":
+    case "task":
+      return `${base}/tasks`;
+    case "direct_message":
+      return `${base}/chat`;
+    default:
+      return base;
+  }
 }
 
 function formatTimeAgo(iso: string): string {
@@ -112,7 +140,7 @@ export default function NotificationsDropdown() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
   const syncUnreadCount = useCallback((items: Notification[]) => {
@@ -128,7 +156,7 @@ export default function NotificationsDropdown() {
 
     const { data, error } = await supabase
       .from("notifications")
-      .select("*")
+      .select("*, clubs(name)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -194,9 +222,10 @@ export default function NotificationsDropdown() {
         await markNotificationRead(notification.id);
       }
 
-      if ((notification.type as string) === "direct_message" && notification.clubId) {
-        setOpen(false);
-        navigate(`/app/clubs/${notification.clubId}/chat`);
+      const destination = resolveNotificationLink(notification);
+      setOpen(false);
+      if (destination) {
+        navigate(destination);
       }
     },
     [markNotificationRead, navigate],
@@ -308,8 +337,8 @@ export default function NotificationsDropdown() {
 
     function handlePointerDown(event: MouseEvent) {
       if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
+        notifRef.current &&
+        !notifRef.current.contains(event.target as Node)
       ) {
         setOpen(false);
       }
@@ -328,7 +357,7 @@ export default function NotificationsDropdown() {
   }, [open]);
 
   return (
-    <div ref={containerRef} style={{ position: "relative" }}>
+    <div ref={notifRef} style={{ position: "relative" }}>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -480,6 +509,17 @@ export default function NotificationsDropdown() {
                         {notification.message}
                       </p>
                     )}
+                    {notification.clubId && notification.clubName ? (
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: "#555555",
+                          margin: "0 0 4px",
+                        }}
+                      >
+                        {notification.clubName}
+                      </p>
+                    ) : null}
                     <p
                       style={{
                         fontSize: 11,

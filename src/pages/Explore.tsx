@@ -4,12 +4,12 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useLayoutEffect,
+  type CSSProperties,
 } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronDown } from "lucide-react";
 import {
-  joinTypeBadgeLabel,
-  joinTypeBadgeStyle,
   normalizeJoinType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
@@ -29,6 +29,71 @@ const PAGE_BG = "#0f0f0f";
 const ACCENT_RED = "#E51937";
 const MUTED = "#555555";
 
+const sectionHeadingStyle: CSSProperties = {
+  fontSize: "20px",
+  fontWeight: 700,
+  color: "#ffffff",
+  margin: 0,
+  borderLeft: "3px solid #E51937",
+  paddingLeft: "12px",
+};
+
+const sectionSubheadingStyle: CSSProperties = {
+  fontSize: "13px",
+  color: "#555555",
+  marginTop: "4px",
+  marginBottom: 0,
+};
+
+const exploreDescriptionStyle: CSSProperties = {
+  margin: "6px 0 0",
+  fontSize: "13px",
+  color: "#999999",
+  lineHeight: 1.5,
+};
+
+const EXPLORE_DESCRIPTION_MAX_LINES = 2;
+
+function measureExploreDescription(
+  measureEl: HTMLParagraphElement,
+  description: string,
+  maxLines: number,
+): { text: string; truncated: boolean } {
+  measureEl.textContent = description;
+  const lineHeight = parseFloat(getComputedStyle(measureEl).lineHeight) || 19.5;
+  const maxHeight = lineHeight * maxLines + 1;
+
+  if (measureEl.scrollHeight <= maxHeight) {
+    return { text: description, truncated: false };
+  }
+
+  let lo = 0;
+  let hi = description.length;
+  let best = 0;
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const prefix = description.slice(0, mid).trimEnd();
+    measureEl.textContent = "";
+    measureEl.append(`${prefix}… `);
+    const readMoreSpan = document.createElement("span");
+    readMoreSpan.textContent = "Read more";
+    measureEl.append(readMoreSpan);
+
+    if (measureEl.scrollHeight <= maxHeight) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  return {
+    text: description.slice(0, best).trimEnd(),
+    truncated: true,
+  };
+}
+
 function ExploreSearchBar({
   value,
   onChange,
@@ -41,7 +106,7 @@ function ExploreSearchBar({
   fullWidth?: boolean;
 }) {
   return (
-    <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "600px" }}>
+    <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "560px" }}>
       <svg
         className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2"
         style={{ color: "#555555" }}
@@ -64,14 +129,14 @@ function ExploreSearchBar({
         placeholder={placeholder}
         aria-label={placeholder}
         style={{
-          backgroundColor: "#111111",
+          backgroundColor: PAGE_BG,
           border: "1px solid #2a2a2a",
           borderRadius: "10px",
           padding: "0 20px 0 48px",
           color: "#ffffff",
-          fontSize: "15px",
+          fontSize: "16px",
           width: "100%",
-          height: "52px",
+          height: "56px",
           boxSizing: "border-box",
           outline: "none",
         }}
@@ -236,10 +301,45 @@ function ExploreClubCard({
   joined: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [descriptionPreview, setDescriptionPreview] = useState<{
+    text: string;
+    truncated: boolean;
+  }>({ text: "", truncated: false });
+  const descriptionContainerRef = useRef<HTMLDivElement>(null);
+  const descriptionMeasureRef = useRef<HTMLParagraphElement>(null);
   const description = (club.shortDescription || club.description)?.trim();
   const bannerUrl = club.bannerUrl?.trim();
   const showBannerImage = isUploadedClubBanner(bannerUrl);
   const brandBannerBg = getClubBannerBrandBackground(club.name);
+
+  useLayoutEffect(() => {
+    const container = descriptionContainerRef.current;
+    const measure = descriptionMeasureRef.current;
+
+    if (!description) {
+      setDescriptionPreview({ text: "", truncated: false });
+      return;
+    }
+
+    if (!container || !measure) return;
+
+    function updatePreview() {
+      if (!container || !measure) return;
+      measure.style.width = `${container.clientWidth}px`;
+      setDescriptionPreview(
+        measureExploreDescription(
+          measure,
+          description,
+          EXPLORE_DESCRIPTION_MAX_LINES,
+        ),
+      );
+    }
+
+    updatePreview();
+    const observer = new ResizeObserver(updatePreview);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [description]);
 
   return (
     <Link
@@ -258,7 +358,7 @@ function ExploreClubCard({
         style={{
           width: "100%",
           minWidth: 0,
-          minHeight: "320px",
+          height: "320px",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -273,10 +373,10 @@ function ExploreClubCard({
       >
         <div
           style={{
-            width: "100%",
-            aspectRatio: "3 / 1",
+            height: "140px",
             flexShrink: 0,
             overflow: "hidden",
+            width: "100%",
             position: "relative",
             background: showBannerImage ? "#1a1a1a" : undefined,
           }}
@@ -328,12 +428,13 @@ function ExploreClubCard({
 
         <div
           style={{
-            flex: 1,
+            height: "180px",
             padding: "16px",
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
             minWidth: 0,
+            boxSizing: "border-box",
           }}
         >
           <h3
@@ -350,72 +451,103 @@ function ExploreClubCard({
             {club.name}
           </h3>
 
-          {club.joinType && club.joinType !== "open" ? (
-            <span
-              style={{
-                ...(joinTypeBadgeStyle(club.joinType) ?? {}),
-                marginTop: "6px",
-                alignSelf: "flex-start",
-              }}
-            >
-              {joinTypeBadgeLabel(club.joinType)}
-            </span>
-          ) : null}
-
           {description ? (
+            <div ref={descriptionContainerRef} style={{ minWidth: 0, position: "relative" }}>
+              <p
+                ref={descriptionMeasureRef}
+                aria-hidden
+                style={{
+                  ...exploreDescriptionStyle,
+                  position: "absolute",
+                  visibility: "hidden",
+                  pointerEvents: "none",
+                  height: "auto",
+                  width: "100%",
+                  margin: 0,
+                  zIndex: -1,
+                }}
+              />
+              <p style={exploreDescriptionStyle}>
+                {descriptionPreview.text}
+                {descriptionPreview.truncated ? (
+                  <>
+                    …{" "}
+                    <span style={{ color: ACCENT_RED, fontWeight: 500 }}>
+                      Read more
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            </div>
+          ) : (
             <p
               style={{
                 margin: "6px 0 0",
-                fontSize: "12px",
+                fontSize: "13px",
                 color: "#555555",
                 lineHeight: 1.5,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
               }}
             >
-              {description}
+              No description available
             </p>
-          ) : club.category ? (
-            <p
-              style={{
-                margin: "6px 0 0",
-                fontSize: "12px",
-                color: "#444444",
-                lineHeight: 1.5,
-              }}
-            >
-              {club.category}
-            </p>
+          )}
+
+          {club.category ? (
+            <div style={{ marginTop: "10px" }}>
+              <span
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #333333",
+                  color: "#666666",
+                  borderRadius: "4px",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: 500,
+                  textTransform: "uppercase",
+                  display: "inline-block",
+                }}
+              >
+                {club.category}
+              </span>
+            </div>
           ) : null}
 
-          <div style={{ marginTop: "auto", paddingTop: "8px" }}>
-            {joined ? (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  color: ACCENT_RED,
-                  fontSize: "12px",
-                  fontWeight: 500,
-                }}
-              >
-                <Check size={14} strokeWidth={2.5} aria-hidden />
-                Joined
-              </span>
-            ) : (
-              <span
-                style={{
-                  color: ACCENT_RED,
-                  fontSize: "12px",
-                  fontWeight: 500,
-                }}
-              >
-                View Club →
-              </span>
-            )}
+          <div
+            style={{
+              marginTop: "auto",
+              paddingTop: "10px",
+              borderTop: "1px solid #1e1e1e",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div>
+              {joined ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                  }}
+                >
+                  <Check size={12} strokeWidth={2.5} aria-hidden />
+                  Joined
+                </span>
+              ) : null}
+            </div>
+            <span
+              style={{
+                color: "#ffffff",
+                fontSize: "12px",
+                fontWeight: 500,
+              }}
+            >
+              View Club →
+            </span>
           </div>
         </div>
       </article>
@@ -629,18 +761,18 @@ export default function Explore() {
   const categoryCount = Math.max(categories.length - 1, 0);
 
   return (
-    <>
+    <div style={{ backgroundColor: PAGE_BG, minHeight: "100%" }}>
       {/* Hero */}
       <section style={{ backgroundColor: PAGE_BG }}>
         <div
           style={{
-            padding: isMobile ? "24px 16px 32px" : "100px 48px 60px",
+            padding: isMobile ? "48px 16px 40px" : "120px 48px 88px",
             textAlign: "left",
           }}
         >
           <h1
             style={{
-              fontSize: isMobile ? "28px" : "52px",
+              fontSize: isMobile ? "36px" : "64px",
               fontWeight: 800,
               color: "#ffffff",
               lineHeight: 1,
@@ -661,7 +793,7 @@ export default function Explore() {
             Browse 260+ student organizations at the University of Guelph
           </p>
 
-          <div style={{ marginTop: "24px", width: "100%" }}>
+          <div style={{ marginTop: "28px", width: "100%" }}>
             <ExploreSearchBar
               value={search}
               onChange={setSearch}
@@ -674,7 +806,7 @@ export default function Explore() {
             style={{
               fontSize: "13px",
               color: "#444444",
-              marginTop: "14px",
+              marginTop: "16px",
               marginBottom: 0,
             }}
           >
@@ -685,7 +817,7 @@ export default function Explore() {
 
       <div
         className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
-        style={{ backgroundColor: PAGE_BG }}
+        style={{ backgroundColor: PAGE_BG, paddingTop: isMobile ? "8px" : "16px" }}
       >
         <div style={{ marginBottom: "24px" }}>
           <CategoryFilterDropdown
@@ -700,18 +832,9 @@ export default function Explore() {
         {!loading && !hasActiveFilters ? (
           <>
             {mostActiveClubs.length > 0 ? (
-              <section className="mb-12">
-                <h2
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: 700,
-                    color: "#ffffff",
-                    margin: "0 0 4px",
-                  }}
-                >
-                  Most Active Clubs
-                </h2>
-                <p style={{ fontSize: "12px", color: MUTED, margin: "0 0 14px" }}>
+              <section className="mb-12" style={{ backgroundColor: PAGE_BG }}>
+                <h2 style={sectionHeadingStyle}>Most Active Clubs</h2>
+                <p style={{ ...sectionSubheadingStyle, marginBottom: "14px" }}>
                   Ranked by member activity
                 </p>
                 <div
@@ -734,17 +857,8 @@ export default function Explore() {
             ) : null}
 
             {featuredCategoryRows.map((row) => (
-              <section key={row.category} className="mb-12">
-                <h2
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: 700,
-                    color: "#ffffff",
-                    margin: "0 0 14px",
-                  }}
-                >
-                  {row.category}
-                </h2>
+              <section key={row.category} className="mb-12" style={{ backgroundColor: PAGE_BG }}>
+                <h2 style={{ ...sectionHeadingStyle, marginBottom: "14px" }}>{row.category}</h2>
                 <HorizontalClubRow clubs={row.clubs} joinedByClubId={isClubJoined} />
               </section>
             ))}
@@ -752,7 +866,7 @@ export default function Explore() {
         ) : null}
 
         {/* Main grid */}
-        <div className="pb-12 pt-2">
+        <div className="pb-12 pt-2" style={{ backgroundColor: PAGE_BG }}>
           {error ? (
             <div
               role="alert"
@@ -760,7 +874,7 @@ export default function Explore() {
                 marginBottom: "32px",
                 borderRadius: "12px",
                 border: "1px solid rgba(229, 25, 55, 0.35)",
-                background: "rgba(229, 25, 55, 0.1)",
+                background: PAGE_BG,
                 padding: "16px 20px",
                 fontSize: "14px",
                 color: "#ff6b6b",
@@ -778,10 +892,8 @@ export default function Explore() {
             <>
               <div className="mb-8 flex items-start justify-between gap-4">
                 <div>
-                  <h2 style={{ fontSize: "20px", color: "#ffffff", margin: 0, fontWeight: 700 }}>
-                    All Clubs
-                  </h2>
-                  <p style={{ fontSize: "14px", color: MUTED, margin: "4px 0 0" }}>
+                  <h2 style={sectionHeadingStyle}>All Clubs</h2>
+                  <p style={sectionSubheadingStyle}>
                     Showing{" "}
                     <span style={{ fontWeight: 600, color: "#ffffff" }}>{filteredClubs.length}</span>{" "}
                     of 260+ clubs
@@ -841,7 +953,8 @@ export default function Explore() {
                   alignItems: "center",
                   justifyContent: "center",
                   borderRadius: "50%",
-                  background: "#111111",
+                  background: PAGE_BG,
+                  border: "1px solid #242424",
                 }}
               >
                 <svg
@@ -879,6 +992,6 @@ export default function Explore() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }

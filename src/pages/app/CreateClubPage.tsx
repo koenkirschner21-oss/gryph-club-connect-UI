@@ -20,9 +20,20 @@ export default function CreateClubPage() {
   const [instagram, setInstagram] = useState("");
   const [discord, setDiscord] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState({
+    name: "",
+    category: "",
+    description: "",
+  });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+
+  const fieldErrorStyle = {
+    fontSize: "12px",
+    color: "#E51937",
+    marginTop: "4px",
+  } as const;
 
   const categories = [
     "Academic",
@@ -61,12 +72,29 @@ export default function CreateClubPage() {
       setError("You must be signed in to submit a club request.");
       return;
     }
-    if (!name.trim()) {
-      setError("Club name is required");
-      return;
-    }
-    if (!category.trim()) {
-      setError("Category is required");
+
+    const trimmedName = name.trim();
+    const trimmedDescription = description.trim();
+    const nextFieldErrors = {
+      name: !trimmedName
+        ? "Club name is required"
+        : trimmedName.length < 3
+          ? "Club name must be at least 3 characters"
+          : "",
+      category: !category.trim() ? "Category is required" : "",
+      description: !trimmedDescription
+        ? "Description is required"
+        : trimmedDescription.length < 20
+          ? "Description must be at least 20 characters"
+          : "",
+    };
+    setFieldErrors(nextFieldErrors);
+    if (
+      nextFieldErrors.name ||
+      nextFieldErrors.category ||
+      nextFieldErrors.description
+    ) {
+      setStep(1);
       return;
     }
 
@@ -156,7 +184,8 @@ export default function CreateClubPage() {
           {step === 1 && (
             <fieldset className="space-y-4">
               <legend className="mb-4 text-[18px] font-medium text-[var(--text-1)]">Basics</legend>
-              <FormInput id="name" label="Club Name" required value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="e.g. Gryphon Robotics Club" />
+              <FormInput id="name" label="Club Name" required value={name} onChange={(e) => { handleNameChange(e.target.value); if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: "" })); }} placeholder="e.g. Gryphon Robotics Club" />
+              {fieldErrors.name ? <p style={fieldErrorStyle}>{fieldErrors.name}</p> : null}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[var(--text-1)]">Category <span className="ml-1 text-[var(--red)]">*</span></label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -164,17 +193,19 @@ export default function CreateClubPage() {
                     <button
                       key={item}
                       type="button"
-                      onClick={() => setCategory(item)}
+                      onClick={() => { setCategory(item); if (fieldErrors.category) setFieldErrors((prev) => ({ ...prev, category: "" })); }}
                       className={`rounded-[var(--r-md)] border px-3 py-2 text-sm transition ${category === item ? "border-[var(--red)] bg-[var(--red-dim)] text-[var(--text-1)]" : "border-[var(--border)] bg-[var(--bg-3)] text-[var(--text-2)] hover:bg-[var(--bg-4)]"}`}
                     >
                       {item}
                     </button>
                   ))}
                 </div>
+                {fieldErrors.category ? <p style={fieldErrorStyle}>{fieldErrors.category}</p> : null}
               </div>
               <div>
                 <label htmlFor="description" className="mb-1 block text-sm font-medium text-[var(--text-1)]">Description</label>
-                <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Tell students what your club is about..." className="w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-3 py-2 text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--red)] focus:outline-none" />
+                <textarea id="description" value={description} onChange={(e) => { setDescription(e.target.value); if (fieldErrors.description) setFieldErrors((prev) => ({ ...prev, description: "" })); }} rows={4} placeholder="Tell students what your club is about..." className="w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-3 py-2 text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--red)] focus:outline-none" />
+                {fieldErrors.description ? <p style={fieldErrorStyle}>{fieldErrors.description}</p> : null}
               </div>
             </fieldset>
           )}

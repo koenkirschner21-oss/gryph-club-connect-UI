@@ -20,8 +20,12 @@ import {
   deadlineLabel,
   modalOverlayStyle,
   normalizeOptions,
+  parseListingQuestions,
   parseOptionsText,
+  listingQuestionsForApply,
   type CommitmentLevel,
+  type HiringApplicationAnswer,
+  type ListingQuestion,
   type PositionQuestionDraft,
   type PositionType,
 } from "./HiringBoardPage";
@@ -37,6 +41,7 @@ interface ClubPosition {
   deadline: string | null;
   isOpen: boolean;
   applicantCount: number;
+  questions: ListingQuestion[];
 }
 
 function mapRoleType(positionType: string): "executive" | "volunteer" | "general" {
@@ -49,7 +54,12 @@ function formQuestionsToJson(drafts: PositionQuestionDraft[]): unknown[] {
   return drafts
     .filter((q) => q.question.trim())
     .map((q, index) => ({
+      id: q.localId,
       question: q.question.trim(),
+      type:
+        q.question_type === "multiple_choice" || q.question_type === "yes_no"
+          ? "text"
+          : "textarea",
       question_type: q.question_type,
       options:
         q.question_type === "multiple_choice"
@@ -67,7 +77,7 @@ function formQuestionsFromJson(raw: unknown): PositionQuestionDraft[] {
     const opts = normalizeOptions(row.options);
     const questionType = row.question_type as PositionQuestionDraft["question_type"];
     return {
-      localId: crypto.randomUUID(),
+      localId: (row.id as string) ?? crypto.randomUUID(),
       question: (row.question as string) ?? "",
       question_type:
         questionType === "multiple_choice" ||
@@ -82,24 +92,62 @@ function formQuestionsFromJson(raw: unknown): PositionQuestionDraft[] {
   });
 }
 
-interface JobApplicationRow {
+interface HiringApplicationProfile {
   id: string;
-  applicantId: string;
-  fullName: string;
-  avatarUrl?: string;
-  status: string;
-  createdAt: string;
-  whyText: string;
-  experienceText: string;
-  portfolioUrl: string;
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
 }
 
-const JOB_APPLICATION_STATUSES = [
+interface HiringApplicationRow {
+  id: string;
+  listingId: string;
+  applicantId: string;
+  status: string;
+  createdAt: string;
+  answers: HiringApplicationAnswer[];
+  profile: HiringApplicationProfile | null;
+}
+
+const HIRING_APPLICATION_STATUSES = [
   "pending",
-  "shortlisted",
+  "reviewed",
   "accepted",
   "rejected",
 ] as const;
+
+function parseHiringAnswers(raw: unknown): HiringApplicationAnswer[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item, index) => {
+        const row = item as Record<string, unknown>;
+        return {
+          question_id: (row.question_id as string) ?? `a-${index}`,
+          answer: String(row.answer ?? "").trim(),
+        };
+      })
+      .filter((a) => a.answer);
+  }
+  if (raw && typeof raw === "object") {
+    return Object.entries(raw as Record<string, string>)
+      .map(([question_id, answer]) => ({
+        question_id,
+        answer: String(answer ?? "").trim(),
+      }))
+      .filter((a) => a.answer);
+  }
+  return [];
+}
+
+function answerLabel(
+  questionId: string,
+  listingQuestions: ListingQuestion[],
+): string {
+  const match = listingQuestions.find((q) => q.id === questionId);
+  if (match) return match.question;
+  if (questionId === "default-why") return "Why do you want this position?";
+  return "Response";
+}
 
 function normalizeUserRole(role: string): MemberRole {
   if (role === "owner") return "owner";
@@ -175,7 +223,7 @@ function daysLeftMeta(deadline: string | null): { text: string; urgent: boolean 
 
 function applicationStatusColor(status: string): string {
   if (status === "accepted") return "#4ade80";
-  if (status === "shortlisted") return "#FFC429";
+  if (status === "reviewed" || status === "shortlisted") return "#FFC429";
   if (status === "rejected") return "#E51937";
   return "#747676";
 }
@@ -454,7 +502,7 @@ export default function ClubRecruitingPage() {
   const [savePositionError, setSavePositionError] = useState<string | null>(null);
 
   const [expandedPositionId, setExpandedPositionId] = useState<string | null>(null);
-  const [applications, setApplications] = useState<JobApplicationRow[]>([]);
+  const [applications, setApplications] = useState<HiringApplicationRow[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
 
   const [applyPosition, setApplyPosition] = useState<ClubPosition | null>(null);
@@ -484,7 +532,7 @@ export default function ClubRecruitingPage() {
     let query = supabase
       .from("hiring_listings")
       .select(
-        "id, title, description, requirements, role_type, commitment_level, weekly_hours, deadline, is_open",
+        "id, title, description, requirements, role_type, commitment_level, weekly_hours, deadline, is_open, questions",
       )
       .eq("club_id", clubId)
       .order("created_at", { ascending: false });
@@ -507,14 +555,13 @@ export default function ClubRecruitingPage() {
 
     if (ids.length > 0) {
       const { data: apps } = await supabase
-        .from("job_applications")
-        .select("position_id")
-        .eq("club_id", clubId)
-        .in("position_id", ids);
+        .from("hiring_applications")
+        .select("listing_id")
+        .in("listing_id", ids);
 
       (apps ?? []).forEach((a) => {
-        const pid = a.position_id as string;
-        counts[pid] = (counts[pid] ?? 0) + 1;
+        const lid = a.listing_id as string;
+        counts[lid] = (counts[lid] ?? 0) + 1;
       });
     }
 
@@ -530,20 +577,20 @@ export default function ClubRecruitingPage() {
         deadline: (row.deadline as string) ?? null,
         isOpen: Boolean(row.is_open),
         applicantCount: counts[row.id as string] ?? 0,
+        questions: parseListingQuestions(row.questions),
       })),
     );
 
     if (user?.id && ids.length > 0) {
       const { data: myApps } = await supabase
-        .from("job_applications")
-        .select("position_id")
+        .from("hiring_applications")
+        .select("listing_id")
         .eq("applicant_id", user.id)
-        .eq("club_id", clubId)
-        .in("position_id", ids);
+        .in("listing_id", ids);
 
       const map: Record<string, boolean> = {};
       (myApps ?? []).forEach((a) => {
-        map[a.position_id as string] = true;
+        map[a.listing_id as string] = true;
       });
       setMyApplications(map);
     } else {
@@ -703,59 +750,58 @@ export default function ClubRecruitingPage() {
     setOpenMenuId(null);
   }
 
-  async function loadApplicationsForPosition(positionId: string) {
-    if (!clubId) return;
+  async function loadApplicationsForPosition(listingId: string) {
     setAppsLoading(true);
 
-    const { data: apps, error } = await supabase
-      .from("job_applications")
-      .select(
-        "id, applicant_id, status, created_at, why_text, experience_text, portfolio_url",
-      )
-      .eq("position_id", positionId)
-      .eq("club_id", clubId)
+    const { data: applicationRows, error } = await supabase
+      .from("hiring_applications")
+      .select("id, listing_id, applicant_id, answers, status, created_at")
+      .eq("listing_id", listingId)
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Failed to load applications:", error.message);
+      console.error("Failed to load applications:", error);
       setApplications([]);
       setAppsLoading(false);
       return;
     }
 
-    const applicantIds = (apps ?? []).map((a) => a.applicant_id as string);
-    const profiles: Record<string, { fullName: string; avatarUrl?: string }> = {};
+    const rows = applicationRows ?? [];
+    const applicantIds = rows
+      .map((a) => a.applicant_id as string)
+      .filter(Boolean);
+
+    let profileRows: HiringApplicationProfile[] = [];
 
     if (applicantIds.length > 0) {
-      const { data: profileRows } = await supabase
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name, avatar_url")
+        .select("id, full_name, email, avatar_url")
         .in("id", applicantIds);
 
-      (profileRows ?? []).forEach((p) => {
-        profiles[p.id as string] = {
-          fullName: (p.full_name as string) ?? "Member",
-          avatarUrl: (p.avatar_url as string) ?? undefined,
-        };
-      });
+      if (profilesError) {
+        console.error("Failed to load applicant profiles:", profilesError);
+      } else {
+        profileRows = (profiles ?? []).map((p) => ({
+          id: p.id as string,
+          full_name: (p.full_name as string | null) ?? null,
+          email: (p.email as string | null) ?? null,
+          avatar_url: (p.avatar_url as string | null) ?? null,
+        }));
+      }
     }
 
     setApplications(
-      (apps ?? []).map((row) => {
-        const pid = row.applicant_id as string;
-        const prof = profiles[pid];
-        return {
-          id: row.id as string,
-          applicantId: pid,
-          fullName: prof?.fullName ?? "Member",
-          avatarUrl: prof?.avatarUrl,
-          status: (row.status as string) ?? "pending",
-          createdAt: row.created_at as string,
-          whyText: (row.why_text as string) ?? "",
-          experienceText: (row.experience_text as string) ?? "",
-          portfolioUrl: (row.portfolio_url as string) ?? "",
-        };
-      }),
+      rows.map((app) => ({
+        id: app.id as string,
+        listingId: app.listing_id as string,
+        applicantId: app.applicant_id as string,
+        status: (app.status as string) ?? "pending",
+        createdAt: app.created_at as string,
+        answers: parseHiringAnswers(app.answers),
+        profile:
+          profileRows.find((p) => p.id === app.applicant_id) ?? null,
+      })),
     );
     setAppsLoading(false);
   }
@@ -772,7 +818,7 @@ export default function ClubRecruitingPage() {
 
   async function updateApplicationStatus(applicationId: string, status: string) {
     const { error } = await supabase
-      .from("job_applications")
+      .from("hiring_applications")
       .update({ status })
       .eq("id", applicationId);
 
@@ -1156,9 +1202,9 @@ export default function ClubRecruitingPage() {
                             gap: "10px",
                           }}
                         >
-                          {app.avatarUrl ? (
+                          {app.profile?.avatar_url ? (
                             <img
-                              src={app.avatarUrl}
+                              src={app.profile.avatar_url}
                               alt=""
                               style={{
                                 width: 36,
@@ -1182,7 +1228,9 @@ export default function ClubRecruitingPage() {
                                 fontSize: "13px",
                               }}
                             >
-                              {app.fullName.charAt(0).toUpperCase()}
+                              {(app.profile?.full_name ?? "M")
+                                .charAt(0)
+                                .toUpperCase()}
                             </div>
                           )}
                           <div style={{ flex: 1, minWidth: "140px" }}>
@@ -1194,7 +1242,7 @@ export default function ClubRecruitingPage() {
                                 margin: 0,
                               }}
                             >
-                              {app.fullName}
+                              {app.profile?.full_name ?? "Member"}
                             </p>
                             <p style={{ fontSize: "12px", color: "#555555", margin: "2px 0 0" }}>
                               {daysAgoLabel(app.createdAt)}
@@ -1212,7 +1260,7 @@ export default function ClubRecruitingPage() {
                               width: "auto",
                             }}
                           >
-                            {JOB_APPLICATION_STATUSES.map((s) => (
+                            {HIRING_APPLICATION_STATUSES.map((s) => (
                               <option key={s} value={s}>
                                 {applicationStatusLabel(s)}
                               </option>
@@ -1221,33 +1269,34 @@ export default function ClubRecruitingPage() {
                         </div>
 
                         <div style={{ marginTop: "12px", paddingLeft: "46px" }}>
-                          <p style={{ fontSize: "12px", color: "#888888", margin: "0 0 4px" }}>
-                            Why do you want this role?
-                          </p>
-                          <p style={{ fontSize: "13px", color: "#cccccc", margin: "0 0 10px" }}>
-                            {app.whyText || "—"}
-                          </p>
-                          <p style={{ fontSize: "12px", color: "#888888", margin: "0 0 4px" }}>
-                            Relevant experience
-                          </p>
-                          <p style={{ fontSize: "13px", color: "#cccccc", margin: "0 0 10px" }}>
-                            {app.experienceText || "—"}
-                          </p>
-                          {app.portfolioUrl ? (
-                            <>
-                              <p style={{ fontSize: "12px", color: "#888888", margin: "0 0 4px" }}>
-                                Portfolio
-                              </p>
-                              <a
-                                href={app.portfolioUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ fontSize: "13px", color: "#E51937" }}
-                              >
-                                {app.portfolioUrl}
-                              </a>
-                            </>
+                          {app.profile?.email ? (
+                            <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 10px" }}>
+                              {app.profile.email}
+                            </p>
                           ) : null}
+                          {app.answers.length === 0 ? (
+                            <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>—</p>
+                          ) : (
+                            app.answers.map((ans) => (
+                              <div key={ans.question_id} style={{ marginBottom: "10px" }}>
+                                <p
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "#888888",
+                                    margin: "0 0 4px",
+                                  }}
+                                >
+                                  {answerLabel(
+                                    ans.question_id,
+                                    listingQuestionsForApply(position.questions),
+                                  )}
+                                </p>
+                                <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
+                                  {ans.answer}
+                                </p>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
                     ))

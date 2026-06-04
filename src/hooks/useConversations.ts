@@ -611,6 +611,30 @@ export function useConversations(
     loadConversations();
   }, [loadConversations, refreshKey]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`new-conversations:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_members",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void loadConversations();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadConversations, user?.id]);
+
   const loadPolls = useCallback(async (conversationId: string) => {
     setPollsLoading(true);
     const { data, error } = await supabase

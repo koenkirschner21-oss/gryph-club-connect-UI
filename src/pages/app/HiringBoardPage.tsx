@@ -47,6 +47,18 @@ export interface PositionQuestionDraft {
 
 export type CommitmentLevel = "flexible" | "part_time" | "weekly_hours";
 
+export interface ListingQuestion {
+  id: string;
+  question: string;
+  type: "text" | "textarea";
+  required: boolean;
+}
+
+export interface HiringApplicationAnswer {
+  question_id: string;
+  answer: string;
+}
+
 export interface BoardPosition {
   id: string;
   clubId: string;
@@ -63,6 +75,49 @@ export interface BoardPosition {
   deadline: string | null;
   createdAt: string;
   applicantCount: number;
+  questions: ListingQuestion[];
+}
+
+const DEFAULT_APPLICATION_QUESTION_ID = "default-why";
+
+export function parseListingQuestions(raw: unknown): ListingQuestion[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((item, index) => {
+      const row = item as Record<string, unknown>;
+      const question = (row.question as string)?.trim() ?? "";
+      if (!question) return null;
+
+      const typeRaw =
+        (row.type as string) ??
+        (row.question_type as string) ??
+        "textarea";
+      const type: ListingQuestion["type"] =
+        typeRaw === "text" ? "text" : "textarea";
+
+      return {
+        id: (row.id as string) ?? `question-${index}`,
+        question,
+        type,
+        required: row.required !== false,
+      };
+    })
+    .filter((q): q is ListingQuestion => q !== null);
+}
+
+export function listingQuestionsForApply(raw: unknown): ListingQuestion[] {
+  const parsed = parseListingQuestions(raw);
+  if (parsed.length > 0) return parsed;
+
+  return [
+    {
+      id: DEFAULT_APPLICATION_QUESTION_ID,
+      question: "Why do you want this position?",
+      type: "textarea",
+      required: true,
+    },
+  ];
 }
 
 export const modalOverlayStyle: CSSProperties = {
@@ -813,35 +868,6 @@ function HiringDetailMobileModal({
   );
 }
 
-function PillChoice({
-  label,
-  selected,
-  onClick,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        background: selected ? "#E51937" : "#1a1a1a",
-        border: selected ? "1px solid #E51937" : "1px solid #333333",
-        color: selected ? "#ffffff" : "#777777",
-        borderRadius: "20px",
-        padding: "6px 16px",
-        fontSize: "12px",
-        fontWeight: 500,
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 function TrashIcon() {
   return (
     <svg
@@ -1028,7 +1054,8 @@ export function ApplicationModal({
     fullName: string;
     avatarUrl?: string;
   } | null>(null);
-  const [questions, setQuestions] = useState<PositionQuestion[]>([]);
+  const selectedListing = position;
+  const displayQuestions = listingQuestionsForApply(selectedListing.questions);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -1043,21 +1070,18 @@ export function ApplicationModal({
 
     async function load() {
       setLoading(true);
-      const [profileRes, questionsRes, appRes] = await Promise.all([
+      console.log("Questions:", selectedListing?.questions);
+
+      const [profileRes, appRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("full_name, avatar_url")
           .eq("id", userId)
           .maybeSingle(),
         supabase
-          .from("position_questions")
-          .select("*")
-          .eq("position_id", position.id)
-          .order("order_index", { ascending: true }),
-        supabase
           .from("hiring_applications")
           .select("id")
-          .eq("position_id", position.id)
+          .eq("listing_id", selectedListing.id)
           .eq("applicant_id", userId)
           .maybeSingle(),
       ]);
@@ -1071,17 +1095,6 @@ export function ApplicationModal({
         });
       }
 
-      setQuestions(
-        (questionsRes.data ?? []).map((row) => ({
-          id: row.id as string,
-          position_id: row.position_id as string,
-          question: row.question as string,
-          question_type: row.question_type as QuestionType,
-          options: normalizeOptions(row.options),
-          required: Boolean(row.required),
-          order_index: (row.order_index as number) ?? 0,
-        })),
-      );
       setAlreadyApplied(!!appRes.data);
       setLoading(false);
     }
@@ -1090,11 +1103,11 @@ export function ApplicationModal({
     return () => {
       cancelled = true;
     };
-  }, [position.id, user?.id]);
+  }, [selectedListing.id, selectedListing.questions, user?.id]);
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    for (const q of questions) {
+    for (const q of displayQuestions) {
       if (q.required && !(answers[q.id] ?? "").trim()) {
         next[q.id] = "This question is required.";
       }
@@ -1107,27 +1120,37 @@ export function ApplicationModal({
     if (!user?.id || !validate()) return;
     setSubmitting(true);
 
-    const answersPayload: Record<string, string> = {};
-    for (const q of questions) {
-      const value = (answers[q.id] ?? "").trim();
-      if (value) answersPayload[q.id] = value;
-    }
+    const answersPayload: HiringApplicationAnswer[] = displayQuestions.map((q) => ({
+      question_id: q.id,
+      answer: (answers[q.id] ?? "").trim(),
+    }));
 
-    const { error } = await supabase.from("hiring_applications").insert({
-      position_id: position.id,
+    const payload = {
+      listing_id: selectedListing.id,
       applicant_id: user.id,
       answers: answersPayload,
-      status: "applied",
-    });
+      status: "pending",
+    };
+
+    const { data, error } = await supabase
+      .from("hiring_applications")
+      .insert(payload)
+      .select();
 
     setSubmitting(false);
     if (error) {
+      console.error("Full error:", JSON.stringify(error, null, 2));
+      console.error("Payload sent:", payload);
       if (error.code === "23505") {
         setAlreadyApplied(true);
       } else {
         setErrors({ form: error.message });
       }
       return;
+    }
+
+    if (!data?.length) {
+      console.error("Insert succeeded but no row returned:", { payload, data });
     }
 
     setSubmitted(true);
@@ -1252,7 +1275,7 @@ export function ApplicationModal({
               </div>
             ) : null}
 
-            {questions.map((q) => (
+            {displayQuestions.map((q) => (
               <div key={q.id} style={{ marginBottom: "16px" }}>
                 <label
                   style={{
@@ -1268,42 +1291,30 @@ export function ApplicationModal({
                     <span style={{ color: "#E51937", marginLeft: "4px" }}>*</span>
                   ) : null}
                 </label>
-                {q.question_type === "text" ? (
+                {q.type === "text" ? (
+                  <input
+                    type="text"
+                    value={answers[q.id] ?? ""}
+                    onChange={(e) =>
+                      setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
+                    }
+                    style={{ ...darkInputStyle, width: "100%" }}
+                  />
+                ) : (
                   <textarea
                     value={answers[q.id] ?? ""}
                     onChange={(e) =>
                       setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
                     }
-                    rows={3}
-                    style={{ ...darkInputStyle, width: "100%", minHeight: "80px", resize: "vertical" }}
+                    rows={4}
+                    style={{
+                      ...darkInputStyle,
+                      width: "100%",
+                      minHeight: "100px",
+                      resize: "vertical",
+                    }}
                   />
-                ) : null}
-                {q.question_type === "yes_no" ? (
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <PillChoice
-                      label="Yes"
-                      selected={answers[q.id] === "Yes"}
-                      onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: "Yes" }))}
-                    />
-                    <PillChoice
-                      label="No"
-                      selected={answers[q.id] === "No"}
-                      onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: "No" }))}
-                    />
-                  </div>
-                ) : null}
-                {q.question_type === "multiple_choice" ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                    {(q.options ?? []).map((opt) => (
-                      <PillChoice
-                        key={opt}
-                        label={opt}
-                        selected={answers[q.id] === opt}
-                        onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
-                      />
-                    ))}
-                  </div>
-                ) : null}
+                )}
                 {errors[q.id] ? (
                   <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>{errors[q.id]}</p>
                 ) : null}
@@ -1396,6 +1407,7 @@ export default function HiringBoardPage() {
         deadline,
         created_at,
         is_open,
+        questions,
         clubs ( name, logo_url, slug, description )
       `,
       )
@@ -1416,11 +1428,11 @@ export default function HiringBoardPage() {
     if (positionIds.length > 0) {
       const { data: apps } = await supabase
         .from("hiring_applications")
-        .select("position_id")
-        .in("position_id", positionIds);
+        .select("listing_id")
+        .in("listing_id", positionIds);
 
       (apps ?? []).forEach((a) => {
-        const pid = a.position_id as string;
+        const pid = a.listing_id as string;
         counts[pid] = (counts[pid] ?? 0) + 1;
       });
     }
@@ -1428,13 +1440,13 @@ export default function HiringBoardPage() {
     if (user?.id && positionIds.length > 0) {
       const { data: myApps } = await supabase
         .from("hiring_applications")
-        .select("position_id")
+        .select("listing_id")
         .eq("applicant_id", user.id)
-        .in("position_id", positionIds);
+        .in("listing_id", positionIds);
 
       const map: Record<string, boolean> = {};
       (myApps ?? []).forEach((a) => {
-        map[a.position_id as string] = true;
+        map[a.listing_id as string] = true;
       });
       setMyApplications(map);
     } else {
@@ -1465,6 +1477,7 @@ export default function HiringBoardPage() {
         deadline: (row.deadline as string) ?? null,
         createdAt: (row.created_at as string) ?? new Date().toISOString(),
         applicantCount: counts[row.id as string] ?? 0,
+        questions: parseListingQuestions(row.questions),
       };
     });
 

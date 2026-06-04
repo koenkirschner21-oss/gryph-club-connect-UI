@@ -209,6 +209,8 @@ export interface Notification {
   read: boolean;
   clubId?: string;
   referenceId?: string;
+  link?: string;
+  clubName?: string;
   createdAt: string;
 }
 

@@ -99,7 +99,7 @@ function normalizeMemberRole(role: string): MemberRole {
 
 function formatRoleLabel(role: MemberRole | string): string {
   if (role === "executive" || role === "exec") return "Executive";
-  if (role === "owner") return "Owner";
+  if (role === "owner") return "President";
   return "Member";
 }
 
@@ -112,7 +112,7 @@ function roleBadgeLabel(role: MemberRole, title?: string | null): string {
 }
 
 const ROLE_OPTIONS: { value: MemberRole; label: string }[] = [
-  { value: "owner", label: "Owner" },
+  { value: "owner", label: "President" },
   { value: "executive", label: "Executive" },
   { value: "member", label: "Member" },
 ];

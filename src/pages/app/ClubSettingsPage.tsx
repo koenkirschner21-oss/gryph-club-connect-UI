@@ -566,7 +566,7 @@ export default function ClubSettingsPage() {
   async function handleSaveJoinQuestions() {
     if (!clubId) return;
     setSavingJoinQuestions(true);
-    const payload = joinQuestions
+    const questions = joinQuestions
       .filter((q) => q.question.trim())
       .map((q, index) => ({
         id: q.id,
@@ -578,17 +578,17 @@ export default function ClubSettingsPage() {
 
     const { error } = await supabase
       .from("clubs")
-      .update({ join_questions: payload })
+      .update({ join_questions: questions })
       .eq("id", clubId);
 
     setSavingJoinQuestions(false);
     if (error) {
-      console.error("Failed to save join questions:", error.message);
+      console.error("Failed to save questions:", error);
       showToast("Failed to save questions", "error");
       return;
     }
 
-    setJoinQuestions(parseJoinQuestions(payload));
+    setJoinQuestions(parseJoinQuestions(questions));
     showToast("Application questions saved", "success");
   }
 
