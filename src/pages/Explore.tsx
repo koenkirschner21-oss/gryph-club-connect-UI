@@ -258,7 +258,7 @@ function ExploreClubCard({
         style={{
           width: "100%",
           minWidth: 0,
-          height: "320px",
+          minHeight: "320px",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -273,11 +273,12 @@ function ExploreClubCard({
       >
         <div
           style={{
-            height: "160px",
+            width: "100%",
+            aspectRatio: "3 / 1",
             flexShrink: 0,
             overflow: "hidden",
-            width: "100%",
             position: "relative",
+            background: showBannerImage ? "#1a1a1a" : undefined,
           }}
         >
           {showBannerImage ? (
@@ -288,6 +289,7 @@ function ExploreClubCard({
                 width: "100%",
                 height: "100%",
                 objectFit: "cover",
+                objectPosition: "center center",
                 display: "block",
               }}
             />

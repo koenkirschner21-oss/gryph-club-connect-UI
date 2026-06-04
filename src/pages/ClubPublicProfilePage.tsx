@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Globe, Users } from "lucide-react";
+import { Globe, Users, X } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { getClubInitials } from "../lib/clubUtils";
 import {
@@ -44,6 +44,91 @@ interface ClubOwnerContact {
   fullName: string;
   email: string;
   avatarUrl?: string;
+}
+
+const ABOUT_PREVIEW_LENGTH = 300;
+
+const leaveClubButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #333333",
+  color: "#777777",
+  borderRadius: "8px",
+  padding: "10px 20px",
+  fontWeight: 600,
+  fontSize: "14px",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const profileModalOverlayStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.8)",
+  zIndex: 1000,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "24px",
+};
+
+const profileModalPanelStyle: CSSProperties = {
+  background: "#111111",
+  border: "1px solid #242424",
+  borderRadius: "16px",
+  maxWidth: "600px",
+  width: "100%",
+  maxHeight: "80vh",
+  overflowY: "auto",
+  padding: "32px",
+  position: "relative",
+};
+
+function ClubLogoCircle({
+  club,
+  initialsClub,
+  size = 96,
+}: {
+  club: Pick<PublicClubProfile, "name" | "logoUrl">;
+  initialsClub: Pick<Club, "name" | "abbreviation">;
+  size?: number;
+}) {
+  const borderWidth = size >= 96 ? 4 : 3;
+  const shared: CSSProperties = {
+    width: `${size}px`,
+    height: `${size}px`,
+    borderRadius: "50%",
+    border: `${borderWidth}px solid #0f0f0f`,
+    overflow: "hidden",
+    flexShrink: 0,
+    display: "block",
+  };
+
+  if (club.logoUrl) {
+    return (
+      <img
+        src={club.logoUrl}
+        alt={club.name}
+        style={{ ...shared, objectFit: "cover" }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        ...shared,
+        background: "#1a1a1a",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#888888",
+        fontWeight: 800,
+        fontSize: size >= 96 ? "26px" : "22px",
+      }}
+    >
+      {getClubInitials(initialsClub as Club)}
+    </div>
+  );
 }
 
 function formatEventTime12h(timeStr: string): string {
@@ -177,13 +262,17 @@ function formatMemberCount(count: number): string {
 
 function categoryBadgeStyle(): CSSProperties {
   return {
-    background: "#111111",
-    border: "1px solid #222",
-    color: "#747676",
-    borderRadius: "20px",
-    padding: "4px 12px",
-    fontSize: "12px",
+    background: "#1a1a1a",
+    border: "1px solid #333333",
+    color: "#888888",
+    borderRadius: "4px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
     display: "inline-block",
+    width: "fit-content",
   };
 }
 
@@ -379,6 +468,9 @@ export default function ClubPublicProfilePage() {
     useState<JoinApplicationStatus>(null);
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [submittingApplication, setSubmittingApplication] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
+  const [leaveHovered, setLeaveHovered] = useState(false);
 
   const clubId = profile?.id ?? contextClub?.id;
   const joined = clubId ? isJoined(clubId) : false;
@@ -475,7 +567,7 @@ export default function ClubPublicProfilePage() {
           .eq("club_id", loaded.id)
           .eq("status", "active"),
         supabase
-          .from("club_positions")
+          .from("hiring_listings")
           .select("id", { count: "exact", head: true })
           .eq("club_id", loaded.id)
           .eq("is_open", true),
@@ -712,6 +804,45 @@ export default function ClubPublicProfilePage() {
   const aboutText =
     club.longDescription?.trim() || club.shortDescription?.trim() || "";
 
+  const aboutPreview =
+    aboutText.length > ABOUT_PREVIEW_LENGTH
+      ? `${aboutText.slice(0, ABOUT_PREVIEW_LENGTH).trimEnd()}…`
+      : aboutText;
+  const showAboutReadMore = aboutText.length > ABOUT_PREVIEW_LENGTH;
+
+  function handleReadMore() {
+    if (!user) {
+      navigate(`/signup?redirect=/clubs/${club.slug}`);
+      return;
+    }
+    setShowAboutModal(true);
+  }
+
+  function handleEventCardClick(event: ClubEvent) {
+    if (joined) {
+      navigate(`/app/clubs/${club.id}/events`);
+      return;
+    }
+    setSelectedEvent(event);
+  }
+
+  function handleEventJoinAction() {
+    setSelectedEvent(null);
+    const joinType = club.joinType ?? "open";
+    if (joinType === "application") {
+      openApplicationFlow();
+      return;
+    }
+    if (joinType === "vote") {
+      void handleRequestVoteJoin();
+      return;
+    }
+    void handleJoinOrLeave();
+  }
+
+  const headerPadding = isMobile ? "0 16px" : "0 32px";
+  const headerContainerPadding = isMobile ? "0 16px 20px" : "0 32px 20px";
+
   const hasSocialLinks =
     !!club.instagramUrl ||
     !!club.linkedinUrl ||
@@ -728,10 +859,12 @@ export default function ClubPublicProfilePage() {
       <div
         style={{
           width: "100%",
-          height: "240px",
-          position: "relative",
+          height: "360px",
           overflow: "hidden",
-          backgroundColor: "#1a0505",
+          position: "relative",
+          background: club.bannerUrl || club.imageUrl
+            ? "#0f0f0f"
+            : "linear-gradient(135deg, #1a0505 0%, #0f0f0f 100%)",
         }}
       >
         {club.bannerUrl || club.imageUrl ? (
@@ -741,208 +874,155 @@ export default function ClubPublicProfilePage() {
             style={{
               width: "100%",
               height: "100%",
-              objectFit: "cover",
-              objectPosition: "center",
+              objectFit: "contain",
+              objectPosition: "center center",
               display: "block",
             }}
           />
-        ) : (
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              background:
-                "linear-gradient(135deg, #2d0808 0%, #E51937 50%, #2d0808 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "48px",
-                fontWeight: 800,
-                color: "rgba(255,255,255,0.1)",
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {club.name}
-            </span>
-          </div>
-        )}
+        ) : null}
       </div>
 
       <div
         className="mx-auto max-w-7xl sm:px-6 lg:px-8"
         style={{ paddingBottom: "64px", paddingLeft: isMobile ? 16 : undefined, paddingRight: isMobile ? 16 : undefined }}
       >
-        <div className="relative mb-6">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-end",
+            padding: headerContainerPadding,
+            gap: "20px",
+            flexWrap: isMobile ? "wrap" : "nowrap",
+          }}
+        >
           <div
-            className="relative z-10 flex-shrink-0"
-            style={{ marginTop: "-36px", marginLeft: isMobile ? 0 : "24px" }}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              minWidth: 0,
+            }}
           >
-            {club.logoUrl ? (
-              <img
-                src={club.logoUrl}
-                alt={club.name}
-                style={{
-                  width: "72px",
-                  height: "72px",
-                  borderRadius: "12px",
-                  border: "3px solid #0f0f0f",
-                  background: "#1a1a1a",
-                  objectFit: "cover",
-                  display: "block",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: "72px",
-                  height: "72px",
-                  borderRadius: "12px",
-                  border: "3px solid #0f0f0f",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                  background: "#1a1a1a",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#888888",
-                  fontWeight: 800,
-                  fontSize: "20px",
-                }}
+            <div style={{ position: "relative", zIndex: 10, marginTop: "-48px" }}>
+              <ClubLogoCircle club={club} initialsClub={initialsClub} />
+            </div>
+            <h1
+              style={{
+                fontSize: "30px",
+                fontWeight: 800,
+                color: "#ffffff",
+                marginTop: "10px",
+                marginBottom: 0,
+                lineHeight: 1.2,
+              }}
+            >
+              {club.name}
+            </h1>
+            {club.category ? (
+              <span style={{ ...categoryBadgeStyle(), marginTop: "12px" }}>
+                {club.category}
+              </span>
+            ) : null}
+            {pending ? (
+              <span
+                className="rounded-full bg-yellow-500/20 px-3 py-0.5 text-xs font-semibold text-yellow-400"
+                style={{ display: "inline-block", marginTop: "8px" }}
               >
-                {getClubInitials(initialsClub as Club)}
-              </div>
-            )}
+                Pending Approval
+              </span>
+            ) : null}
           </div>
 
-          <div className="relative z-10" style={{ marginLeft: isMobile ? 0 : "24px" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "flex-end",
+              alignItems: "flex-end",
+              paddingBottom: "4px",
+              flexShrink: 0,
+              width: isMobile ? "100%" : undefined,
+            }}
+          >
             <div
               style={{
                 display: "flex",
                 flexDirection: isMobile ? "column" : "row",
+                gap: "12px",
                 alignItems: isMobile ? "stretch" : "center",
-                justifyContent: "space-between",
-                marginTop: "16px",
-                gap: "16px",
               }}
             >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : undefined,
-                    gap: isMobile ? "8px" : undefined,
-                    marginBottom: isMobile ? "8px" : undefined,
-                  }}
-                  className={isMobile ? undefined : "mb-1 flex flex-wrap items-center gap-2"}
-                >
-                  <span style={categoryBadgeStyle()}>{club.category || "Club"}</span>
-                  <span style={{ fontSize: "13px", color: "#747676" }}>
-                    {formatMemberCount(memberCount)}
-                  </span>
-                  {joined ? (
-                    <span
-                      style={{
-                        display: "inline-block",
-                        background: "#1a0505",
-                        border: "1px solid #E51937",
-                        color: "#E51937",
-                        borderRadius: "20px",
-                        padding: "4px 12px",
-                        fontSize: "12px",
-                      }}
-                    >
-                      Joined
-                    </span>
-                  ) : null}
-                  {pending ? (
-                    <span className="rounded-full bg-yellow-500/20 px-3 py-0.5 text-xs font-semibold text-yellow-400">
-                      Pending Approval
-                    </span>
-                  ) : null}
-                </div>
-                <h1
-                  style={{
-                    fontWeight: 700,
-                    fontSize: "28px",
-                    color: "#ffffff",
-                    lineHeight: 1.2,
-                    margin: 0,
-                  }}
-                >
-                  {club.name}
-                </h1>
-                {joinBadgeStyle && joinBadgeLabel ? (
-                  <span style={{ ...joinBadgeStyle, marginTop: "8px" }}>
-                    {joinBadgeLabel}
-                  </span>
-                ) : null}
-              </div>
-
-              <div
+              <button
+                type="button"
+                onClick={() => toggleSaveClub(club.id)}
+                onMouseEnter={() => setBookmarkHovered(true)}
+                onMouseLeave={() => setBookmarkHovered(false)}
+                aria-label={saved ? "Unsave club" : "Save club"}
                 style={{
-                  display: "flex",
-                  flexDirection: isMobile ? "column" : "row",
-                  gap: "12px",
-                  alignItems: isMobile ? "stretch" : "center",
-                  flexShrink: 0,
-                  width: isMobile ? "100%" : undefined,
+                  background: "transparent",
+                  border: "none",
+                  padding: "10px",
+                  color: bookmarkHovered || saved ? "#ffffff" : "#555555",
+                  cursor: "pointer",
+                  transition: "color 0.15s ease",
+                  alignSelf: isMobile ? "flex-start" : undefined,
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => toggleSaveClub(club.id)}
-                  onMouseEnter={() => setBookmarkHovered(true)}
-                  onMouseLeave={() => setBookmarkHovered(false)}
-                  aria-label={saved ? "Unsave club" : "Save club"}
-                  style={{
-                    background: "#1a1a1a",
-                    border: "1px solid #333",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    color: bookmarkHovered || saved ? "#FFC429" : "#747676",
-                    cursor: "pointer",
-                    transition: "color 0.15s ease",
-                  }}
+                <svg
+                  className="h-5 w-5"
+                  fill={saved ? "currentColor" : "none"}
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
                 >
-                  <svg
-                    className="h-5 w-5"
-                    fill={saved ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                    />
-                  </svg>
-                </button>
-                {user && joined && (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                  />
+                </svg>
+              </button>
+              {joined ? (
+                <>
                   <Link
                     to={`/app/clubs/${club.id}`}
                     style={{
                       background: "#E51937",
                       color: "#ffffff",
                       borderRadius: "8px",
-                      padding: "10px 24px",
+                      padding: "10px 20px",
                       fontWeight: 600,
                       fontSize: "14px",
                       textDecoration: "none",
                       whiteSpace: "nowrap",
+                      textAlign: "center",
                     }}
                   >
                     Open Workspace
                   </Link>
-                )}
+                  <button
+                    type="button"
+                    disabled={joining}
+                    onClick={() => void handleJoinOrLeave()}
+                    onMouseEnter={() => setLeaveHovered(true)}
+                    onMouseLeave={() => setLeaveHovered(false)}
+                    style={{
+                      ...leaveClubButtonStyle,
+                      borderColor: leaveHovered ? "#555555" : "#333333",
+                      color: leaveHovered ? "#cccccc" : "#777777",
+                      width: isMobile ? "100%" : undefined,
+                      boxSizing: "border-box",
+                      cursor: joining ? "wait" : "pointer",
+                    }}
+                  >
+                    {joining ? "Leaving…" : "Leave Club"}
+                  </button>
+                </>
+              ) : (
                 <ClubJoinAction
                   joinType={joinType}
-                  joined={joined}
                   pending={pending}
                   joining={joining}
                   submittingApplication={submittingApplication}
@@ -952,20 +1032,21 @@ export default function ClubPublicProfilePage() {
                   onRequestVote={() => void handleRequestVoteJoin()}
                   fullWidth={isMobile}
                 />
-              </div>
+              )}
             </div>
-            {joinNotice ? (
-              <p className="mt-2 text-sm text-[#FFC429]" role="status">
-                {joinNotice}
-              </p>
-            ) : null}
-            {joinError ? (
-              <p className="mt-2 text-sm text-primary" role="alert">
-                Something went wrong. Please try again.
-              </p>
-            ) : null}
           </div>
         </div>
+
+        {joinNotice ? (
+          <p className="mt-2 text-sm text-[#FFC429]" role="status" style={{ padding: headerPadding }}>
+            {joinNotice}
+          </p>
+        ) : null}
+        {joinError ? (
+          <p className="mt-2 text-sm text-primary" role="alert" style={{ padding: headerPadding }}>
+            Something went wrong. Please try again.
+          </p>
+        ) : null}
 
         {showApplicationModal ? (
           <ClubJoinApplicationModal
@@ -978,8 +1059,8 @@ export default function ClubPublicProfilePage() {
         ) : null}
 
         <div
-          className="mt-8 flex flex-col gap-6 lg:flex-row"
-          style={{ alignItems: "flex-start" }}
+          className="flex flex-col gap-6 lg:flex-row"
+          style={{ alignItems: "flex-start", marginTop: "16px" }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
@@ -993,7 +1074,7 @@ export default function ClubPublicProfilePage() {
             >
               <h2
                 style={{
-                  fontSize: "14px",
+                  fontSize: "15px",
                   fontWeight: 600,
                   color: "#ffffff",
                   marginBottom: "10px",
@@ -1004,13 +1085,33 @@ export default function ClubPublicProfilePage() {
               </h2>
               <p
                 style={{
-                  fontSize: "14px",
+                  fontSize: "15px",
                   color: aboutText ? "#cccccc" : "#555555",
                   lineHeight: "1.6",
                   margin: 0,
                 }}
               >
-                {aboutText || "No description provided yet."}
+                {aboutText ? aboutPreview : "No description provided yet."}
+                {showAboutReadMore ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={handleReadMore}
+                      style={{
+                        color: "#E51937",
+                        fontSize: "13px",
+                        fontWeight: 500,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      Read More
+                    </button>
+                  </>
+                ) : null}
               </p>
             </div>
 
@@ -1021,6 +1122,7 @@ export default function ClubPublicProfilePage() {
               clubName={club.name}
               clubLogoUrl={club.logoUrl}
               clubAbbreviation={contextClub?.abbreviation}
+              onEventClick={handleEventCardClick}
             />
           </div>
 
@@ -1061,6 +1163,43 @@ export default function ClubPublicProfilePage() {
           </aside>
         </div>
       </div>
+
+      {showAboutModal ? (
+        <ClubAboutModal
+          club={club}
+          initialsClub={initialsClub}
+          memberCount={memberCount}
+          joinType={joinType}
+          joinBadgeLabel={joinBadgeLabel}
+          joinBadgeStyle={joinBadgeStyle}
+          events={events.slice(0, 2)}
+          joined={joined}
+          hasSocialLinks={hasSocialLinks}
+          onClose={() => setShowAboutModal(false)}
+          onOpenWorkspace={() => navigate(`/app/clubs/${club.id}`)}
+          onJoin={() => {
+            setShowAboutModal(false);
+            if (joinType === "application") {
+              openApplicationFlow();
+            } else if (joinType === "vote") {
+              void handleRequestVoteJoin();
+            } else {
+              void handleJoinOrLeave();
+            }
+          }}
+        />
+      ) : null}
+
+      {selectedEvent ? (
+        <EventDetailModal
+          event={selectedEvent}
+          user={user}
+          joined={joined}
+          clubSlug={club.slug}
+          onClose={() => setSelectedEvent(null)}
+          onJoinClub={handleEventJoinAction}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1072,6 +1211,7 @@ function EventsSection({
   clubName,
   clubLogoUrl,
   clubAbbreviation,
+  onEventClick,
 }: {
   events: ClubEvent[];
   joined: boolean;
@@ -1079,18 +1219,25 @@ function EventsSection({
   clubName: string;
   clubLogoUrl?: string;
   clubAbbreviation?: string;
+  onEventClick: (event: ClubEvent) => void;
 }) {
   const eventsUrl = `/app/clubs/${clubId}/events`;
   const visibleEvents = events.slice(0, 4);
-  const cardStyle: CSSProperties = {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  const cardStyle = (eventId: string): CSSProperties => ({
     background: "#1a1a1a",
-    border: "1px solid #242424",
-    borderRadius: "10px",
+    border: "1px solid",
+    borderColor: hoveredId === eventId ? "#333333" : "#242424",
+    borderRadius: "12px",
     padding: "16px 20px",
-    marginBottom: "10px",
-    display: "block",
-    textDecoration: "none",
-  };
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    cursor: "pointer",
+    marginBottom: "12px",
+    transition: "all 0.15s ease",
+  });
 
   return (
     <div>
@@ -1105,77 +1252,64 @@ function EventsSection({
         Upcoming Events
       </h2>
       {events.length > 0 ? (
-        <div className="space-y-4">
-          {visibleEvents.map((event) => {
-            const inner = (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: "14px",
-                }}
-              >
-                <EventDateBlock date={event.date} />
-                <ClubEventLogo
-                  name={clubName}
-                  abbreviation={clubAbbreviation}
-                  logoUrl={clubLogoUrl}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 600,
-                      color: "#ffffff",
-                      margin: "0 0 4px",
-                    }}
-                  >
-                    {event.title}
-                  </h3>
+        <div>
+          {visibleEvents.map((event) => (
+            <div
+              key={event.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onEventClick(event)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onEventClick(event);
+                }
+              }}
+              onMouseEnter={() => setHoveredId(event.id)}
+              onMouseLeave={() => setHoveredId(null)}
+              style={cardStyle(event.id)}
+            >
+              <EventDateBlock date={event.date} />
+              <ClubEventLogo
+                name={clubName}
+                abbreviation={clubAbbreviation}
+                logoUrl={clubLogoUrl}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 600,
+                    color: "#ffffff",
+                    margin: "0 0 4px",
+                  }}
+                >
+                  {event.title}
+                </h3>
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#555555",
+                    margin: 0,
+                  }}
+                >
+                  {formatEventScheduleLine(event.date, event.time)}
+                </p>
+                {event.location ? (
                   <p
                     style={{
                       fontSize: "12px",
                       color: "#555555",
-                      margin: 0,
+                      margin: "4px 0 0",
                     }}
                   >
-                    {formatEventScheduleLine(event.date, event.time)}
+                    {event.location}
                   </p>
-                  {event.location ? (
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#555555",
-                        margin: "4px 0 0",
-                      }}
-                    >
-                      {event.location}
-                    </p>
-                  ) : null}
-                </div>
+                ) : null}
               </div>
-            );
-
-            if (joined) {
-              return (
-                <Link
-                  key={event.id}
-                  to={eventsUrl}
-                  style={{ ...cardStyle, cursor: "pointer" }}
-                >
-                  {inner}
-                </Link>
-              );
-            }
-
-            return (
-              <div key={event.id} style={cardStyle}>
-                {inner}
-              </div>
-            );
-          })}
-          {events.length > 4 ? (
+            </div>
+          ))}
+          {joined && events.length > 4 ? (
             <div style={{ textAlign: "right", marginTop: "4px" }}>
               <Link
                 to={eventsUrl}
@@ -1197,6 +1331,387 @@ function EventsSection({
           <p className="mt-1 text-sm text-muted">Check back soon for new events.</p>
         </Card>
       )}
+    </div>
+  );
+}
+
+function ModalCloseButton({ onClose }: { onClose: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-label="Close"
+      style={{
+        position: "absolute",
+        top: "16px",
+        right: "16px",
+        background: "transparent",
+        border: "none",
+        color: hovered ? "#ffffff" : "#747676",
+        cursor: "pointer",
+        padding: "4px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <X size={20} />
+    </button>
+  );
+}
+
+function CompactEventPreview({
+  event,
+  clubName,
+  clubLogoUrl,
+  clubAbbreviation,
+}: {
+  event: ClubEvent;
+  clubName: string;
+  clubLogoUrl?: string;
+  clubAbbreviation?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "12px 0",
+        borderBottom: "1px solid #1e1e1e",
+      }}
+    >
+      <EventDateBlock date={event.date} />
+      <ClubEventLogo
+        name={clubName}
+        abbreviation={clubAbbreviation}
+        logoUrl={clubLogoUrl}
+      />
+      <div style={{ minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: "0 0 2px",
+          }}
+        >
+          {event.title}
+        </p>
+        <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+          {formatEventScheduleLine(event.date, event.time)}
+          {event.location ? ` · ${event.location}` : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ClubAboutModal({
+  club,
+  initialsClub,
+  memberCount,
+  joinType,
+  joinBadgeLabel,
+  joinBadgeStyle,
+  events,
+  joined,
+  hasSocialLinks,
+  onClose,
+  onOpenWorkspace,
+  onJoin,
+}: {
+  club: PublicClubProfile;
+  initialsClub: Pick<Club, "name" | "abbreviation">;
+  memberCount: number;
+  joinType: ClubJoinType;
+  joinBadgeLabel: string | null;
+  joinBadgeStyle: CSSProperties | null;
+  events: ClubEvent[];
+  joined: boolean;
+  hasSocialLinks: boolean;
+  onClose: () => void;
+  onOpenWorkspace: () => void;
+  onJoin: () => void;
+}) {
+  const aboutText =
+    club.longDescription?.trim() || club.shortDescription?.trim() || "";
+
+  const joinLabel =
+    joinType === "application"
+      ? "Apply to Join"
+      : joinType === "vote"
+        ? "Request to Join"
+        : "Join Club";
+
+  return (
+    <div
+      style={profileModalOverlayStyle}
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        style={profileModalPanelStyle}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="club-about-modal-title"
+      >
+        <ModalCloseButton onClose={onClose} />
+
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
+          <ClubLogoCircle club={club} initialsClub={initialsClub} size={56} />
+          <h2
+            id="club-about-modal-title"
+            style={{
+              fontSize: "22px",
+              fontWeight: 800,
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
+            {club.name}
+          </h2>
+        </div>
+
+        <p
+          style={{
+            fontSize: "15px",
+            color: "#cccccc",
+            lineHeight: 1.8,
+            margin: "0 0 24px",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {aboutText || "No description provided yet."}
+        </p>
+
+        <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: "20px", marginBottom: "20px" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "12px",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ fontSize: "13px", color: "#cccccc" }}>
+              {formatMemberCount(memberCount)}
+            </span>
+            {club.category ? (
+              <span style={categoryBadgeStyle()}>{club.category}</span>
+            ) : null}
+            {joinBadgeStyle && joinBadgeLabel ? (
+              <span style={joinBadgeStyle}>{joinBadgeLabel}</span>
+            ) : null}
+          </div>
+        </div>
+
+        {hasSocialLinks ? (
+          <div style={{ marginBottom: "20px" }}>
+            <p style={connectHeadingStyle()}>Connect</p>
+            {(
+              [
+                club.instagramUrl && {
+                  href: club.instagramUrl,
+                  label: "Instagram",
+                  icon: <InstagramBrandIcon />,
+                },
+                club.linkedinUrl && {
+                  href: club.linkedinUrl,
+                  label: "LinkedIn",
+                  icon: <LinkedInBrandIcon />,
+                },
+                club.websiteUrl && {
+                  href: club.websiteUrl,
+                  label: "Website",
+                  icon: <WebsiteBrandIcon />,
+                },
+              ].filter(Boolean) as {
+                href: string;
+                label: string;
+                icon: ReactNode;
+              }[]
+            ).map((link, index, arr) => (
+              <SocialLinkRow
+                key={link.label}
+                href={link.href}
+                label={link.label}
+                icon={link.icon}
+                isLast={index === arr.length - 1}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {events.length > 0 ? (
+          <div style={{ marginBottom: "24px" }}>
+            <p
+              style={{
+                fontSize: "11px",
+                color: "#555555",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                marginBottom: "8px",
+              }}
+            >
+              Upcoming Events
+            </p>
+            {events.map((event) => (
+              <CompactEventPreview
+                key={event.id}
+                event={event}
+                clubName={club.name}
+                clubLogoUrl={club.logoUrl}
+                clubAbbreviation={initialsClub.abbreviation}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: "8px" }}>
+          {joined ? (
+            <button
+              type="button"
+              onClick={onOpenWorkspace}
+              style={{
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "12px 20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Open Workspace
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onJoin}
+              style={{
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "12px 20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {joinLabel}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventDetailModal({
+  event,
+  user,
+  joined,
+  clubSlug,
+  onClose,
+  onJoinClub,
+}: {
+  event: ClubEvent;
+  user: ReturnType<typeof useAuthContext>["user"];
+  joined: boolean;
+  clubSlug: string;
+  onClose: () => void;
+  onJoinClub: () => void;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <div
+      style={profileModalOverlayStyle}
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        style={profileModalPanelStyle}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="event-detail-modal-title"
+      >
+        <ModalCloseButton onClose={onClose} />
+
+        <h2
+          id="event-detail-modal-title"
+          style={{
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "#ffffff",
+            margin: "0 0 16px",
+            paddingRight: "32px",
+          }}
+        >
+          {event.title}
+        </h2>
+
+        <p style={{ fontSize: "14px", color: "#cccccc", margin: "0 0 8px" }}>
+          {formatEventScheduleLine(event.date, event.time)}
+        </p>
+        {event.location ? (
+          <p style={{ fontSize: "14px", color: "#747676", margin: "0 0 20px" }}>
+            {event.location}
+          </p>
+        ) : (
+          <div style={{ marginBottom: "20px" }} />
+        )}
+
+        {event.description?.trim() ? (
+          <p
+            style={{
+              fontSize: "15px",
+              color: "#cccccc",
+              lineHeight: 1.8,
+              margin: "0 0 24px",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {event.description.trim()}
+          </p>
+        ) : null}
+
+        {!joined ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (!user) {
+                navigate(`/signup?redirect=/clubs/${clubSlug}`);
+                return;
+              }
+              onJoinClub();
+            }}
+            style={{
+              width: "100%",
+              background: "#E51937",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "12px 20px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {!user ? "Sign Up to RSVP" : "Join Club to RSVP"}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1305,14 +1820,15 @@ function SidebarDetails({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "10px",
+          gap: "8px",
           marginBottom: "14px",
           fontSize: "13px",
           color: "#cccccc",
+          fontWeight: 500,
         }}
       >
-        <Users size={16} strokeWidth={2} color="#747676" aria-hidden />
-        {formatMemberCount(memberCount)}
+        <Users size={14} strokeWidth={2} color="#555555" aria-hidden />
+        {memberCount} {memberCount === 1 ? "Member" : "Members"}
       </div>
 
       {owners.length > 0 ? (
@@ -1451,7 +1967,6 @@ function statusBadgeStyle(base: CSSProperties): CSSProperties {
 
 function ClubJoinAction({
   joinType,
-  joined,
   pending,
   joining,
   submittingApplication,
@@ -1462,7 +1977,6 @@ function ClubJoinAction({
   fullWidth,
 }: {
   joinType: ClubJoinType;
-  joined: boolean;
   pending: boolean;
   joining: boolean;
   submittingApplication: boolean;
@@ -1472,31 +1986,6 @@ function ClubJoinAction({
   onRequestVote: () => void;
   fullWidth?: boolean;
 }) {
-  if (joined) {
-    return (
-      <button
-        type="button"
-        disabled={joining}
-        onClick={onOpenJoin}
-        style={{
-          background: "transparent",
-          border: "1px solid #E51937",
-          color: "#E51937",
-          borderRadius: "8px",
-          padding: "10px 24px",
-          fontWeight: 600,
-          fontSize: "14px",
-          cursor: joining ? "wait" : "pointer",
-          whiteSpace: "nowrap",
-          width: fullWidth ? "100%" : undefined,
-          boxSizing: "border-box",
-        }}
-      >
-        {joining ? "Leaving…" : "Leave Club"}
-      </button>
-    );
-  }
-
   if (joinType === "application") {
     if (applicationStatus === "pending") {
       return (
