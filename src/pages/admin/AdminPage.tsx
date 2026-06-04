@@ -35,6 +35,7 @@ interface PostReportRow {
 interface ClubRequestRow {
   id: string;
   submitted_by: string | null;
+  club_id: string | null;
   name: string;
   short_description: string | null;
   long_description: string | null;
@@ -535,6 +536,7 @@ export default function AdminPage() {
         return {
           id: row.id as string,
           submitted_by: submitterId,
+          club_id: (row.club_id as string | null) ?? null,
           name: (row.name as string) ?? "",
           short_description: (row.short_description as string) ?? null,
           long_description: (row.long_description as string) ?? null,
@@ -601,46 +603,48 @@ export default function AdminPage() {
   const loadBugReports = useCallback(async () => {
     setBugReportsLoading(true);
 
-    const { data, error } = await supabase
+    const { data: reports, error } = await supabase
       .from("bug_reports")
       .select(
-        `
-        id,
-        page,
-        description,
-        severity,
-        status,
-        created_at,
-        profiles!bug_reports_reported_by_fkey ( full_name )
-      `,
+        "id, page, description, severity, status, created_at, reported_by",
       )
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Failed to load bug reports:", error.message);
+      console.error("Failed to load bug reports:", error);
       setBugReports([]);
       setBugReportsLoading(false);
       return;
     }
 
+    const reporterIds = (reports ?? [])
+      .map((r) => r.reported_by as string | null)
+      .filter(Boolean) as string[];
+
+    let profileMap = new Map<string, string>();
+
+    if (reporterIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", reporterIds);
+
+      (profiles ?? []).forEach((profile) => {
+        profileMap.set(profile.id as string, (profile.full_name as string) ?? "");
+      });
+    }
+
     setBugReports(
-      (data ?? []).map((row) => {
-        const record = row as Record<string, unknown>;
-        const profileRaw = record.profiles as unknown;
-        const profile = (
-          Array.isArray(profileRaw) ? profileRaw[0] ?? {} : profileRaw ?? {}
-        ) as Record<string, unknown>;
-        return {
-          id: record.id as string,
-          page: (record.page as string) ?? null,
-          description: (record.description as string) ?? "",
-          severity:
-            (record.severity as BugReportRow["severity"]) ?? "minor",
-          status: (record.status as BugReportRow["status"]) ?? "open",
-          created_at: (record.created_at as string) ?? "",
-          reporterName: (profile.full_name as string)?.trim() || "Unknown",
-        };
-      }),
+      (reports ?? []).map((row) => ({
+        id: row.id as string,
+        page: (row.page as string) ?? null,
+        description: (row.description as string) ?? "",
+        severity: (row.severity as BugReportRow["severity"]) ?? "minor",
+        status: (row.status as BugReportRow["status"]) ?? "open",
+        created_at: (row.created_at as string) ?? "",
+        reporterName:
+          profileMap.get(row.reported_by as string)?.trim() || "Anonymous",
+      })),
     );
     setBugReportsLoading(false);
   }, []);
@@ -777,51 +781,41 @@ export default function AdminPage() {
   }, [requestFilter]);
 
   async function handleApprove(request: ClubRequestRow) {
-    if (!user?.id || !request.submitted_by) return;
+    if (!user?.id) return;
 
     setActionLoadingId(request.id);
     setFeedback(null);
 
-    const meta = parseRequestMeta(request.long_description);
+    let clubId = request.club_id;
 
-    const { data: club, error: clubError } = await supabase
-      .from("clubs")
-      .insert({
-        name: request.name,
-        slug: meta.slug || generateSlug(request.name),
-        description: request.short_description ?? "",
-        category: request.category ?? "",
-        contact_email: meta.contact_email ?? "",
-        meeting_schedule: meta.meeting_schedule ?? "",
-        meeting_location: meta.meeting_location ?? "",
-        social_links: meta.social_links ?? null,
-        created_by: request.submitted_by,
-        is_public: true,
-      })
-      .select("id")
-      .single();
+    if (!clubId && request.submitted_by) {
+      const meta = parseRequestMeta(request.long_description);
+      const { data: clubRow } = await supabase
+        .from("clubs")
+        .select("id")
+        .eq("created_by", request.submitted_by)
+        .eq("slug", meta.slug || generateSlug(request.name))
+        .maybeSingle();
 
-    if (clubError || !club) {
-      console.error("Failed to create club from request:", clubError?.message);
-      setFeedback(
-        clubError?.message ??
-          "Failed to approve request. Ensure admin database policies are configured.",
-      );
+      clubId = (clubRow?.id as string | undefined) ?? null;
+    }
+
+    if (!clubId) {
+      setFeedback("No club found for this request.");
       setActionLoadingId(null);
       return;
     }
 
-    const clubId = club.id as string;
+    const { error } = await supabase
+      .from("clubs")
+      .update({ status: "approved" })
+      .eq("id", clubId);
 
-    const { error: memberError } = await supabase.from("club_members").insert({
-      club_id: clubId,
-      user_id: request.submitted_by,
-      role: "owner",
-      status: "active",
-    });
-
-    if (memberError) {
-      console.error("Failed to add club owner membership:", memberError.message);
+    if (error) {
+      console.error("Failed to approve club:", error);
+      setFeedback(error.message || "Failed to approve club.");
+      setActionLoadingId(null);
+      return;
     }
 
     const { error: updateError } = await supabase
@@ -835,20 +829,22 @@ export default function AdminPage() {
 
     if (updateError) {
       console.error("Failed to update club request:", updateError.message);
-      setFeedback("Club was created but the request status could not be updated.");
+      setFeedback("Club was approved but the request status could not be updated.");
       setActionLoadingId(null);
       return;
     }
 
-    await notifyUsers([
-      {
-        user_id: request.submitted_by,
-        type: "club_update",
-        message: `Your club request for "${request.name}" has been approved!`,
-        club_id: clubId,
-        reference_id: request.id,
-      },
-    ]);
+    if (request.submitted_by) {
+      await notifyUsers([
+        {
+          user_id: request.submitted_by,
+          type: "club_update",
+          message: `Your club request for "${request.name}" has been approved!`,
+          club_id: clubId,
+          reference_id: request.id,
+        },
+      ]);
+    }
 
     setActionLoadingId(null);
     void loadRequests();
