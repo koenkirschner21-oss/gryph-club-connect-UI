@@ -26,6 +26,7 @@ import {
   getUpcomingEventOccurrences,
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { supabase } from "../../lib/supabaseClient";
 import type { ClubEvent, MemberRole, Post, Task, TaskStatus } from "../../types";
 import Spinner from "../../components/ui/Spinner";
@@ -724,6 +725,10 @@ export default function ClubHomePage() {
     Record<string, EventRecurringMeta>
   >({});
   const [openTaskCount, setOpenTaskCount] = useState(0);
+  const [openTasksPreview, setOpenTasksPreview] = useState<
+    Pick<Task, "id" | "title" | "status" | "dueDate">[]
+  >([]);
+  const [openTasksPreviewLoading, setOpenTasksPreviewLoading] = useState(true);
 
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
@@ -854,6 +859,48 @@ export default function ClubHomePage() {
     }
 
     void loadOpenTaskCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, tasks.length]);
+
+  useEffect(() => {
+    if (!clubId) {
+      setOpenTasksPreview([]);
+      setOpenTasksPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadOpenTasksPreview() {
+      setOpenTasksPreviewLoading(true);
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("id, title, status, due_date")
+        .eq("club_id", clubId)
+        .neq("status", "done")
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .limit(5);
+
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to load open tasks preview:", error.message);
+        setOpenTasksPreview([]);
+      } else {
+        setOpenTasksPreview(
+          (data ?? []).map((row) => ({
+            id: row.id as string,
+            title: (row.title as string) ?? "",
+            status: (row.status as TaskStatus) ?? "todo",
+            dueDate: (row.due_date as string) ?? undefined,
+          })),
+        );
+      }
+      setOpenTasksPreviewLoading(false);
+    }
+
+    void loadOpenTasksPreview();
     return () => {
       cancelled = true;
     };
@@ -1221,6 +1268,84 @@ export default function ClubHomePage() {
         />
       </div>
 
+      {userRole !== "member" ? (
+        <div className="mt-8">
+          <div style={sectionHeadingRow}>
+            <h2 style={sectionHeading}>Tasks Left To Do</h2>
+          </div>
+          {openTasksPreviewLoading ? (
+            <div className="flex justify-center py-6">
+              <Spinner label="Loading tasks…" />
+            </div>
+          ) : openTasksPreview.length === 0 ? (
+            <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+              No open tasks
+            </p>
+          ) : (
+            <div>
+              {openTasksPreview.map((task) => {
+                const leftBorder =
+                  task.status === "in_progress" ? "#FFC429" : "#747676";
+                const dueLabel = task.dueDate
+                  ? new Date(task.dueDate).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : null;
+                return (
+                  <div
+                    key={task.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      backgroundColor: "#1a1a1a",
+                      border: "1px solid #242424",
+                      borderLeft: `3px solid ${leftBorder}`,
+                      borderRadius: "8px",
+                      padding: "12px 16px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: "#ffffff",
+                        margin: 0,
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
+                      {task.title}
+                    </p>
+                    {dueLabel ? (
+                      <span style={{ fontSize: "12px", color: "#555555", flexShrink: 0 }}>
+                        Due {dueLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+              <Link
+                to={tasksPath}
+                style={{
+                  color: "#E51937",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  display: "inline-block",
+                  marginTop: "4px",
+                }}
+              >
+                View All Tasks →
+              </Link>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {nextEvent ? (
         <div className="mt-8">
           <NextEventBanner
@@ -1294,28 +1419,26 @@ export default function ClubHomePage() {
                 >
                   {post.title}
                 </h3>
+                <p
+                  style={{
+                    fontSize: "11px",
+                    color: "#444444",
+                    margin: "4px 0 0",
+                  }}
+                >
+                  {formatRelativeTime(post.createdAt)}
+                </p>
                 {userRole !== "member" ? (
                   <p
                     style={{
                       fontSize: "11px",
                       color: "#555555",
-                      margin: "6px 0 0",
+                      margin: "4px 0 0",
                     }}
                   >
-                    {post.authorName ?? "Unknown"} ·{" "}
-                    {new Date(post.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {post.authorName ?? "Unknown"}
                   </p>
-                ) : (
-                  <p style={{ fontSize: "11px", color: "#555555", margin: "6px 0 0" }}>
-                    {new Date(post.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </p>
-                )}
+                ) : null}
                 <p
                   className={userRole === "member" ? "line-clamp-3" : "line-clamp-2"}
                   style={{
@@ -1414,7 +1537,22 @@ export default function ClubHomePage() {
 
       <div className="mt-8">
         <div style={sectionHeadingRow}>
-          <h2 style={sectionHeading}>Events This Month</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h2 style={sectionHeading}>Events This Month</h2>
+            <span
+              style={{
+                background: "#1a1a1a",
+                border: "1px solid #333333",
+                color: "#FFC429",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 500,
+              }}
+            >
+              {eventsThisMonth.length} event{eventsThisMonth.length === 1 ? "" : "s"}
+            </span>
+          </div>
           {eventsThisMonth.length > 0 ? (
             <Link to={eventsPath} style={viewAllLink}>
               View All →

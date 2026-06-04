@@ -4,6 +4,8 @@ import { MessageSquare } from "lucide-react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuthContext } from "../../context/useAuthContext";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
+import { parseNotificationDisplay } from "../../lib/parseNotificationDisplay";
 import type { Notification, NotificationType } from "../../types";
 
 const openListeners = new Set<() => void>();
@@ -66,24 +68,6 @@ function resolveNotificationLink(notification: Notification): string | null {
     default:
       return base;
   }
-}
-
-function formatTimeAgo(iso: string): string {
-  const then = new Date(iso);
-  if (Number.isNaN(then.getTime())) return "";
-
-  const diffMs = Date.now() - then.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHr = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHr / 24);
-
-  if (diffDay >= 2) return `${diffDay} days ago`;
-  if (diffDay === 1) return "yesterday";
-  if (diffHr >= 2) return `${diffHr} hours ago`;
-  if (diffHr === 1) return "1 hour ago";
-  if (diffMin >= 2) return `${diffMin} minutes ago`;
-  if (diffMin === 1) return "1 minute ago";
-  return "just now";
 }
 
 function notificationIconColor(type: string): string {
@@ -448,90 +432,100 @@ export default function NotificationsDropdown() {
                 No notifications yet
               </p>
             ) : (
-              notifications.map((notification) => (
-                <button
-                  key={notification.id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void handleNotificationClick(notification)}
-                  style={{
-                    display: "flex",
-                    width: "100%",
-                    gap: 10,
-                    padding: "12px 16px",
-                    borderBottom: "1px solid #1e1e1e",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    background: notification.read ? "transparent" : "#1f1510",
-                    border: "none",
-                    borderBottomWidth: 1,
-                    borderBottomStyle: "solid",
-                    borderBottomColor: "#1e1e1e",
-                  }}
-                >
-                  <NotificationTypeIcon type={notification.type} />
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    {(notification.type as string) === "direct_message" ? (
-                      <>
+              notifications.map((notification) => {
+                const { title, body } = parseNotificationDisplay(
+                  notification.type,
+                  notification.message,
+                );
+                return (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleNotificationClick(notification)}
+                    style={{
+                      display: "flex",
+                      width: "100%",
+                      gap: 10,
+                      padding: "12px 16px",
+                      borderBottom: "1px solid #1e1e1e",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      background: notification.read ? "transparent" : "#1a1a1a",
+                      border: "none",
+                      borderLeft: notification.read
+                        ? "none"
+                        : "3px solid #E51937",
+                      borderBottomWidth: 1,
+                      borderBottomStyle: "solid",
+                      borderBottomColor: "#1e1e1e",
+                    }}
+                  >
+                    <NotificationTypeIcon type={notification.type} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                        }}
+                      >
                         <p
                           style={{
                             fontSize: 13,
                             fontWeight: 600,
                             color: "#ffffff",
-                            margin: "0 0 4px",
+                            margin: 0,
                             lineHeight: 1.4,
+                            flex: 1,
+                            minWidth: 0,
                           }}
                         >
-                          New Message
+                          {title}
                         </p>
-                        {notification.message ? (
-                          <p
-                            style={{
-                              fontSize: 13,
-                              color: "#cccccc",
-                              margin: "0 0 4px",
-                              lineHeight: 1.4,
-                            }}
-                          >
-                            {notification.message}
-                          </p>
-                        ) : null}
-                      </>
-                    ) : (
-                      <p
-                        style={{
-                          fontSize: 13,
-                          color: "#cccccc",
-                          margin: "0 0 4px",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {notification.message}
-                      </p>
-                    )}
-                    {notification.clubId && notification.clubName ? (
-                      <p
-                        style={{
-                          fontSize: 11,
-                          color: "#555555",
-                          margin: "0 0 4px",
-                        }}
-                      >
-                        {notification.clubName}
-                      </p>
-                    ) : null}
-                    <p
-                      style={{
-                        fontSize: 11,
-                        color: "#555555",
-                        margin: 0,
-                      }}
-                    >
-                      {formatTimeAgo(notification.createdAt)}
-                    </p>
-                  </div>
-                </button>
-              ))
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "#444444",
+                            flexShrink: 0,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {formatRelativeTime(notification.createdAt)}
+                        </span>
+                      </div>
+                      {body ? (
+                        <p
+                          style={{
+                            fontSize: 12,
+                            color: "#777777",
+                            margin: "4px 0 0",
+                            lineHeight: 1.4,
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {body}
+                        </p>
+                      ) : null}
+                      {notification.clubName ? (
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: "#555555",
+                            margin: "4px 0 0",
+                          }}
+                        >
+                          {notification.clubName}
+                        </p>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

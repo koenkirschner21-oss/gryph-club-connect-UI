@@ -32,7 +32,7 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 // ---------------------------------------------------------------------------
 // Tab types
 // ---------------------------------------------------------------------------
-type DashboardTab = "overview" | "events" | "tasks" | "week";
+type DashboardTab = "overview" | "events" | "tasks" | "week" | "clubs";
 
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
@@ -552,6 +552,11 @@ export default function DashboardPage() {
           onClick={() => setActiveTab("week")}
         />
         <TabButton
+          label="My Clubs"
+          active={activeTab === "clubs"}
+          onClick={() => setActiveTab("clubs")}
+        />
+        <TabButton
           label="Events"
           active={activeTab === "events"}
           onClick={() => setActiveTab("events")}
@@ -587,6 +592,13 @@ export default function DashboardPage() {
           clubLogos={clubLogos}
           onViewAllTasks={() => setActiveTab("tasks")}
           onViewAllEvents={() => setActiveTab("events")}
+        />
+      )}
+      {activeTab === "clubs" && (
+        <MyClubsTab
+          myClubs={myClubs}
+          clubLogos={clubLogos}
+          getUserRole={getUserRole}
         />
       )}
       {activeTab === "events" && (
@@ -1559,6 +1571,178 @@ function scrollToDashboardMyClubs() {
   document
     .getElementById("dashboard-my-clubs")
     ?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function MyClubsTabClubAvatar({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr = abbreviation?.trim() || deriveAbbreviation(name);
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: "8px",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: 48,
+        height: 48,
+        borderRadius: "8px",
+        border: "1px solid #333333",
+        background: "#2a2a2a",
+        color: "#888888",
+        fontSize: "13px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
+}
+
+function MyClubsTab({
+  myClubs,
+  clubLogos,
+  getUserRole,
+}: {
+  myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
+  clubLogos: Record<string, string>;
+  getUserRole: (clubId: string) => import("../../types").MemberRole | null;
+}) {
+  const navigate = useNavigate();
+
+  if (myClubs.length === 0) {
+    return (
+      <div
+        className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-4 py-10 text-center"
+      >
+        <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
+          You have not joined any clubs yet.
+        </p>
+        <Link
+          to="/explore"
+          className="mt-4 inline-flex h-9 items-center rounded-[var(--r-md)] bg-[var(--red)] px-3 text-sm text-white hover:bg-[var(--red-hover)]"
+        >
+          Explore clubs
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, 1fr)",
+        gap: "16px",
+      }}
+    >
+      {myClubs.map((club) => {
+        const roleDisplay = formatClubRoleDisplay(getUserRole(club.id));
+        return (
+          <div
+            key={club.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(`/app/clubs/${club.id}`)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                navigate(`/app/clubs/${club.id}`);
+              }
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#333333";
+              e.currentTarget.style.transform = "translateY(-2px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#242424";
+              e.currentTarget.style.transform = "translateY(0)";
+            }}
+            style={{
+              background: "#1a1a1a",
+              border: "1px solid #242424",
+              borderRadius: "12px",
+              padding: "20px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+              <MyClubsTabClubAvatar
+                name={club.name}
+                abbreviation={club.abbreviation}
+                logoUrl={clubLogos[club.id] ?? club.logoUrl}
+              />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    color: "#ffffff",
+                    margin: 0,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {club.name}
+                </p>
+                <span
+                  style={{
+                    display: "inline-block",
+                    marginTop: "8px",
+                    borderRadius: "20px",
+                    padding: "2px 10px",
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    color: roleDisplay.color,
+                    border: `1px solid ${roleDisplay.color}`,
+                    background: "transparent",
+                  }}
+                >
+                  {roleDisplay.label}
+                </span>
+                <p style={{ fontSize: "12px", color: "#555555", margin: "8px 0 0" }}>
+                  {club.memberCount} members
+                </p>
+              </div>
+            </div>
+            <p
+              style={{
+                color: "#E51937",
+                fontSize: "13px",
+                fontWeight: 500,
+                margin: "12px 0 0",
+              }}
+            >
+              Open Workspace →
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function OverviewTab({

@@ -1073,7 +1073,7 @@ export default function PublicEventsPage() {
       navigate(target);
       return;
     }
-    navigate(`/login?redirect=${encodeURIComponent(target)}`);
+    navigate(`/signup?redirect=${encodeURIComponent(target)}`);
   }
 
   const horizontalPad = isMobile ? "16px" : "48px";

@@ -671,7 +671,7 @@ export default function ClubPublicProfilePage() {
 
   async function handleRequestVoteJoin() {
     if (!clubId || !user?.id) {
-      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+      navigate(`/signup?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
     if (applicationStatus === "pending" || joined) return;
@@ -751,7 +751,7 @@ export default function ClubPublicProfilePage() {
 
   function openApplicationFlow() {
     if (!user?.id) {
-      navigate(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
+      navigate(`/signup?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
     setShowApplicationModal(true);
