@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { Check, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -64,6 +65,7 @@ export interface BoardPosition {
   clubId: string;
   clubName: string;
   clubLogoUrl?: string;
+  clubBannerUrl?: string;
   clubSlug?: string;
   clubDescription?: string;
   title: string;
@@ -318,9 +320,28 @@ const sectionHeadingStyle: CSSProperties = {
   color: "#555555",
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  marginBottom: "10px",
-  marginTop: 0,
+  marginBottom: "8px",
+  marginTop: "28px",
 };
+
+const detailBodyTextStyle: CSSProperties = {
+  fontSize: "15px",
+  color: "#cccccc",
+  lineHeight: 1.8,
+  margin: 0,
+  whiteSpace: "pre-wrap",
+};
+
+const boardFilterPillStyle = (active: boolean): CSSProperties => ({
+  background: active ? "#E51937" : "transparent",
+  border: active ? "none" : "1px solid #333333",
+  color: active ? "#ffffff" : "#777777",
+  borderRadius: "20px",
+  padding: "5px 14px",
+  fontSize: "12px",
+  fontWeight: 500,
+  cursor: "pointer",
+});
 
 function ClubAvatar({
   clubName,
@@ -430,7 +451,7 @@ function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
         display: "flex",
         gap: "8px",
         flexWrap: "wrap",
-        marginTop: "12px",
+        marginTop: 0,
       }}
     >
       <span style={detailTagBadgeStyle}>
@@ -463,17 +484,17 @@ function HiringListingCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: selected ? "#1a1a1a" : hovered ? "#1a1a1a" : "#111111",
+        background: selected || hovered ? "#1a1a1a" : "#111111",
         border: selected
           ? "1px solid #333333"
           : `1px solid ${hovered ? "#333333" : "#1e1e1e"}`,
         borderLeft: selected ? "3px solid #E51937" : undefined,
         borderRadius: "10px",
-        padding: "18px",
         marginBottom: "12px",
         cursor: "pointer",
-        transition: "all 0.15s ease",
+        transition: "border-color 0.2s ease, background 0.2s ease",
         boxSizing: "border-box",
+        padding: "18px",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -483,7 +504,7 @@ function HiringListingCard({
           size={36}
           borderRadius={8}
         />
-        <span style={{ fontSize: "12px", color: "#777777" }}>
+        <span style={{ fontSize: "12px", color: "#666666" }}>
           {position.clubName}
         </span>
         {posted ? (
@@ -521,7 +542,7 @@ function HiringListingCard({
         <p
           style={{
             fontSize: "12px",
-            color: "#555555",
+            color: "#777777",
             marginTop: "8px",
             marginBottom: 0,
             overflow: "hidden",
@@ -575,15 +596,21 @@ function HiringDetailApplyButton({
         type="button"
         disabled
         style={{
-          ...baseStyle,
           background: "#1a1500",
           border: "1px solid #FFC429",
           color: "#FFC429",
-          cursor: "not-allowed",
-          width: fullWidth ? "100%" : undefined,
+          borderRadius: "8px",
+          padding: "12px 24px",
+          fontSize: "14px",
+          fontWeight: 600,
+          cursor: "default",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
         }}
       >
-        Application Submitted ✓
+        Application Submitted
+        <Check size={16} color="#FFC429" aria-hidden />
       </button>
     );
   }
@@ -693,8 +720,8 @@ function HiringDetailContent({
         </div>
       </div>
 
-      <div style={{ paddingTop: "24px" }}>
-        <p style={sectionHeadingStyle}>About this role</p>
+      <div>
+        <p style={{ ...sectionHeadingStyle, marginTop: 0 }}>About this role</p>
         <p
           style={{
             fontSize: "14px",
@@ -709,7 +736,7 @@ function HiringDetailContent({
       </div>
 
       {position.requirements?.trim() ? (
-        <div style={{ paddingTop: "24px" }}>
+        <div>
           <p style={sectionHeadingStyle}>Requirements</p>
           <p
             style={{
@@ -725,7 +752,7 @@ function HiringDetailContent({
         </div>
       ) : null}
 
-      <div style={{ paddingTop: "24px" }}>
+      <div>
         <p style={sectionHeadingStyle}>Commitment</p>
         <p
           style={{
@@ -739,7 +766,7 @@ function HiringDetailContent({
         </p>
       </div>
 
-      <div style={{ paddingTop: "24px" }}>
+      <div>
         <p style={sectionHeadingStyle}>Application Deadline</p>
         <p
           style={{
@@ -754,13 +781,13 @@ function HiringDetailContent({
       </div>
 
       {position.clubDescription?.trim() ? (
-        <div style={{ paddingTop: "24px" }}>
+        <div>
           <p style={sectionHeadingStyle}>About the club</p>
           <p
             style={{
-              fontSize: "13px",
-              color: "#666666",
-              lineHeight: 1.6,
+              fontSize: "14px",
+              color: "#cccccc",
+              lineHeight: 1.7,
               marginBottom: "8px",
               whiteSpace: "pre-wrap",
             }}
@@ -802,14 +829,219 @@ function HiringDetailPanel({
   onApply: () => void;
   onViewClub: () => void;
 }) {
+  const deadline = listingDeadlineDisplay(position.deadline);
+  const deadlineColor = deadline.passed
+    ? "#E51937"
+    : deadline.withinSevenDays
+      ? "#FFC429"
+      : "#cccccc";
+
+  const deadlineText = deadline.passed
+    ? "Closed"
+    : position.deadline
+      ? (() => {
+          const end = parseDeadlineDate(position.deadline);
+          return end
+            ? end.toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "No deadline listed";
+        })()
+      : "No deadline listed";
+
+  const firstSectionStyle: CSSProperties = {
+    ...sectionHeadingStyle,
+    marginTop: 0,
+  };
+
   return (
-    <HiringDetailContent
-      position={position}
-      user={user}
-      alreadyApplied={alreadyApplied}
-      onApply={onApply}
-      onViewClub={onViewClub}
-    />
+    <div>
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "200px",
+            overflow: "hidden",
+            position: "relative",
+            backgroundColor: "#0f0f0f",
+            backgroundImage: position.clubBannerUrl
+              ? undefined
+              : "linear-gradient(135deg, #1a0505 0%, #111111 60%, #0f0f0f 100%)",
+          }}
+        >
+          {position.clubBannerUrl ? (
+            <img
+              src={position.clubBannerUrl}
+              alt=""
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center center",
+                display: "block",
+              }}
+            />
+          ) : null}
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: "32px",
+            bottom: 0,
+            transform: "translateY(50%)",
+            zIndex: 2,
+            width: "56px",
+            height: "56px",
+            borderRadius: "12px",
+            border: "3px solid #0f0f0f",
+            overflow: "hidden",
+            boxSizing: "border-box",
+            background: "#0f0f0f",
+          }}
+        >
+          <ClubAvatar
+            clubName={position.clubName}
+            logoUrl={position.clubLogoUrl}
+            size={56}
+            borderRadius={12}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          maxWidth: "720px",
+          width: "100%",
+          margin: "0 auto",
+          padding: "48px 32px 32px",
+          boxSizing: "border-box",
+        }}
+      >
+        <p
+          style={{
+            fontSize: "14px",
+            color: "#888888",
+            fontWeight: 500,
+            margin: "0 0 2px",
+          }}
+        >
+          {position.clubName}
+        </p>
+        {position.clubSlug ? (
+          <button
+            type="button"
+            onClick={onViewClub}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              marginBottom: "16px",
+              fontSize: "13px",
+              color: "#E51937",
+              fontWeight: 500,
+              cursor: "pointer",
+              display: "block",
+            }}
+          >
+            View Club →
+          </button>
+        ) : null}
+
+        <h2
+          style={{
+            fontSize: "28px",
+            fontWeight: 800,
+            color: "#ffffff",
+            margin: "0 0 14px",
+            lineHeight: 1.1,
+          }}
+        >
+          {position.title}
+        </h2>
+
+        <div
+          style={{
+            borderBottom: "1px solid #1e1e1e",
+            marginBottom: "24px",
+            paddingBottom: "24px",
+          }}
+        >
+          <DetailPositionTagsRow position={position} />
+        </div>
+
+        <div
+          style={{
+            marginBottom: "32px",
+            display: "flex",
+            justifyContent: "flex-start",
+          }}
+        >
+          <HiringDetailApplyButton
+            user={user}
+            alreadyApplied={alreadyApplied}
+            onApply={onApply}
+            fullWidth={!alreadyApplied}
+          />
+        </div>
+
+        <p style={firstSectionStyle}>About this role</p>
+        <p style={detailBodyTextStyle}>
+          {position.description || "No description provided."}
+        </p>
+
+        {position.requirements?.trim() ? (
+          <>
+            <p style={sectionHeadingStyle}>Requirements</p>
+            <p style={detailBodyTextStyle}>{position.requirements}</p>
+          </>
+        ) : null}
+
+        <p style={sectionHeadingStyle}>Commitment</p>
+        <p style={detailBodyTextStyle}>
+          {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+        </p>
+
+        <p style={sectionHeadingStyle}>Application Deadline</p>
+        <p style={{ ...detailBodyTextStyle, color: deadlineColor }}>
+          {deadlineText}
+        </p>
+
+        {position.clubDescription?.trim() ? (
+          <>
+            <p style={sectionHeadingStyle}>About the club</p>
+            <p style={{ ...detailBodyTextStyle, marginBottom: "8px" }}>
+              {position.clubDescription}
+            </p>
+            {position.clubSlug ? (
+              <button
+                type="button"
+                onClick={onViewClub}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  fontSize: "13px",
+                  color: "#E51937",
+                  cursor: "pointer",
+                }}
+              >
+                View Club Profile →
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -1375,7 +1607,9 @@ export default function HiringBoardPage() {
   const [positions, setPositions] = useState<BoardPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"newest" | "closing_soon" | "a-z">("newest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [applyPosition, setApplyPosition] = useState<BoardPosition | null>(null);
@@ -1408,7 +1642,7 @@ export default function HiringBoardPage() {
         created_at,
         is_open,
         questions,
-        clubs ( name, logo_url, slug, description )
+        clubs ( name, logo_url, banner_url, slug, description )
       `,
       )
       .eq("is_open", true)
@@ -1457,6 +1691,7 @@ export default function HiringBoardPage() {
       const club = row.clubs as {
         name?: string;
         logo_url?: string;
+        banner_url?: string;
         slug?: string;
         description?: string;
       } | null;
@@ -1466,6 +1701,7 @@ export default function HiringBoardPage() {
         clubId: row.club_id as string,
         clubName: club?.name ?? "Club",
         clubLogoUrl: club?.logo_url ?? undefined,
+        clubBannerUrl: club?.banner_url ?? undefined,
         clubSlug: club?.slug ?? undefined,
         clubDescription: club?.description ?? undefined,
         title: row.title as string,
@@ -1526,7 +1762,7 @@ export default function HiringBoardPage() {
         background: "#0f0f0f",
       }}
     >
-      <header style={{ padding: isMobile ? "32px 16px 20px" : "40px 48px 24px" }}>
+      <header style={{ padding: isMobile ? "32px 16px 20px" : "32px 48px 24px" }}>
         <h1
           style={{
             fontSize: isMobile ? "28px" : "40px",
@@ -1539,92 +1775,144 @@ export default function HiringBoardPage() {
           Club{" "}
           <span style={{ color: "#E51937" }}>Hiring</span>
         </h1>
-        <p style={{ fontSize: "15px", color: "#555555", marginTop: "8px", marginBottom: 0 }}>
+        <p
+          style={{
+            fontSize: "14px",
+            color: "#555555",
+            marginTop: "6px",
+            marginBottom: 0,
+          }}
+        >
           Open roles across University of Guelph student clubs
         </p>
-        <input
-          type="search"
-          placeholder="Search positions..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{
-            display: "block",
-            marginTop: "16px",
-            background: "#111111",
-            border: "1px solid #2a2a2a",
-            borderRadius: "10px",
-            padding: "0 16px",
-            color: "#ffffff",
-            width: "100%",
-            maxWidth: isMobile ? "none" : "480px",
-            height: "52px",
-            fontSize: "15px",
-            boxSizing: "border-box",
-            outline: "none",
-          }}
-        />
       </header>
-
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "10px",
-          marginTop: "12px",
-          padding: isMobile ? "0 16px 16px" : "0 48px 16px",
-        }}
-      >
-        {BOARD_FILTER_PILLS.map((pill) => {
-          const active = typeFilter === pill.value;
-          return (
-            <button
-              key={pill.value}
-              type="button"
-              onClick={() => setTypeFilter(pill.value)}
-              style={{
-                background: active ? "#E51937" : "#1a1a1a",
-                border: active ? "none" : "1px solid #2a2a2a",
-                color: active ? "#ffffff" : "#777777",
-                borderRadius: "6px",
-                padding: "7px 18px",
-                fontSize: "13px",
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
-            >
-              {pill.label}
-            </button>
-          );
-        })}
-      </div>
 
       <div
         style={{
           display: "flex",
           gap: 0,
           flex: 1,
-          height: "calc(100vh - 200px)",
+          height: isMobile ? "auto" : "calc(100vh - 130px)",
           minHeight: 0,
         }}
       >
         <div
           style={{
-            width: isMobile ? "100%" : "40%",
-            minWidth: isMobile ? undefined : "320px",
+            width: isMobile ? "100%" : "35%",
+            minWidth: isMobile ? undefined : "300px",
+            height: isMobile ? undefined : "calc(100vh - 130px)",
             overflowY: "auto",
-            borderRight: isMobile ? "none" : "1px solid #1e1e1e",
+            borderRight: isMobile ? "none" : "1px solid #1a1a1a",
             padding: "16px",
             boxSizing: "border-box",
             scrollbarWidth: "thin",
             scrollbarColor: "#333 transparent",
           }}
         >
+          <div style={{ position: "relative", marginBottom: "12px" }}>
+            <Search
+              size={16}
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "#555555",
+                pointerEvents: "none",
+              }}
+            />
+            <input
+              type="search"
+              placeholder="Search positions..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              style={{
+                width: "100%",
+                height: "44px",
+                background: "#111111",
+                border: `1px solid ${searchFocused ? "#E51937" : "#2a2a2a"}`,
+                borderRadius: "8px",
+                padding: "0 16px 0 40px",
+                fontSize: "14px",
+                color: "#ffffff",
+                boxSizing: "border-box",
+                outline: "none",
+              }}
+            />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexWrap: "wrap",
+              marginBottom: "12px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                flexWrap: "wrap",
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              {BOARD_FILTER_PILLS.map((pill) => (
+                <button
+                  key={pill.value}
+                  type="button"
+                  onClick={() => setTypeFilter(pill.value)}
+                  style={boardFilterPillStyle(typeFilter === pill.value)}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) =>
+                setSortBy(e.target.value as "newest" | "closing_soon" | "a-z")
+              }
+              aria-label="Sort positions"
+              style={{
+                background: "#111111",
+                border: "1px solid #2a2a2a",
+                color: "#777777",
+                borderRadius: "6px",
+                padding: "5px 10px",
+                fontSize: "12px",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <option value="newest">Newest</option>
+              <option value="closing_soon">Closing Soon</option>
+              <option value="a-z">A-Z</option>
+            </select>
+          </div>
           {loading ? (
             <p style={{ color: "#555555", fontSize: "14px" }}>Loading positions…</p>
           ) : filtered.length === 0 ? (
             <p style={{ color: "#555555", fontSize: "14px" }}>No open positions found.</p>
           ) : (
-            filtered.map((position) => (
+            <>
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "#555555",
+                  marginBottom: "12px",
+                  paddingBottom: "12px",
+                  borderBottom: "1px solid #1a1a1a",
+                  marginTop: 0,
+                }}
+              >
+                {filtered.length} open position{filtered.length === 1 ? "" : "s"}
+              </p>
+              {filtered.map((position) => (
               <HiringListingCard
                 key={position.id}
                 position={position}
@@ -1634,7 +1922,8 @@ export default function HiringBoardPage() {
                   if (isMobile) setMobileDetailOpen(true);
                 }}
               />
-            ))
+              ))}
+            </>
           )}
         </div>
 
@@ -1643,10 +1932,7 @@ export default function HiringBoardPage() {
             style={{
               flex: 1,
               overflowY: "auto",
-              padding: "32px",
-              position: "sticky",
-              top: 0,
-              height: "calc(100vh - 200px)",
+              height: "calc(100vh - 130px)",
               boxSizing: "border-box",
             }}
           >
@@ -1663,16 +1949,26 @@ export default function HiringBoardPage() {
                 }}
               />
             ) : (
-              <p
+              <div
                 style={{
-                  color: "#444444",
-                  fontSize: "14px",
-                  textAlign: "center",
-                  marginTop: "48px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                  minHeight: "280px",
                 }}
               >
-                Select a position to view details
-              </p>
+                <p
+                  style={{
+                    color: "#333333",
+                    fontSize: "14px",
+                    textAlign: "center",
+                    margin: 0,
+                  }}
+                >
+                  Select a position to view details
+                </p>
+              </div>
             )}
           </div>
         ) : null}
