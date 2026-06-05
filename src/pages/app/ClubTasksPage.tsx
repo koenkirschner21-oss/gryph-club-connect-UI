@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { MessageSquare, MoreHorizontal, Send, X } from "lucide-react";
+import { MessageSquare, MoreHorizontal, Send, X, CheckCircle, Calendar, User, Circle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -52,32 +52,138 @@ function normalizeUserRole(role: string): MemberRole {
   return "member";
 }
 
-const highImportanceBadgeStyle: CSSProperties = {
-  background: "#1a0505",
-  border: "1px solid #E51937",
+function isTaskOverdue(task: Task): boolean {
+  if (!task.dueDate || task.status === "done") return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(task.dueDate);
+  if (Number.isNaN(due.getTime())) return false;
+  due.setHours(0, 0, 0, 0);
+  return due < today;
+}
+
+function PriorityPill({ priority }: { priority: TaskPriority }) {
+  const config: Record<
+    TaskPriority,
+    { border: string; color: string; label: string }
+  > = {
+    high: { border: "#E51937", color: "#E51937", label: "High Priority" },
+    medium: { border: "#FFC429", color: "#FFC429", label: "Medium Priority" },
+    low: { border: "#555555", color: "#555555", label: "Low Priority" },
+  };
+  const { border, color, label } = config[priority];
+  return (
+    <span
+      style={{
+        background: "transparent",
+        border: `1px solid ${border}`,
+        color,
+        borderRadius: "4px",
+        padding: "2px 8px",
+        fontSize: "10px",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+        flexShrink: 0,
+        lineHeight: 1.2,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function listStatusPillStyle(status: TaskStatus): CSSProperties {
+  const base: CSSProperties = {
+    borderRadius: "20px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    fontWeight: 500,
+    flexShrink: 0,
+  };
+  if (status === "todo") {
+    return {
+      ...base,
+      background: "#1a1a1a",
+      border: "1px solid #333333",
+      color: "#777777",
+    };
+  }
+  if (status === "in_progress") {
+    return {
+      ...base,
+      background: "#1a1200",
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+    };
+  }
+  return {
+    ...base,
+    background: "#0a1f0a",
+    border: "1px solid #22c55e",
+    color: "#22c55e",
+  };
+}
+
+function StatCard({
+  count,
+  label,
+  countColor = "#ffffff",
+  topBorderColor,
+}: {
+  count: number;
+  label: string;
+  countColor?: string;
+  topBorderColor: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#141414",
+        border: "1px solid #2a2a2a",
+        borderTop: `3px solid ${topBorderColor}`,
+        borderRadius: "10px",
+        padding: "14px 20px",
+        flex: 1,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ fontSize: "24px", fontWeight: 800, color: countColor }}>{count}</div>
+      <div style={{ fontSize: "12px", color: "#555555", marginTop: "2px" }}>{label}</div>
+    </div>
+  );
+}
+
+const viewDetailsLinkStyle: CSSProperties = {
   color: "#E51937",
-  borderRadius: "20px",
-  padding: "2px 8px",
-  fontSize: "10px",
-  fontWeight: 700,
-  flexShrink: 0,
-  lineHeight: 1.2,
+  fontSize: "12px",
+  fontWeight: 500,
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  padding: 0,
+  marginTop: "8px",
 };
 
-function HighImportanceBadge() {
-  return <span style={highImportanceBadgeStyle}>!</span>;
-}
+const viewDetailsButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #333333",
+  color: "#777777",
+  borderRadius: "6px",
+  padding: "5px 12px",
+  fontSize: "12px",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
 
-function deriveAbbreviation(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
-  return words
-    .slice(0, 3)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-}
+const sectionLabelStyle: CSSProperties = {
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#555555",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  margin: "0 0 8px",
+};
 
 function statusBadgeStyle(status: TaskStatus): CSSProperties {
   const base: CSSProperties = {
@@ -109,12 +215,12 @@ function prevStatus(status: TaskStatus): TaskStatus | null {
 }
 
 const kanbanForwardButtonStyle: CSSProperties = {
-  fontSize: "11px",
-  borderRadius: "20px",
-  padding: "4px 10px",
-  background: "#E51937",
-  color: "#ffffff",
-  border: "none",
+  fontSize: "12px",
+  borderRadius: "6px",
+  padding: "6px 12px",
+  background: "transparent",
+  border: "1px solid #333333",
+  color: "#777777",
   cursor: "pointer",
 };
 
@@ -261,55 +367,6 @@ function AvatarCircle({
       }}
     >
       {getInitials(name)}
-    </div>
-  );
-}
-
-function ClubLogoMark({
-  name,
-  abbreviation,
-  logoUrl,
-  size = 32,
-}: {
-  name: string;
-  abbreviation?: string;
-  logoUrl?: string;
-  size?: number;
-}) {
-  const abbr = abbreviation?.trim() || deriveAbbreviation(name);
-  if (logoUrl) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        style={{
-          width: size,
-          height: size,
-          borderRadius: "6px",
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "6px",
-        border: "1px solid #2a2a2a",
-        background: "#2a2a2a",
-        color: "#888888",
-        fontSize: "11px",
-        fontWeight: 600,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {abbr}
     </div>
   );
 }
@@ -720,6 +777,7 @@ export default function ClubTasksPage() {
   const [dueDate, setDueDate] = useState("");
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const handleCommentCountChange = useCallback((taskId: string, count: number) => {
     setCommentCounts((prev) => ({ ...prev, [taskId]: count }));
@@ -760,12 +818,13 @@ export default function ClubTasksPage() {
     };
   }, [visibleTasks]);
 
-  const todoCt = visibleTasks.filter((t) => t.status === "todo").length;
-  const inProgressCt = visibleTasks.filter((t) => t.status === "in_progress").length;
-  const doneCt = visibleTasks.filter((t) => t.status === "done").length;
+  const todoCount = visibleTasks.filter((t) => t.status === "todo").length;
+  const inProgressCount = visibleTasks.filter((t) => t.status === "in_progress").length;
+  const doneCount = visibleTasks.filter((t) => t.status === "done").length;
+  const overdueCount = visibleTasks.filter(isTaskOverdue).length;
   const totalCount = visibleTasks.length;
   const progressFillPercent =
-    totalCount === 0 ? 0 : (doneCt / totalCount) * 100;
+    totalCount === 0 ? 0 : (doneCount / totalCount) * 100;
 
   const tasksByStatus = useMemo(() => {
     const grouped: Record<TaskStatus, Task[]> = {
@@ -941,6 +1000,19 @@ export default function ClubTasksPage() {
     }
   }
 
+  function openTaskDetail(task: Task) {
+    setOpenMenuTaskId(null);
+    setSelectedTask(task);
+  }
+
+  function closeTaskDetail() {
+    setSelectedTask(null);
+  }
+
+  const detailTask = selectedTask
+    ? visibleTasks.find((t) => t.id === selectedTask.id) ?? null
+    : null;
+
   function assigneeAvatarFor(task: Task): string | undefined {
     if (task.assigneeAvatar) return task.assigneeAvatar;
     const member = members.find((m) => m.userId === task.assignedTo);
@@ -1060,7 +1132,7 @@ export default function ClubTasksPage() {
           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
             {task.title}
           </span>
-          {task.priority === "high" ? <HighImportanceBadge /> : null}
+          {task.priority ? <PriorityPill priority={task.priority} /> : null}
         </span>
         <span style={statusBadgeStyle(task.status)}>{statusLabels[task.status]}</span>
       </div>
@@ -1090,11 +1162,10 @@ export default function ClubTasksPage() {
           if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
         }}
         style={{
-          background: "#1a1a1a",
-          border: `1px solid ${isHovered ? "#333333" : "#242424"}`,
-          borderLeft: `3px solid ${statusAccent[task.status]}`,
-          borderRadius: "8px",
-          padding: "14px 16px",
+          background: "#141414",
+          border: `1px solid ${isHovered ? "#333333" : "#2a2a2a"}`,
+          borderRadius: "12px",
+          padding: "16px",
           marginBottom: "8px",
           cursor: "pointer",
           opacity: isAnimating ? 0.5 : 1,
@@ -1110,6 +1181,7 @@ export default function ClubTasksPage() {
               gap: "8px",
               flex: 1,
               minWidth: 0,
+              flexWrap: "wrap",
             }}
           >
             <p
@@ -1124,7 +1196,7 @@ export default function ClubTasksPage() {
             >
               {task.title}
             </p>
-            {task.priority === "high" ? <HighImportanceBadge /> : null}
+            <PriorityPill priority={task.priority} />
           </div>
           {isHovered ? renderTaskMenu(task) : null}
         </div>
@@ -1132,9 +1204,14 @@ export default function ClubTasksPage() {
         {task.description ? (
           <p
             style={{
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
               fontSize: "12px",
-              color: "#555555",
-              margin: "6px 0 0",
+              color: "#666666",
+              marginTop: "6px",
+              marginBottom: 0,
               lineHeight: 1.4,
             }}
           >
@@ -1142,33 +1219,16 @@ export default function ClubTasksPage() {
           </p>
         ) : null}
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            marginTop: "10px",
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            openTaskDetail(task);
           }}
+          style={viewDetailsLinkStyle}
         >
-          <AvatarCircle
-            name={assigneeName}
-            avatarUrl={assigneeAvatarFor(task)}
-            size={20}
-          />
-          <span style={{ fontSize: "12px", color: "#555555" }}>
-            {task.assignedTo ? (
-              <Link
-                to={`/app/profile/${task.assignedTo}`}
-                style={{ color: "#555555", textDecoration: "none" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {assigneeName}
-              </Link>
-            ) : (
-              assigneeName
-            )}
-          </span>
-        </div>
+          View Details
+        </button>
 
         <div
           style={{
@@ -1177,43 +1237,64 @@ export default function ClubTasksPage() {
             justifyContent: "space-between",
             marginTop: "8px",
             gap: "8px",
+            flexWrap: "wrap",
           }}
         >
-          {task.dueDate ? (
-            <span
-              style={{
-                fontSize: "11px",
-                color: dueDateColor(task.dueDate, task.status),
-              }}
-            >
-              Due {formatTaskDate(task.dueDate)}
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+            <AvatarCircle
+              name={assigneeName}
+              avatarUrl={assigneeAvatarFor(task)}
+              size={28}
+            />
+            <span style={{ fontSize: "11px", color: "#555555" }}>
+              {task.assignedTo ? (
+                <Link
+                  to={`/app/profile/${task.assignedTo}`}
+                  style={{ color: "#555555", textDecoration: "none" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {assigneeName}
+                </Link>
+              ) : (
+                assigneeName
+              )}
             </span>
-          ) : (
-            <span />
-          )}
-          {canViewComments ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleComments(task.id);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                background: "transparent",
-                border: "none",
-                padding: 0,
-                cursor: "pointer",
-                color: "#555555",
-                fontSize: "11px",
-              }}
-            >
-              <MessageSquare size={12} strokeWidth={2} aria-hidden />
-              {commentCount}
-            </button>
-          ) : null}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+            {task.dueDate ? (
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: dueDateColor(task.dueDate, task.status),
+                }}
+              >
+                Due {formatTaskDate(task.dueDate)}
+              </span>
+            ) : null}
+            {canViewComments ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleComments(task.id);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  color: "#555555",
+                  fontSize: "11px",
+                }}
+              >
+                <MessageSquare size={12} strokeWidth={2} aria-hidden />
+                {commentCount}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {isHovered && canChangeStatus && (backTarget || forwardTarget) ? (
@@ -1245,6 +1326,14 @@ export default function ClubTasksPage() {
                   void handleStatusChange(task.id, forwardTarget);
                 }}
                 style={kanbanForwardButtonStyle}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#555555";
+                  e.currentTarget.style.color = "#cccccc";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#333333";
+                  e.currentTarget.style.color = "#777777";
+                }}
               >
                 {forwardLabel}
               </button>
@@ -1294,58 +1383,38 @@ export default function ClubTasksPage() {
         }}
         style={{
           display: "flex",
-          flexDirection: "row",
           alignItems: "center",
-          gap: "14px",
-          background: "#1a1a1a",
-          borderTop: `1px solid ${isHovered ? "#333333" : "#242424"}`,
-          borderRight: `1px solid ${isHovered ? "#333333" : "#242424"}`,
-          borderBottom: `1px solid ${isHovered ? "#333333" : "#242424"}`,
-          borderLeft: `4px solid ${statusAccent[task.status]}`,
-          borderRadius: "8px",
-          padding: "14px 16px 14px 14px",
+          gap: "12px",
+          background: "#141414",
+          border: `1px solid ${isHovered ? "#333333" : "#2a2a2a"}`,
+          borderRadius: "10px",
+          padding: "14px 16px",
           marginBottom: "8px",
           opacity: completed ? 0.75 : 1,
           transform: isHovered ? "translateY(-1px)" : undefined,
           transition: "all 0.15s ease",
         }}
       >
-        {club ? (
-          <ClubLogoMark
-            name={club.name}
-            abbreviation={club.abbreviation}
-            logoUrl={club.imageUrl}
-            size={32}
-          />
-        ) : null}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
+          <p
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              margin: "0 0 6px",
+              fontSize: "14px",
+              fontWeight: 600,
+              color: completed ? "#777777" : "#ffffff",
+              margin: "0 0 4px",
+              textDecoration: completed ? "line-through" : "none",
             }}
           >
-            <p
-              style={{
-                fontSize: "14px",
-                fontWeight: 600,
-                color: completed ? "#777777" : "#ffffff",
-                margin: 0,
-                textDecoration: completed ? "line-through" : "none",
-              }}
-            >
-              {task.title}
-            </p>
-            {task.priority === "high" ? <HighImportanceBadge /> : null}
-          </div>
+            {task.title}
+          </p>
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: "6px",
               flexWrap: "wrap",
+              fontSize: "12px",
+              color: "#555555",
             }}
           >
             <AvatarCircle
@@ -1353,7 +1422,7 @@ export default function ClubTasksPage() {
               avatarUrl={assigneeAvatarFor(task)}
               size={20}
             />
-            <span style={{ fontSize: "12px", color: "#555555" }}>
+            <span>
               {task.assignedTo ? (
                 <Link
                   to={`/app/profile/${task.assignedTo}`}
@@ -1366,12 +1435,7 @@ export default function ClubTasksPage() {
               )}
             </span>
             {task.dueDate ? (
-              <span
-                style={{
-                  fontSize: "12px",
-                  color: dueDateColor(task.dueDate, task.status),
-                }}
-              >
+              <span style={{ color: dueDateColor(task.dueDate, task.status) }}>
                 · Due {formatTaskDate(task.dueDate)}
               </span>
             ) : null}
@@ -1381,7 +1445,7 @@ export default function ClubTasksPage() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "4px",
-                  fontSize: "11px",
+                  fontSize: "12px",
                   color: "#555555",
                 }}
               >
@@ -1406,19 +1470,33 @@ export default function ClubTasksPage() {
             />
           ) : null}
         </div>
+        <div style={{ flexShrink: 0 }}>
+          <PriorityPill priority={task.priority} />
+        </div>
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
+            alignItems: "center",
             gap: "8px",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={statusBadgeStyle(task.status)}>{statusLabels[task.status]}</span>
-            {isHovered ? renderTaskMenu(task) : null}
-          </div>
+          <span style={listStatusPillStyle(task.status)}>{statusLabels[task.status]}</span>
+          <button
+            type="button"
+            onClick={() => openTaskDetail(task)}
+            style={viewDetailsButtonStyle}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#555555";
+              e.currentTarget.style.color = "#cccccc";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#333333";
+              e.currentTarget.style.color = "#777777";
+            }}
+          >
+            View Details
+          </button>
           {canChangeStatus && listAction && !completed ? (
             <button
               type="button"
@@ -1440,6 +1518,7 @@ export default function ClubTasksPage() {
               {listAction}
             </button>
           ) : null}
+          {isHovered && isPrivileged ? renderTaskMenu(task) : null}
         </div>
       </div>
     );
@@ -1479,15 +1558,35 @@ export default function ClubTasksPage() {
           >
             Tasks
           </h1>
-          <p
+          <div
             style={{
-              fontSize: "13px",
-              color: "#555555",
-              margin: "6px 0 10px",
+              display: "flex",
+              gap: "12px",
+              marginTop: "16px",
+              marginBottom: "24px",
+              flexWrap: "wrap",
             }}
           >
-            {todoCt} to do · {inProgressCt} in progress · {doneCt} done
-          </p>
+            <StatCard count={todoCount} label="To Do" topBorderColor="#555555" />
+            <StatCard
+              count={inProgressCount}
+              label="In Progress"
+              countColor="#FFC429"
+              topBorderColor="#FFC429"
+            />
+            <StatCard
+              count={doneCount}
+              label="Done"
+              countColor="#22c55e"
+              topBorderColor="#22c55e"
+            />
+            <StatCard
+              count={overdueCount}
+              label="Overdue"
+              countColor="#E51937"
+              topBorderColor="#E51937"
+            />
+          </div>
           <div
             style={{
               height: "4px",
@@ -1758,26 +1857,43 @@ export default function ClubTasksPage() {
                 </span>
               </div>
               {tasksByStatus[columnStatus].length === 0 ? (
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textAlign: "center",
-                    padding: "24px 12px",
-                  }}
-                >
-                  <p
+                columnStatus === "done" ? (
+                  <div style={{ textAlign: "center", padding: "32px 16px", flex: 1 }}>
+                    <CheckCircle
+                      size={32}
+                      color="#2a2a2a"
+                      style={{ marginBottom: "8px" }}
+                      aria-hidden
+                    />
+                    <p style={{ fontSize: "14px", fontWeight: 600, color: "#333333", margin: 0 }}>
+                      No completed tasks yet
+                    </p>
+                    <p style={{ fontSize: "12px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
+                      Completed tasks will appear here once your team starts closing work.
+                    </p>
+                  </div>
+                ) : (
+                  <div
                     style={{
-                      fontSize: "13px",
-                      color: "#444444",
-                      margin: 0,
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      textAlign: "center",
+                      padding: "24px 12px",
                     }}
                   >
-                    {columnEmptyMessage[columnStatus]}
-                  </p>
-                </div>
+                    <p
+                      style={{
+                        fontSize: "13px",
+                        color: "#444444",
+                        margin: 0,
+                      }}
+                    >
+                      {columnEmptyMessage[columnStatus]}
+                    </p>
+                  </div>
+                )
               ) : (
                 <div style={{ flex: 1 }}>
                   {tasksByStatus[columnStatus].map((task) => renderBoardCard(task))}
@@ -1865,8 +1981,16 @@ export default function ClubTasksPage() {
           </p>
 
           {delegatedByAssignee.length === 0 ? (
-            <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-              You haven&apos;t delegated any tasks yet.
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#444444",
+                textAlign: "center",
+                padding: "24px 0",
+                margin: 0,
+              }}
+            >
+              Tasks you assign to other members will appear here.
             </p>
           ) : (
             delegatedByAssignee.map((group) => {
@@ -1970,6 +2094,188 @@ export default function ClubTasksPage() {
             })
       )}
         </section>
+      ) : null}
+
+      {detailTask ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="task-detail-title"
+          onClick={closeTaskDetail}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.8)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#141414",
+              border: "1px solid #2a2a2a",
+              borderRadius: "16px",
+              maxWidth: "580px",
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              padding: "32px",
+              position: "relative",
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Close task details"
+              onClick={closeTaskDetail}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#555555",
+                padding: "4px",
+                display: "flex",
+              }}
+            >
+              <X size={20} aria-hidden />
+            </button>
+
+            <PriorityPill priority={detailTask.priority} />
+
+            <h2
+              id="task-detail-title"
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                color: "#ffffff",
+                margin: "8px 0 0",
+              }}
+            >
+              {detailTask.title}
+            </h2>
+
+            {(
+              [
+                {
+                  icon: User,
+                  label: "Assignee",
+                  value: detailTask.assigneeName ?? "Unassigned",
+                },
+                {
+                  icon: Calendar,
+                  label: "Due date",
+                  value: detailTask.dueDate
+                    ? formatTaskDate(detailTask.dueDate)
+                    : "No due date",
+                },
+                {
+                  icon: Circle,
+                  label: "Status",
+                  value: statusLabels[detailTask.status],
+                },
+              ] as const
+            ).map(({ icon: Icon, label, value }) => (
+              <div
+                key={label}
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  alignItems: "center",
+                  padding: "10px 0",
+                  borderBottom: "1px solid #1e1e1e",
+                }}
+              >
+                <Icon size={16} color="#555555" aria-hidden />
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "#555555",
+                    width: "100px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {label}
+                </span>
+                <span style={{ fontSize: "14px", color: "#cccccc" }}>{value}</span>
+              </div>
+            ))}
+
+            <p style={sectionLabelStyle}>Description</p>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#cccccc",
+                lineHeight: 1.8,
+                margin: 0,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {detailTask.description.trim() || "No description provided."}
+            </p>
+
+            <p style={{ fontSize: "12px", color: "#555555", margin: "16px 0 0" }}>
+              {commentCounts[detailTask.id] ?? 0}{" "}
+              {(commentCounts[detailTask.id] ?? 0) === 1 ? "comment" : "comments"}
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginTop: "20px",
+              }}
+            >
+              {(isPrivileged || detailTask.assignedTo === user?.id) &&
+              listQuickActionLabel(detailTask.status) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = nextStatus(detailTask.status);
+                    if (target) void handleStatusChange(detailTask.id, target);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #E51937",
+                    borderRadius: "20px",
+                    padding: "5px 12px",
+                    fontSize: "11px",
+                    color: "#E51937",
+                    cursor: "pointer",
+                  }}
+                >
+                  {listQuickActionLabel(detailTask.status)}
+                </button>
+              ) : null}
+              {isPrivileged ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeTaskDetail();
+                    startEdit(detailTask);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #E51937",
+                    borderRadius: "20px",
+                    padding: "5px 12px",
+                    fontSize: "11px",
+                    color: "#E51937",
+                    cursor: "pointer",
+                  }}
+                >
+                  Edit Task
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
