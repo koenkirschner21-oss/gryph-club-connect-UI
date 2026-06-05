@@ -597,20 +597,22 @@ function HiringDetailApplyButton({
         disabled
         style={{
           background: "#1a1500",
-          border: "1px solid #FFC429",
+          border: fullWidth ? "2px solid #FFC429" : "1px solid #FFC429",
           color: "#FFC429",
           borderRadius: "8px",
-          padding: "12px 24px",
-          fontSize: "14px",
-          fontWeight: 600,
+          padding: fullWidth ? "14px 32px" : "12px 24px",
+          fontSize: fullWidth ? "15px" : "14px",
+          fontWeight: fullWidth ? 700 : 600,
           cursor: "default",
+          width: fullWidth ? "100%" : undefined,
           display: "flex",
           alignItems: "center",
+          justifyContent: fullWidth ? "center" : undefined,
           gap: "8px",
         }}
       >
-        Application Submitted
-        <Check size={16} color="#FFC429" aria-hidden />
+        Application Submitted ✓
+        {fullWidth ? null : <Check size={16} color="#FFC429" aria-hidden />}
       </button>
     );
   }
@@ -979,18 +981,12 @@ function HiringDetailPanel({
           <DetailPositionTagsRow position={position} />
         </div>
 
-        <div
-          style={{
-            marginBottom: "32px",
-            display: "flex",
-            justifyContent: "flex-start",
-          }}
-        >
+        <div style={{ marginBottom: "32px", width: "100%" }}>
           <HiringDetailApplyButton
             user={user}
             alreadyApplied={alreadyApplied}
             onApply={onApply}
-            fullWidth={!alreadyApplied}
+            fullWidth
           />
         </div>
 

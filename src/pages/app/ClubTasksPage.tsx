@@ -1510,7 +1510,7 @@ export default function ClubTasksPage() {
                 }}
               />
             ) : null}
-          </div>
+        </div>
         </div>
         <div
           style={{
@@ -1524,10 +1524,10 @@ export default function ClubTasksPage() {
           {isPrivileged ? (
             <button
               type="button"
-              onClick={() => {
-                if (showForm) resetForm();
-                else setShowForm(true);
-              }}
+            onClick={() => {
+              if (showForm) resetForm();
+              else setShowForm(true);
+            }}
               style={{
                 background: "#E51937",
                 color: "#ffffff",
@@ -1539,8 +1539,8 @@ export default function ClubTasksPage() {
                 cursor: "pointer",
                 whiteSpace: "nowrap",
               }}
-            >
-              {showForm ? "Cancel" : "+ New Task"}
+          >
+            {showForm ? "Cancel" : "+ New Task"}
             </button>
           ) : null}
         </div>
@@ -1589,7 +1589,7 @@ export default function ClubTasksPage() {
                 className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
               />
             </div>
-            <label
+                <label
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1631,13 +1631,13 @@ export default function ClubTasksPage() {
                 High Importance
               </span>
             </label>
-            <FormInput
-              id="taskDueDate"
-              label="Due Date"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+                <FormInput
+                  id="taskDueDate"
+                  label="Due Date"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
             <div>
               <label
                 htmlFor="taskAssignee"
@@ -1814,8 +1814,8 @@ export default function ClubTasksPage() {
 
           {completedListTasks.length > 0 ? (
             <div style={{ marginTop: "8px" }}>
-              <button
-                type="button"
+          <button
+            type="button"
                 onClick={() => setShowCompleted((prev) => !prev)}
                 style={{
                   background: "transparent",
@@ -1829,11 +1829,11 @@ export default function ClubTasksPage() {
                 {showCompleted
                   ? "Hide completed tasks"
                   : `Show ${completedListTasks.length} completed task${completedListTasks.length === 1 ? "" : "s"}`}
-              </button>
+          </button>
               {showCompleted
                 ? completedListTasks.map((task) => renderListCard(task, true))
                 : null}
-            </div>
+      </div>
           ) : null}
         </div>
       )}
@@ -1873,7 +1873,7 @@ export default function ClubTasksPage() {
               const progressPercent =
                 group.total === 0 ? 0 : (group.done / group.total) * 100;
 
-              return (
+            return (
                 <div key={group.assigneeId} style={{ marginBottom: "24px" }}>
                   <div
                     style={{
@@ -1898,7 +1898,7 @@ export default function ClubTasksPage() {
                           marginBottom: "8px",
                         }}
                       >
-                        <span
+                      <span
                           style={{
                             fontSize: "13px",
                             fontWeight: 600,
@@ -1906,9 +1906,9 @@ export default function ClubTasksPage() {
                           }}
                         >
                           {group.name}
-                        </span>
+                      </span>
                         {group.allDone ? (
-                          <span
+                      <span
                             style={{
                               background: "#2a1f00",
                               color: "#FFC429",
@@ -1920,9 +1920,9 @@ export default function ClubTasksPage() {
                             }}
                           >
                             ✓ All done
-                          </span>
+                      </span>
                         ) : null}
-                      </div>
+                    </div>
                       <div
                         style={{
                           display: "flex",
@@ -1961,14 +1961,14 @@ export default function ClubTasksPage() {
                         >
                           {group.done}/{group.total} tasks
                         </span>
-                      </div>
-                    </div>
                   </div>
+                </div>
+        </div>
                   {group.tasks.map((task) => renderDelegatedTaskCard(task))}
                 </div>
               );
             })
-          )}
+      )}
         </section>
       ) : null}
     </div>

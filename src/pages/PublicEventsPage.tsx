@@ -207,8 +207,8 @@ function formatMonthLabel(): string {
 }
 
 const smallPillStyle = (active: boolean) => ({
-  background: active ? "#E51937" : "#1a1a1a",
-  border: active ? "none" : "1px solid #2a2a2a",
+  background: active ? "#E51937" : "transparent",
+  border: active ? "none" : "1px solid #333333",
   color: active ? "#ffffff" : "#777777",
   borderRadius: "6px",
   padding: "6px 16px",
@@ -218,7 +218,7 @@ const smallPillStyle = (active: boolean) => ({
 });
 
 const periodNavPillStyle = (active: boolean): CSSProperties => ({
-  background: active ? "#E51937" : "#1a1a1a",
+  background: "transparent",
   border: "1px solid #E51937",
   color: active ? "#ffffff" : "#cccccc",
   borderRadius: "6px",
@@ -231,8 +231,8 @@ const periodNavPillStyle = (active: boolean): CSSProperties => ({
 
 function PeriodNavLinks({
   pageView,
-  weekCount,
-  monthCount,
+  weekCount: _weekCount,
+  monthCount: _monthCount,
   onWeek,
   onMonth,
 }: {
@@ -262,7 +262,7 @@ function PeriodNavLinks({
           if (pageView !== "week") e.currentTarget.style.color = "#cccccc";
         }}
       >
-        This Week ({weekCount})
+        This week
       </button>
       <button
         type="button"
@@ -275,7 +275,7 @@ function PeriodNavLinks({
           if (pageView !== "month") e.currentTarget.style.color = "#cccccc";
         }}
       >
-        This Month ({monthCount})
+        This month
       </button>
     </div>
   );
@@ -283,8 +283,8 @@ function PeriodNavLinks({
 
 const fieldStyle: CSSProperties = {
   backgroundColor: "#111111",
-  border: "1px solid #2a2a2a",
-  borderRadius: "10px",
+  border: "1px solid #242424",
+  borderRadius: "8px",
   padding: "0 14px",
   color: "#ffffff",
   fontSize: "14px",
@@ -295,8 +295,8 @@ const fieldStyle: CSSProperties = {
 };
 
 const selectStyle: CSSProperties = {
-  background: "#1a1a1a",
-  border: "1px solid #2a2a2a",
+  background: "#111111",
+  border: "1px solid #242424",
   color: "#cccccc",
   borderRadius: "8px",
   padding: "10px 36px 10px 16px",
@@ -313,7 +313,7 @@ const labelStyle: CSSProperties = {
   fontWeight: 600,
   color: "#555555",
   textTransform: "uppercase",
-  letterSpacing: "0.04em",
+  letterSpacing: "0.05em",
   marginBottom: "6px",
   display: "block",
 };
@@ -711,14 +711,12 @@ function PublicEventCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         background: "#1a1a1a",
-        border: `1px solid ${hovered ? "#3a3a3a" : "#2a2a2a"}`,
+        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
         borderRadius: "12px",
         padding: "16px",
         display: "flex",
         flexDirection: "column",
-        transition: "all 0.15s ease",
-        transform: hovered ? "translateY(-2px)" : undefined,
-        boxShadow: hovered ? "0 8px 24px rgba(0,0,0,0.3)" : undefined,
+        transition: "border-color 0.15s ease",
       }}
     >
       <div
@@ -726,7 +724,7 @@ function PublicEventCard({
           display: "flex",
           flexDirection: "row",
           alignItems: "center",
-          gap: "20px",
+          gap: "12px",
         }}
       >
         <div
@@ -735,7 +733,7 @@ function PublicEventCard({
             borderRadius: "8px",
             width: "52px",
             minWidth: "52px",
-            height: "60px",
+            height: "56px",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -777,12 +775,12 @@ function PublicEventCard({
           <ClubAvatar
             clubName={event.clubName}
             logoUrl={event.clubLogoUrl}
-            size={48}
+            size={40}
           />
           <span
             style={{
-              fontSize: "17px",
-              fontWeight: 800,
+              fontSize: "16px",
+              fontWeight: 700,
               color: "#ffffff",
               lineHeight: 1.2,
               overflow: "hidden",
@@ -1208,15 +1206,15 @@ export default function PublicEventsPage() {
   const horizontalPad = isMobile ? "16px" : "48px";
 
   return (
-    <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
+    <div style={{ background: "#000000", minHeight: "100vh" }}>
       <header
         style={{
-          padding: isMobile ? "72px 16px 28px" : "160px 48px 28px",
+          padding: isMobile ? "40px 16px 24px" : "48px 48px 24px",
         }}
       >
         <h1
           style={{
-            fontSize: isMobile ? "42px" : "72px",
+            fontSize: isMobile ? "36px" : "56px",
             fontWeight: 800,
             color: "#ffffff",
             margin: 0,
@@ -1227,8 +1225,7 @@ export default function PublicEventsPage() {
         </h1>
         <div
           style={{
-            marginTop: "24px",
-            maxWidth: "700px",
+            marginTop: "20px",
             width: "100%",
           }}
         >
@@ -1248,7 +1245,16 @@ export default function PublicEventsPage() {
           />
         </div>
         {pageView === "home" ? (
-          <div style={{ marginTop: "16px", maxWidth: "700px" }}>
+          <div style={{ marginTop: "14px" }}>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#555555",
+                margin: "0 0 8px",
+              }}
+            >
+              Browse by
+            </p>
             <PeriodNavLinks
               pageView={pageView}
               weekCount={thisWeekCount}
@@ -1370,7 +1376,15 @@ export default function PublicEventsPage() {
             </StyledSelect>
           </div>
           {pageView === "home" ? (
-            <>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                flexWrap: "wrap",
+                marginLeft: isMobile ? undefined : "auto",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -1387,11 +1401,18 @@ export default function PublicEventsPage() {
                   setPageView("home");
                   setTimeFilter("custom");
                 }}
-                style={smallPillStyle(timeFilter === "custom")}
+                style={{
+                  ...smallPillStyle(timeFilter === "custom"),
+                  background:
+                    timeFilter === "custom" ? "#E51937" : "transparent",
+                  border:
+                    timeFilter === "custom" ? "none" : "1px solid #333333",
+                  color: timeFilter === "custom" ? "#ffffff" : "#777777",
+                }}
               >
                 Custom Dates
               </button>
-            </>
+            </div>
           ) : null}
           {hasActiveFilters ? (
             <button
