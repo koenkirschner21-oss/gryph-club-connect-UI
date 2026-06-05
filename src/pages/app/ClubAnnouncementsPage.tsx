@@ -10,11 +10,31 @@ import Spinner from "../../components/ui/Spinner";
 import type { MemberRole, Post } from "../../types";
 
 const PAGE_BG = "#0f0f0f";
-const CARD_BG = "#1a1a1a";
+const CARD_BG = "#141414";
 const CARD_BORDER = "#242424";
 const MUTED = "#555555";
 const ACCENT_RED = "#E51937";
 const PIN_GOLD = "#FFC429";
+
+const ANNOUNCEMENT_FILTER_PILLS = [
+  { value: "all", label: "All" },
+  { value: "pinned", label: "Pinned" },
+  { value: "recent", label: "Recent" },
+] as const;
+
+type AnnouncementFilter = (typeof ANNOUNCEMENT_FILTER_PILLS)[number]["value"];
+
+const announcementFilterPillStyle = (active: boolean): CSSProperties => ({
+  background: active ? ACCENT_RED : "transparent",
+  border: active ? "none" : "1px solid #333333",
+  color: active ? "#ffffff" : "#777777",
+  borderRadius: "20px",
+  padding: "5px 16px",
+  fontSize: "12px",
+  fontWeight: 500,
+  cursor: "pointer",
+});
+
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const ACCEPTED_FILE_TYPES =
   "image/jpeg,image/png,image/gif,image/webp,application/pdf";
@@ -126,35 +146,25 @@ function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return `${days}d ago`;
-}
+function formatPostDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
 
-function relativeTime(value: string): string {
-  const timestamp = new Date(value).getTime();
-  if (Number.isNaN(timestamp)) return "just now";
-  const diff = Date.now() - timestamp;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < minute) return "just now";
-  if (diff < hour) {
-    const mins = Math.floor(diff / minute);
-    return `${mins} minute${mins === 1 ? "" : "s"} ago`;
-  }
-  if (diff < day) {
-    const hours = Math.floor(diff / hour);
-    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  }
-  const days = Math.floor(diff / day);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
 }
 
 function initials(name: string): string {
@@ -176,7 +186,7 @@ function roleBadgeStyle(role: MemberRole | undefined): CSSProperties {
       color: PIN_GOLD,
       border: `1px solid ${PIN_GOLD}`,
       background: "#1a1500",
-      borderRadius: "999px",
+      borderRadius: "4px",
       padding: "2px 8px",
       textTransform: "uppercase",
     };
@@ -325,16 +335,26 @@ function PostAttachment({
 }) {
   if (type.startsWith("image/")) {
     return (
-      <img
-        src={url}
-        alt={`Attachment for ${title}`}
+      <div
         style={{
           width: "100%",
-          maxHeight: "400px",
-          objectFit: "cover",
-          display: "block",
+          maxWidth: "720px",
+          marginTop: "16px",
+          borderRadius: "10px",
+          overflow: "hidden",
         }}
-      />
+      >
+        <img
+          src={url}
+          alt={`Attachment for ${title}`}
+          style={{
+            width: "100%",
+            maxHeight: "360px",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      </div>
     );
   }
 
@@ -423,6 +443,10 @@ export default function ClubAnnouncementsPage() {
   const [reportDetails, setReportDetails] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportSuccessMessage, setReportSuccessMessage] = useState<string | null>(null);
+  const [announcementFilter, setAnnouncementFilter] =
+    useState<AnnouncementFilter>("all");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -605,16 +629,31 @@ export default function ClubAnnouncementsPage() {
     setReportSuccessMessage("Report submitted");
   }
 
-  const sortedPosts = useMemo(() => {
-    return [...posts].sort((a, b) => {
-      const aPinned = pinnedById[a.id] ?? false;
-      const bPinned = pinnedById[b.id] ?? false;
-      if (aPinned !== bPinned) return aPinned ? -1 : 1;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-  }, [posts, pinnedById]);
-  const pinnedPosts = sortedPosts.filter((post) => pinnedById[post.id] ?? false);
-  const regularPosts = sortedPosts.filter((post) => !(pinnedById[post.id] ?? false));
+  const displayPosts = useMemo(() => {
+    let list = [...posts];
+
+    if (announcementFilter === "pinned") {
+      list = list.filter((post) => pinnedById[post.id] ?? false);
+    }
+
+    list.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    if (announcementFilter === "all") {
+      list.sort((a, b) => {
+        const aPinned = pinnedById[a.id] ?? false;
+        const bPinned = pinnedById[b.id] ?? false;
+        if (aPinned !== bPinned) return aPinned ? -1 : 1;
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      });
+    }
+
+    return list;
+  }, [posts, pinnedById, announcementFilter]);
 
   function resetForm() {
     setTitle("");
@@ -834,18 +873,28 @@ export default function ClubAnnouncementsPage() {
     <div style={{ ...pageStyle, padding: isMobile ? "16px" : pageStyle.padding }}>
       <div
         style={{
-          marginBottom: "24px",
+          marginBottom: "16px",
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           justifyContent: "space-between",
           gap: "16px",
         }}
       >
         <div>
-          <h1 style={{ fontWeight: 700, fontSize: "22px", color: "#ffffff", margin: 0 }}>
+          <h1
+            style={{
+              fontWeight: 800,
+              fontSize: "28px",
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
             Announcements
           </h1>
-          <p style={{ fontSize: "13px", color: MUTED, margin: "4px 0 0" }}>
+          <p style={{ fontSize: "14px", color: MUTED, margin: "4px 0 0" }}>
+            Stay up to date with club news, updates, and important posts.
+          </p>
+          <p style={{ fontSize: "12px", color: "#444444", margin: "4px 0 0" }}>
             {posts.length} post{posts.length !== 1 ? "s" : ""}
           </p>
         </div>
@@ -861,6 +910,26 @@ export default function ClubAnnouncementsPage() {
             {showForm && !editingPostId ? "Cancel" : "+ New Post"}
           </button>
         ) : null}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          marginBottom: "24px",
+        }}
+      >
+        {ANNOUNCEMENT_FILTER_PILLS.map((pill) => (
+          <button
+            key={pill.value}
+            type="button"
+            onClick={() => setAnnouncementFilter(pill.value)}
+            style={announcementFilterPillStyle(announcementFilter === pill.value)}
+          >
+            {pill.label}
+          </button>
+        ))}
       </div>
 
       {reportSuccessMessage ? (
@@ -967,37 +1036,13 @@ export default function ClubAnnouncementsPage() {
             ? "Create your first announcement →"
             : "No announcements yet. Be the first to post."}
         </p>
+      ) : displayPosts.length === 0 ? (
+        <p style={{ textAlign: "center", color: MUTED, fontSize: "14px", padding: "48px 16px" }}>
+          No pinned announcements yet.
+        </p>
       ) : (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "12px",
-            width: "100%",
-          }}
-        >
-          {pinnedPosts.length > 0 ? (
-            <div style={{ marginBottom: "4px" }}>
-              <p
-                style={{
-                  color: PIN_GOLD,
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                  margin: "0 0 10px",
-                }}
-              >
-                📌 Pinned
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {pinnedPosts.map((post) => renderPostCard(post, true))}
-              </div>
-            </div>
-          ) : null}
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {regularPosts.map((post) => renderPostCard(post, false))}
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
+          {displayPosts.map((post) => renderPostCard(post))}
         </div>
       )}
 
@@ -1120,8 +1165,11 @@ export default function ClubAnnouncementsPage() {
     </div>
   );
 
-  function renderPostCard(post: Post, pinnedSection: boolean) {
+  function renderPostCard(post: Post) {
     const isPinned = pinnedById[post.id] ?? false;
+    const isHovered = hoveredPostId === post.id;
+    const isExpanded = expanded[post.id] ?? false;
+    const showReadMore = (post.content?.length ?? 0) > 300;
     const authorMeta = authorMetaById[post.authorId] ?? {};
     const displayName = authorMeta.name ?? post.authorName ?? "Unknown";
     const reactionCounts = reactionCountsByPost[post.id] ?? {
@@ -1139,28 +1187,49 @@ export default function ClubAnnouncementsPage() {
     const heartActive = myReactions.heart;
     const bookmarkActive = myReactions.bookmark;
     const heartCount = reactionCounts.heart ?? 0;
+    const borderColor = isHovered ? "#2a2a2a" : CARD_BORDER;
 
     return (
       <article
         key={post.id}
+        onMouseEnter={() => setHoveredPostId(post.id)}
+        onMouseLeave={() => setHoveredPostId(null)}
         style={{
           background: CARD_BG,
-          border: pinnedSection ? "1px solid #3a2500" : `1px solid ${CARD_BORDER}`,
-          borderRadius: "12px",
-          overflow: "hidden",
+          borderTop: `1px solid ${borderColor}`,
+          borderRight: `1px solid ${borderColor}`,
+          borderBottom: `1px solid ${borderColor}`,
+          borderLeft: isPinned ? `3px solid ${ACCENT_RED}` : `1px solid ${borderColor}`,
+          borderRadius: "14px",
+          padding: "24px",
           marginBottom: "16px",
-          transition: "all 0.15s ease",
+          transition: "border-color 0.15s ease",
           width: "100%",
           boxSizing: "border-box",
         }}
       >
+        {isPinned ? (
+          <p
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: ACCENT_RED,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              margin: "0 0 12px",
+            }}
+          >
+            📌 Pinned
+          </p>
+        ) : null}
+
         <div
           style={{
             display: "flex",
             alignItems: "flex-start",
             justifyContent: "space-between",
             gap: "12px",
-            padding: "14px 16px 10px",
+            marginBottom: "16px",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
@@ -1196,19 +1265,19 @@ export default function ClubAnnouncementsPage() {
               </div>
             )}
             <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <p style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff", margin: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <p style={{ fontSize: "14px", fontWeight: 600, color: "#ffffff", margin: 0 }}>
                   {displayName}
                 </p>
                 <span style={roleBadgeStyle(authorMeta.role)}>{roleLabel(authorMeta.role)}</span>
               </div>
-              <p style={{ fontSize: "12px", color: "#555555", margin: "3px 0 0" }}>
-                {relativeTime(post.createdAt)}
+              <p style={{ fontSize: "12px", color: "#444444", margin: "3px 0 0" }}>
+                {formatPostDate(post.createdAt)}
                 {post.updatedAt && post.updatedAt !== post.createdAt ? (
                   <>
                     {" · "}
-                    <span style={{ fontSize: "11px", color: "#444444" }}>
-                      edited {formatRelativeTime(post.updatedAt)}
+                    <span style={{ fontSize: "11px", color: "#333333" }}>
+                      edited {formatPostDate(post.updatedAt)}
                     </span>
                   </>
                 ) : null}
@@ -1294,59 +1363,86 @@ export default function ClubAnnouncementsPage() {
           ) : null}
         </div>
 
-        <div style={{ padding: "0 16px 16px" }}>
-          <p style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: "0 0 8px" }}>
-            {post.title}
-          </p>
-          <p
+        <p
+          style={{
+            fontSize: "17px",
+            fontWeight: 700,
+            color: "#ffffff",
+            margin: "0 0 10px",
+            maxWidth: "720px",
+            width: "100%",
+          }}
+        >
+          {post.title}
+        </p>
+        <div
+          style={{
+            display: isExpanded ? "block" : "-webkit-box",
+            WebkitLineClamp: isExpanded ? "unset" : 4,
+            WebkitBoxOrient: "vertical",
+            overflow: isExpanded ? "visible" : "hidden",
+            fontSize: "14px",
+            color: "#cccccc",
+            lineHeight: 1.8,
+            maxWidth: "720px",
+            width: "100%",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {post.content}
+        </div>
+        {showReadMore ? (
+          <button
+            type="button"
+            onClick={() =>
+              setExpanded((prev) => ({ ...prev, [post.id]: !prev[post.id] }))
+            }
             style={{
-              fontSize: "15px",
-              color: "#cccccc",
-              lineHeight: 1.7,
-              margin: 0,
-              whiteSpace: "pre-wrap",
+              background: "none",
+              border: "none",
+              color: ACCENT_RED,
+              fontSize: "13px",
+              fontWeight: 500,
+              cursor: "pointer",
+              padding: "4px 0",
+              marginTop: "4px",
             }}
           >
-            {post.content}
-          </p>
-        </div>
+            {isExpanded ? "Show less" : "Read more"}
+          </button>
+        ) : null}
+
         {post.attachmentUrl && post.attachmentType ? (
           <PostAttachment url={post.attachmentUrl} type={post.attachmentType} title={post.title} />
         ) : null}
 
         <div
           style={{
-            padding: "12px 16px",
-            borderTop: "1px solid #1e1e1e",
             display: "flex",
-            alignItems: "center",
             justifyContent: "space-between",
-            gap: "12px",
+            alignItems: "center",
+            marginTop: "16px",
+            paddingTop: "16px",
+            borderTop: "1px solid #1a1a1a",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <button
               type="button"
               aria-label={heartActive ? "Unlike announcement" : "Like announcement"}
               onClick={() => void handleReactionToggle(post.id, "heart")}
               style={reactionButtonStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#1f1f1f";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
             >
               <Heart
                 size={16}
-                color={heartActive ? ACCENT_RED : MUTED}
+                color={heartActive ? ACCENT_RED : "#555555"}
                 fill={heartActive ? ACCENT_RED : "none"}
                 aria-hidden
               />
               <span
                 style={{
                   fontSize: "13px",
-                  color: heartActive ? ACCENT_RED : MUTED,
+                  color: heartActive ? ACCENT_RED : "#555555",
                 }}
               >
                 {heartCount}
@@ -1357,23 +1453,17 @@ export default function ClubAnnouncementsPage() {
               aria-label={bookmarkActive ? "Remove bookmark" : "Bookmark announcement"}
               onClick={() => void handleReactionToggle(post.id, "bookmark")}
               style={reactionButtonStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#1f1f1f";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
             >
               <Bookmark
                 size={16}
-                color={bookmarkActive ? PIN_GOLD : MUTED}
-                fill={bookmarkActive ? PIN_GOLD : "none"}
+                color="#555555"
+                fill={bookmarkActive ? "#555555" : "none"}
                 aria-hidden
               />
             </button>
           </div>
           {isPrivileged ? (
-            <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+            <p style={{ fontSize: "12px", color: "#444444", margin: 0 }}>
               Seen by {viewCountByPost[post.id] ?? 0} members
             </p>
           ) : null}
