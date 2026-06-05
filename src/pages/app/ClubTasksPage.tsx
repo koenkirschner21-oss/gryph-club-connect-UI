@@ -31,6 +31,12 @@ const statusAccent: Record<TaskStatus, string> = {
   done: "#E51937",
 };
 
+const boardColumnHeaderColor: Record<TaskStatus, string> = {
+  todo: "#777777",
+  in_progress: "#FFC429",
+  done: "#777777",
+};
+
 const BOARD_COLUMNS: TaskStatus[] = ["todo", "in_progress", "done"];
 
 const columnEmptyMessage: Record<TaskStatus, string> = {
@@ -69,7 +75,7 @@ function PriorityPill({ priority }: { priority: TaskPriority }) {
   > = {
     high: { border: "#E51937", color: "#E51937", label: "High Priority" },
     medium: { border: "#FFC429", color: "#FFC429", label: "Medium Priority" },
-    low: { border: "#555555", color: "#555555", label: "Low Priority" },
+    low: { border: "#555", color: "#555", label: "Low Priority" },
   };
   const { border, color, label } = config[priority];
   return (
@@ -119,9 +125,9 @@ function listStatusPillStyle(status: TaskStatus): CSSProperties {
   }
   return {
     ...base,
-    background: "#0a1f0a",
-    border: "1px solid #22c55e",
-    color: "#22c55e",
+    background: "#1a1200",
+    border: "1px solid #FFC429",
+    color: "#FFC429",
   };
 }
 
@@ -1577,8 +1583,8 @@ export default function ClubTasksPage() {
             <StatCard
               count={doneCount}
               label="Done"
-              countColor="#22c55e"
-              topBorderColor="#22c55e"
+              countColor="#FFC429"
+              topBorderColor="#FFC429"
             />
             <StatCard
               count={overdueCount}
@@ -1650,7 +1656,7 @@ export default function ClubTasksPage() {
           role="alert"
           className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
             feedback.type === "success"
-              ? "bg-green-500/10 text-green-400"
+              ? "bg-[#FFC429]/10 text-[#FFC429]"
               : "bg-primary/10 text-primary"
           }`}
         >
@@ -1839,7 +1845,7 @@ export default function ClubTasksPage() {
                     fontWeight: 600,
                     textTransform: "uppercase",
                     letterSpacing: "0.08em",
-                    color: statusAccent[columnStatus],
+                    color: boardColumnHeaderColor[columnStatus],
                   }}
                 >
                   {statusLabels[columnStatus]}
@@ -1847,7 +1853,7 @@ export default function ClubTasksPage() {
                 <span
                   style={{
                     fontSize: "11px",
-                    color: "#555555",
+                    color: boardColumnHeaderColor[columnStatus],
                     background: "#1a1a1a",
                     borderRadius: "20px",
                     padding: "2px 8px",
