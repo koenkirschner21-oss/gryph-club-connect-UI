@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Calendar,
   ChevronDown,
+  ChevronLeft,
   Clock,
   LayoutGrid,
   List,
@@ -27,6 +28,7 @@ import Spinner from "../components/ui/Spinner";
 
 type TimeFilter = "week" | "month" | "all" | "custom";
 type ViewMode = "grid" | "grouped";
+type EventsPageView = "home" | "week" | "month";
 
 const EVENTS_VIEW_MODE_KEY = "events_view_mode";
 
@@ -90,13 +92,6 @@ function toDateKey(d: Date): string {
 function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfWeek(d: Date): Date {
-  const x = startOfDay(d);
-  const day = x.getDay();
-  x.setDate(x.getDate() + (6 - day));
   return x;
 }
 
@@ -190,16 +185,101 @@ function groupDateLabel(groupKey: string): string {
   });
 }
 
-const pillStyle = (active: boolean) => ({
+function rollingWeekEnd(from: Date): Date {
+  const end = new Date(from);
+  end.setDate(end.getDate() + 7);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+function formatWeekRangeLabel(): string {
+  const now = new Date();
+  const weekEnd = rollingWeekEnd(now);
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  return `${now.toLocaleDateString("en-US", opts)} – ${weekEnd.toLocaleDateString("en-US", { ...opts, year: "numeric" })}`;
+}
+
+function formatMonthLabel(): string {
+  return new Date().toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+const smallPillStyle = (active: boolean) => ({
   background: active ? "#E51937" : "#1a1a1a",
   border: active ? "none" : "1px solid #2a2a2a",
   color: active ? "#ffffff" : "#777777",
   borderRadius: "6px",
-  padding: "7px 18px",
-  fontSize: "13px",
+  padding: "6px 16px",
+  fontSize: "12px",
   fontWeight: 500,
   cursor: "pointer",
 });
+
+const periodNavPillStyle = (active: boolean): CSSProperties => ({
+  background: active ? "#E51937" : "#1a1a1a",
+  border: "1px solid #E51937",
+  color: active ? "#ffffff" : "#cccccc",
+  borderRadius: "6px",
+  padding: "6px 16px",
+  fontSize: "12px",
+  fontWeight: 500,
+  cursor: "pointer",
+  transition: "all 0.15s ease",
+});
+
+function PeriodNavLinks({
+  pageView,
+  weekCount,
+  monthCount,
+  onWeek,
+  onMonth,
+}: {
+  pageView: EventsPageView;
+  weekCount: number;
+  monthCount: number;
+  onWeek: () => void;
+  onMonth: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        flexWrap: "wrap",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onWeek}
+        style={periodNavPillStyle(pageView === "week")}
+        onMouseEnter={(e) => {
+          if (pageView !== "week") e.currentTarget.style.color = "#ffffff";
+        }}
+        onMouseLeave={(e) => {
+          if (pageView !== "week") e.currentTarget.style.color = "#cccccc";
+        }}
+      >
+        This Week ({weekCount})
+      </button>
+      <button
+        type="button"
+        onClick={onMonth}
+        style={periodNavPillStyle(pageView === "month")}
+        onMouseEnter={(e) => {
+          if (pageView !== "month") e.currentTarget.style.color = "#ffffff";
+        }}
+        onMouseLeave={(e) => {
+          if (pageView !== "month") e.currentTarget.style.color = "#cccccc";
+        }}
+      >
+        This Month ({monthCount})
+      </button>
+    </div>
+  );
+}
 
 const fieldStyle: CSSProperties = {
   backgroundColor: "#111111",
@@ -621,6 +701,7 @@ function PublicEventCard({
   onSignUp: (eventId: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [signUpHovered, setSignUpHovered] = useState(false);
   const { month, day } = formatMonthDay(event.date);
   const descriptionPreview = event.description?.trim();
 
@@ -630,7 +711,7 @@ function PublicEventCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         background: "#1a1a1a",
-        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
+        border: `1px solid ${hovered ? "#3a3a3a" : "#2a2a2a"}`,
         borderRadius: "12px",
         padding: "16px",
         display: "flex",
@@ -644,8 +725,8 @@ function PublicEventCard({
         style={{
           display: "flex",
           flexDirection: "row",
-          alignItems: "flex-start",
-          gap: "12px",
+          alignItems: "center",
+          gap: "20px",
         }}
       >
         <div
@@ -687,7 +768,8 @@ function PublicEventCard({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "8px",
+            justifyContent: "flex-start",
+            gap: "6px",
             minWidth: 0,
             flex: 1,
           }}
@@ -695,16 +777,18 @@ function PublicEventCard({
           <ClubAvatar
             clubName={event.clubName}
             logoUrl={event.clubLogoUrl}
-            size={40}
+            size={48}
           />
           <span
             style={{
-              fontSize: "13px",
+              fontSize: "17px",
+              fontWeight: 800,
               color: "#ffffff",
-              fontWeight: 600,
+              lineHeight: 1.2,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              minWidth: 0,
             }}
           >
             {event.clubName}
@@ -772,15 +856,18 @@ function PublicEventCard({
         <button
           type="button"
           onClick={() => onSignUp(event.id)}
+          onMouseEnter={() => setSignUpHovered(true)}
+          onMouseLeave={() => setSignUpHovered(false)}
           style={{
-            background: "#E51937",
-            color: "#ffffff",
+            background: signUpHovered ? "#E51937" : "transparent",
+            color: signUpHovered ? "#ffffff" : "#E51937",
+            border: "1px solid #E51937",
             borderRadius: "6px",
             padding: "6px 14px",
             fontSize: "12px",
             fontWeight: 600,
-            border: "none",
             cursor: "pointer",
+            transition: "all 0.15s ease",
           }}
         >
           Sign Up
@@ -832,6 +919,7 @@ export default function PublicEventsPage() {
   const [clubCategoryFilter, setClubCategoryFilter] = useState("all");
   const [eventCategoryFilter, setEventCategoryFilter] = useState("all");
   const [viewMode, setViewMode] = useState<ViewMode>(() => readViewMode());
+  const [pageView, setPageView] = useState<EventsPageView>("home");
 
   useEffect(() => {
     try {
@@ -982,13 +1070,14 @@ export default function PublicEventsPage() {
 
   const hasActiveFilters =
     search.trim().length > 0 ||
-    timeFilter !== "all" ||
+    pageView !== "home" ||
+    timeFilter === "custom" ||
     clubCategoryFilter !== "all" ||
     eventCategoryFilter !== "all";
 
   const filtered = useMemo(() => {
     const today = startOfDay(new Date());
-    const weekEnd = endOfWeek(today);
+    const weekEnd = rollingWeekEnd(today);
     const monthEnd = endOfMonth(today);
     const q = search.trim().toLowerCase();
 
@@ -1058,6 +1147,45 @@ export default function PublicEventsPage() {
     );
   }, [groupedEvents]);
 
+  const thisWeekCount = useMemo(() => {
+    const now = new Date();
+    const weekEnd = new Date();
+    weekEnd.setDate(now.getDate() + 7);
+    return eventsWithStartTime.filter((e) => {
+      const d = new Date(e.start_time);
+      return d >= now && d <= weekEnd;
+    }).length;
+  }, [eventsWithStartTime]);
+
+  const thisMonthCount = useMemo(() => {
+    const now = new Date();
+    return eventsWithStartTime.filter((e) => {
+      const d = new Date(e.start_time);
+      return (
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear() &&
+        d >= now
+      );
+    }).length;
+  }, [eventsWithStartTime]);
+
+  function openWeekView() {
+    setPageView("week");
+    setTimeFilter("week");
+    setViewMode("grouped");
+  }
+
+  function openMonthView() {
+    setPageView("month");
+    setTimeFilter("month");
+    setViewMode("grouped");
+  }
+
+  function goToEventsHome() {
+    setPageView("home");
+    setTimeFilter("all");
+  }
+
   function clearFilters() {
     setSearch("");
     setTimeFilter("all");
@@ -1065,6 +1193,7 @@ export default function PublicEventsPage() {
     setCustomDateTo("");
     setClubCategoryFilter("all");
     setEventCategoryFilter("all");
+    setPageView("home");
   }
 
   function handleSignUp(eventId: string) {
@@ -1082,35 +1211,25 @@ export default function PublicEventsPage() {
     <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
       <header
         style={{
-          padding: isMobile ? "40px 16px 24px" : "60px 48px 32px",
+          padding: isMobile ? "72px 16px 28px" : "160px 48px 28px",
         }}
       >
         <h1
           style={{
-            fontSize: isMobile ? "28px" : "36px",
+            fontSize: isMobile ? "42px" : "72px",
             fontWeight: 800,
             color: "#ffffff",
             margin: 0,
-            lineHeight: 1.15,
+            lineHeight: 1.0,
           }}
         >
           Campus <span style={{ color: "#E51937" }}>Events</span>
         </h1>
-        <p
-          style={{
-            fontSize: "15px",
-            color: "#555555",
-            marginTop: "12px",
-            marginBottom: 0,
-          }}
-        >
-          Upcoming events open to all students — filter by club, event type, or
-          date
-        </p>
         <div
           style={{
             marginTop: "24px",
-            maxWidth: isMobile ? "100%" : "500px",
+            maxWidth: "700px",
+            width: "100%",
           }}
         >
           <input
@@ -1121,153 +1240,216 @@ export default function PublicEventsPage() {
             aria-label="Search events"
             style={{
               ...fieldStyle,
+              width: "100%",
               height: "52px",
               padding: "0 20px",
               fontSize: "15px",
             }}
           />
         </div>
+        {pageView === "home" ? (
+          <div style={{ marginTop: "16px", maxWidth: "700px" }}>
+            <PeriodNavLinks
+              pageView={pageView}
+              weekCount={thisWeekCount}
+              monthCount={thisMonthCount}
+              onWeek={openWeekView}
+              onMonth={openMonthView}
+            />
+          </div>
+        ) : null}
       </header>
 
-      <div
-        style={{
-          padding: `0 ${horizontalPad} 20px`,
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-          gap: "12px",
-          maxWidth: isMobile ? undefined : "900px",
-        }}
-      >
-        <div>
-          <label htmlFor="club-category-filter" style={labelStyle}>
-            Club type
-          </label>
-          <StyledSelect
-            id="club-category-filter"
-            value={clubCategoryFilter}
-            onChange={setClubCategoryFilter}
-          >
-            <option value="all">All club types</option>
-            {clubCategories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </StyledSelect>
-        </div>
-        <div>
-          <label htmlFor="event-category-filter" style={labelStyle}>
-            Event type
-          </label>
-          <StyledSelect
-            id="event-category-filter"
-            value={eventCategoryFilter}
-            onChange={setEventCategoryFilter}
-          >
-            <option value="all">All event types</option>
-            {EVENT_CATEGORIES.map((cat) => (
-              <option key={cat.value} value={cat.value}>
-                {cat.label}
-              </option>
-            ))}
-          </StyledSelect>
-        </div>
-        {hasActiveFilters ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-end",
-            }}
-          >
+      <div style={{ padding: `0 ${horizontalPad} 60px` }}>
+        {pageView !== "home" ? (
+          <div style={{ marginBottom: "24px", paddingTop: "8px" }}>
+            <button
+              type="button"
+              onClick={goToEventsHome}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                fontSize: "13px",
+                fontWeight: 500,
+                cursor: "pointer",
+                padding: 0,
+                marginBottom: "16px",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "#ffffff";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "#777777";
+              }}
+            >
+              <ChevronLeft size={16} aria-hidden />
+              All events
+            </button>
+            <div style={{ marginBottom: "16px" }}>
+              <PeriodNavLinks
+                pageView={pageView}
+                weekCount={thisWeekCount}
+                monthCount={thisMonthCount}
+                onWeek={openWeekView}
+                onMonth={openMonthView}
+              />
+            </div>
+            <h2
+              style={{
+                fontSize: isMobile ? "24px" : "32px",
+                fontWeight: 800,
+                color: "#ffffff",
+                margin: 0,
+                lineHeight: 1.1,
+              }}
+            >
+              {pageView === "week"
+                ? "What's happening this week"
+                : "What's happening this month"}
+            </h2>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#555555",
+                marginTop: "8px",
+                marginBottom: 0,
+              }}
+            >
+              {pageView === "week"
+                ? formatWeekRangeLabel()
+                : formatMonthLabel()}
+            </p>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap",
+            marginBottom: "24px",
+          }}
+        >
+          <div style={{ minWidth: isMobile ? "100%" : "180px", flex: isMobile ? undefined : "0 1 200px" }}>
+            <label htmlFor="club-category-filter" style={{ ...labelStyle, marginBottom: "4px" }}>
+              Club type
+            </label>
+            <StyledSelect
+              id="club-category-filter"
+              value={clubCategoryFilter}
+              onChange={setClubCategoryFilter}
+            >
+              <option value="all">All club types</option>
+              {clubCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </StyledSelect>
+          </div>
+          <div style={{ minWidth: isMobile ? "100%" : "180px", flex: isMobile ? undefined : "0 1 200px" }}>
+            <label htmlFor="event-category-filter" style={{ ...labelStyle, marginBottom: "4px" }}>
+              Event type
+            </label>
+            <StyledSelect
+              id="event-category-filter"
+              value={eventCategoryFilter}
+              onChange={setEventCategoryFilter}
+            >
+              <option value="all">All event types</option>
+              {EVENT_CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </StyledSelect>
+          </div>
+          {pageView === "home" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  goToEventsHome();
+                  setTimeFilter("all");
+                }}
+                style={smallPillStyle(timeFilter === "all" && pageView === "home")}
+              >
+                All Upcoming
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPageView("home");
+                  setTimeFilter("custom");
+                }}
+                style={smallPillStyle(timeFilter === "custom")}
+              >
+                Custom Dates
+              </button>
+            </>
+          ) : null}
+          {hasActiveFilters ? (
             <button
               type="button"
               onClick={clearFilters}
               style={{
-                ...selectStyle,
-                height: "44px",
-                background: "transparent",
+                ...smallPillStyle(false),
                 color: "#E51937",
+                border: "1px solid #E51937",
+                background: "transparent",
                 fontWeight: 600,
               }}
             >
               Clear filters
             </button>
+          ) : null}
+        </div>
+
+        {timeFilter === "custom" && pageView === "home" ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 220px))",
+              gap: "12px",
+              marginBottom: "24px",
+            }}
+          >
+            <div>
+              <label htmlFor="events-from-date" style={labelStyle}>
+                From
+              </label>
+              <input
+                id="events-from-date"
+                type="date"
+                value={customDateFrom}
+                onChange={(e) => setCustomDateFrom(e.target.value)}
+                style={fieldStyle}
+              />
+            </div>
+            <div>
+              <label htmlFor="events-to-date" style={labelStyle}>
+                To
+              </label>
+              <input
+                id="events-to-date"
+                type="date"
+                value={customDateTo}
+                min={customDateFrom || undefined}
+                onChange={(e) => setCustomDateTo(e.target.value)}
+                style={fieldStyle}
+              />
+            </div>
           </div>
         ) : null}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "10px",
-          padding: `0 ${horizontalPad} 16px`,
-          alignItems: "center",
-        }}
-      >
-        {(
-          [
-            { value: "week" as const, label: "This week" },
-            { value: "month" as const, label: "This month" },
-            { value: "all" as const, label: "All upcoming" },
-            { value: "custom" as const, label: "Custom dates" },
-          ] as const
-        ).map((pill) => (
-          <button
-            key={pill.value}
-            type="button"
-            onClick={() => setTimeFilter(pill.value)}
-            style={pillStyle(timeFilter === pill.value)}
-          >
-            {pill.label}
-          </button>
-        ))}
-      </div>
-
-      {timeFilter === "custom" ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 220px))",
-            gap: "12px",
-            padding: `0 ${horizontalPad} 24px`,
-          }}
-        >
-          <div>
-            <label htmlFor="events-from-date" style={labelStyle}>
-              From
-            </label>
-            <input
-              id="events-from-date"
-              type="date"
-              value={customDateFrom}
-              onChange={(e) => setCustomDateFrom(e.target.value)}
-              style={fieldStyle}
-            />
-          </div>
-          <div>
-            <label htmlFor="events-to-date" style={labelStyle}>
-              To
-            </label>
-            <input
-              id="events-to-date"
-              type="date"
-              value={customDateTo}
-              min={customDateFrom || undefined}
-              onChange={(e) => setCustomDateTo(e.target.value)}
-              style={fieldStyle}
-            />
-          </div>
-        </div>
-      ) : (
-        <div style={{ paddingBottom: "12px" }} />
-      )}
-
-      <div style={{ padding: `0 ${horizontalPad} 60px` }}>
         {loading ? (
           <Spinner label="Loading events…" />
         ) : filtered.length === 0 ? (
-          <p
+          <div
             style={{
               textAlign: "center",
               color: "#555555",
@@ -1275,10 +1457,33 @@ export default function PublicEventsPage() {
               fontSize: "15px",
             }}
           >
-            {events.length === 0
-              ? "No upcoming public events right now. Check back soon."
-              : "No events match your filters. Try adjusting club type, event type, or dates."}
-          </p>
+            <p style={{ margin: "0 0 12px" }}>
+              {events.length === 0
+                ? "No upcoming public events right now. Check back soon."
+                : pageView === "week"
+                  ? "Nothing scheduled this week yet."
+                  : pageView === "month"
+                    ? "Nothing scheduled this month yet."
+                    : "No events match your filters. Try adjusting club type, event type, or dates."}
+            </p>
+            {pageView !== "home" && events.length > 0 ? (
+              <button
+                type="button"
+                onClick={goToEventsHome}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#cccccc",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Browse all upcoming events
+              </button>
+            ) : null}
+          </div>
         ) : (
           <>
             <div
@@ -1294,15 +1499,32 @@ export default function PublicEventsPage() {
               <p
                 style={{
                   fontSize: "13px",
-                  color: "#555555",
+                  fontWeight: 600,
                   margin: 0,
                 }}
               >
-                {filtered.length} upcoming event
-                {filtered.length === 1 ? "" : "s"}
+                <span style={{ color: "#ffffff", fontWeight: 700 }}>
+                  {filtered.length}
+                </span>
+                <span style={{ color: "#555555" }}>
+                  {" "}
+                  upcoming event{filtered.length === 1 ? "" : "s"}
+                </span>
               </p>
               <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
             </div>
+
+            {pageView === "home" ? (
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#555555",
+                  margin: "0 0 16px",
+                }}
+              >
+                Browse upcoming events at the University of Guelph
+              </p>
+            ) : null}
 
             {viewMode === "grid" ? (
               <EventCardsGrid
@@ -1321,14 +1543,15 @@ export default function PublicEventsPage() {
                         alignItems: "center",
                         gap: "12px",
                         marginBottom: "16px",
-                        marginTop: index === 0 ? 0 : "24px",
+                        marginTop: index === 0 ? 0 : "28px",
                       }}
                     >
                       <span
                         style={{
                           fontSize: "13px",
-                          fontWeight: 600,
+                          fontWeight: 700,
                           color: "#ffffff",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {groupDateLabel(groupKey)}
