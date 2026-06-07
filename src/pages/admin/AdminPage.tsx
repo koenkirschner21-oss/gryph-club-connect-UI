@@ -397,6 +397,9 @@ export default function AdminPage() {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requestFilter, setRequestFilter] = useState<RequestStatusFilter>("all");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const [rejectTarget, setRejectTarget] = useState<ClubRequestRow | null>(null);
@@ -785,35 +788,85 @@ export default function AdminPage() {
 
     setActionLoadingId(request.id);
     setFeedback(null);
+    setApprovalErrors((prev) => {
+      const next = { ...prev };
+      delete next[request.id];
+      return next;
+    });
 
     let clubId = request.club_id;
+    const meta = parseRequestMeta(request.long_description);
+    const slug = meta.slug || generateSlug(request.name);
 
     if (!clubId && request.submitted_by) {
-      const meta = parseRequestMeta(request.long_description);
       const { data: clubRow } = await supabase
         .from("clubs")
         .select("id")
         .eq("created_by", request.submitted_by)
-        .eq("slug", meta.slug || generateSlug(request.name))
+        .eq("slug", slug)
         .maybeSingle();
 
       clubId = (clubRow?.id as string | undefined) ?? null;
     }
 
     if (!clubId) {
-      setFeedback("No club found for this request.");
+      if (!request.submitted_by) {
+        const message = "Request has no submitter — cannot create a club.";
+        console.error("Approval error:", message);
+        setApprovalErrors((prev) => ({ ...prev, [request.id]: message }));
+        setActionLoadingId(null);
+        return;
+      }
+
+      const { data: createdClub, error: createError } = await supabase
+        .from("clubs")
+        .insert({
+          name: request.name,
+          slug,
+          short_description: request.short_description,
+          long_description: request.long_description,
+          description: request.short_description || "",
+          category: request.category || "",
+          contact_email: meta.contact_email || "",
+          meeting_schedule: meta.meeting_schedule || "",
+          meeting_location: meta.meeting_location || null,
+          social_links: meta.social_links ?? null,
+          abbreviation: deriveClubAbbreviation(request.name),
+          is_public: true,
+          created_by: request.submitted_by,
+        })
+        .select("id")
+        .single();
+
+      if (createError) {
+        console.error("Approval error:", createError);
+        const message =
+          createError.message || "Failed to create club from request.";
+        setApprovalErrors((prev) => ({ ...prev, [request.id]: message }));
+        setActionLoadingId(null);
+        return;
+      }
+
+      clubId = (createdClub?.id as string | undefined) ?? null;
+    }
+
+    if (!clubId) {
+      const message = "No club found or created for this request.";
+      console.error("Approval error:", message);
+      setApprovalErrors((prev) => ({ ...prev, [request.id]: message }));
       setActionLoadingId(null);
       return;
     }
 
     const { error } = await supabase
       .from("clubs")
-      .update({ status: "approved" })
+      .update({ is_public: true })
       .eq("id", clubId);
 
     if (error) {
-      console.error("Failed to approve club:", error);
-      setFeedback(error.message || "Failed to approve club.");
+      console.error("Approval error:", error);
+      const message = error.message || "Failed to approve club.";
+      setApprovalErrors((prev) => ({ ...prev, [request.id]: message }));
       setActionLoadingId(null);
       return;
     }
@@ -822,14 +875,18 @@ export default function AdminPage() {
       .from("club_requests")
       .update({
         status: "approved",
+        club_id: clubId,
         reviewed_by: user.id,
         reviewed_at: new Date().toISOString(),
       })
       .eq("id", request.id);
 
     if (updateError) {
-      console.error("Failed to update club request:", updateError.message);
-      setFeedback("Club was approved but the request status could not be updated.");
+      console.error("Approval error:", updateError);
+      const message =
+        updateError.message ||
+        "Club was approved but the request status could not be updated.";
+      setApprovalErrors((prev) => ({ ...prev, [request.id]: message }));
       setActionLoadingId(null);
       return;
     }
@@ -847,7 +904,7 @@ export default function AdminPage() {
     }
 
     setActionLoadingId(null);
-    void loadRequests();
+    await loadRequests();
     setShowApprovalChecklist(true);
   }
 
@@ -1303,27 +1360,48 @@ export default function AdminPage() {
                       marginTop: "16px",
                     }}
                   >
-                    <button
-                      type="button"
-                      disabled={actionLoadingId === request.id}
-                      onClick={() => void handleApprove(request)}
+                    <div
                       style={{
-                        background: "#0d2b0d",
-                        border: "1px solid #4ade80",
-                        color: "#4ade80",
-                        borderRadius: "6px",
-                        padding: "8px 20px",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        cursor:
-                          actionLoadingId === request.id
-                            ? "not-allowed"
-                            : "pointer",
-                        opacity: actionLoadingId === request.id ? 0.6 : 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
                       }}
                     >
-                      {actionLoadingId === request.id ? "Working…" : "Approve"}
-                    </button>
+                      <button
+                        type="button"
+                        disabled={actionLoadingId === request.id}
+                        onClick={() => void handleApprove(request)}
+                        style={{
+                          background: "#0d2b0d",
+                          border: "1px solid #4ade80",
+                          color: "#4ade80",
+                          borderRadius: "6px",
+                          padding: "8px 20px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor:
+                            actionLoadingId === request.id
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity: actionLoadingId === request.id ? 0.6 : 1,
+                        }}
+                      >
+                        {actionLoadingId === request.id ? "Working…" : "Approve"}
+                      </button>
+                      {approvalErrors[request.id] ? (
+                        <p
+                          style={{
+                            color: "#E51937",
+                            fontSize: 12,
+                            marginTop: 4,
+                            maxWidth: "280px",
+                            textAlign: "right",
+                          }}
+                        >
+                          {approvalErrors[request.id]}
+                        </p>
+                      ) : null}
+                    </div>
                     <button
                       type="button"
                       disabled={actionLoadingId === request.id}

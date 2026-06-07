@@ -270,12 +270,6 @@ export default function DashboardPage() {
   const sourceName = profile?.fullName || user?.email?.split("@")[0] || "";
   const displayName = sourceName.split(" ")[0];
 
-  // Subtitle parts
-  const subtitleParts = [
-    profile?.program,
-    profile?.university,
-  ].filter(Boolean);
-
   // Count upcoming events this month
   const eventsThisMonth = useMemo(() => {
     const now = new Date();
@@ -315,17 +309,15 @@ export default function DashboardPage() {
           >
             Welcome back, {displayName}
           </h1>
-          {subtitleParts.length > 0 && (
-            <p
-              style={{
-                marginTop: "4px",
-                fontSize: "13px",
-                color: "#555555",
-              }}
-            >
-              {subtitleParts.join(" · ")}
-            </p>
-          )}
+          <p
+            style={{
+              marginTop: "4px",
+              fontSize: "13px",
+              color: "#999999",
+            }}
+          >
+            Here&apos;s what&apos;s happening across your clubs this week.
+          </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Link
@@ -1252,7 +1244,13 @@ type OverviewTask = {
   dueDate?: string;
 };
 
-function OverviewTaskCard({ task }: { task: OverviewTask }) {
+function OverviewTaskCard({
+  task,
+  logoUrl,
+}: {
+  task: OverviewTask;
+  logoUrl?: string;
+}) {
   const [hovered, setHovered] = useState(false);
   const borderMuted = hovered ? "#333" : "#242424";
   const dueUrgency = getTaskDueUrgency(task.dueDate, task.status);
@@ -1277,13 +1275,14 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
           borderRadius: "8px",
           padding: "14px 16px",
           display: "flex",
-          alignItems: "flex-start",
+          alignItems: "center",
           justifyContent: "space-between",
           gap: "12px",
           transition: "all 0.15s ease",
           transform: hovered ? "translateY(-1px)" : undefined,
         }}
       >
+        <EventClubLogo name={task.clubName} logoUrl={logoUrl} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <p
             style={{
@@ -1320,7 +1319,7 @@ function OverviewTaskCard({ task }: { task: OverviewTask }) {
               }}
             >
               <Calendar size={11} aria-hidden />
-              {formatTaskDate(task.dueDate)}
+              Due: {formatTaskDate(task.dueDate)}
             </span>
           ) : null}
         </div>
@@ -1359,6 +1358,7 @@ function MyClubSidebarItem({
       to={`/app/clubs/${club.id}`}
       className="flex items-start gap-3 p-3"
       style={{
+        minHeight: "80px",
         background: hovered ? "#1f1f1f" : "#191919",
         border: `1px solid ${hovered ? "#333333" : "#242424"}`,
         borderRadius: 7,
@@ -1381,7 +1381,10 @@ function MyClubSidebarItem({
             color: "#ffffff",
             margin: 0,
             lineHeight: 1.4,
-            wordBreak: "break-word",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
           }}
         >
           {club.name}
@@ -1392,19 +1395,27 @@ function MyClubSidebarItem({
             alignItems: "center",
             justifyContent: "space-between",
             gap: "8px",
-            marginTop: "4px",
+            marginTop: "8px",
           }}
         >
           <p
             className="text-xs text-[var(--text-2)]"
-            style={{ margin: 0, minWidth: 0 }}
+            style={{ margin: 0, minWidth: 0, color: roleDisplay.color }}
           >
-            {club.memberCount} members ·{" "}
-            <span style={{ color: roleDisplay.color }}>{roleDisplay.label}</span>
+            {roleDisplay.label}
           </p>
           <span
-            className="text-xs text-[var(--text-2)]"
-            style={{ flexShrink: 0 }}
+            style={{
+              flexShrink: 0,
+              fontSize: "10px",
+              fontWeight: 600,
+              color: "#ffffff",
+              background: hovered ? "#252525" : "#1a1a1a",
+              border: "1px solid #444444",
+              borderRadius: "4px",
+              padding: "2px 6px",
+              whiteSpace: "nowrap",
+            }}
           >
             Open workspace →
           </span>
@@ -1451,12 +1462,44 @@ function taskStatusColorStyle(status: string): Pick<
   };
 }
 
+function dashboardEventRsvpBadgeStyle(rsvpStatus?: string): CSSProperties {
+  const base: CSSProperties = {
+    fontSize: "11px",
+    fontWeight: 500,
+    borderRadius: "5px",
+    padding: "3px 8px",
+    flexShrink: 0,
+  };
+  if (rsvpStatus === "going") {
+    return {
+      ...base,
+      background: "#1a1200",
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+    };
+  }
+  if (rsvpStatus === "maybe") {
+    return {
+      ...base,
+      background: "#1f1a00",
+      border: "1px solid #2a2400",
+      color: "#9a7a00",
+    };
+  }
+  return {
+    ...base,
+    background: "#1a1a1a",
+    border: "1px solid #333333",
+    color: "#666666",
+  };
+}
+
 function dashboardTaskStatusBadgeStyle(status: string): CSSProperties {
   const base: CSSProperties = {
-    fontSize: "10px",
+    fontSize: "11px",
     fontWeight: 500,
-    borderRadius: "4px",
-    padding: "2px 6px",
+    borderRadius: "5px",
+    padding: "3px 8px",
     flexShrink: 0,
   };
   if (status === "in_progress") {
@@ -1575,6 +1618,58 @@ function formatTimeAgo(iso: string): string {
   if (diffMin >= 2) return `${diffMin} minutes ago`;
   if (diffMin === 1) return "1 minute ago";
   return "just now";
+}
+
+function AnnouncementTitlePreview({ title }: { title: string }) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+
+    const checkTruncation = () => {
+      setIsTruncated(el.scrollWidth > el.clientWidth);
+    };
+
+    checkTruncation();
+
+    const observer = new ResizeObserver(checkTruncation);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [title]);
+
+  return (
+    <div style={{ margin: "0 0 4px", minWidth: 0 }}>
+      <span
+        ref={textRef}
+        style={{
+          display: "block",
+          fontSize: "12px",
+          fontWeight: 500,
+          color: "#d0d0d0",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {title}
+      </span>
+      {isTruncated ? (
+        <span
+          style={{
+            display: "block",
+            marginTop: "3px",
+            fontSize: "11px",
+            fontWeight: 500,
+            color: "#E51937",
+          }}
+        >
+          read more
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 function MyClubsTabClubAvatar({
@@ -1941,7 +2036,11 @@ function OverviewTab({
             ) : (
               <div className="space-y-3">
                 {myTasks.map((task) => (
-                  <OverviewTaskCard key={task.id} task={task} />
+                  <OverviewTaskCard
+                    key={task.id}
+                    task={task}
+                    logoUrl={clubLogos[task.clubId]}
+                  />
                 ))}
               </div>
             )}
@@ -2088,28 +2187,15 @@ function OverviewTab({
                   >
                     <p
                       style={{
-                        fontSize: "10px",
+                        fontSize: "11px",
                         color: "#E51937",
                         fontWeight: 600,
-                        textTransform: "uppercase",
                         margin: "0 0 3px",
                       }}
                     >
                       {announcement.clubName}
                     </p>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: 500,
-                        color: "#d0d0d0",
-                        margin: "0 0 4px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {announcement.title}
-                    </p>
+                    <AnnouncementTitlePreview title={announcement.title} />
                     <p
                       style={{
                         fontSize: "11px",
@@ -2139,14 +2225,27 @@ function OverviewTab({
                   <Link
                     key={club.id}
                     to={`/clubs/${club.slug}`}
-                    className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-surface-alt"
+                    className="flex items-start gap-3 no-underline"
+                    style={{
+                      background: "#191919",
+                      border: "1px solid #222",
+                      borderRadius: 7,
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#333";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "#222";
+                    }}
                   >
                     <ClubBadge
                       abbreviation={club.abbreviation}
                       name={club.name}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white">
+                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">
                         {club.name}
                       </p>
                       <p className="text-xs text-muted">{club.category}</p>
@@ -2479,9 +2578,10 @@ function EventsTab({
 const TASK_TAB_LOGO_SIZE = 36;
 
 function taskTabStatusSortOrder(status: string): number {
-  if (status === "in_progress") return 0;
+  if (status === "todo") return 0;
+  if (status === "in_progress") return 1;
   if (status === "done") return 2;
-  return 1;
+  return 0;
 }
 
 function TaskTabClubLogo({
@@ -2980,7 +3080,7 @@ function StatCardContent({
       </span>
       <p
         style={{
-          fontSize: "10px",
+          fontSize: "12px",
           textTransform: "uppercase",
           letterSpacing: "0.1em",
           color: "#747676",
@@ -3285,32 +3385,27 @@ function EventCard({
             style={{
               ...eventCardTextEllipsis,
               fontSize: "12px",
-              color: "#555555",
+              color: "#999999",
             }}
           >
-            {dateLine}
+            {event.clubName}
           </p>
           <p
             style={{
               ...eventCardTextEllipsis,
               fontSize: "12px",
-              color: "#555555",
+              color: "#999999",
+              margin: 0,
             }}
           >
-            {event.clubName}
+            {dateLine}
           </p>
-          {rsvpLine ? (
-            <p
-              style={{
-                ...eventCardTextEllipsis,
-                fontSize: "12px",
-                color: "#555555",
-              }}
-            >
-              {rsvpLine}
-            </p>
-          ) : null}
         </div>
+        {rsvpLine ? (
+          <span style={dashboardEventRsvpBadgeStyle(rsvpStatus)}>
+            {rsvpLine}
+          </span>
+        ) : null}
       </div>
     </Link>
   );

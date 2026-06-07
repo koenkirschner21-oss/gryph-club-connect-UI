@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import NotificationsDropdown from "../ui/NotificationsDropdown";
@@ -37,6 +37,7 @@ export default function Navbar() {
   const { user, signOut } = useAuthContext();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const initials =
     user?.email?.slice(0, 2).toUpperCase() ??
@@ -69,6 +70,23 @@ export default function Navbar() {
       cancelled = true;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(e.target as Node)
+      ) {
+        setProfileOpen(false);
+      }
+    };
+
+    if (profileOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [profileOpen]);
 
   async function handleLogout() {
     try {
@@ -199,7 +217,7 @@ export default function Navbar() {
                 </Link>
               ) : null}
               <NotificationsDropdown />
-              <div className="relative">
+              <div ref={profileDropdownRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setProfileOpen((v) => !v)}
