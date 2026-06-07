@@ -1,6 +1,14 @@
-import { useState, useEffect, useRef, type FormEvent, type CSSProperties } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type FormEvent,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
-import { Users, ClipboardList, Vote, Camera } from "lucide-react";
+import { Users, ClipboardList, Vote, Camera, Globe } from "lucide-react";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
@@ -9,12 +17,84 @@ import { parseJoinQuestions } from "../../lib/clubJoinUtils";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import type { ClubJoinType, JoinQuestion, MemberRole } from "../../types";
-import Button from "../../components/ui/Button";
-import FormInput from "../../components/ui/FormInput";
-import Card from "../../components/ui/Card";
 import ImageUpload from "../../components/ui/ImageUpload";
 import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
+
+function SocialInstagramIcon({
+  size = 15,
+  color = "#555555",
+}: {
+  size?: number;
+  color?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2" y="2" width="20" height="20" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="1" fill={color} stroke="none" />
+    </svg>
+  );
+}
+
+function SocialLinkedinIcon({
+  size = 15,
+  color = "#555555",
+}: {
+  size?: number;
+  color?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2" y="2" width="20" height="20" rx="3" />
+      <path d="M7 10v7M7 7v.01M11 17v-4a2 2 0 0 1 4 0v4" />
+    </svg>
+  );
+}
+
+function SocialTwitterIcon({
+  size = 15,
+  color = "#555555",
+}: {
+  size?: number;
+  color?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M4 4l16 16M20 4L4 20" />
+    </svg>
+  );
+}
 
 function normalizeMemberRole(role: string): MemberRole {
   if (role === "executive" || role === "exec") return "executive";
@@ -28,25 +108,323 @@ function formatSettingsRoleLabel(role: MemberRole | string): string {
   return "Member";
 }
 
+const PAGE_BG = "#0f0f0f";
+const CARD_BG = "#141414";
+const CARD_BORDER = "#2a2a2a";
+const INPUT_BG = "#0f0f0f";
+const ACCENT_RED = "#E51937";
+const ACCENT_GOLD = "#FFC429";
+
+const sectionCardStyle: CSSProperties = {
+  background: CARD_BG,
+  borderTop: `1px solid ${CARD_BORDER}`,
+  borderRight: `1px solid ${CARD_BORDER}`,
+  borderBottom: `1px solid ${CARD_BORDER}`,
+  borderLeft: `1px solid ${CARD_BORDER}`,
+  borderRadius: "14px",
+  padding: "28px 32px",
+  marginBottom: "20px",
+};
+
+const dangerSectionCardStyle: CSSProperties = {
+  ...sectionCardStyle,
+  borderLeft: `3px solid ${ACCENT_RED}`,
+  padding: "24px 32px",
+};
+
+const fieldLabelStyle: CSSProperties = {
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "#888888",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  marginBottom: "6px",
+  display: "block",
+};
+
+const inputBaseStyle: CSSProperties = {
+  width: "100%",
+  background: INPUT_BG,
+  border: `1px solid ${CARD_BORDER}`,
+  borderRadius: "8px",
+  padding: "10px 14px",
+  fontSize: "14px",
+  color: "#ffffff",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
 const modalOverlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.6)",
+  background: "rgba(0, 0, 0, 0.85)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 50,
+  zIndex: 1000,
   padding: "16px",
 };
 
 const modalPanelStyle: CSSProperties = {
-  background: "#1a1a1a",
-  border: "1px solid #242424",
-  borderRadius: "12px",
-  padding: "24px",
-  maxWidth: "400px",
+  background: CARD_BG,
+  borderTop: `1px solid ${CARD_BORDER}`,
+  borderRight: `1px solid ${CARD_BORDER}`,
+  borderBottom: `1px solid ${CARD_BORDER}`,
+  borderLeft: `3px solid ${ACCENT_RED}`,
+  borderRadius: "16px",
+  padding: "32px",
+  maxWidth: "440px",
   width: "100%",
 };
+
+interface FormSnapshot {
+  name: string;
+  shortDescription: string;
+  longDescription: string;
+  category: string;
+  abbreviation: string;
+  brandColor: string;
+  requiresApproval: boolean;
+  logoUrl: string;
+  bannerUrl: string;
+  instagramUrl: string;
+  linkedinUrl: string;
+  twitterUrl: string;
+  websiteUrl: string;
+}
+
+function SettingsSection({
+  title,
+  subtitle,
+  children,
+  style,
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  style?: CSSProperties;
+}) {
+  return (
+    <section style={{ ...sectionCardStyle, ...style }}>
+      <h2
+        style={{
+          fontSize: "14px",
+          fontWeight: 700,
+          color: "#ffffff",
+          margin: "0 0 4px",
+        }}
+      >
+        {title}
+      </h2>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#555555",
+          margin: "0 0 20px",
+          paddingBottom: "16px",
+          borderBottom: "1px solid #1a1a1a",
+        }}
+      >
+        {subtitle}
+      </p>
+      {children}
+    </section>
+  );
+}
+
+function SettingsField({
+  id,
+  label,
+  required,
+  children,
+}: {
+  id?: string;
+  label: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <label htmlFor={id} style={fieldLabelStyle}>
+        {label}
+        {required ? (
+          <span style={{ color: ACCENT_RED, marginLeft: "2px" }}>*</span>
+        ) : null}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function SettingsTextInput({
+  id,
+  value,
+  onChange,
+  onDirty,
+  placeholder,
+  type = "text",
+  maxLength,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  onDirty?: () => void;
+  placeholder?: string;
+  type?: string;
+  maxLength?: number;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <input
+      id={id}
+      type={type}
+      value={value}
+      maxLength={maxLength}
+      placeholder={placeholder}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => {
+        onChange(e.target.value);
+        onDirty?.();
+      }}
+      style={{
+        ...inputBaseStyle,
+        borderColor: focused ? ACCENT_RED : CARD_BORDER,
+      }}
+    />
+  );
+}
+
+function SettingsTextarea({
+  id,
+  value,
+  onChange,
+  onDirty,
+  placeholder,
+  minHeight = 120,
+  maxLength,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  onDirty?: () => void;
+  placeholder?: string;
+  minHeight?: number;
+  maxLength?: number;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <textarea
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => {
+        onChange(e.target.value);
+        onDirty?.();
+      }}
+      style={{
+        ...inputBaseStyle,
+        minHeight: `${minHeight}px`,
+        resize: "vertical",
+        borderColor: focused ? ACCENT_RED : CARD_BORDER,
+      }}
+    />
+  );
+}
+
+function SettingsSelect({
+  id,
+  value,
+  onChange,
+  onDirty,
+  children,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  onDirty?: () => void;
+  children: ReactNode;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <select
+      id={id}
+      value={value}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => {
+        onChange(e.target.value);
+        onDirty?.();
+      }}
+      style={{
+        ...inputBaseStyle,
+        appearance: "none",
+        borderColor: focused ? ACCENT_RED : CARD_BORDER,
+      }}
+    >
+      {children}
+    </select>
+  );
+}
+
+function SocialLinkField({
+  id,
+  label,
+  icon,
+  value,
+  onChange,
+  onDirty,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  value: string;
+  onChange: (value: string) => void;
+  onDirty?: () => void;
+  placeholder: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <SettingsField id={id} label={label}>
+      <div style={{ position: "relative" }}>
+        <span
+          style={{
+            position: "absolute",
+            left: "12px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            pointerEvents: "none",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          {icon}
+        </span>
+        <input
+          id={id}
+          type="url"
+          value={value}
+          placeholder={placeholder}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => {
+            onChange(e.target.value);
+            onDirty?.();
+          }}
+          style={{
+            ...inputBaseStyle,
+            paddingLeft: "38px",
+            borderColor: focused ? ACCENT_RED : CARD_BORDER,
+          }}
+        />
+      </div>
+    </SettingsField>
+  );
+}
 
 const JOIN_TYPE_OPTIONS: {
   value: ClubJoinType;
@@ -63,7 +441,7 @@ const JOIN_TYPE_OPTIONS: {
   {
     value: "application",
     label: "Application",
-    description: "Members must apply and be approved by the president",
+    description: "Members must apply and be approved by an executive",
     icon: ClipboardList,
   },
   {
@@ -248,6 +626,12 @@ export default function ClubSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [regeneratingCode, setRegeneratingCode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showLogoUrl, setShowLogoUrl] = useState(false);
+  const [showBannerUrl, setShowBannerUrl] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState<FormSnapshot | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [transferTargetId, setTransferTargetId] = useState("");
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -270,27 +654,58 @@ export default function ClubSettingsPage() {
   const [savingJoinQuestions, setSavingJoinQuestions] = useState(false);
   const [updatingJoinType, setUpdatingJoinType] = useState(false);
 
-  const socialInputStyle: CSSProperties = {
-    background: "#111111",
-    border: "1px solid #2a2a2a",
-    borderRadius: "6px",
-    padding: "10px 14px",
-    color: "#ffffff",
-    fontSize: "14px",
-    width: "100%",
-    boxSizing: "border-box",
-  };
-
-  const socialLabelStyle: CSSProperties = {
-    fontSize: "12px",
-    color: "#888888",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    display: "block",
-    marginBottom: "6px",
-  };
-
   const isOwner = userRole === "owner";
+
+  const buildSnapshot = useCallback(
+    (): FormSnapshot => ({
+      name: club?.name ?? "",
+      shortDescription: club?.shortDescription ?? "",
+      longDescription: club?.longDescription ?? "",
+      category: club?.category ?? "",
+      abbreviation: club?.abbreviation ?? "",
+      brandColor: club?.brandColor ?? "#C20430",
+      requiresApproval: club?.requiresApproval ?? false,
+      logoUrl: club?.logoUrl ?? "",
+      bannerUrl: club?.bannerUrl ?? "",
+      instagramUrl: "",
+      linkedinUrl: "",
+      twitterUrl: "",
+      websiteUrl: "",
+    }),
+    [club],
+  );
+
+  const markDirty = useCallback(() => {
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const applySnapshot = useCallback((snapshot: FormSnapshot) => {
+    setName(snapshot.name);
+    setShortDescription(snapshot.shortDescription);
+    setLongDescription(snapshot.longDescription);
+    setCategory(snapshot.category);
+    setAbbreviation(snapshot.abbreviation);
+    setBrandColor(snapshot.brandColor);
+    setRequiresApproval(snapshot.requiresApproval);
+    setLogoUrl(snapshot.logoUrl);
+    setBannerUrl(snapshot.bannerUrl);
+    setInstagramUrl(snapshot.instagramUrl);
+    setLinkedinUrl(snapshot.linkedinUrl);
+    setTwitterUrl(snapshot.twitterUrl);
+    setWebsiteUrl(snapshot.websiteUrl);
+  }, []);
+
+  const handleDiscardChanges = useCallback(() => {
+    if (savedSnapshot) {
+      applySnapshot(savedSnapshot);
+    }
+    setHasUnsavedChanges(false);
+  }, [applySnapshot, savedSnapshot]);
+
+  useEffect(() => {
+    if (!club) return;
+    setSavedSnapshot(buildSnapshot());
+  }, [club?.id, buildSnapshot]);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,16 +752,31 @@ export default function ClubSettingsPage() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled || error || !data) return;
-        setInstagramUrl((data.instagram_url as string) ?? "");
-        setLinkedinUrl((data.linkedin_url as string) ?? "");
-        setTwitterUrl((data.twitter_url as string) ?? "");
-        setWebsiteUrl((data.website_url as string) ?? "");
+        const loadedInstagram = (data.instagram_url as string) ?? "";
+        const loadedLinkedin = (data.linkedin_url as string) ?? "";
+        const loadedTwitter = (data.twitter_url as string) ?? "";
+        const loadedWebsite = (data.website_url as string) ?? "";
+        setInstagramUrl(loadedInstagram);
+        setLinkedinUrl(loadedLinkedin);
+        setTwitterUrl(loadedTwitter);
+        setWebsiteUrl(loadedWebsite);
         setJoinType(
           data.join_type === "application" || data.join_type === "vote"
             ? data.join_type
             : "open",
         );
         setJoinQuestions(parseJoinQuestions(data.join_questions));
+        setSavedSnapshot((prev) =>
+          prev
+            ? {
+                ...prev,
+                instagramUrl: loadedInstagram,
+                linkedinUrl: loadedLinkedin,
+                twitterUrl: loadedTwitter,
+                websiteUrl: loadedWebsite,
+              }
+            : prev,
+        );
       });
 
     return () => {
@@ -363,6 +793,7 @@ export default function ClubSettingsPage() {
     const url = await uploadImage("club-logos", path, file);
     if (url) {
       setLogoUrl(`${url}?t=${Date.now()}`);
+      markDirty();
     } else {
       setError("Logo upload failed.");
     }
@@ -378,6 +809,7 @@ export default function ClubSettingsPage() {
     const url = await uploadImage("club-banners", path, file);
     if (url) {
       setBannerUrl(`${url}?t=${Date.now()}`);
+      markDirty();
     } else {
       setError("Banner upload failed.");
     }
@@ -440,6 +872,22 @@ export default function ClubSettingsPage() {
 
     if (ok) {
       setSuccess(true);
+      setHasUnsavedChanges(false);
+      setSavedSnapshot({
+        name: name.trim(),
+        shortDescription: shortDescription.trim(),
+        longDescription: longDescription.trim(),
+        category: category.trim(),
+        abbreviation: abbreviation.trim(),
+        brandColor: brandColor.trim(),
+        requiresApproval,
+        logoUrl: logoUrl.trim(),
+        bannerUrl: bannerUrl.trim(),
+        instagramUrl: instagramUrl.trim(),
+        linkedinUrl: linkedinUrl.trim(),
+        twitterUrl: twitterUrl.trim(),
+        websiteUrl: websiteUrl.trim(),
+      });
     } else {
       setError("Failed to save changes. Please try again.");
     }
@@ -468,6 +916,21 @@ export default function ClubSettingsPage() {
       () => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+      },
+      () => {
+        setError("Failed to copy to clipboard.");
+      },
+    );
+  }
+
+  function handleCopyLink() {
+    const currentCode = getClubById(clubId ?? "")?.joinCode;
+    if (!currentCode) return;
+    const link = `${window.location.origin}/join/${currentCode}`;
+    navigator.clipboard.writeText(link).then(
+      () => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
       },
       () => {
         setError("Failed to copy to clipboard.");
@@ -740,393 +1203,471 @@ export default function ClubSettingsPage() {
     );
   }
 
+  const categoryOptions = [
+    "Academic",
+    "Arts",
+    "Athletics",
+    "Cultural",
+    "Engineering",
+    "Environmental",
+    "Health",
+    "Media",
+    "Political",
+    "Recreation",
+    "Social",
+    "Technology",
+    "Volunteer",
+  ];
+
   return (
-    <div style={{ padding: isMobile ? "16px" : "24px" }}>
-      <h1 className="mb-1 text-xl font-bold text-white">Club Settings</h1>
-      <p className="mb-6 text-sm text-muted">
-        Manage your club&apos;s profile and details.
+    <div
+      style={{
+        background: PAGE_BG,
+        padding: isMobile ? "16px" : "24px",
+        paddingBottom: hasUnsavedChanges ? "88px" : isMobile ? "16px" : "24px",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "28px",
+          fontWeight: 800,
+          color: "#ffffff",
+          margin: "0 0 4px",
+        }}
+      >
+        Club Settings
+      </h1>
+      <p
+        style={{
+          fontSize: "14px",
+          color: "#555555",
+          marginTop: "4px",
+          marginBottom: "24px",
+        }}
+      >
+        Manage your club profile, branding, membership, and permissions.
       </p>
 
-      {error && (
+      {error ? (
         <div
           role="alert"
-          className="mb-6 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
+          style={{
+            marginBottom: "16px",
+            borderRadius: "8px",
+            border: `1px solid ${ACCENT_RED}`,
+            backgroundColor: "rgba(229, 25, 55, 0.1)",
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: ACCENT_RED,
+          }}
         >
           {error}
         </div>
-      )}
+      ) : null}
 
-      {success && (
+      {success ? (
         <div
           role="status"
-          className="mb-6 rounded-lg bg-green-500/10 px-4 py-3 text-sm text-green-400"
+          style={{
+            marginBottom: "16px",
+            borderRadius: "8px",
+            border: `1px solid ${ACCENT_GOLD}`,
+            backgroundColor: "rgba(255, 196, 41, 0.1)",
+            padding: "12px 16px",
+            fontSize: "13px",
+            color: ACCENT_GOLD,
+          }}
         >
           Changes saved successfully.
         </div>
-      )}
+      ) : null}
 
-      <Card className="p-6">
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-          <FormInput
-            id="club-name"
-            label="Club Name"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Gryphon Robotics Club"
-          />
+      <form
+        ref={formRef}
+        id="club-settings-form"
+        onSubmit={handleSubmit}
+        noValidate
+      >
+        <SettingsSection
+          title="Club Profile"
+          subtitle="Basic information members see on your club page."
+        >
+          <SettingsField id="club-name" label="Club Name" required>
+            <SettingsTextInput
+              id="club-name"
+              value={name}
+              onChange={setName}
+              onDirty={markDirty}
+              placeholder="e.g. Gryphon Robotics Club"
+            />
+          </SettingsField>
 
-          <div>
-            <label
-              htmlFor="short-description"
-              className="mb-1.5 block text-sm font-medium text-white"
-            >
-              Short Description
-            </label>
-            <input
+          <SettingsField id="short-description" label="Short Description">
+            <SettingsTextInput
               id="short-description"
               value={shortDescription}
-              onChange={(e) => setShortDescription(e.target.value)}
+              onChange={setShortDescription}
+              onDirty={markDirty}
               placeholder="A brief tagline for your club"
               maxLength={200}
-              className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
             />
-          </div>
+          </SettingsField>
 
-          <div>
-            <label
-              htmlFor="long-description"
-              className="mb-1.5 block text-sm font-medium text-white"
-            >
-              Long Description
-            </label>
-            <textarea
+          <SettingsField id="long-description" label="Long Description">
+            <SettingsTextarea
               id="long-description"
               value={longDescription}
-              onChange={(e) => setLongDescription(e.target.value)}
-              rows={5}
+              onChange={setLongDescription}
+              onDirty={markDirty}
               placeholder="A detailed description of your club, its mission, and activities…"
-              className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
+              maxLength={1000}
             />
-          </div>
-
-          <div>
-            <label
-              htmlFor="manage-category"
-              className="mb-1.5 block text-sm font-medium text-white"
+            <p
+              style={{
+                fontSize: "11px",
+                color: "#444444",
+                textAlign: "right",
+                marginTop: "4px",
+                marginBottom: 0,
+              }}
             >
-              Category
-            </label>
-            <select
+              {longDescription.length} / 1000
+            </p>
+          </SettingsField>
+
+          <SettingsField id="manage-category" label="Category">
+            <SettingsSelect
               id="manage-category"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
+              onChange={setCategory}
+              onDirty={markDirty}
             >
               <option value="">Select a category</option>
-              <option value="Academic">Academic</option>
-              <option value="Arts">Arts</option>
-              <option value="Athletics">Athletics</option>
-              <option value="Cultural">Cultural</option>
-              <option value="Engineering">Engineering</option>
-              <option value="Environmental">Environmental</option>
-              <option value="Health">Health</option>
-              <option value="Media">Media</option>
-              <option value="Political">Political</option>
-              <option value="Recreation">Recreation</option>
-              <option value="Social">Social</option>
-              <option value="Technology">Technology</option>
-              <option value="Volunteer">Volunteer</option>
-            </select>
-          </div>
+              {categoryOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </SettingsSelect>
+          </SettingsField>
 
           {isOwner ? (
-            <>
-              <FormInput
+            <SettingsField id="abbreviation" label="Abbreviation">
+              <SettingsTextInput
                 id="abbreviation"
-                label="Abbreviation"
                 value={abbreviation}
-                onChange={(e) => setAbbreviation(e.target.value)}
+                onChange={setAbbreviation}
+                onDirty={markDirty}
                 placeholder="e.g. GRC"
                 maxLength={10}
               />
+            </SettingsField>
+          ) : null}
+        </SettingsSection>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-white">
-                  Club Logo
-                </label>
-                <div key={logoUploadKey} className="flex items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={() => logoInputRef.current?.click()}
-                    onMouseEnter={() => setLogoPreviewHovered(true)}
-                    onMouseLeave={() => setLogoPreviewHovered(false)}
-                    aria-label="Upload Logo"
-                    disabled={uploadingLogo}
+        {isOwner ? (
+          <SettingsSection
+            title="Branding"
+            subtitle="Logo, banner, and accent color for your club."
+          >
+            <SettingsField label="Club Logo">
+              <div
+                key={logoUploadKey}
+                style={{ display: "flex", alignItems: "center", gap: "16px" }}
+              >
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  onMouseEnter={() => setLogoPreviewHovered(true)}
+                  onMouseLeave={() => setLogoPreviewHovered(false)}
+                  aria-label="Upload Logo"
+                  disabled={uploadingLogo}
+                  style={{
+                    position: "relative",
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "50%",
+                    border: `1px solid ${CARD_BORDER}`,
+                    padding: 0,
+                    cursor: uploadingLogo ? "not-allowed" : "pointer",
+                    overflow: "hidden",
+                    background: INPUT_BG,
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt="Club logo preview"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <Camera size={18} color="#555555" aria-hidden />
+                  )}
+                  <div
                     style={{
-                      position: "relative",
-                      width: "80px",
-                      height: "80px",
+                      position: "absolute",
+                      inset: 0,
                       borderRadius: "50%",
-                      border: "1px solid #242424",
-                      padding: 0,
-                      cursor: uploadingLogo ? "not-allowed" : "pointer",
-                      overflow: "hidden",
-                      background: "#1a1a1a",
-                      flexShrink: 0,
+                      background: "rgba(0,0,0,0.5)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      opacity: logoPreviewHovered ? 1 : 0,
+                      transition: "opacity 0.15s ease",
+                      pointerEvents: "none",
                     }}
                   >
-                    {logoUrl ? (
-                      <img
-                        src={logoUrl}
-                        alt="Club logo preview"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <svg
-                        className="h-8 w-8 text-muted"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                        style={{ color: "#555555" }}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"
-                        />
-                      </svg>
-                    )}
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        borderRadius: "50%",
-                        background: "rgba(0,0,0,0.5)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        opacity: logoPreviewHovered ? 1 : 0,
-                        transition: "opacity 0.15s ease",
-                        pointerEvents: "none",
-                      }}
-                    >
-                      <Camera size={20} color="#ffffff" aria-hidden />
-                    </div>
-                  </button>
-                  <div>
-                    <input
-                      ref={logoInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      className="hidden"
-                      aria-label="Upload Logo"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = "";
-                        if (file) setLogoCropFile(file);
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={uploadingLogo}
-                      onClick={() => logoInputRef.current?.click()}
-                    >
-                      {uploadingLogo ? "Uploading…" : "Upload Logo"}
-                    </Button>
+                    <Camera size={16} color="#ffffff" aria-hidden />
                   </div>
-                </div>
-                <div className="mt-2">
-                  <FormInput
-                    id="logo-url"
-                    label="Or paste logo URL"
-                    type="url"
-                    placeholder="https://example.com/logo.png"
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-white">
-                  Club Banner
-                </label>
-                <ImageUpload
-                  currentUrl={bannerUrl}
-                  onFileSelected={handleBannerUpload}
-                  uploading={uploadingBanner}
-                  label="Upload Banner"
-                  shape="rect"
-                />
-                <div className="mt-2">
-                  <FormInput
-                    id="banner-url"
-                    label="Or paste banner URL"
-                    type="url"
-                    placeholder="https://example.com/banner.jpg"
-                    value={bannerUrl}
-                    onChange={(e) => setBannerUrl(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="brand-color"
-                  className="mb-1.5 block text-sm font-medium text-white"
-                >
-                  Brand Color
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="brand-color"
-                    type="color"
-                    value={brandColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-10 w-14 cursor-pointer rounded border border-border bg-card"
-                  />
-                  <span className="text-sm text-muted">{brandColor}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
-                <div>
-                  <label
-                    htmlFor="requires-approval"
-                    className="text-sm font-medium text-white"
-                  >
-                    Require Join Approval
-                  </label>
-                  <p className="text-xs text-muted">
-                    When enabled, new members must be approved by an admin or exec
-                  </p>
-                </div>
-                <button
-                  id="requires-approval"
-                  type="button"
-                  role="switch"
-                  aria-checked={requiresApproval}
-                  onClick={() => setRequiresApproval((v) => !v)}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/25 ${
-                    requiresApproval ? "bg-primary" : "bg-surface-alt"
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      requiresApproval ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
                 </button>
+                <div>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    aria-label="Upload Logo"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) setLogoCropFile(file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={uploadingLogo}
+                    onClick={() => logoInputRef.current?.click()}
+                    style={{
+                      background: ACCENT_RED,
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "9px 18px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: uploadingLogo ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {uploadingLogo ? "Uploading…" : "Upload Logo"}
+                  </button>
+                </div>
               </div>
-            </>
-          ) : null}
-
-          {isOwner ? (
-            <div>
-              <h2
+              <button
+                type="button"
+                onClick={() => setShowLogoUrl((v) => !v)}
                 style={{
-                  fontWeight: 600,
-                  fontSize: "15px",
-                  color: "#ffffff",
-                  marginBottom: "16px",
+                  background: "none",
+                  border: "none",
+                  color: "#444444",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  marginTop: "10px",
+                  padding: 0,
                 }}
               >
-                Social Links
-              </h2>
-              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                <div>
-                  <label style={socialLabelStyle} htmlFor="instagram-url">
-                    Instagram URL
-                  </label>
-                  <input
-                    id="instagram-url"
+                {showLogoUrl ? "▲ Hide URL field" : "▼ Paste URL instead"}
+              </button>
+              {showLogoUrl ? (
+                <div style={{ marginTop: "8px" }}>
+                  <SettingsTextInput
+                    id="logo-url"
                     type="url"
-                    value={instagramUrl}
-                    onChange={(e) => setInstagramUrl(e.target.value)}
-                    placeholder="https://instagram.com/yourclub"
-                    style={socialInputStyle}
+                    value={logoUrl}
+                    onChange={setLogoUrl}
+                    onDirty={markDirty}
+                    placeholder="https://example.com/logo.png"
                   />
                 </div>
-                <div>
-                  <label style={socialLabelStyle} htmlFor="linkedin-url">
-                    LinkedIn URL
-                  </label>
-                  <input
-                    id="linkedin-url"
+              ) : null}
+            </SettingsField>
+
+            <SettingsField label="Club Banner">
+              {bannerUrl ? (
+                <img
+                  src={bannerUrl}
+                  alt="Club banner preview"
+                  style={{
+                    width: "100%",
+                    maxHeight: "120px",
+                    objectFit: "cover",
+                    borderRadius: "8px",
+                    marginBottom: "12px",
+                    display: "block",
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : null}
+              <ImageUpload
+                currentUrl={bannerUrl}
+                onFileSelected={handleBannerUpload}
+                uploading={uploadingBanner}
+                label="Upload Banner"
+                shape="rect"
+              />
+              <button
+                type="button"
+                onClick={() => setShowBannerUrl((v) => !v)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#444444",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  marginTop: "10px",
+                  padding: 0,
+                }}
+              >
+                {showBannerUrl ? "▲ Hide URL field" : "▼ Paste URL instead"}
+              </button>
+              {showBannerUrl ? (
+                <div style={{ marginTop: "8px" }}>
+                  <SettingsTextInput
+                    id="banner-url"
                     type="url"
-                    value={linkedinUrl}
-                    onChange={(e) => setLinkedinUrl(e.target.value)}
-                    placeholder="https://linkedin.com/company/yourclub"
-                    style={socialInputStyle}
+                    value={bannerUrl}
+                    onChange={setBannerUrl}
+                    onDirty={markDirty}
+                    placeholder="https://example.com/banner.jpg"
                   />
                 </div>
-                <div>
-                  <label style={socialLabelStyle} htmlFor="twitter-url">
-                    Twitter/X URL
-                  </label>
+              ) : null}
+            </SettingsField>
+
+            <SettingsField id="brand-color" label="Brand Color">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <label
+                  htmlFor="brand-color-picker"
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "6px",
+                    border: "1px solid #333333",
+                    background: brandColor,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    display: "block",
+                  }}
+                >
                   <input
-                    id="twitter-url"
-                    type="url"
-                    value={twitterUrl}
-                    onChange={(e) => setTwitterUrl(e.target.value)}
-                    placeholder="https://twitter.com/yourclub"
-                    style={socialInputStyle}
+                    id="brand-color-picker"
+                    type="color"
+                    value={brandColor}
+                    onChange={(e) => {
+                      setBrandColor(e.target.value);
+                      markDirty();
+                    }}
+                    style={{
+                      opacity: 0,
+                      width: 0,
+                      height: 0,
+                      position: "absolute",
+                      pointerEvents: "none",
+                    }}
                   />
-                </div>
-                <div>
-                  <label style={socialLabelStyle} htmlFor="website-url">
-                    Website URL
-                  </label>
-                  <input
-                    id="website-url"
-                    type="url"
-                    value={websiteUrl}
-                    onChange={(e) => setWebsiteUrl(e.target.value)}
-                    placeholder="https://yourclub.com"
-                    style={socialInputStyle}
+                </label>
+                <div style={{ width: "100px" }}>
+                  <SettingsTextInput
+                    id="brand-color"
+                    value={brandColor}
+                    onChange={setBrandColor}
+                    onDirty={markDirty}
+                    placeholder="#E51937"
                   />
                 </div>
               </div>
-            </div>
-          ) : null}
+              <p style={{ fontSize: "12px", color: "#555555", marginTop: "4px", marginBottom: 0 }}>
+                Used for club accents across the app.
+              </p>
+            </SettingsField>
+          </SettingsSection>
+        ) : null}
 
-          <div className="flex gap-4 pt-2">
-            <Button type="submit" disabled={saving}>
+        {isOwner ? (
+          <SettingsSection
+            title="Social Links"
+            subtitle="Connect your club's social profiles and website."
+          >
+            <SocialLinkField
+              id="instagram-url"
+              label="Instagram"
+              icon={<SocialInstagramIcon />}
+              value={instagramUrl}
+              onChange={setInstagramUrl}
+              onDirty={markDirty}
+              placeholder="https://instagram.com/yourclub"
+            />
+            <SocialLinkField
+              id="linkedin-url"
+              label="LinkedIn"
+              icon={<SocialLinkedinIcon />}
+              value={linkedinUrl}
+              onChange={setLinkedinUrl}
+              onDirty={markDirty}
+              placeholder="https://linkedin.com/company/yourclub"
+            />
+            <SocialLinkField
+              id="twitter-url"
+              label="Twitter / X"
+              icon={<SocialTwitterIcon />}
+              value={twitterUrl}
+              onChange={setTwitterUrl}
+              onDirty={markDirty}
+              placeholder="https://twitter.com/yourclub"
+            />
+            <SocialLinkField
+              id="website-url"
+              label="Website"
+              icon={<Globe size={15} color="#555555" aria-hidden />}
+              value={websiteUrl}
+              onChange={setWebsiteUrl}
+              onDirty={markDirty}
+              placeholder="https://yourclub.com"
+            />
+          </SettingsSection>
+        ) : null}
+
+        {!hasUnsavedChanges ? (
+          <div style={{ marginBottom: "20px" }}>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                background: ACCENT_RED,
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "9px 20px",
+                fontSize: "14px",
+                fontWeight: 700,
+                cursor: saving ? "wait" : "pointer",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
               {saving ? "Saving…" : "Save Changes"}
-            </Button>
+            </button>
           </div>
-        </form>
-      </Card>
+        ) : null}
+      </form>
 
       {isOwner ? (
         <>
-          <Card className="mt-6 p-6">
-            <h2
-              style={{
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#ffffff",
-                marginBottom: "12px",
-              }}
-            >
-              Membership Type
-            </h2>
+          <SettingsSection
+            title="Membership"
+            subtitle="Control how new members join your club."
+          >
             <div
               style={{
                 display: "flex",
@@ -1145,10 +1686,13 @@ export default function ClubSettingsPage() {
                     disabled={updatingJoinType}
                     onClick={() => void handleJoinTypeChange(option.value)}
                     style={{
-                      background: selected ? "#1f0a0a" : "#1a1a1a",
-                      border: selected
-                        ? "1px solid #E51937"
-                        : "1px solid #242424",
+                      background: selected ? "#1a0505" : INPUT_BG,
+                      borderTop: `1px solid ${CARD_BORDER}`,
+                      borderRight: `1px solid ${CARD_BORDER}`,
+                      borderBottom: `1px solid ${CARD_BORDER}`,
+                      borderLeft: selected
+                        ? `3px solid ${ACCENT_RED}`
+                        : `1px solid ${CARD_BORDER}`,
                       borderRadius: "10px",
                       padding: "16px",
                       cursor: updatingJoinType ? "wait" : "pointer",
@@ -1158,7 +1702,7 @@ export default function ClubSettingsPage() {
                   >
                     <Icon
                       size={20}
-                      color={selected ? "#E51937" : "#555555"}
+                      color={selected ? ACCENT_RED : "#555555"}
                       aria-hidden
                     />
                     <p
@@ -1209,7 +1753,7 @@ export default function ClubSettingsPage() {
                   disabled={savingJoinQuestions}
                   style={{
                     marginTop: "16px",
-                    background: "#E51937",
+                    background: ACCENT_RED,
                     color: "#ffffff",
                     border: "none",
                     borderRadius: "6px",
@@ -1224,65 +1768,197 @@ export default function ClubSettingsPage() {
                 </button>
               </div>
             ) : null}
-          </Card>
 
-          <Card className="mt-6 p-6">
-            <h2 className="mb-1 text-lg font-bold text-white">Join Code</h2>
-            <p className="mb-4 text-sm text-muted">
-              Share this code to let people join your club.
-            </p>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingTop: "16px",
+                marginTop: "16px",
+                borderTop: "1px solid #1a1a1a",
+              }}
+            >
+              <div>
+                <p
+                  style={{
+                    fontSize: "14px",
+                    color: "#ffffff",
+                    fontWeight: 500,
+                    margin: 0,
+                  }}
+                >
+                  Require Join Approval
+                </p>
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#555555",
+                    marginTop: "2px",
+                    marginBottom: 0,
+                  }}
+                >
+                  New members must be approved by an admin or exec
+                </p>
+              </div>
+              <button
+                id="requires-approval"
+                type="button"
+                role="switch"
+                aria-checked={requiresApproval}
+                onClick={() => {
+                  setRequiresApproval((v) => !v);
+                  markDirty();
+                }}
+                style={{
+                  position: "relative",
+                  display: "inline-flex",
+                  height: "24px",
+                  width: "44px",
+                  flexShrink: 0,
+                  cursor: "pointer",
+                  borderRadius: "9999px",
+                  border: "2px solid transparent",
+                  background: requiresApproval ? ACCENT_RED : "#333333",
+                  transition: "background 0.2s ease",
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    pointerEvents: "none",
+                    display: "inline-block",
+                    height: "20px",
+                    width: "20px",
+                    borderRadius: "50%",
+                    background: "#ffffff",
+                    transform: requiresApproval
+                      ? "translateX(20px)"
+                      : "translateX(0)",
+                    transition: "transform 0.2s ease",
+                  }}
+                />
+              </button>
+            </div>
+          </SettingsSection>
 
+          <SettingsSection
+            title="Join Code"
+            subtitle="Share this code to let people join your club."
+          >
             {(() => {
               const currentCode = getClubById(clubId ?? "")?.joinCode;
               return currentCode ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="rounded-lg bg-surface-alt px-4 py-2 font-mono text-lg font-bold tracking-widest text-white">
+                <>
+                  <p
+                    style={{
+                      fontSize: "22px",
+                      fontWeight: 800,
+                      color: ACCENT_GOLD,
+                      letterSpacing: "0.12em",
+                      margin: 0,
+                      fontFamily: "monospace",
+                    }}
+                  >
                     {currentCode}
-                  </div>
-                  <div className="flex gap-2">
+                  </p>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "10px",
+                      marginTop: "16px",
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={handleCopyCode}
-                      className="cursor-pointer rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-alt hover:text-white"
+                      style={{
+                        background: "#1a1200",
+                        border: `1px solid ${ACCENT_GOLD}`,
+                        color: ACCENT_GOLD,
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
                     >
-                      {copied ? "✓ Copied" : "Copy"}
+                      {copied ? "✓ Copied" : "Copy Code"}
                     </button>
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      style={{
+                        background: "transparent",
+                        border: `1px solid ${CARD_BORDER}`,
+                        color: "#777777",
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {copiedLink ? "✓ Link Copied" : "Copy Link"}
+                    </button>
+                    <button
+                      type="button"
                       disabled={regeneratingCode}
-                      onClick={handleRegenerateCode}
+                      onClick={() => void handleRegenerateCode()}
+                      style={{
+                        background: "transparent",
+                        border: `1px solid ${CARD_BORDER}`,
+                        color: "#cccccc",
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        cursor: regeneratingCode ? "wait" : "pointer",
+                        opacity: regeneratingCode ? 0.7 : 1,
+                      }}
                     >
                       {regeneratingCode ? "Regenerating…" : "Regenerate"}
-                    </Button>
+                    </button>
                   </div>
-                </div>
+                </>
               ) : (
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted">No join code generated yet.</p>
-                  <Button
-                    size="sm"
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                    No join code generated yet.
+                  </p>
+                  <button
+                    type="button"
                     disabled={regeneratingCode}
-                    onClick={handleRegenerateCode}
+                    onClick={() => void handleRegenerateCode()}
+                    style={{
+                      background: ACCENT_RED,
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 18px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: regeneratingCode ? "wait" : "pointer",
+                    }}
                   >
                     {regeneratingCode ? "Generating…" : "Generate Code"}
-                  </Button>
+                  </button>
                 </div>
               );
             })()}
-          </Card>
+          </SettingsSection>
 
-          <section className="mt-6">
-            <h2
-              style={{
-                fontWeight: 600,
-                fontSize: "15px",
-                color: "#ffffff",
-                margin: "0 0 8px",
-              }}
-            >
-              Transfer Ownership
-            </h2>
+          <SettingsSection
+            title="Ownership"
+            subtitle="Transfer your president role to another member."
+          >
             <p
               style={{
                 fontSize: "13px",
@@ -1290,14 +1966,20 @@ export default function ClubSettingsPage() {
                 margin: "0 0 16px",
               }}
             >
-              Transfer your president role to another member. You will become an
-              Executive after transfer.
+              You will become an Executive after transfer.
             </p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <select
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                gap: "12px",
+                alignItems: isMobile ? "stretch" : "center",
+              }}
+            >
+              <SettingsSelect
+                id="transfer-target"
                 value={transferTargetId}
-                onChange={(e) => setTransferTargetId(e.target.value)}
-                className="flex-1 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
+                onChange={setTransferTargetId}
               >
                 <option value="">Select a member…</option>
                 {transferCandidates.map((m) => (
@@ -1306,89 +1988,135 @@ export default function ClubSettingsPage() {
                     {formatSettingsRoleLabel(m.role)}
                   </option>
                 ))}
-              </select>
+              </SettingsSelect>
               <button
                 type="button"
                 disabled={!transferTargetId}
                 onClick={() => setShowTransferModal(true)}
                 style={{
                   background: "transparent",
-                  border: "1px solid #FFC429",
-                  color: "#FFC429",
-                  borderRadius: "6px",
+                  border: `1px solid ${ACCENT_GOLD}`,
+                  color: ACCENT_GOLD,
+                  borderRadius: "8px",
                   padding: "10px 24px",
                   fontSize: "14px",
                   fontWeight: 500,
                   cursor: transferTargetId ? "pointer" : "not-allowed",
                   opacity: transferTargetId ? 1 : 0.5,
+                  flexShrink: 0,
                 }}
               >
                 Transfer
               </button>
             </div>
-          </section>
+          </SettingsSection>
 
-          <section className="mt-8">
-            <h2
+          <section style={dangerSectionCardStyle}>
+            <p
               style={{
-                fontWeight: 600,
-                fontSize: "15px",
-                color: "#E51937",
-                margin: "0 0 12px",
+                fontSize: "12px",
+                fontWeight: 700,
+                color: ACCENT_RED,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                margin: "0 0 8px",
               }}
             >
               Danger Zone
-            </h2>
-            <div
+            </p>
+            <h3
               style={{
-                background: "#1a0a0a",
-                border: "1px solid #3a1a1a",
-                borderRadius: "8px",
-                padding: "20px",
+                fontWeight: 600,
+                fontSize: "15px",
+                color: "#ffffff",
+                margin: "0 0 8px",
               }}
             >
-              <h3
-                style={{
-                  fontWeight: 600,
-                  fontSize: "15px",
-                  color: "#ffffff",
-                  margin: "0 0 8px",
-                }}
-              >
-                Delete Club
-              </h3>
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: "#555555",
-                  margin: "0 0 16px",
-                }}
-              >
-                Permanently delete this club and all its data. This cannot be
-                undone.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteConfirmName("");
-                  setShowDeleteModal(true);
-                }}
-                style={{
-                  background: "transparent",
-                  border: "1px solid #E51937",
-                  color: "#E51937",
-                  borderRadius: "6px",
-                  padding: "10px 24px",
-                  fontSize: "14px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                Delete Club
-              </button>
-            </div>
+              Delete Club
+            </h3>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#555555",
+                margin: "0 0 16px",
+              }}
+            >
+              Permanently delete this club and all its data. This cannot be undone.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteConfirmName("");
+                setShowDeleteModal(true);
+              }}
+              style={{
+                background: "transparent",
+                border: `1px solid ${ACCENT_RED}`,
+                color: ACCENT_RED,
+                borderRadius: "8px",
+                padding: "10px 24px",
+                fontSize: "14px",
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Delete Club
+            </button>
           </section>
         </>
+      ) : null}
+
+      {hasUnsavedChanges ? (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            background: PAGE_BG,
+            borderTop: `1px solid ${CARD_BORDER}`,
+            padding: "14px 32px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: "12px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleDiscardChanges}
+            style={{
+              background: "transparent",
+              border: "1px solid #333333",
+              color: "#777777",
+              borderRadius: "8px",
+              padding: "9px 20px",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="submit"
+            form="club-settings-form"
+            disabled={saving}
+            style={{
+              background: ACCENT_RED,
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "9px 20px",
+              fontSize: "14px",
+              fontWeight: 700,
+              cursor: saving ? "wait" : "pointer",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
       ) : null}
 
       {showTransferModal ? (
@@ -1461,48 +2189,66 @@ export default function ClubSettingsPage() {
           style={modalOverlayStyle}
           onClick={() => !deleting && setShowDeleteModal(false)}
         >
-          <div
-            style={{ ...modalPanelStyle, maxWidth: "440px" }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div style={modalPanelStyle} onClick={(e) => e.stopPropagation()}>
             <h3
               style={{
-                fontWeight: 600,
-                fontSize: "16px",
+                fontWeight: 800,
+                fontSize: "20px",
                 color: "#ffffff",
-                margin: "0 0 12px",
+                margin: 0,
               }}
             >
-              Delete club permanently?
+              Delete {club.name}?
             </h3>
             <p
               style={{
                 fontSize: "13px",
-                color: "#555555",
-                margin: "0 0 16px",
+                color: "#888888",
+                lineHeight: 1.7,
+                marginTop: "8px",
+                marginBottom: 0,
               }}
             >
-              Type <strong style={{ color: "#fff" }}>{club.name}</strong> to
-              confirm. This cannot be undone.
+              This will permanently delete all club data including events,
+              announcements, tasks, documents, chats, members, and applications.
+              This cannot be undone.
             </p>
-            <input
-              type="text"
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#555555",
+                marginTop: "16px",
+                marginBottom: "8px",
+              }}
+            >
+              Type <strong style={{ color: "#ffffff" }}>{club.name}</strong> to
+              confirm.
+            </p>
+            <SettingsTextInput
+              id="delete-confirm"
               value={deleteConfirmName}
-              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              onChange={setDeleteConfirmName}
               placeholder={club.name}
-              className="mb-5 w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
             />
-            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+            <div
+              style={{
+                marginTop: "24px",
+                display: "flex",
+                gap: "10px",
+                justifyContent: "flex-end",
+              }}
+            >
               <button
                 type="button"
                 disabled={deleting}
                 onClick={() => setShowDeleteModal(false)}
                 style={{
                   background: "transparent",
-                  border: "1px solid #333",
-                  color: "#aaa",
-                  borderRadius: "6px",
+                  border: "1px solid #333333",
+                  color: "#777777",
+                  borderRadius: "8px",
                   padding: "10px 20px",
+                  fontSize: "14px",
                   cursor: "pointer",
                 }}
               >
@@ -1515,11 +2261,13 @@ export default function ClubSettingsPage() {
                 }
                 onClick={() => void handleConfirmDelete()}
                 style={{
-                  background: "transparent",
-                  border: "1px solid #E51937",
-                  color: "#E51937",
-                  borderRadius: "6px",
+                  background: ACCENT_RED,
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "8px",
                   padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 700,
                   cursor:
                     deleteConfirmName.trim() === club.name.trim()
                       ? "pointer"
@@ -1528,7 +2276,7 @@ export default function ClubSettingsPage() {
                     deleteConfirmName.trim() === club.name.trim() ? 1 : 0.5,
                 }}
               >
-                {deleting ? "Deleting…" : "Confirm"}
+                {deleting ? "Deleting…" : "Permanently Delete"}
               </button>
             </div>
           </div>
