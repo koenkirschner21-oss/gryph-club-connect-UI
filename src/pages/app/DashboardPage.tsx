@@ -286,13 +286,8 @@ export default function DashboardPage() {
     }).length;
   }, [upcomingEvents]);
 
-  const navigate = useNavigate();
-
   const handleMyClubsStatClick = () => {
-    navigate("/app");
-    requestAnimationFrame(() => {
-      requestAnimationFrame(scrollToDashboardMyClubs);
-    });
+    setActiveTab("clubs");
   };
 
   if (loading) {
@@ -606,7 +601,6 @@ export default function DashboardPage() {
           upcomingEvents={upcomingEvents}
           eventsLoading={eventsLoading}
           myRsvps={myRsvps}
-          rsvpCounts={rsvpCounts}
           clubLogos={clubLogos}
         />
       )}
@@ -1363,7 +1357,7 @@ function MyClubSidebarItem({
   return (
     <Link
       to={`/app/clubs/${club.id}`}
-      className="flex items-center gap-3 p-3"
+      className="flex items-start gap-3 p-3"
       style={{
         background: hovered ? "#1f1f1f" : "#191919",
         border: `1px solid ${hovered ? "#333333" : "#242424"}`,
@@ -1379,27 +1373,43 @@ function MyClubSidebarItem({
         name={club.name}
         logoUrl={logoUrl}
       />
-      <div className="min-w-0 flex-1" style={{ overflow: "visible" }}>
+      <div className="min-w-0 flex-1">
         <p
           style={{
             fontSize: "14px",
             fontWeight: 600,
             color: "#ffffff",
             margin: 0,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
+            lineHeight: 1.4,
+            wordBreak: "break-word",
           }}
         >
           {club.name}
         </p>
-        <p className="text-xs text-[var(--text-2)]">
-          {club.memberCount} members ·{" "}
-          <span style={{ color: roleDisplay.color }}>{roleDisplay.label}</span>
-        </p>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "8px",
+            marginTop: "4px",
+          }}
+        >
+          <p
+            className="text-xs text-[var(--text-2)]"
+            style={{ margin: 0, minWidth: 0 }}
+          >
+            {club.memberCount} members ·{" "}
+            <span style={{ color: roleDisplay.color }}>{roleDisplay.label}</span>
+          </p>
+          <span
+            className="text-xs text-[var(--text-2)]"
+            style={{ flexShrink: 0 }}
+          >
+            Open workspace →
+          </span>
+        </div>
       </div>
-      <span className="text-xs text-[var(--text-2)]">Open workspace →</span>
     </Link>
   );
 }
@@ -1567,12 +1577,6 @@ function formatTimeAgo(iso: string): string {
   return "just now";
 }
 
-function scrollToDashboardMyClubs() {
-  document
-    .getElementById("dashboard-my-clubs")
-    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
 function MyClubsTabClubAvatar({
   name,
   abbreviation,
@@ -1728,16 +1732,29 @@ function MyClubsTab({
                 </p>
               </div>
             </div>
-            <p
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/app/clubs/${club.id}`);
+              }}
               style={{
-                color: "#E51937",
+                background: "#E51937",
+                color: "#ffffff",
+                borderRadius: "8px",
+                padding: "9px 0",
                 fontSize: "13px",
-                fontWeight: 500,
-                margin: "12px 0 0",
+                fontWeight: 600,
+                width: "100%",
+                textAlign: "center",
+                cursor: "pointer",
+                border: "none",
+                display: "block",
+                marginTop: "12px",
               }}
             >
-              Open Workspace →
-            </p>
+              Open Workspace
+            </button>
           </div>
         );
       })}
@@ -2148,19 +2165,265 @@ function OverviewTab({
 // ---------------------------------------------------------------------------
 // Events Tab (full-page list)
 // ---------------------------------------------------------------------------
+type DeduplicatedDashboardEvent = DashboardEvent & {
+  moreDatesCount: number;
+};
+
+function deduplicateDashboardEvents(
+  events: DashboardEvent[],
+): DeduplicatedDashboardEvent[] {
+  const grouped = new Map<string, DashboardEvent[]>();
+
+  for (const event of events) {
+    const key = `${event.clubId}::${event.title.trim().toLowerCase()}`;
+    const existing = grouped.get(key) ?? [];
+    existing.push(event);
+    grouped.set(key, existing);
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => {
+      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date));
+      const next = sorted[0];
+      return {
+        ...next,
+        moreDatesCount: sorted.length - 1,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function groupDashboardEventsByDate(events: DeduplicatedDashboardEvent[]) {
+  const grouped = new Map<string, DeduplicatedDashboardEvent[]>();
+
+  for (const event of events) {
+    const existing = grouped.get(event.date) ?? [];
+    existing.push(event);
+    grouped.set(event.date, existing);
+  }
+
+  return Array.from(grouped.entries())
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .map(([date, dateEvents]) => ({ date, events: dateEvents }));
+}
+
+function parseDashboardEventDay(dateStr: string): Date | null {
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T12:00:00`)
+    : new Date(trimmed);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatEventsTabDateGroupLabel(dateStr: string): string {
+  const eventDay = parseDashboardEventDay(dateStr);
+  if (!eventDay) return dateStr;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const compareDay = new Date(eventDay);
+  compareDay.setHours(0, 0, 0, 0);
+
+  if (compareDay.getTime() === today.getTime()) return "Today";
+  if (compareDay.getTime() === tomorrow.getTime()) return "Tomorrow";
+
+  return eventDay.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function formatEventsTabTime12h(timeStr: string): string | null {
+  const t = timeStr.trim();
+  if (!t || t.toUpperCase() === "TBD") return null;
+
+  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    const hour = parseInt(ampmMatch[1], 10);
+    const minute = ampmMatch[2];
+    if (hour >= 1 && hour <= 12) {
+      return `${hour}:${minute} ${ampmMatch[3].toUpperCase()}`;
+    }
+  }
+
+  const m24 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m24) {
+    let hour = parseInt(m24[1], 10);
+    const minute = m24[2];
+    if (hour <= 23) {
+      const period = hour >= 12 ? "PM" : "AM";
+      hour = hour % 12 || 12;
+      return `${hour}:${minute} ${period}`;
+    }
+  }
+
+  return t;
+}
+
+function EventsTabClubLogo({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr = abbreviation || deriveAbbreviation(name);
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: "32px",
+          height: "32px",
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "32px",
+        height: "32px",
+        borderRadius: "50%",
+        background: "#2a2a2a",
+        color: "#888888",
+        fontSize: "10px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
+}
+
+function EventsTabEventCard({
+  event,
+  rsvpStatus,
+  logoUrl,
+}: {
+  event: DashboardEvent;
+  rsvpStatus?: string;
+  logoUrl?: string;
+}) {
+  const timeLabel = event.time ? formatEventsTabTime12h(event.time) : null;
+  const metaParts = [timeLabel, event.clubName].filter(Boolean);
+  const isGoing = rsvpStatus === "going";
+
+  return (
+    <Link
+      to={`/app/clubs/${event.clubId}/events`}
+      className="block"
+      style={{ textDecoration: "none" }}
+    >
+      <div
+        style={{
+          background: "#141414",
+          borderTop: "1px solid #2a2a2a",
+          borderRight: "1px solid #2a2a2a",
+          borderBottom: "1px solid #2a2a2a",
+          borderLeft: "1px solid #2a2a2a",
+          borderRadius: "10px",
+          padding: "12px 16px",
+          marginBottom: "8px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+        }}
+      >
+        <EventsTabClubLogo
+          name={event.clubName}
+          abbreviation={event.clubAbbreviation}
+          logoUrl={logoUrl}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {event.title}
+          </p>
+          {metaParts.length > 0 ? (
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#555555",
+                marginTop: "2px",
+                marginBottom: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {metaParts.join(" · ")}
+            </p>
+          ) : null}
+        </div>
+        <span
+          style={{
+            flexShrink: 0,
+            borderRadius: "4px",
+            padding: "3px 10px",
+            fontSize: "11px",
+            fontWeight: 500,
+            ...(isGoing
+              ? {
+                  background: "#1a1200",
+                  border: "1px solid #FFC429",
+                  color: "#FFC429",
+                }
+              : {
+                  background: "#1a1a1a",
+                  border: "1px solid #333333",
+                  color: "#555555",
+                }),
+          }}
+        >
+          {isGoing ? "Going" : "Open"}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 function EventsTab({
   upcomingEvents,
   eventsLoading,
   myRsvps,
-  rsvpCounts,
   clubLogos,
 }: {
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
   myRsvps: Record<string, string>;
-  rsvpCounts: Record<string, import("../../types").RsvpCounts>;
   clubLogos: Record<string, string>;
 }) {
+  const eventsByDate = useMemo(() => {
+    const deduplicated = deduplicateDashboardEvents(upcomingEvents);
+    return groupDashboardEventsByDate(deduplicated);
+  }, [upcomingEvents]);
+
   if (eventsLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -2179,14 +2442,32 @@ function EventsTab({
 
   return (
     <div>
-      {upcomingEvents.map((event) => (
-        <EventCard
-          key={event.id}
-          event={event}
-          rsvpStatus={myRsvps[event.id]}
-          counts={rsvpCounts[event.id]}
-          logoUrl={event.clubId ? clubLogos[event.clubId] : undefined}
-        />
+      {eventsByDate.map((group, groupIndex) => (
+        <section key={group.date}>
+          <h3
+            style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#555555",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              marginBottom: "8px",
+              marginTop: groupIndex === 0 ? 0 : "20px",
+              paddingBottom: "8px",
+              borderBottom: "1px solid #1a1a1a",
+            }}
+          >
+            {formatEventsTabDateGroupLabel(group.date)}
+          </h3>
+          {group.events.map((event) => (
+            <EventsTabEventCard
+              key={`${event.id}-${event.date}`}
+              event={event}
+              rsvpStatus={myRsvps[event.id]}
+              logoUrl={event.clubId ? clubLogos[event.clubId] : undefined}
+            />
+          ))}
+        </section>
       ))}
     </div>
   );
@@ -2197,16 +2478,28 @@ function EventsTab({
 // ---------------------------------------------------------------------------
 const TASK_TAB_LOGO_SIZE = 36;
 
+function taskTabStatusSortOrder(status: string): number {
+  if (status === "in_progress") return 0;
+  if (status === "done") return 2;
+  return 1;
+}
+
 function TaskTabClubLogo({
   name,
   abbreviation,
   logoUrl,
+  size = TASK_TAB_LOGO_SIZE,
+  circular = false,
 }: {
   name: string;
   abbreviation?: string;
   logoUrl?: string;
+  size?: number;
+  circular?: boolean;
 }) {
   const abbr = abbreviation || deriveAbbreviation(name);
+  const radius = circular ? "50%" : "6px";
+  const fontSize = size <= 24 ? "9px" : "11px";
 
   if (logoUrl) {
     return (
@@ -2214,9 +2507,9 @@ function TaskTabClubLogo({
         src={logoUrl}
         alt=""
         style={{
-          width: `${TASK_TAB_LOGO_SIZE}px`,
-          height: `${TASK_TAB_LOGO_SIZE}px`,
-          borderRadius: "6px",
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: radius,
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -2227,12 +2520,12 @@ function TaskTabClubLogo({
   return (
     <div
       style={{
-        width: `${TASK_TAB_LOGO_SIZE}px`,
-        height: `${TASK_TAB_LOGO_SIZE}px`,
-        borderRadius: "6px",
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: radius,
         background: "#2a2a2a",
         color: "#888",
-        fontSize: "11px",
+        fontSize,
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
@@ -2307,9 +2600,8 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
         "id, title, status, club_id, clubs:club_id ( name, logo_url, abbreviation )",
       )
       .in("club_id", joinedClubs)
-      .neq("status", "done")
       .order("created_at", { ascending: false })
-      .limit(30)
+      .limit(60)
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
@@ -2379,6 +2671,33 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     };
   }, [tasks, clubLogos]);
 
+  const groupedTasks = useMemo(() => {
+    const byClub = new Map<string, TasksTabTask[]>();
+    for (const task of tasks) {
+      const existing = byClub.get(task.clubId) ?? [];
+      existing.push(task);
+      byClub.set(task.clubId, existing);
+    }
+
+    return Array.from(byClub.entries())
+      .map(([clubId, clubTasks]) => {
+        const sortedTasks = [...clubTasks].sort(
+          (a, b) =>
+            taskTabStatusSortOrder(a.status) - taskTabStatusSortOrder(b.status),
+        );
+        const doneCount = clubTasks.filter((t) => t.status === "done").length;
+        return {
+          clubId,
+          clubName: clubTasks[0]?.clubName ?? "Unknown Club",
+          clubAbbreviation: clubTasks[0]?.clubAbbreviation,
+          tasks: sortedTasks,
+          doneCount,
+          totalCount: clubTasks.length,
+        };
+      })
+      .sort((a, b) => a.clubName.localeCompare(b.clubName));
+  }, [tasks]);
+
   if (loadingTasks) {
     return (
       <div className="flex justify-center py-12">
@@ -2397,14 +2716,78 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
 
   return (
     <div>
-      {tasks.map((task) => {
-        const logoUrl = task.clubLogoUrl ?? clubLogos[task.clubId];
+      {groupedTasks.map((group, groupIndex) => {
+        const logoUrl =
+          group.tasks[0]?.clubLogoUrl ?? clubLogos[group.clubId];
+        const progressPercent =
+          group.totalCount > 0
+            ? Math.round((group.doneCount / group.totalCount) * 100)
+            : 0;
+
         return (
-          <TasksTabTaskCard
-            key={task.id}
-            task={task}
-            logoUrl={logoUrl}
-          />
+          <div key={group.clubId}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "8px",
+                marginTop: groupIndex === 0 ? 0 : "20px",
+              }}
+            >
+              <TaskTabClubLogo
+                name={group.clubName}
+                abbreviation={group.clubAbbreviation}
+                logoUrl={logoUrl}
+                size={24}
+                circular
+              />
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                }}
+              >
+                {group.clubName}
+              </span>
+              <span
+                style={{
+                  fontSize: "12px",
+                  color: "#555555",
+                  marginLeft: "auto",
+                }}
+              >
+                {group.doneCount} of {group.totalCount} done
+              </span>
+            </div>
+            <div
+              style={{
+                width: "100%",
+                height: "3px",
+                background: "#1a1a1a",
+                borderRadius: "2px",
+                marginBottom: "12px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  background: "#FFC429",
+                  height: "100%",
+                  borderRadius: "2px",
+                  width: `${progressPercent}%`,
+                }}
+              />
+            </div>
+            {group.tasks.map((task) => (
+              <TasksTabTaskCard
+                key={task.id}
+                task={task}
+                logoUrl={task.clubLogoUrl ?? clubLogos[task.clubId]}
+              />
+            ))}
+          </div>
         );
       })}
     </div>
@@ -2815,11 +3198,13 @@ function EventCard({
   rsvpStatus,
   counts,
   logoUrl,
+  moreDatesCount = 0,
 }: {
   event: DashboardEvent;
   rsvpStatus?: string;
   counts?: import("../../types").RsvpCounts;
   logoUrl?: string;
+  moreDatesCount?: number;
 }) {
   const goingCount = counts?.going ?? 0;
   const maybeCount = counts?.maybe ?? 0;
@@ -2883,6 +3268,19 @@ function EventCard({
           >
             {event.title}
           </p>
+          {moreDatesCount > 0 ? (
+            <p
+              style={{
+                fontSize: "11px",
+                color: "#444444",
+                marginTop: "2px",
+                marginBottom: "4px",
+              }}
+            >
+              + {moreDatesCount} more date{moreDatesCount === 1 ? "" : "s"} this
+              semester
+            </p>
+          ) : null}
           <p
             style={{
               ...eventCardTextEllipsis,
