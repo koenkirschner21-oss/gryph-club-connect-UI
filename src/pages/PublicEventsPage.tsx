@@ -1,6 +1,8 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -471,6 +473,79 @@ function ClubAvatar({
   );
 }
 
+const EVENT_CARD_READ_MORE = " Read more";
+const EVENT_CARD_DESC_FONT_SIZE = 12;
+const EVENT_CARD_DESC_LINE_HEIGHT = 1.6;
+const EVENT_CARD_DESC_MAX_LINES = 2;
+
+function computeEventCardDescriptionPreview(
+  description: string,
+  widthPx: number,
+  fontFamily: string,
+): { preview: string | null } {
+  if (!description || widthPx <= 0) return { preview: null };
+
+  const measurer = document.createElement("p");
+  measurer.style.cssText = [
+    "position:absolute",
+    "top:0",
+    "left:0",
+    "visibility:hidden",
+    "pointer-events:none",
+    "margin:0",
+    "padding:0",
+    "border:0",
+    `width:${Math.floor(widthPx)}px`,
+    `font-family:${fontFamily}`,
+    `font-size:${EVENT_CARD_DESC_FONT_SIZE}px`,
+    `line-height:${EVENT_CARD_DESC_LINE_HEIGHT}`,
+    "white-space:normal",
+    "word-break:break-word",
+  ].join(";");
+  document.body.appendChild(measurer);
+
+  const maxHeight =
+    EVENT_CARD_DESC_FONT_SIZE * EVENT_CARD_DESC_LINE_HEIGHT * EVENT_CARD_DESC_MAX_LINES;
+
+  const fits = (text: string) => {
+    measurer.textContent = text;
+    return measurer.scrollHeight <= maxHeight + 1;
+  };
+
+  try {
+    if (!fits(description)) {
+      let low = 0;
+      let high = description.length;
+      let best = 0;
+
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const slice = description.slice(0, mid).trimEnd();
+        const candidate = `${slice}…${EVENT_CARD_READ_MORE}`;
+        if (fits(candidate)) {
+          best = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+
+      if (best > 0) {
+        let trimmed = description.slice(0, best).trimEnd();
+        const lastSpace = trimmed.lastIndexOf(" ");
+        if (lastSpace > trimmed.length * 0.55) {
+          trimmed = trimmed.slice(0, lastSpace);
+        }
+        return { preview: `${trimmed}…` };
+      }
+    }
+
+    return { preview: null };
+  } finally {
+    document.body.removeChild(measurer);
+  }
+}
+
 function EventDetailModal({
   event,
   user,
@@ -702,11 +777,43 @@ function PublicEventCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const [signUpHovered, setSignUpHovered] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
+  const [descriptionPreview, setDescriptionPreview] = useState<string | null>(null);
+  const [showReadMore, setShowReadMore] = useState(false);
   const { month, day } = formatMonthDay(event.date);
-  const descriptionPreview = event.description?.trim();
+  const description = event.description?.trim();
+
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card || !description) {
+      setDescriptionPreview(null);
+      setShowReadMore(false);
+      return;
+    }
+
+    const updatePreview = () => {
+      const width = card.clientWidth - 32;
+      if (width <= 0) return;
+
+      const fontFamily = window.getComputedStyle(card).fontFamily;
+      const { preview } = computeEventCardDescriptionPreview(
+        description,
+        width,
+        fontFamily,
+      );
+      setDescriptionPreview(preview);
+      setShowReadMore(preview !== null);
+    };
+
+    updatePreview();
+    const observer = new ResizeObserver(updatePreview);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [description]);
 
   return (
     <article
+      ref={cardRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -717,6 +824,7 @@ function PublicEventCard({
         display: "flex",
         flexDirection: "column",
         transition: "border-color 0.15s ease",
+        minWidth: 0,
       }}
     >
       <div
@@ -817,22 +925,50 @@ function PublicEventCard({
         {formatTimeLocationLine(event)}
       </p>
 
-      {descriptionPreview ? (
-        <p
-          style={{
-            fontSize: "12px",
-            color: "#777777",
-            marginTop: "8px",
-            marginBottom: 0,
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            lineHeight: 1.6,
-          }}
-        >
-          {descriptionPreview}
-        </p>
+      {description ? (
+        <div style={{ marginTop: "8px", minWidth: 0 }}>
+          <p
+            style={{
+              fontSize: `${EVENT_CARD_DESC_FONT_SIZE}px`,
+              color: "#777777",
+              margin: 0,
+              lineHeight: EVENT_CARD_DESC_LINE_HEIGHT,
+              ...(showReadMore
+                ? {}
+                : {
+                    overflow: "hidden",
+                    display: "-webkit-box",
+                    WebkitLineClamp: EVENT_CARD_DESC_MAX_LINES,
+                    WebkitBoxOrient: "vertical",
+                  }),
+            }}
+          >
+            {showReadMore && descriptionPreview ? (
+              <>
+                {descriptionPreview}{" "}
+                <button
+                  type="button"
+                  onClick={() => onViewDetails(event)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                    font: "inherit",
+                    fontWeight: 500,
+                    color: "#E51937",
+                    cursor: "pointer",
+                    display: "inline",
+                  }}
+                >
+                  Read more
+                </button>
+              </>
+            ) : (
+              description
+            )}
+          </p>
+        </div>
       ) : null}
 
       <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>

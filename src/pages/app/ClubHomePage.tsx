@@ -7,13 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import {
-  getTaskDueUrgency,
-  taskDueBadgeConfig,
-  taskDueDateColor,
-  taskDueLeftBorder,
-} from "../../lib/taskDueUrgency";
-import { X, Check, CheckSquare } from "lucide-react";
+import { X, Check } from "lucide-react";
 import { Megaphone, Calendar } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -31,25 +25,34 @@ import { supabase } from "../../lib/supabaseClient";
 import type { ClubEvent, MemberRole, Post, Task, TaskStatus } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 
+const CARD_BG = "#141414";
+const CARD_BORDER = "#2a2a2a";
+
 const sectionHeadingRow: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  marginBottom: "16px",
+  marginTop: "28px",
+  marginBottom: "14px",
+  paddingBottom: "12px",
+  borderBottom: "1px solid #1a1a1a",
 };
 
 const sectionHeading: CSSProperties = {
   fontWeight: 700,
-  fontSize: "16px",
+  fontSize: "14px",
   color: "#ffffff",
   margin: 0,
 };
 
 const viewAllLink: CSSProperties = {
-  fontSize: "13px",
+  fontSize: "12px",
   fontWeight: 500,
   color: "#E51937",
   textDecoration: "none",
+  background: "none",
+  border: "none",
+  cursor: "pointer",
 };
 
 function isHiddenLocation(value: string | null | undefined): boolean {
@@ -67,10 +70,11 @@ const quickActionButton: CSSProperties = {
   background: "#E51937",
   backgroundColor: "#E51937",
   color: "#ffffff",
-  borderRadius: "6px",
-  padding: "8px 16px",
+  border: "none",
+  borderRadius: "8px",
+  padding: "9px 18px",
   fontSize: "13px",
-  fontWeight: 500,
+  fontWeight: 600,
   textDecoration: "none",
 };
 
@@ -80,10 +84,10 @@ const quickActionOutlineButton: CSSProperties = {
   gap: "8px",
   background: "transparent",
   backgroundColor: "transparent",
-  border: "1px solid #E51937",
-  color: "#E51937",
-  borderRadius: "6px",
-  padding: "8px 16px",
+  border: "1px solid #2a2a2a",
+  color: "#777777",
+  borderRadius: "8px",
+  padding: "9px 18px",
   fontSize: "13px",
   fontWeight: 500,
   textDecoration: "none",
@@ -133,16 +137,114 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
     .toUpperCase();
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+const AVATAR_COLORS = ["#E51937", "#FFC429", "#555555", "#777777", "#333333"];
+
+function deriveAvatarColor(name: string): string {
+  const char = (name.trim()[0] ?? "A").toUpperCase();
+  const code = char.charCodeAt(0) - 65;
+  return AVATAR_COLORS[Math.abs(code) % AVATAR_COLORS.length];
+}
+
+function AssigneeAvatar({
+  name,
+  avatarUrl,
+}: {
+  name: string;
+  avatarUrl?: string;
+}) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt=""
+        style={{
+          width: "36px",
+          height: "36px",
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "36px",
+        height: "36px",
+        borderRadius: "50%",
+        background: deriveAvatarColor(name),
+        color: "#ffffff",
+        fontSize: "13px",
+        fontWeight: 700,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {getInitials(name)}
+    </div>
+  );
+}
+
+interface DeduplicatedEvent extends ClubEvent {
+  occurrenceDate: string;
+  moreDatesCount: number;
+  showRecurringBadge: boolean;
+}
+
+function deduplicateMonthlyEvents(
+  events: (ClubEvent & { occurrenceDate: string })[],
+  eventRecurring: Record<string, EventRecurringMeta>,
+): DeduplicatedEvent[] {
+  const grouped = new Map<string, (ClubEvent & { occurrenceDate: string })[]>();
+
+  for (const event of events) {
+    const key = event.title.trim().toLowerCase();
+    const existing = grouped.get(key) ?? [];
+    existing.push(event);
+    grouped.set(key, existing);
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => {
+      const sorted = [...group].sort((a, b) =>
+        a.occurrenceDate.localeCompare(b.occurrenceDate),
+      );
+      const next = sorted[0];
+      const moreDatesCount = sorted.length - 1;
+      const meta = eventRecurring[next.id];
+      return {
+        ...next,
+        moreDatesCount,
+        showRecurringBadge: Boolean(meta?.isRecurring) || moreDatesCount > 0,
+      };
+    })
+    .sort((a, b) => a.occurrenceDate.localeCompare(b.occurrenceDate));
+}
+
 function ClubLogoMark({
   name,
   abbreviation,
   logoUrl,
+  circular = false,
 }: {
   name: string;
   abbreviation?: string;
   logoUrl?: string;
+  circular?: boolean;
 }) {
   const abbr = abbreviation?.trim() || deriveAbbreviation(name);
+  const radius = circular ? "50%" : "6px";
 
   if (logoUrl) {
     return (
@@ -152,7 +254,7 @@ function ClubLogoMark({
         style={{
           width: `${CLUB_LOGO_SIZE}px`,
           height: `${CLUB_LOGO_SIZE}px`,
-          borderRadius: "6px",
+          borderRadius: radius,
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -165,7 +267,7 @@ function ClubLogoMark({
       style={{
         width: `${CLUB_LOGO_SIZE}px`,
         height: `${CLUB_LOGO_SIZE}px`,
-        borderRadius: "6px",
+        borderRadius: radius,
         border: "1px solid #2a2a2a",
         background: "#2a2a2a",
         color: "#888888",
@@ -188,25 +290,13 @@ function normalizeUserRole(role: MemberRole | string | null | undefined): Member
   return "member";
 }
 
-function taskStatusAccent(status: TaskStatus): string {
-  switch (status) {
-    case "in_progress":
-      return "#FFC429";
-    case "done":
-      return "#E51937";
-    default:
-      return "#747676";
-  }
-}
-
 function ClubStatCard({
   label,
   value,
   sublabel,
   accentColor,
   to,
-  icon,
-  valueFontSize = "2rem",
+  valueFontSize = "28px",
   valueColor = "#ffffff",
   valueFontStyle,
   valueHint,
@@ -216,7 +306,6 @@ function ClubStatCard({
   sublabel: string;
   accentColor: string;
   to?: string;
-  icon?: ReactNode;
   valueFontSize?: string;
   valueColor?: string;
   valueFontStyle?: CSSProperties["fontStyle"];
@@ -224,7 +313,6 @@ function ClubStatCard({
 }) {
   const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
-  const borderMuted = hovered ? "#333333" : "#242424";
 
   const card = (
     <div
@@ -232,38 +320,35 @@ function ClubStatCard({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: "#1a1a1a",
-        borderTop: `1px solid ${borderMuted}`,
-        borderRight: `1px solid ${borderMuted}`,
-        borderBottom: `1px solid ${borderMuted}`,
-        borderLeft: `4px solid ${accentColor}`,
-        borderRadius: "8px",
-        padding: "16px",
+        background: CARD_BG,
+        borderTop: `3px solid ${accentColor}`,
+        borderRight: `1px solid ${CARD_BORDER}`,
+        borderBottom: `1px solid ${CARD_BORDER}`,
+        borderLeft: `1px solid ${CARD_BORDER}`,
+        borderRadius: "12px",
+        padding: "18px 20px",
+        flex: 1,
         cursor: to ? "pointer" : undefined,
         transform: hovered && to ? "translateY(-1px)" : undefined,
         transition: "all 0.15s ease",
       }}
     >
       <p
-        className="uppercase"
         style={{
-          fontSize: "10px",
-          letterSpacing: "0.1em",
-          color: "#747676",
+          fontSize: "11px",
+          fontWeight: 600,
+          letterSpacing: "0.06em",
+          color: "#555555",
           margin: 0,
           textTransform: "uppercase",
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
         }}
       >
-        {icon}
         {label}
       </p>
       <p
         style={{
           fontSize: valueFontSize,
-          fontWeight: valueFontStyle === "italic" ? 400 : 700,
+          fontWeight: valueFontStyle === "italic" ? 400 : 800,
           color: valueColor,
           fontStyle: valueFontStyle,
           lineHeight: 1.15,
@@ -275,7 +360,7 @@ function ClubStatCard({
       {valueHint ? (
         <p
           style={{
-            fontSize: "11px",
+            fontSize: "12px",
             color: "#E51937",
             margin: "4px 0 0",
           }}
@@ -286,9 +371,12 @@ function ClubStatCard({
       {sublabel ? (
         <p
           style={{
-            fontSize: "11px",
-            color: "#555555",
+            fontSize: "12px",
+            color: "#444444",
             margin: "4px 0 0",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
           {sublabel}
@@ -327,6 +415,8 @@ function ClubEventCard({
   clubName,
   clubAbbreviation,
   clubLogoUrl,
+  moreDatesCount = 0,
+  showRecurringBadge = false,
 }: {
   title: string;
   date: string;
@@ -335,8 +425,10 @@ function ClubEventCard({
   clubName: string;
   clubAbbreviation?: string;
   clubLogoUrl?: string;
+  moreDatesCount?: number;
+  showRecurringBadge?: boolean;
 }) {
-  const parsedDate = new Date(date);
+  const parsedDate = new Date(`${date}T12:00:00`);
   const monthLabel = Number.isNaN(parsedDate.getTime())
     ? "---"
     : parsedDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
@@ -348,49 +440,54 @@ function ClubEventCard({
     time && time.trim() !== "" && time.toUpperCase() !== "TBD"
       ? formatEventTime12h(time)
       : null;
-  const dateShort = formatEventDateShort(date);
   const locationLabel =
     location && !isHiddenLocation(location) ? location.trim() : null;
 
-  const metaParts = [dateShort, timeLabel, locationLabel].filter(Boolean);
+  const metaParts = [timeLabel, locationLabel].filter(Boolean);
 
   return (
     <div
       className="flex"
       style={{
-        gap: "16px",
-        backgroundColor: "#1a1a1a",
-        border: "1px solid #242424",
-        borderRadius: "8px",
-        padding: "16px 20px",
+        gap: "14px",
+        alignItems: "center",
+        background: CARD_BG,
+        borderTop: `1px solid ${CARD_BORDER}`,
+        borderRight: `1px solid ${CARD_BORDER}`,
+        borderBottom: `1px solid ${CARD_BORDER}`,
+        borderLeft: `1px solid ${CARD_BORDER}`,
+        borderRadius: "10px",
+        padding: "12px 16px",
         marginBottom: "8px",
       }}
     >
       <div
         className="flex shrink-0 flex-col items-center justify-center"
         style={{
-          width: "40px",
-          height: "40px",
+          minWidth: "44px",
           backgroundColor: "#E51937",
-          borderRadius: "6px",
+          borderRadius: "8px",
+          padding: "6px 10px",
+          textAlign: "center",
         }}
       >
         <span
           style={{
-            fontSize: "9px",
+            fontSize: "10px",
+            fontWeight: 700,
             textTransform: "uppercase",
             color: "#ffffff",
-            lineHeight: 1.1,
+            lineHeight: 1,
           }}
         >
           {monthLabel}
         </span>
         <span
           style={{
-            fontSize: "16px",
-            fontWeight: 700,
+            fontSize: "18px",
+            fontWeight: 800,
             color: "#ffffff",
-            lineHeight: 1.1,
+            lineHeight: 1,
           }}
         >
           {dayLabel}
@@ -400,24 +497,47 @@ function ClubEventCard({
         name={clubName}
         abbreviation={clubAbbreviation}
         logoUrl={clubLogoUrl}
+        circular
       />
       <div className="min-w-0 flex-1">
         <h3
           style={{
             fontSize: "14px",
-            fontWeight: 500,
+            fontWeight: 600,
             color: "#ffffff",
             margin: 0,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "6px",
           }}
         >
-          {title}
+          <span>{title}</span>
+          {moreDatesCount > 0 ? (
+            <span style={{ fontSize: "12px", fontWeight: 500, color: "#555555" }}>
+              + {moreDatesCount} more date{moreDatesCount === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          {showRecurringBadge ? (
+            <span
+              style={{
+                fontSize: "10px",
+                color: "#FFC429",
+                border: "1px solid #FFC429",
+                borderRadius: "4px",
+                padding: "1px 6px",
+              }}
+            >
+              Recurring
+            </span>
+          ) : null}
         </h3>
         {metaParts.length > 0 ? (
           <p
             style={{
               fontSize: "12px",
               color: "#555555",
-              margin: "4px 0 0",
+              margin: "2px 0 0",
             }}
           >
             {metaParts.join(" · ")}
@@ -426,13 +546,6 @@ function ClubEventCard({
       </div>
     </div>
   );
-}
-
-function TaskDueBadge({ dueDate, status }: { dueDate?: string; status: TaskStatus }) {
-  const urgency = getTaskDueUrgency(dueDate, status);
-  const badge = taskDueBadgeConfig(urgency);
-  if (!badge) return null;
-  return <span style={badge.style}>{badge.label}</span>;
 }
 
 const detailModalOverlay: CSSProperties = {
@@ -519,17 +632,21 @@ function DashboardItemModal({
   );
 }
 
+function taskStatusTextColor(status: TaskStatus): string {
+  switch (status) {
+    case "in_progress":
+    case "done":
+      return "#FFC429";
+    default:
+      return "#555555";
+  }
+}
+
 function ClubTaskCard({
   task,
-  clubName,
-  clubAbbreviation,
-  clubLogoUrl,
   onClick,
 }: {
   task: Task;
-  clubName: string;
-  clubAbbreviation?: string;
-  clubLogoUrl?: string;
   onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -539,10 +656,7 @@ function ClubTaskCard({
       : task.status === "done"
         ? "Done"
         : "To do";
-
-  const borderMuted = hovered ? "#333333" : "#242424";
-  const dueUrgency = getTaskDueUrgency(task.dueDate, task.status);
-  const leftBorder = taskDueLeftBorder(dueUrgency, taskStatusAccent(task.status));
+  const assigneeName = task.assigneeName ?? "Unassigned";
   const dueLabel = task.dueDate
     ? new Date(task.dueDate).toLocaleDateString("en-US", {
         month: "short",
@@ -568,26 +682,24 @@ function ClubTaskCard({
         onMouseLeave={() => setHovered(false)}
         style={{
           display: "flex",
-          flexDirection: "row",
           alignItems: "center",
-          gap: "14px",
-          background: "#1a1a1a",
-          borderTop: `1px solid ${borderMuted}`,
-          borderRight: `1px solid ${borderMuted}`,
-          borderBottom: `1px solid ${borderMuted}`,
-          borderLeft: `4px solid ${leftBorder}`,
-          borderRadius: "8px",
-          padding: "14px 16px 14px 14px",
+          gap: "12px",
+          background: CARD_BG,
+          borderTop: `1px solid ${CARD_BORDER}`,
+          borderRight: `1px solid ${CARD_BORDER}`,
+          borderBottom: `1px solid ${CARD_BORDER}`,
+          borderLeft:
+            task.status === "in_progress"
+              ? "3px solid #FFC429"
+              : `1px solid ${CARD_BORDER}`,
+          borderRadius: "10px",
+          padding: "14px 16px",
           marginBottom: "8px",
           transform: hovered ? "translateY(-1px)" : undefined,
           transition: "all 0.15s ease",
         }}
       >
-        <ClubLogoMark
-          name={clubName}
-          abbreviation={clubAbbreviation}
-          logoUrl={clubLogoUrl}
-        />
+        <AssigneeAvatar name={assigneeName} avatarUrl={task.assigneeAvatar} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p
             style={{
@@ -600,14 +712,16 @@ function ClubTaskCard({
             {task.title}
           </p>
           <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
-            {statusLabel}
+            <span style={{ color: taskStatusTextColor(task.status) }}>
+              {statusLabel}
+            </span>
             {task.assigneeName ? ` · ${task.assigneeName}` : ""}
           </p>
           {dueLabel ? (
             <p
               style={{
-                fontSize: "12px",
-                color: taskDueDateColor(dueUrgency),
+                fontSize: "11px",
+                color: "#444444",
                 margin: "4px 0 0",
               }}
             >
@@ -615,7 +729,6 @@ function ClubTaskCard({
             </p>
           ) : null}
         </div>
-        <TaskDueBadge dueDate={task.dueDate} status={task.status} />
       </div>
     </div>
   );
@@ -712,6 +825,7 @@ export default function ClubHomePage() {
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
+  const [newEventHovered, setNewEventHovered] = useState(false);
   const [memberRsvps, setMemberRsvps] = useState<
     Record<string, "going" | "maybe" | "not_going" | null>
   >({});
@@ -833,6 +947,11 @@ export default function ClubHomePage() {
       (e) => e.occurrenceDate >= startYmd && e.occurrenceDate <= endYmd,
     );
   }, [upcomingOccurrences]);
+
+  const deduplicatedEventsThisMonth = useMemo(
+    () => deduplicateMonthlyEvents(eventsThisMonth, eventRecurring),
+    [eventsThisMonth, eventRecurring],
+  );
 
   useEffect(() => {
     if (!clubId) {
@@ -979,8 +1098,6 @@ export default function ClubHomePage() {
         : "My Tasks";
   const totalTasks = tasksForRole.length;
   const completedTasks = tasksForRole.filter((t) => t.status === "done").length;
-  const taskProgressPercent =
-    totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const progressLabel =
     userRole === "executive"
       ? `${completedTasks} of ${totalTasks} of your tasks completed`
@@ -989,10 +1106,10 @@ export default function ClubHomePage() {
   const postsCap = userRole === "member" ? 4 : 2;
   const previewPosts = posts.slice(0, postsCap);
   const eventsCap = userRole === "member" ? 4 : 3;
-  const previewEvents = eventsThisMonth.slice(0, eventsCap);
+  const previewEvents = deduplicatedEventsThisMonth.slice(0, eventsCap);
   const previewEventIds = useMemo(
-    () => eventsThisMonth.slice(0, eventsCap).map((e) => e.id),
-    [eventsThisMonth, eventsCap],
+    () => deduplicatedEventsThisMonth.slice(0, eventsCap).map((e) => e.id),
+    [deduplicatedEventsThisMonth, eventsCap],
   );
   const { counts: eventRsvpCounts } = useEventRsvps(previewEventIds);
 
@@ -1116,7 +1233,16 @@ export default function ClubHomePage() {
         </div>
       ) : null}
 
-      <div className="mb-6">
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "16px",
+          marginBottom: "24px",
+        }}
+      >
         <div
           role="button"
           tabIndex={0}
@@ -1146,8 +1272,8 @@ export default function ClubHomePage() {
           <div>
             <h1
               style={{
-                fontWeight: 700,
-                fontSize: "22px",
+                fontWeight: 800,
+                fontSize: "24px",
                 color: "#ffffff",
                 margin: 0,
               }}
@@ -1158,74 +1284,48 @@ export default function ClubHomePage() {
               style={{
                 fontSize: "13px",
                 color: "#555555",
-                margin: "6px 0 0",
+                marginTop: "2px",
+                marginBottom: 0,
               }}
             >
-              {club.description}
+              {club.category?.trim() || club.description?.trim() || ""}
             </p>
           </div>
         </div>
+
+        {userRole === "owner" || userRole === "executive" ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+            <button
+              type="button"
+              onClick={() => navigate(`${announcementsPath}?create=true`)}
+              style={{
+                ...quickActionButton,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <Megaphone size={16} strokeWidth={2} aria-hidden />
+              New Announcement
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`${eventsPath}?create=true`)}
+              onMouseEnter={() => setNewEventHovered(true)}
+              onMouseLeave={() => setNewEventHovered(false)}
+              style={{
+                ...quickActionOutlineButton,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                borderColor: newEventHovered ? "#555555" : "#2a2a2a",
+                color: newEventHovered ? "#cccccc" : "#777777",
+              }}
+            >
+              <Calendar size={16} strokeWidth={2} aria-hidden />
+              New Event
+            </button>
+          </div>
+        ) : null}
       </div>
-
-      {userRole === "owner" ? (
-        <div className="mb-6 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(`${announcementsPath}?create=true`)}
-            style={{
-              ...quickActionButton,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              border: "none",
-            }}
-          >
-            <Megaphone size={16} strokeWidth={2} aria-hidden />
-            New Announcement
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(`${eventsPath}?create=true`)}
-            style={{
-              ...quickActionOutlineButton,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            <Calendar size={16} strokeWidth={2} aria-hidden />
-            New Event
-          </button>
-        </div>
-      ) : null}
-
-      {userRole === "executive" ? (
-        <div className="mb-6 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(`${announcementsPath}?create=true`)}
-            style={{
-              ...quickActionButton,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              border: "none",
-            }}
-          >
-            <Megaphone size={16} strokeWidth={2} aria-hidden />
-            New Announcement
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(`${eventsPath}?create=true`)}
-            style={{
-              ...quickActionOutlineButton,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            <Calendar size={16} strokeWidth={2} aria-hidden />
-            New Event
-          </button>
-        </div>
-      ) : null}
 
       <div
         className={`grid items-stretch gap-4 ${
@@ -1243,23 +1343,23 @@ export default function ClubHomePage() {
             sublabel="Incomplete tasks"
             accentColor="#E51937"
             to={tasksPath}
-            icon={<CheckSquare size={18} strokeWidth={2} aria-hidden />}
           />
         ) : null}
         <ClubStatCard
           label="Events This Month"
-          value={eventsLoading ? "…" : eventsThisMonth.length}
+          value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
           sublabel="Scheduled this month"
           accentColor="#FFC429"
+          valueColor="#FFC429"
           to={eventsPath}
         />
         <ClubStatCard
           label="Meeting"
           value={nextMeetingDisplay.value}
           sublabel={nextMeetingDisplay.sublabel}
-          accentColor="#747676"
+          accentColor="#777777"
           to={eventsPath}
-          valueFontSize={nextMeetingDisplay.scheduled ? "2rem" : "13px"}
+          valueFontSize={nextMeetingDisplay.scheduled ? "24px" : "13px"}
           valueColor={nextMeetingDisplay.scheduled ? "#ffffff" : "#555555"}
           valueFontStyle={nextMeetingDisplay.scheduled ? undefined : "italic"}
           valueHint={
@@ -1269,9 +1369,14 @@ export default function ClubHomePage() {
       </div>
 
       {userRole !== "member" ? (
-        <div className="mt-8">
+        <div>
           <div style={sectionHeadingRow}>
             <h2 style={sectionHeading}>Tasks Left To Do</h2>
+            {openTasksPreview.length > 0 ? (
+              <Link to={tasksPath} style={viewAllLink}>
+                View All →
+              </Link>
+            ) : null}
           </div>
           {openTasksPreviewLoading ? (
             <div className="flex justify-center py-6">
@@ -1284,8 +1389,6 @@ export default function ClubHomePage() {
           ) : (
             <div>
               {openTasksPreview.map((task) => {
-                const leftBorder =
-                  task.status === "in_progress" ? "#FFC429" : "#747676";
                 const dueLabel = task.dueDate
                   ? new Date(task.dueDate).toLocaleDateString("en-US", {
                       month: "short",
@@ -1300,10 +1403,12 @@ export default function ClubHomePage() {
                       alignItems: "center",
                       justifyContent: "space-between",
                       gap: "12px",
-                      backgroundColor: "#1a1a1a",
-                      border: "1px solid #242424",
-                      borderLeft: `3px solid ${leftBorder}`,
-                      borderRadius: "8px",
+                      background: CARD_BG,
+                      borderTop: `1px solid ${CARD_BORDER}`,
+                      borderRight: `1px solid ${CARD_BORDER}`,
+                      borderBottom: `1px solid ${CARD_BORDER}`,
+                      borderLeft: "3px solid #E51937",
+                      borderRadius: "10px",
                       padding: "12px 16px",
                       marginBottom: "8px",
                     }}
@@ -1311,7 +1416,7 @@ export default function ClubHomePage() {
                     <p
                       style={{
                         fontSize: "14px",
-                        fontWeight: 500,
+                        fontWeight: 600,
                         color: "#ffffff",
                         margin: 0,
                         flex: 1,
@@ -1321,33 +1426,20 @@ export default function ClubHomePage() {
                       {task.title}
                     </p>
                     {dueLabel ? (
-                      <span style={{ fontSize: "12px", color: "#555555", flexShrink: 0 }}>
-                        Due {dueLabel}
+                      <span style={{ fontSize: "12px", color: "#444444", flexShrink: 0 }}>
+                        {dueLabel}
                       </span>
                     ) : null}
                   </div>
                 );
               })}
-              <Link
-                to={tasksPath}
-                style={{
-                  color: "#E51937",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  textDecoration: "none",
-                  display: "inline-block",
-                  marginTop: "4px",
-                }}
-              >
-                View All Tasks →
-              </Link>
             </div>
           )}
         </div>
       ) : null}
 
       {nextEvent ? (
-        <div className="mt-8">
+        <div>
           <NextEventBanner
             event={{
               title: nextEvent.title,
@@ -1359,7 +1451,7 @@ export default function ClubHomePage() {
         </div>
       ) : null}
 
-      <div className="mt-8">
+      <div>
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>Recent Announcements</h2>
           {posts.length > 0 ? (
@@ -1400,21 +1492,24 @@ export default function ClubHomePage() {
                   }
                 }}
                 style={{
-                  backgroundColor: "#1a1a1a",
-                  border: "1px solid #242424",
+                  background: CARD_BG,
+                  borderTop: `1px solid ${CARD_BORDER}`,
+                  borderRight: `1px solid ${CARD_BORDER}`,
+                  borderBottom: `1px solid ${CARD_BORDER}`,
                   borderLeft: "3px solid #E51937",
-                  borderRadius: "8px",
-                  padding: userRole === "member" ? "20px" : "16px",
+                  borderRadius: "10px",
+                  padding: "16px 20px",
+                  marginBottom: "10px",
                   transition: "all 0.15s ease",
                   cursor: "pointer",
                 }}
               >
                 <h3
                   style={{
-                    fontSize: userRole === "member" ? "15px" : "14px",
-                    fontWeight: 600,
+                    fontSize: "15px",
+                    fontWeight: 700,
                     color: "#ffffff",
-                    margin: 0,
+                    margin: "0 0 4px",
                   }}
                 >
                   {post.title}
@@ -1423,29 +1518,30 @@ export default function ClubHomePage() {
                   style={{
                     fontSize: "11px",
                     color: "#444444",
-                    margin: "4px 0 0",
+                    margin: "0 0 2px",
                   }}
                 >
                   {formatRelativeTime(post.createdAt)}
                 </p>
-                {userRole !== "member" ? (
-                  <p
-                    style={{
-                      fontSize: "11px",
-                      color: "#555555",
-                      margin: "4px 0 0",
-                    }}
-                  >
-                    {post.authorName ?? "Unknown"}
-                  </p>
-                ) : null}
                 <p
-                  className={userRole === "member" ? "line-clamp-3" : "line-clamp-2"}
+                  style={{
+                    fontSize: "12px",
+                    color: "#555555",
+                    margin: "0 0 8px",
+                  }}
+                >
+                  {post.authorName ?? "Unknown"}
+                </p>
+                <p
                   style={{
                     fontSize: "13px",
-                    color: "#777777",
-                    lineHeight: 1.5,
-                    margin: "8px 0 0",
+                    color: "#555555",
+                    lineHeight: 1.6,
+                    margin: 0,
+                    overflow: "hidden",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
                   }}
                 >
                   {post.content}
@@ -1457,7 +1553,7 @@ export default function ClubHomePage() {
       </div>
 
       {(userRole !== "member" || totalTasks > 0) ? (
-      <div className="mt-8">
+      <div>
         <div style={sectionHeadingRow}>
           <h2 style={sectionHeading}>{tasksSectionTitle}</h2>
           {tasksForRole.length > 0 ? (
@@ -1467,36 +1563,15 @@ export default function ClubHomePage() {
           ) : null}
         </div>
         {totalTasks > 0 ? (
-          <div style={{ marginBottom: "16px" }}>
-            <div
-              style={{
-                height: "4px",
-                borderRadius: "2px",
-                background: "#1e1e1e",
-                width: "100%",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  height: "100%",
-                  borderRadius: "2px",
-                  background: "#E51937",
-                  width: `${taskProgressPercent}%`,
-                  transition: "width 0.15s ease",
-                }}
-              />
-            </div>
-            <p
-              style={{
-                fontSize: "11px",
-                color: "#555555",
-                margin: "6px 0 0",
-              }}
-            >
-              {progressLabel}
-            </p>
-          </div>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#444444",
+              margin: "0 0 12px",
+            }}
+          >
+            {progressLabel}
+          </p>
         ) : null}
         {tasksLoading ? (
           <div className="flex justify-center py-8">
@@ -1524,9 +1599,6 @@ export default function ClubHomePage() {
               <ClubTaskCard
                 key={task.id}
                 task={task}
-                clubName={club.name}
-                clubAbbreviation={club.abbreviation}
-                clubLogoUrl={club.logoUrl}
                 onClick={() => setSelectedTask(task)}
               />
             ))}
@@ -1535,31 +1607,16 @@ export default function ClubHomePage() {
       </div>
       ) : null}
 
-      <div className="mt-8">
+      <div>
         <div style={sectionHeadingRow}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <h2 style={sectionHeading}>Events This Month</h2>
-            <span
-              style={{
-                background: "#1a1a1a",
-                border: "1px solid #333333",
-                color: "#FFC429",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 500,
-              }}
-            >
-              {eventsThisMonth.length} event{eventsThisMonth.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          {eventsThisMonth.length > 0 ? (
+          <h2 style={sectionHeading}>Events This Month</h2>
+          {deduplicatedEventsThisMonth.length > 0 ? (
             <Link to={eventsPath} style={viewAllLink}>
               View All →
             </Link>
           ) : null}
         </div>
-        {eventsThisMonth.length === 0 ? (
+        {deduplicatedEventsThisMonth.length === 0 ? (
           <div
             className="p-6 text-center"
             style={{
@@ -1578,7 +1635,7 @@ export default function ClubHomePage() {
         ) : (
           <div>
             {previewEvents.map((event) => (
-              <div key={event.id}>
+              <div key={`${event.id}-${event.occurrenceDate}`}>
                 <div
                   role="button"
                   tabIndex={0}
@@ -1599,6 +1656,8 @@ export default function ClubHomePage() {
                     clubName={club.name}
                     clubAbbreviation={club.abbreviation}
                     clubLogoUrl={club.logoUrl}
+                    moreDatesCount={event.moreDatesCount}
+                    showRecurringBadge={event.showRecurringBadge}
                   />
                 </div>
                   {userRole === "member" ? (
@@ -1615,7 +1674,7 @@ export default function ClubHomePage() {
                         const active = memberRsvps[event.id] === status;
                         const activeStyles =
                           status === "going"
-                            ? { background: "#0d2b0d", color: "#4ade80", border: "1px solid #1a4a1a" }
+                            ? { background: "#2a2200", color: "#FFC429", border: "1px solid #3a3200" }
                             : status === "maybe"
                               ? { background: "#2a2a0d", color: "#FFC429", border: "1px solid #3a3a1a" }
                               : { background: "#1a1a1a", color: "#888888", border: "1px solid #333333" };

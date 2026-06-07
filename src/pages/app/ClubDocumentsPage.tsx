@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { FileText, Globe, MoreHorizontal, X } from "lucide-react";
+import { FileText, Globe, MoreHorizontal, Search, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -169,14 +169,43 @@ function saveCustomCategories(clubId: string, categories: CategoryOption[]) {
 
 function categoryBadgeStyle(): CSSProperties {
   return {
-    background: "#111111",
-    border: "1px solid #222222",
-    color: "#747676",
-    borderRadius: "20px",
-    padding: "2px 10px",
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    color: "#777777",
+    borderRadius: "4px",
+    padding: "2px 8px",
     fontSize: "11px",
     display: "inline-block",
   };
+}
+
+function fileTypeBadgeStyle(): CSSProperties {
+  return {
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    color: "#FFC429",
+    borderRadius: "4px",
+    padding: "2px 8px",
+    fontSize: "11px",
+    fontWeight: 600,
+    display: "inline-block",
+  };
+}
+
+function fileTypeLabel(name: string, fileType?: string | null): string {
+  const ext = getFileExtension(name, fileType);
+  if (ext === "img") return "IMG";
+  if (!ext || ext === "file") return "FILE";
+  return ext.toUpperCase();
+}
+
+function categoryEmptySubtext(category: string): string {
+  const messages: Record<string, string> = {
+    finance: "Upload budgets, receipts, or funding forms here.",
+    meeting_notes: "Upload meeting agendas, minutes, and summaries here.",
+    legal: "Upload constitutions, policies, or legal documents here.",
+  };
+  return messages[category] ?? "No files in this category yet.";
 }
 
 function formatFileSize(bytes: number | null | undefined): string {
@@ -184,14 +213,6 @@ function formatFileSize(bytes: number | null | undefined): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function domainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
 }
 
 function getFileExtension(name: string, fileType?: string | null): string {
@@ -235,57 +256,6 @@ async function downloadClubDocument(doc: ClubDocument): Promise<boolean> {
   }
 }
 
-function fileIconColor(name: string, fileType?: string | null): string {
-  const ext = getFileExtension(name, fileType);
-  if (ext === "pdf") return "#E51937";
-  if (["jpg", "jpeg", "png", "gif", "webp", "svg", "img"].includes(ext)) {
-    return "#FFC429";
-  }
-  if (["doc", "docx", "txt", "rtf"].includes(ext)) return "#6b7cff";
-  if (["xls", "xlsx", "csv"].includes(ext)) return "#4ade80";
-  return "#747676";
-}
-
-function fileIconBackground(name: string, fileType?: string | null): string {
-  const ext = getFileExtension(name, fileType);
-  if (ext === "pdf") return "#1a0505";
-  if (["jpg", "jpeg", "png", "gif", "webp", "svg", "img"].includes(ext)) {
-    return "#1a1500";
-  }
-  if (["doc", "docx", "txt", "rtf"].includes(ext)) return "#0a0a1a";
-  if (["xls", "xlsx", "csv"].includes(ext)) return "#0a1a0a";
-  return "#1a1a1a";
-}
-
-function FileTypeIcon({
-  name,
-  fileType,
-}: {
-  name: string;
-  fileType?: string | null;
-}) {
-  const color = fileIconColor(name, fileType);
-  return (
-    <svg
-      width={28}
-      height={28}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-      <path d="M10 9H8" />
-      <path d="M16 13H8" />
-      <path d="M16 17H8" />
-    </svg>
-  );
-}
-
 function SkeletonCard() {
   return (
     <div
@@ -325,13 +295,16 @@ function ResourceLinkRow({
   canManage,
   onDelete,
   deleting,
+  isLast,
 }: {
   link: ResourceLink;
   canManage: boolean;
   onDelete: (link: ResourceLink) => void;
   deleting: boolean;
+  isLast: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
+  const [openHovered, setOpenHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   function openLink() {
     window.open(link.url, "_blank", "noopener,noreferrer");
@@ -339,80 +312,132 @@ function ResourceLinkRow({
 
   return (
     <div
-      role="link"
-      tabIndex={0}
-      onClick={openLink}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          openLink();
-        }
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: "10px",
-        padding: "8px 0",
-        borderBottom: "1px solid #1e1e1e",
-        color: "#cccccc",
-        fontSize: "13px",
-        cursor: "pointer",
+        gap: "16px",
+        padding: "14px 0",
+        borderBottom: isLast ? "none" : "1px solid #1a1a1a",
       }}
     >
-      <Globe size={14} color="#E51937" aria-hidden />
+      <div
+        style={{
+          background: "#1a0505",
+          borderRadius: "8px",
+          padding: "8px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Globe size={18} color="#E51937" aria-hidden />
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p
           style={{
-            fontSize: "13px",
+            fontSize: "14px",
             fontWeight: 600,
             color: "#ffffff",
             margin: 0,
-            whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
           {link.title}
         </p>
         <p
           style={{
-            fontSize: "11px",
+            fontSize: "12px",
             color: "#555555",
-            margin: "2px 0 0",
-            whiteSpace: "nowrap",
+            marginTop: "2px",
+            marginBottom: 0,
             overflow: "hidden",
             textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
-          {domainFromUrl(link.url)}
+          {link.url}
         </p>
       </div>
-      {canManage && hovered ? (
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
         <button
           type="button"
-          aria-label={`Delete ${link.title}`}
-          disabled={deleting}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(link);
-          }}
+          onClick={openLink}
+          onMouseEnter={() => setOpenHovered(true)}
+          onMouseLeave={() => setOpenHovered(false)}
           style={{
             background: "transparent",
-            border: "none",
-            color: "#E51937",
-            cursor: deleting ? "not-allowed" : "pointer",
-            padding: "2px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
+            border: `1px solid ${openHovered ? "#E51937" : "#2a2a2a"}`,
+            color: openHovered ? "#E51937" : "#777777",
+            borderRadius: "6px",
+            padding: "5px 12px",
+            fontSize: "12px",
+            cursor: "pointer",
+            transition: "border-color 0.15s ease, color 0.15s ease",
           }}
         >
-          <X size={14} />
+          Open →
         </button>
-      ) : null}
+        {canManage ? (
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              aria-label={`Actions for ${link.title}`}
+              onClick={() => setMenuOpen((prev) => !prev)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+              }}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {menuOpen ? (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "100%",
+                  marginTop: "4px",
+                  minWidth: "120px",
+                  background: "#151515",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  zIndex: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete(link);
+                  }}
+                  style={{
+                    width: "100%",
+                    background: "transparent",
+                    border: "none",
+                    textAlign: "left",
+                    color: "#E51937",
+                    fontSize: "12px",
+                    padding: "8px 10px",
+                    cursor: deleting ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -500,30 +525,29 @@ function CategoryPills({
           onMouseEnter={() => setHoveredAdd(true)}
           onMouseLeave={() => setHoveredAdd(false)}
           style={{
-            background: "transparent",
-            border: `1px solid ${hoveredAdd ? "#E51937" : "#333333"}`,
-            color: hoveredAdd ? "#E51937" : "#747676",
-            borderRadius: "6px",
-            padding: "5px 12px",
+            background: "#1a1a1a",
+            border: `1px dashed ${hoveredAdd ? "#555555" : "#333333"}`,
+            color: hoveredAdd ? "#cccccc" : "#555555",
+            borderRadius: "20px",
             fontSize: "12px",
+            fontWeight: 500,
+            padding: "6px 16px",
             cursor: "pointer",
           }}
         >
-          +
+          + Category
         </button>
       ) : null}
     </div>
   );
 }
 
-const docActionButtonStyle = (
-  hovered: boolean,
-): CSSProperties => ({
-  background: "#1f1f1f",
+const docActionButtonStyle = (hovered: boolean): CSSProperties => ({
+  background: "transparent",
   border: `1px solid ${hovered ? "#E51937" : "#2a2a2a"}`,
-  color: hovered ? "#E51937" : "#cccccc",
+  color: hovered ? "#E51937" : "#777777",
   borderRadius: "6px",
-  padding: "5px 14px",
+  padding: "7px 14px",
   fontSize: "12px",
   cursor: "pointer",
   transition: "border-color 0.15s ease, color 0.15s ease",
@@ -535,6 +559,7 @@ function DocumentCard({
   deleting,
   onDelete,
   onEdit,
+  onMoveCategory,
   onPreview,
   onDownload,
   categories,
@@ -544,6 +569,7 @@ function DocumentCard({
   deleting: boolean;
   onDelete: (doc: ClubDocument) => void;
   onEdit: (doc: ClubDocument) => void;
+  onMoveCategory: (doc: ClubDocument) => void;
   onPreview: (doc: ClubDocument) => void;
   onDownload: (doc: ClubDocument) => void;
   categories: CategoryOption[];
@@ -553,8 +579,11 @@ function DocumentCard({
   const [downloadHovered, setDownloadHovered] = useState(false);
   const [previewHovered, setPreviewHovered] = useState(false);
   const previewKind = previewKindForDocument(doc);
-
-  const iconBg = fileIconBackground(doc.name, doc.file_type);
+  const formattedDate = new Date(doc.created_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <div
@@ -565,199 +594,194 @@ function DocumentCard({
         setMenuOpen(false);
       }}
       style={{
-        background: "#1a1a1a",
-        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
-        borderRadius: "10px",
-        overflow: "hidden",
-        transition: "border-color 0.15s ease, transform 0.15s ease",
-        transform: hovered ? "translateY(-1px)" : "translateY(0)",
+        position: "relative",
+        background: "#141414",
+        border: `1px solid ${hovered ? "#333333" : "#2a2a2a"}`,
+        borderRadius: "12px",
+        padding: "20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+        transition: "border-color 0.15s ease",
       }}
     >
-      <Box
-        style={{
-          padding: "16px",
-          display: "flex",
-          gap: "12px",
-          alignItems: "flex-start",
-        }}
-      >
-        <Box
-          style={{
-            width: "44px",
-            height: "44px",
-            borderRadius: "8px",
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: iconBg,
-          }}
-        >
-          <FileTypeIcon name={doc.name} fileType={doc.file_type} />
-        </Box>
-        <Box style={{ minWidth: 0, flex: 1 }}>
-          <p
+      {isPrivileged ? (
+        <div style={{ position: "absolute", top: "16px", right: "16px" }}>
+          <button
+            type="button"
+            aria-label="Document actions"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((prev) => !prev);
+            }}
             style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              color: "#ffffff",
-              margin: "0 0 4px",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
+              background: "transparent",
+              border: "none",
+              color: "#777777",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              padding: "2px",
             }}
           >
-            {doc.name}
-          </p>
-          {doc.description ? (
-            <p
+            <MoreHorizontal size={16} />
+          </button>
+          {menuOpen ? (
+            <div
+              role="menu"
               style={{
-                fontSize: "12px",
-                color: "#555555",
-                margin: "0 0 8px",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
+                position: "absolute",
+                right: 0,
+                top: "100%",
+                marginTop: "4px",
+                minWidth: "140px",
+                background: "#151515",
+                border: "1px solid #2a2a2a",
+                borderRadius: "8px",
                 overflow: "hidden",
+                zIndex: 10,
               }}
             >
-              {doc.description}
-            </p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onEdit(doc);
+                }}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  textAlign: "left",
+                  color: "#cccccc",
+                  fontSize: "12px",
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                }}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onMoveCategory(doc);
+                }}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  textAlign: "left",
+                  color: "#cccccc",
+                  fontSize: "12px",
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                }}
+              >
+                Move Category
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onDelete(doc);
+                }}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  textAlign: "left",
+                  color: "#E51937",
+                  fontSize: "12px",
+                  padding: "8px 10px",
+                  cursor: deleting ? "not-allowed" : "pointer",
+                }}
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
           ) : null}
-          <span style={categoryBadgeStyle()}>{categoryLabel(doc.category, categories)}</span>
-        </Box>
-      </Box>
+        </div>
+      ) : null}
 
-      <Box
-        style={{
-          background: "#141414",
-          borderTop: "1px solid #1e1e1e",
-          padding: "10px 16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "10px",
-        }}
-      >
-        <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
-          {formatFileSize(doc.file_size)} ·{" "}
-          {new Date(doc.created_at).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", paddingRight: isPrivileged ? "28px" : 0 }}>
+        <FileText size={28} color="#FFC429" aria-hidden style={{ flexShrink: 0 }} />
+        <p
+          style={{
+            fontSize: "15px",
+            fontWeight: 700,
+            color: "#ffffff",
+            margin: 0,
+            lineHeight: 1.3,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {doc.name}
         </p>
-        <Box style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {previewKind ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPreview(doc);
-              }}
-              onMouseEnter={() => setPreviewHovered(true)}
-              onMouseLeave={() => setPreviewHovered(false)}
-              style={docActionButtonStyle(previewHovered)}
-            >
-              Preview
-            </button>
-          ) : null}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        <span style={categoryBadgeStyle()}>{categoryLabel(doc.category, categories)}</span>
+        <span style={fileTypeBadgeStyle()}>{fileTypeLabel(doc.name, doc.file_type)}</span>
+      </div>
+
+      <p style={{ fontSize: "12px", color: "#444444", margin: 0 }}>
+        Uploaded by {doc.uploaderName ?? "Unknown"} · {formattedDate} ·{" "}
+        {formatFileSize(doc.file_size)}
+      </p>
+
+      {doc.description ? (
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#555555",
+            margin: 0,
+            lineHeight: 1.5,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {doc.description}
+        </p>
+      ) : null}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {previewKind ? (
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              void onDownload(doc);
+              onPreview(doc);
             }}
-            onMouseEnter={() => setDownloadHovered(true)}
-            onMouseLeave={() => setDownloadHovered(false)}
-            style={docActionButtonStyle(downloadHovered)}
+            onMouseEnter={() => setPreviewHovered(true)}
+            onMouseLeave={() => setPreviewHovered(false)}
+            style={docActionButtonStyle(previewHovered)}
           >
-            Download
+            Preview
           </button>
-          {isPrivileged && hovered ? (
-            <Box style={{ position: "relative" }}>
-              <button
-                type="button"
-                aria-label="Document actions"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen((prev) => !prev);
-                }}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#777777",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "2px",
-                }}
-              >
-                <MoreHorizontal size={16} />
-              </button>
-              {menuOpen ? (
-                <Box
-                  role="menu"
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    top: "100%",
-                    marginTop: "4px",
-                    minWidth: "120px",
-                    background: "#151515",
-                    border: "1px solid #2a2a2a",
-                    borderRadius: "8px",
-                    overflow: "hidden",
-                    zIndex: 10,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuOpen(false);
-                      onEdit(doc);
-                    }}
-                    style={{
-                      width: "100%",
-                      background: "transparent",
-                      border: "none",
-                      textAlign: "left",
-                      color: "#cccccc",
-                      fontSize: "12px",
-                      padding: "8px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    disabled={deleting}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(doc);
-                    }}
-                    style={{
-                      width: "100%",
-                      background: "transparent",
-                      border: "none",
-                      textAlign: "left",
-                      color: "#E51937",
-                      fontSize: "12px",
-                      padding: "8px 10px",
-                      cursor: deleting ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {deleting ? "Deleting…" : "Delete"}
-                  </button>
-                </Box>
-              ) : null}
-            </Box>
-          ) : null}
-        </Box>
-      </Box>
+        ) : null}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void onDownload(doc);
+          }}
+          onMouseEnter={() => setDownloadHovered(true)}
+          onMouseLeave={() => setDownloadHovered(false)}
+          style={docActionButtonStyle(downloadHovered)}
+        >
+          Download
+        </button>
+      </div>
     </div>
   );
 }
@@ -794,6 +818,11 @@ export default function ClubDocumentsPage() {
   const [editingDocument, setEditingDocument] = useState<ClubDocument | null>(null);
   const [editDocName, setEditDocName] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [movingDocument, setMovingDocument] = useState<ClubDocument | null>(null);
+  const [moveCategoryValue, setMoveCategoryValue] = useState("general");
+  const [savingMove, setSavingMove] = useState(false);
 
   const [resourceLinks, setResourceLinks] = useState<ResourceLink[]>([]);
   const [linksLoading, setLinksLoading] = useState(true);
@@ -917,9 +946,26 @@ export default function ClubDocumentsPage() {
   }, [feedback]);
 
   const filteredDocuments = useMemo(() => {
-    if (filterCategory === "all") return documents;
-    return documents.filter((doc) => doc.category === filterCategory);
-  }, [documents, filterCategory]);
+    let result = documents;
+    if (filterCategory !== "all") {
+      result = result.filter((doc) => doc.category === filterCategory);
+    }
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
+      result = result.filter((doc) => {
+        const cat = categoryLabel(doc.category, allCategories).toLowerCase();
+        return (
+          doc.name.toLowerCase().includes(query) ||
+          cat.includes(query) ||
+          (doc.description?.toLowerCase().includes(query) ?? false)
+        );
+      });
+    }
+    return result;
+  }, [documents, filterCategory, searchQuery, allCategories]);
+
+  const searchActive = searchQuery.trim().length > 0;
+  const categoryFiltered = filterCategory !== "all";
 
   function resetUploadForm() {
     setSelectedFile(null);
@@ -1133,6 +1179,41 @@ export default function ClubDocumentsPage() {
     setEditDocName("");
   }
 
+  function openMoveCategory(doc: ClubDocument) {
+    setMovingDocument(doc);
+    setMoveCategoryValue(doc.category);
+  }
+
+  function closeMoveCategoryModal() {
+    if (savingMove) return;
+    setMovingDocument(null);
+    setMoveCategoryValue("general");
+  }
+
+  async function handleMoveCategory() {
+    if (!movingDocument) return;
+
+    setSavingMove(true);
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("club_documents")
+      .update({ category: moveCategoryValue })
+      .eq("id", movingDocument.id);
+
+    setSavingMove(false);
+
+    if (error) {
+      console.error("Failed to move document:", error.message);
+      setFeedback({ type: "error", text: "Failed to move document." });
+      return;
+    }
+
+    setFeedback({ type: "success", text: "Document moved." });
+    closeMoveCategoryModal();
+    void loadDocuments();
+  }
+
   async function handleRenameDocument() {
     if (!editingDocument || !editDocName.trim()) return;
 
@@ -1210,16 +1291,19 @@ export default function ClubDocumentsPage() {
         <Box>
           <h1
             style={{
-              fontWeight: 700,
-              fontSize: "22px",
+              fontWeight: 800,
+              fontSize: "28px",
               color: "#ffffff",
               margin: 0,
             }}
           >
             Documents
           </h1>
-          <p style={{ fontSize: "13px", color: "#555555", margin: "4px 0 0" }}>
-            Club files and resources
+          <p style={{ fontSize: "14px", color: "#555555", marginTop: "4px", marginBottom: 0 }}>
+            Access club files, meeting notes, resources, and shared links.
+          </p>
+          <p style={{ fontSize: "12px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
+            {documents.length} files · {resourceLinks.length} links
           </p>
         </Box>
         {isPrivileged ? (
@@ -1252,15 +1336,50 @@ export default function ClubDocumentsPage() {
             fontSize: "13px",
             border:
               feedback.type === "success"
-                ? "1px solid #1a4a1a"
+                ? "1px solid #3a2a00"
                 : "1px solid #3a1a1a",
-            background: feedback.type === "success" ? "#0d2b0d" : "#1a0505",
-            color: feedback.type === "success" ? "#4ade80" : "#E51937",
+            background: feedback.type === "success" ? "#1a1500" : "#1a0505",
+            color: feedback.type === "success" ? "#FFC429" : "#E51937",
           }}
         >
           {feedback.text}
         </div>
       ) : null}
+
+      <div style={{ position: "relative", marginBottom: "16px" }}>
+        <Search
+          size={16}
+          color="#555555"
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: "12px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            pointerEvents: "none",
+          }}
+        />
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
+          placeholder="Search files by name, category, or description…"
+          style={{
+            width: "100%",
+            height: "44px",
+            background: "#111111",
+            border: `1px solid ${searchFocused ? "#E51937" : "#2a2a2a"}`,
+            borderRadius: "8px",
+            padding: "0 16px 0 40px",
+            fontSize: "14px",
+            color: "#ffffff",
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </div>
 
       <Box style={{ marginBottom: "20px" }}>
         <CategoryPills
@@ -1278,12 +1397,11 @@ export default function ClubDocumentsPage() {
 
       <Box
         style={{
-          marginTop: "4px",
-          marginBottom: "28px",
-          background: "#1a1a1a",
-          border: "1px solid #242424",
-          borderRadius: "10px",
-          padding: "20px",
+          marginBottom: "24px",
+          background: "#141414",
+          border: "1px solid #2a2a2a",
+          borderRadius: "14px",
+          padding: "24px",
         }}
       >
         <Box
@@ -1292,13 +1410,13 @@ export default function ClubDocumentsPage() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: "12px",
-            marginBottom: "8px",
+            marginBottom: resourceLinks.length > 0 ? "0" : "0",
           }}
         >
           <h2
             style={{
-              fontWeight: 600,
-              fontSize: "15px",
+              fontWeight: 700,
+              fontSize: "16px",
               color: "#ffffff",
               margin: 0,
             }}
@@ -1311,10 +1429,10 @@ export default function ClubDocumentsPage() {
               onClick={() => setShowAddLinkModal(true)}
               style={{
                 background: "transparent",
-                border: "1px solid #333333",
+                border: "1px solid #2a2a2a",
                 color: "#777777",
                 borderRadius: "6px",
-                padding: "7px 14px",
+                padding: "6px 14px",
                 fontSize: "12px",
                 cursor: "pointer",
               }}
@@ -1323,7 +1441,7 @@ export default function ClubDocumentsPage() {
                 e.currentTarget.style.color = "#E51937";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#333333";
+                e.currentTarget.style.borderColor = "#2a2a2a";
                 e.currentTarget.style.color = "#777777";
               }}
             >
@@ -1342,18 +1460,36 @@ export default function ClubDocumentsPage() {
           </p>
         ) : (
           <Box>
-            {resourceLinks.map((link) => (
+            {resourceLinks.map((link, index) => (
               <ResourceLinkRow
                 key={link.id}
                 link={link}
                 canManage={isPrivileged}
                 deleting={deletingLinkId === link.id}
+                isLast={index === resourceLinks.length - 1}
                 onDelete={(item) => void handleDeleteLink(item)}
               />
             ))}
           </Box>
         )}
       </Box>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "16px",
+          marginTop: "8px",
+        }}
+      >
+        <span style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
+          Uploaded Files
+        </span>
+        <span style={{ fontSize: "12px", color: "#444444" }}>
+          {filteredDocuments.length} files
+        </span>
+      </div>
 
       {loading ? (
         <div style={gridStyle}>
@@ -1362,20 +1498,32 @@ export default function ClubDocumentsPage() {
           ))}
         </div>
       ) : filteredDocuments.length === 0 ? (
-        <Box style={{ textAlign: "center", padding: "64px 24px" }}>
-          <Box
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              marginBottom: "16px",
-            }}
-          >
-            <FileText size={32} color="#333333" />
-          </Box>
-          <p style={{ fontSize: "14px", color: "#555555", margin: "0 0 8px" }}>
-            No documents yet
+        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+          <FileText
+            size={36}
+            color="#2a2a2a"
+            aria-hidden
+            style={{ marginBottom: "12px" }}
+          />
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
+            {documents.length === 0 && !searchActive && !categoryFiltered
+              ? "No documents yet"
+              : "No files found"}
           </p>
-          {isPrivileged ? (
+          <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
+            {searchActive
+              ? "Try a different category or upload a new document."
+              : categoryFiltered &&
+                  !documents.some((doc) => doc.category === filterCategory)
+                ? categoryEmptySubtext(filterCategory)
+                : documents.length === 0 && !searchActive && !categoryFiltered
+                  ? "Upload your first document to get started."
+                  : "Try a different category or upload a new document."}
+          </p>
+          {isPrivileged &&
+          documents.length === 0 &&
+          !searchActive &&
+          !categoryFiltered ? (
             <button
               type="button"
               onClick={() => setShowUploadModal(true)}
@@ -1385,12 +1533,13 @@ export default function ClubDocumentsPage() {
                 color: "#E51937",
                 fontSize: "14px",
                 cursor: "pointer",
+                marginTop: "12px",
               }}
             >
               Upload your first document →
             </button>
           ) : null}
-        </Box>
+        </div>
       ) : (
         <div style={gridStyle}>
           {filteredDocuments.map((doc) => (
@@ -1402,6 +1551,7 @@ export default function ClubDocumentsPage() {
               deleting={deletingId === doc.id}
               onDelete={(item) => void handleDelete(item)}
               onEdit={openEditDocument}
+              onMoveCategory={openMoveCategory}
               onPreview={(item) => setPreviewDoc(item)}
               onDownload={(item) => void handleDownloadDocument(item)}
             />
@@ -1909,6 +2059,121 @@ export default function ClubDocumentsPage() {
                 }}
               >
                 {savingEdit ? "Saving…" : "Save"}
+              </button>
+            </Box>
+          </div>
+        </div>
+      ) : null}
+
+      {movingDocument && isPrivileged ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={modalOverlayStyle}
+          onClick={closeMoveCategoryModal}
+        >
+          <div
+            style={addLinkModalPanelStyle}
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "16px",
+              }}
+            >
+              <h2
+                style={{
+                  fontWeight: 600,
+                  fontSize: "16px",
+                  color: "#ffffff",
+                  margin: 0,
+                }}
+              >
+                Move Category
+              </h2>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={closeMoveCategoryModal}
+                disabled={savingMove}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#777777",
+                  cursor: "pointer",
+                  padding: "4px",
+                  display: "flex",
+                }}
+              >
+                <X size={18} aria-hidden />
+              </button>
+            </div>
+
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#555555",
+                margin: "0 0 12px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {movingDocument.name}
+            </p>
+
+            <CategoryPills
+              value={moveCategoryValue}
+              onChange={setMoveCategoryValue}
+              categories={allCategories}
+              customValues={customCategoryValues}
+            />
+
+            <Box
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+                marginTop: "20px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeMoveCategoryModal}
+                disabled={savingMove}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleMoveCategory()}
+                disabled={savingMove}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: savingMove ? 0.5 : 1,
+                }}
+              >
+                {savingMove ? "Saving…" : "Save"}
               </button>
             </Box>
           </div>

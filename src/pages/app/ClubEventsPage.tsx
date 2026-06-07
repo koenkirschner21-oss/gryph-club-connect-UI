@@ -6,7 +6,14 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { MoreHorizontal, Repeat } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  Clock,
+  MapPin,
+  MoreHorizontal,
+  RefreshCw,
+} from "lucide-react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -27,41 +34,133 @@ import {
 } from "../../lib/eventCategories";
 
 type EventVisibility = "public" | "members_only" | "featured";
+type EventFilter = "all" | "public" | "members_only" | "recurring" | "my_rsvps";
 
-function categoryBadgeStyle(category: string, featured = false): CSSProperties {
-  const base: CSSProperties = {
-    background: "#111111",
-    border: "1px solid #222222",
-    color: "#747676",
+const EVENT_FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "public", label: "Public" },
+  { value: "members_only", label: "Members Only" },
+  { value: "recurring", label: "Recurring" },
+  { value: "my_rsvps", label: "My RSVPs" },
+];
+
+function categoryBadgeStyle(): CSSProperties {
+  return {
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    color: "#777777",
     borderRadius: "20px",
-    padding: "2px 10px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    fontWeight: 500,
+    display: "inline-block",
+    flexShrink: 0,
+  };
+}
+
+function publicEventBadgeStyle(): CSSProperties {
+  return {
+    background: "transparent",
+    border: "1px solid #E51937",
+    color: "#E51937",
+    borderRadius: "20px",
+    padding: "3px 10px",
     fontSize: "11px",
     display: "inline-block",
     flexShrink: 0,
   };
+}
 
-  if (featured) {
-    return {
-      ...base,
-      background: "#1a0a0a",
-      borderColor: "#E51937",
-      color: "#E51937",
-    };
-  }
+function membersOnlyBadgeStyle(): CSSProperties {
+  return {
+    background: "#1a1a1a",
+    border: "1px solid #333333",
+    color: "#555555",
+    borderRadius: "20px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    display: "inline-block",
+    flexShrink: 0,
+  };
+}
 
-  switch (category) {
-    case "weekly_meeting":
-      return { ...base, background: "#0a0a1a", borderColor: "#1a1a3a", color: "#6b7cff" };
-    case "team_social":
-      return { ...base, background: "#0a1a0a", borderColor: "#1a3a1a", color: "#4ade80" };
-    case "conference":
-    case "workshop":
-      return { ...base, background: "#1a1500", borderColor: "#3a2f00", color: "#FFC429" };
-    case "public_event":
-      return base;
+function isEventPublic(event: ClubEvent): boolean {
+  return event.visibility !== "members_only";
+}
+
+function matchesEventFilter(
+  event: ClubEvent,
+  filter: EventFilter,
+  myRsvps: Record<string, RsvpStatus>,
+  isRecurring: (eventId: string) => boolean,
+): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "public":
+      return isEventPublic(event);
+    case "members_only":
+      return event.visibility === "members_only";
+    case "recurring":
+      return isRecurring(event.id);
+    case "my_rsvps": {
+      const status = myRsvps[event.id];
+      return status === "going" || status === "maybe";
+    }
     default:
-      return base;
+      return true;
   }
+}
+
+type EventListItem =
+  | { kind: "event"; event: ClubEvent }
+  | { kind: "expand"; title: string; remaining: number; expanded: boolean };
+
+function buildUpcomingDisplayList(
+  events: ClubEvent[],
+  showAllRecurring: Record<string, boolean>,
+): EventListItem[] {
+  const titleCounts = new Map<string, number>();
+  for (const event of events) {
+    titleCounts.set(event.title, (titleCounts.get(event.title) ?? 0) + 1);
+  }
+
+  const titleShown = new Map<string, number>();
+  const collapseInserted = new Set<string>();
+  const result: EventListItem[] = [];
+
+  for (const event of events) {
+    const count = titleCounts.get(event.title) ?? 1;
+    const shown = titleShown.get(event.title) ?? 0;
+    const expanded = showAllRecurring[event.title] ?? false;
+
+    if (count > 3 && !expanded && shown >= 2) {
+      if (!collapseInserted.has(event.title)) {
+        collapseInserted.add(event.title);
+        result.push({
+          kind: "expand",
+          title: event.title,
+          remaining: count - 2,
+          expanded: false,
+        });
+      }
+      continue;
+    }
+
+    result.push({ kind: "event", event });
+    titleShown.set(event.title, shown + 1);
+
+    if (count > 3 && expanded && shown + 1 === count) {
+      result.push({
+        kind: "expand",
+        title: event.title,
+        remaining: count - 2,
+        expanded: true,
+      });
+    }
+  }
+
+  return result;
 }
 
 function CategorySelector({
@@ -208,19 +307,17 @@ function downloadEventIcs(event: ClubEvent) {
   URL.revokeObjectURL(url);
 }
 
-function EventCategoryBadge({
-  category,
-  featured = false,
-}: {
-  category: string;
-  featured?: boolean;
-}) {
-  const label = featured ? "Featured" : eventCategoryLabel(category);
+function EventCategoryBadge({ category }: { category: string }) {
   return (
-    <span style={categoryBadgeStyle(category, featured)}>
-      {label}
-    </span>
+    <span style={categoryBadgeStyle()}>{eventCategoryLabel(category)}</span>
   );
+}
+
+function EventVisibilityBadge({ event }: { event: ClubEvent }) {
+  if (event.visibility === "members_only") {
+    return <span style={membersOnlyBadgeStyle()}>Members Only</span>;
+  }
+  return <span style={publicEventBadgeStyle()}>Public Event</span>;
 }
 
 type RecurrenceFrequency = "weekly" | "biweekly" | "monthly";
@@ -443,16 +540,17 @@ function EventRecurringBadge() {
         display: "inline-flex",
         alignItems: "center",
         gap: "4px",
-        background: "#1a1a2a",
-        border: "1px solid #6b7cff",
-        color: "#6b7cff",
+        background: "transparent",
+        border: "1px solid #FFC429",
+        color: "#FFC429",
         borderRadius: "20px",
-        padding: "2px 10px",
+        padding: "3px 10px",
         fontSize: "11px",
+        fontWeight: 500,
         flexShrink: 0,
       }}
     >
-      <Repeat size={11} aria-hidden />
+      <RefreshCw size={10} aria-hidden />
       Recurring
     </span>
   );
@@ -623,12 +721,6 @@ function VisibilitySelector({
 }
 
 
-const RSVP_OPTIONS: { value: RsvpStatus; label: string }[] = [
-  { value: "going", label: "Going" },
-  { value: "maybe", label: "Maybe" },
-  { value: "not_going", label: "Not Going" },
-];
-
 function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
   const parsedDate = new Date(date);
   const monthLabel = Number.isNaN(parsedDate.getTime())
@@ -640,28 +732,35 @@ function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
 
   return (
     <div
-      className="flex shrink-0 flex-col items-center justify-center"
       style={{
-        width: "52px",
-        height: "52px",
-        backgroundColor: muted ? "#333333" : "#E51937",
-        borderRadius: "8px" }}
+        background: muted ? "#333333" : "#E51937",
+        borderRadius: "10px",
+        padding: "8px 12px",
+        textAlign: "center",
+        minWidth: "52px",
+        flexShrink: 0,
+      }}
     >
       <span
         style={{
-          fontSize: "9px",
+          display: "block",
+          fontSize: "11px",
+          fontWeight: 700,
           textTransform: "uppercase",
           color: "#ffffff",
-          lineHeight: 1.1 }}
+          lineHeight: 1.1,
+        }}
       >
         {monthLabel}
       </span>
       <span
         style={{
+          display: "block",
           fontSize: "22px",
-          fontWeight: 700,
+          fontWeight: 800,
           color: "#ffffff",
-          lineHeight: 1.1 }}
+          lineHeight: 1,
+        }}
       >
         {dayLabel}
       </span>
@@ -669,52 +768,130 @@ function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
   );
 }
 
-function rsvpButtonStyle(value: RsvpStatus, active: boolean): CSSProperties {
+function rsvpButtonStyle(
+  value: RsvpStatus,
+  active: boolean,
+  hovered: boolean,
+): CSSProperties {
   const base: CSSProperties = {
-    borderRadius: "20px",
-    padding: "4px 12px",
+    background: "transparent",
+    borderRadius: "6px",
+    padding: "6px 14px",
     fontSize: "12px",
-    fontWeight: 500,
-    cursor: "pointer" };
-  if (!active) {
+    cursor: "pointer",
+    transition: "border-color 0.15s ease, color 0.15s ease",
+  };
+
+  if (active && value === "going") {
     return {
       ...base,
-      backgroundColor: "#111111",
-      color: "#444444",
-      border: "1px solid #222222" };
-  }
-  if (value === "going") {
-    return {
-      ...base,
-      backgroundColor: "#1a0505",
-      color: "#E51937",
-      border: "1px solid #E51937" };
-  }
-  if (value === "maybe") {
-    return {
-      ...base,
-      backgroundColor: "#2a1f00",
+      background: "#1a1200",
+      border: "1px solid #FFC429",
       color: "#FFC429",
-      border: "1px solid #FFC429" };
+    };
   }
-  return {
-    ...base,
-    backgroundColor: "#1a1a1a",
-    color: "#747676",
-    border: "1px solid #555555" };
+  if (active && value === "not_going") {
+    return {
+      ...base,
+      background: "#1a0505",
+      border: "1px solid #E51937",
+      color: "#E51937",
+    };
+  }
+  if (active && value === "maybe") {
+    return {
+      ...base,
+      background: "#1a1a1a",
+      border: "1px solid #555555",
+      color: "#aaaaaa",
+    };
+  }
+
+  if (hovered && value === "going") {
+    return { ...base, border: "1px solid #FFC429", color: "#FFC429" };
+  }
+  if (hovered && value === "maybe") {
+    return { ...base, border: "1px solid #555555", color: "#aaaaaa" };
+  }
+  if (hovered && value === "not_going") {
+    return { ...base, border: "1px solid #E51937", color: "#E51937" };
+  }
+
+  return { ...base, border: "1px solid #333333", color: "#777777" };
+}
+
+function RsvpButton({
+  value,
+  label,
+  active,
+  onClick,
+}: {
+  value: RsvpStatus;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={rsvpButtonStyle(value, active, hovered)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function RegisteredButton() {
+  return (
+    <span
+      style={{
+        background: "#1a1200",
+        border: "1px solid #FFC429",
+        color: "#FFC429",
+        borderRadius: "8px",
+        padding: "8px 18px",
+        fontSize: "13px",
+        fontWeight: 600,
+        cursor: "default",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+      }}
+    >
+      Registered
+      <Check size={14} color="#FFC429" aria-hidden />
+    </span>
+  );
 }
 
 const eventCardStyle: CSSProperties = {
-  backgroundColor: "#1a1a1a",
-  border: "1px solid #242424",
-  borderRadius: "10px",
+  background: "#141414",
+  border: "1px solid #2a2a2a",
+  borderLeft: "1px solid #2a2a2a",
+  borderRadius: "14px",
   padding: "20px",
-  borderLeft: "3px solid #E51937" };
+  marginBottom: "12px",
+};
 
-const sectionHeadingStyle: CSSProperties = {
+const upcomingSectionHeadingStyle: CSSProperties = {
+  fontSize: "12px",
+  fontWeight: 700,
+  color: "#555555",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  marginBottom: "16px",
+  paddingBottom: "12px",
+  borderBottom: "1px solid #1a1a1a",
+};
+
+const pastSectionHeadingStyle: CSSProperties = {
   fontWeight: 600,
   fontSize: "15px",
-  color: "#ffffff",
+  color: "#555555",
   marginBottom: "12px",
 };
 
@@ -829,6 +1006,7 @@ function EventCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [attendeesHovered, setAttendeesHovered] = useState(false);
   const timeLabel = formatEventTime(event.time);
   const locationLabel = cleanEventLocation(event.location);
 
@@ -841,66 +1019,115 @@ function EventCard({
       }}
       style={{
         ...eventCardStyle,
-        ...(past ? { borderLeft: "3px solid #333333", opacity: 0.6 } : null),
+        ...(past ? { opacity: 0.6 } : null),
       }}
     >
-      <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+      <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
         <EventDateBlock date={event.date} muted={past} />
-        {clubLogoUrl ? (
-          <img
-            src={clubLogoUrl}
-            alt=""
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "8px",
-              objectFit: "cover",
-              flexShrink: 0,
-            }}
-          />
-        ) : (
+
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "8px",
-              background: "#2a2a2a",
-              color: "#888888",
-              fontSize: "13px",
-              fontWeight: 600,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
+              alignItems: "flex-start",
+              gap: "10px",
+              marginBottom: "4px",
             }}
           >
-            {deriveInitialsFromAbbreviation(clubAbbreviation)}
-          </div>
-        )}
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
-            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: 0 }}>
+            {clubLogoUrl ? (
+              <img
+                src={clubLogoUrl}
+                alt=""
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "50%",
+                  background: "#2a2a2a",
+                  color: "#888888",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {deriveInitialsFromAbbreviation(clubAbbreviation).slice(0, 2)}
+              </div>
+            )}
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: 0,
+                lineHeight: 1.3,
+              }}
+            >
               {event.title}
             </h3>
-            <EventCategoryBadge
-              category={category}
-              featured={event.visibility === "featured"}
-            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "6px",
+              flexWrap: "wrap",
+              marginBottom: "8px",
+            }}
+          >
+            <EventCategoryBadge category={category} />
+            <EventVisibilityBadge event={event} />
             {isRecurring ? <EventRecurringBadge /> : null}
           </div>
 
           {timeLabel || locationLabel ? (
-            <p style={{ fontSize: "12px", color: "#555555", margin: "4px 0 0" }}>
-              {[timeLabel, locationLabel].filter(Boolean).join(" · ")}
-            </p>
+            <div
+              style={{
+                fontSize: "13px",
+                color: "#666666",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                flexWrap: "wrap",
+                marginBottom: "10px",
+              }}
+            >
+              {timeLabel ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <Clock size={13} color="#555555" aria-hidden />
+                  {timeLabel}
+                </span>
+              ) : null}
+              {timeLabel && locationLabel ? (
+                <span style={{ color: "#444444" }}>·</span>
+              ) : null}
+              {locationLabel ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <MapPin size={13} color="#555555" aria-hidden />
+                  {locationLabel}
+                </span>
+              ) : null}
+            </div>
           ) : null}
 
           {event.description ? (
             <p
               style={{
                 fontSize: "13px",
-                color: "#777777",
-                margin: "6px 0 0",
+                color: "#555555",
+                lineHeight: 1.6,
+                margin: "0 0 10px",
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical",
@@ -911,73 +1138,121 @@ function EventCard({
             </p>
           ) : null}
 
-          <p style={{ fontSize: "12px", color: "#555555", margin: "8px 0 0" }}>
+          <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 12px" }}>
             {counts.going} going · {counts.maybe} maybe · {counts.not_going} not going
           </p>
 
-          {!past ? (
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
-              {myStatus ? (
-                <span
-                  style={{
-                    background: "#1a0505",
-                    border: "1px solid #FFC429",
-                    color: "#FFC429",
-                    borderRadius: "20px",
-                    padding: "6px 14px",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                  }}
-                >
-                  Registered ✓
-                </span>
-              ) : (
-                RSVP_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => onRsvp(event.id, opt.value)}
-                    style={rsvpButtonStyle(opt.value, myStatus === opt.value)}
-                  >
-                    {opt.label}
-                  </button>
-                ))
-              )}
-            </div>
-          ) : null}
-
           {attendeesList && isPrivileged ? (
-            <div className="mt-3 space-y-2 rounded-lg border border-border bg-surface p-3">
+            <div
+              style={{
+                marginTop: "4px",
+                borderRadius: "8px",
+                border: "1px solid #2a2a2a",
+                background: "#111111",
+                padding: "12px",
+              }}
+            >
               {attendeesList.length === 0 ? (
-                <p className="text-xs text-muted">No RSVPs yet.</p>
+                <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+                  No RSVPs yet.
+                </p>
               ) : (
                 attendeesList.map((a) => (
-                  <div key={a.id} className="flex items-center gap-3">
+                  <div
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      marginBottom: "8px",
+                    }}
+                  >
                     {a.avatarUrl ? (
                       <img
                         src={a.avatarUrl}
                         alt=""
-                        className="h-7 w-7 flex-shrink-0 rounded-full object-cover"
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                          flexShrink: 0,
+                        }}
                       />
                     ) : (
-                      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                      <div
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          background: "#1a0505",
+                          color: "#E51937",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
                         {(a.fullName ?? "U")[0].toUpperCase()}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm font-medium text-white">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 500,
+                          color: "#ffffff",
+                          margin: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {a.fullName ?? "Unknown"}
                       </p>
-                      {a.program ? <p className="truncate text-xs text-muted">{a.program}</p> : null}
+                      {a.program ? (
+                        <p
+                          style={{
+                            fontSize: "11px",
+                            color: "#555555",
+                            margin: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {a.program}
+                        </p>
+                      ) : null}
                     </div>
                     <span
-                      className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        a.status === "going"
-                          ? "bg-green-500/10 text-green-400"
-                          : a.status === "maybe"
-                            ? "bg-yellow-500/10 text-yellow-400"
-                            : "bg-red-500/10 text-red-400"
-                      }`}
+                      style={{
+                        flexShrink: 0,
+                        borderRadius: "20px",
+                        padding: "2px 8px",
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        background:
+                          a.status === "going"
+                            ? "#1a1200"
+                            : a.status === "maybe"
+                              ? "#1a1a1a"
+                              : "#1a0505",
+                        color:
+                          a.status === "going"
+                            ? "#FFC429"
+                            : a.status === "maybe"
+                              ? "#aaaaaa"
+                              : "#E51937",
+                        border:
+                          a.status === "going"
+                            ? "1px solid #FFC429"
+                            : a.status === "maybe"
+                              ? "1px solid #555555"
+                              : "1px solid #E51937",
+                      }}
                     >
                       {a.status === "not_going"
                         ? "Not Going"
@@ -990,7 +1265,16 @@ function EventCard({
           ) : null}
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
+        <div
+          style={{
+            width: "180px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "8px",
+            flexShrink: 0,
+          }}
+        >
           {isPrivileged && hovered ? (
             <div style={{ position: "relative" }}>
               <button
@@ -1084,21 +1368,51 @@ function EventCard({
               ) : null}
             </div>
           ) : null}
+
           {showViewAttendees && isPrivileged ? (
             <button
               type="button"
               onClick={() => onToggleAttendees(event.id)}
+              onMouseEnter={() => setAttendeesHovered(true)}
+              onMouseLeave={() => setAttendeesHovered(false)}
               style={{
-                background: "transparent",
+                background: "none",
                 border: "none",
                 padding: 0,
-                color: "#E51937",
+                color: attendeesHovered ? "#E51937" : "#555555",
                 fontSize: "12px",
                 cursor: "pointer",
               }}
             >
               {attendeesList ? "Hide Attendees" : "View Attendees"}
             </button>
+          ) : null}
+
+          {!past ? (
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {myStatus === "going" ? (
+                <RegisteredButton />
+              ) : (
+                <RsvpButton
+                  value="going"
+                  label="Going"
+                  active={false}
+                  onClick={() => onRsvp(event.id, "going")}
+                />
+              )}
+              <RsvpButton
+                value="maybe"
+                label="Maybe"
+                active={myStatus === "maybe"}
+                onClick={() => onRsvp(event.id, "maybe")}
+              />
+              <RsvpButton
+                value="not_going"
+                label="Not Going"
+                active={myStatus === "not_going"}
+                onClick={() => onRsvp(event.id, "not_going")}
+              />
+            </div>
           ) : null}
         </div>
       </div>
@@ -1548,6 +1862,10 @@ export default function ClubEventsPage() {
     [],
   );
   const [copiedEventId, setCopiedEventId] = useState<string | null>(null);
+  const [eventFilter, setEventFilter] = useState<EventFilter>("all");
+  const [showAllRecurring, setShowAllRecurring] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const loadAllEventQuestions = useCallback(async () => {
     if (eventIds.length === 0) {
@@ -2314,6 +2632,24 @@ export default function ClubEventsPage() {
     .filter((e) => new Date(e.date) >= now)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  const filteredUpcomingEvents = useMemo(
+    () =>
+      upcomingEvents.filter((event) =>
+        matchesEventFilter(
+          event,
+          eventFilter,
+          myRsvps,
+          (eventId) => eventRecurring[eventId]?.isRecurring ?? false,
+        ),
+      ),
+    [upcomingEvents, eventFilter, myRsvps, eventRecurring],
+  );
+
+  const upcomingDisplayList = useMemo(
+    () => buildUpcomingDisplayList(filteredUpcomingEvents, showAllRecurring),
+    [filteredUpcomingEvents, showAllRecurring],
+  );
+
   const pastEvents = events
     .filter((e) => new Date(e.date) < now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -2346,16 +2682,21 @@ export default function ClubEventsPage() {
         <div>
           <h1
             style={{
-              fontWeight: 700,
-              fontSize: "22px",
-              color: "#ffffff" }}
+              fontWeight: 800,
+              fontSize: "28px",
+              color: "#ffffff",
+              margin: 0,
+            }}
           >
             Events
           </h1>
           <p
             style={{
-              fontSize: "13px",
-              color: "#555555" }}
+              fontSize: "14px",
+              color: "#555555",
+              marginTop: "4px",
+              marginBottom: 0,
+            }}
           >
             {upcomingEvents.length} upcoming event
             {upcomingEvents.length !== 1 ? "s" : ""}
@@ -2379,19 +2720,59 @@ export default function ClubEventsPage() {
         )}
       </div>
 
-      {/* Feedback message */}
-      {feedback && (
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          marginBottom: "24px",
+          flexWrap: "nowrap",
+          overflowX: "auto",
+        }}
+      >
+        {EVENT_FILTER_OPTIONS.map((option) => {
+          const active = eventFilter === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setEventFilter(option.value)}
+              style={{
+                background: active ? "#E51937" : "transparent",
+                color: active ? "#ffffff" : "#777777",
+                border: active ? "none" : "1px solid #333333",
+                borderRadius: "20px",
+                padding: "6px 16px",
+                fontSize: "12px",
+                fontWeight: active ? 600 : 400,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {feedback ? (
         <div
           role="alert"
-          className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
-            feedback.type === "success"
-              ? "bg-green-500/10 text-green-400"
-              : "bg-primary/10 text-primary"
-          }`}
+          style={{
+            marginBottom: "16px",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            fontSize: "13px",
+            border:
+              feedback.type === "success"
+                ? "1px solid #3a2a00"
+                : "1px solid #3a1a1a",
+            background: feedback.type === "success" ? "#1a1500" : "#1a0505",
+            color: feedback.type === "success" ? "#FFC429" : "#E51937",
+          }}
         >
           {feedback.text}
         </div>
-      )}
+      ) : null}
 
       {/* Create / edit form — admin/exec only */}
       {showForm && isPrivileged && (
@@ -2501,32 +2882,87 @@ export default function ClubEventsPage() {
         </Card>
       )}
 
-      {/* Upcoming Events */}
-      <h2 style={sectionHeadingStyle}>Upcoming</h2>
-      {upcomingEvents.length === 0 ? (
-        <div className="mb-8 py-12 text-center">
-          <p style={{ fontSize: "14px", color: "#555555" }}>
-            No upcoming events.
-            {isPrivileged ? (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={() => setShowForm(true)}
-                  className="cursor-pointer border-none bg-transparent p-0 underline-offset-2 hover:underline"
-                  style={{ color: "#E51937", fontSize: "14px" }}
-                >
-                  Create your first event
-                </button>
-              </>
-            ) : (
-              " Check back soon!"
-            )}
+      <div style={upcomingSectionHeadingStyle}>
+        Upcoming · {filteredUpcomingEvents.length} event
+        {filteredUpcomingEvents.length !== 1 ? "s" : ""}
+      </div>
+      {filteredUpcomingEvents.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "48px 24px", marginBottom: "32px" }}>
+          <Calendar
+            size={36}
+            color="#2a2a2a"
+            aria-hidden
+            style={{ marginBottom: "12px" }}
+          />
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
+            No upcoming events
           </p>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#444444",
+              marginTop: "4px",
+              maxWidth: "260px",
+              margin: "4px auto 0",
+            }}
+          >
+            {upcomingEvents.length === 0 && isPrivileged
+              ? "Create your first event to get started."
+              : eventFilter !== "all"
+                ? "Try a different filter or check back soon."
+                : "Check back soon for new events."}
+          </p>
+          {upcomingEvents.length === 0 && isPrivileged ? (
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#E51937",
+                fontSize: "14px",
+                cursor: "pointer",
+                marginTop: "12px",
+              }}
+            >
+              Create your first event →
+            </button>
+          ) : null}
         </div>
       ) : (
-        <div className="mb-8 space-y-3">
-          {upcomingEvents.map((event) => {
+        <div style={{ marginBottom: "32px" }}>
+          {upcomingDisplayList.map((item) => {
+            if (item.kind === "expand") {
+              return (
+                <button
+                  key={`expand-${item.title}-${item.expanded ? "open" : "closed"}`}
+                  type="button"
+                  onClick={() =>
+                    setShowAllRecurring((prev) => ({
+                      ...prev,
+                      [item.title]: !item.expanded,
+                    }))
+                  }
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #2a2a2a",
+                    color: "#555555",
+                    borderRadius: "8px",
+                    padding: "10px 20px",
+                    fontSize: "13px",
+                    width: "100%",
+                    marginBottom: "12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {item.expanded
+                    ? "Show fewer dates ↑"
+                    : `+ Show ${item.remaining} more dates for "${item.title}"`}
+                </button>
+              );
+            }
+
+            const event = item.event;
             const c = counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 };
             const myStatus = myRsvps[event.id];
             return (
@@ -2548,7 +2984,9 @@ export default function ClubEventsPage() {
                 onAddToCalendar={downloadEventIcs}
                 showViewAttendees={isPrivileged}
                 onToggleAttendees={toggleAttendees}
-                attendeesList={expandedAttendees === event.id ? attendees[event.id] : undefined}
+                attendeesList={
+                  expandedAttendees === event.id ? attendees[event.id] : undefined
+                }
                 onOpenResponses={openResponsesModal}
                 hasFormResponses={(eventQuestionsMap[event.id]?.length ?? 0) > 0}
               />
@@ -2560,7 +2998,7 @@ export default function ClubEventsPage() {
       {/* Past Events */}
       {pastEvents.length > 0 && (
         <>
-          <h2 style={{ ...sectionHeadingStyle, color: "#555555" }}>Past Events</h2>
+          <h2 style={pastSectionHeadingStyle}>Past Events</h2>
           <div className="space-y-3">
             {pastEvents.map((event) => (
               <EventCard

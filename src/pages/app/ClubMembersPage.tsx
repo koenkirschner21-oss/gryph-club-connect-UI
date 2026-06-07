@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Search, Users } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
@@ -44,52 +45,149 @@ function MemberNameLink({
     </Link>
   );
 }
-const inviteCardStyle: CSSProperties = {
-  backgroundColor: "#1a1a1a",
-  border: "1px solid #242424",
-  borderRadius: "8px",
-  padding: "16px",
+type MemberRoleFilter = "all" | "executives" | "members";
+
+const MEMBER_FILTER_OPTIONS: { value: MemberRoleFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "executives", label: "Executives" },
+  { value: "members", label: "Members" },
+];
+
+const memberListCardStyle: CSSProperties = {
+  background: "#141414",
+  borderTop: "1px solid #2a2a2a",
+  borderRight: "1px solid #2a2a2a",
+  borderBottom: "1px solid #2a2a2a",
+  borderLeft: "1px solid #2a2a2a",
+  borderRadius: "10px",
+  padding: "14px 20px",
+  display: "flex",
+  alignItems: "center",
+  gap: "16px",
+  marginBottom: "8px",
 };
 
 const memberCardStyle: CSSProperties = {
-  backgroundColor: "#1a1a1a",
-  border: "1px solid #242424",
-  borderRadius: "8px",
+  backgroundColor: "#141414",
+  border: "1px solid #2a2a2a",
+  borderRadius: "10px",
   padding: "14px 16px",
 };
 
+function avatarFallbackBackground(name: string): string {
+  const palette = ["#1a0505", "#1a1200", "#1a1a1a", "#1a0a14"];
+  const code = name.trim().charCodeAt(0) || 65;
+  return palette[code % palette.length];
+}
+
 function roleBadgeStyle(role: MemberRole | string): CSSProperties {
   const base: CSSProperties = {
-    borderRadius: "20px",
-    padding: "3px 10px",
+    borderRadius: "4px",
+    padding: "2px 8px",
     fontSize: "11px",
-    textTransform: "capitalize",
+    fontWeight: 600,
     flexShrink: 0,
+    display: "inline-block",
   };
   switch (role) {
     case "owner":
       return {
         ...base,
-        backgroundColor: "#2a1500",
+        background: "#1a1200",
+        border: "1px solid #FFC429",
         color: "#FFC429",
-        border: "1px solid #3a2500",
       };
     case "executive":
       return {
         ...base,
-        background: "#1a1a2a",
-        color: "#6b7cff",
-        border: "1px solid #2a2a3a",
+        background: "#1a0505",
+        border: "1px solid #E51937",
+        color: "#E51937",
       };
     default:
       return {
         ...base,
-        backgroundColor: "#111111",
+        background: "#1a1a1a",
+        border: "1px solid #333333",
         color: "#555555",
-        border: "1px solid #222222",
       };
   }
 }
+
+function StatCard({
+  label,
+  value,
+  topColor,
+  valueColor = "#ffffff",
+}: {
+  label: string;
+  value: number;
+  topColor: string;
+  valueColor?: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#141414",
+        borderRadius: "12px",
+        padding: "16px 20px",
+        flex: 1,
+        minWidth: 0,
+        borderTop: `3px solid ${topColor}`,
+        borderRight: "1px solid #2a2a2a",
+        borderBottom: "1px solid #2a2a2a",
+        borderLeft: "1px solid #2a2a2a",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "24px",
+          fontWeight: 800,
+          color: valueColor,
+          margin: 0,
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </p>
+      <p
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#555555",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginTop: "4px",
+          marginBottom: 0,
+        }}
+      >
+        {label}
+      </p>
+    </div>
+  );
+}
+
+const outlineActionButtonStyle = (hovered: boolean): CSSProperties => ({
+  background: "transparent",
+  border: `1px solid ${hovered ? "#555555" : "#2a2a2a"}`,
+  color: hovered ? "#aaaaaa" : "#555555",
+  borderRadius: "6px",
+  padding: "5px 12px",
+  fontSize: "12px",
+  cursor: "pointer",
+  transition: "border-color 0.15s ease, color 0.15s ease",
+});
+
+const removeActionButtonStyle = (hovered: boolean): CSSProperties => ({
+  background: "transparent",
+  border: `1px solid ${hovered ? "#E51937" : "#2a2a2a"}`,
+  color: hovered ? "#E51937" : "#555555",
+  borderRadius: "6px",
+  padding: "5px 12px",
+  fontSize: "12px",
+  cursor: "pointer",
+  transition: "border-color 0.15s ease, color 0.15s ease",
+});
 
 function normalizeMemberRole(role: string): MemberRole {
   if (role === "executive" || role === "exec") return "executive";
@@ -101,14 +199,6 @@ function formatRoleLabel(role: MemberRole | string): string {
   if (role === "executive" || role === "exec") return "Executive";
   if (role === "owner") return "President";
   return "Member";
-}
-
-function roleBadgeLabel(role: MemberRole, title?: string | null): string {
-  const label = formatRoleLabel(role);
-  if (role === "executive" && title?.trim()) {
-    return `${label} · ${title.trim()}`;
-  }
-  return label;
 }
 
 const ROLE_OPTIONS: { value: MemberRole; label: string }[] = [
@@ -199,9 +289,10 @@ function MemberAvatar({
       className="flex shrink-0 items-center justify-center font-bold"
       style={{
         ...style,
-        backgroundColor: "#1f1f1f",
-        color: "#E51937",
+        backgroundColor: avatarFallbackBackground(name),
+        color: "#ffffff",
         fontSize: size <= 36 ? "12px" : "14px",
+        fontWeight: 700,
       }}
     >
       {name.charAt(0).toUpperCase()}
@@ -238,16 +329,21 @@ interface OrgChartMember {
   avatarUrl?: string | null;
 }
 
-const orgCardBase: CSSProperties = {
-  background: "#1a1a1a",
-  border: "1px solid #242424",
-  borderRadius: "10px",
-  padding: "16px 12px",
-  textAlign: "center",
-  minWidth: "140px",
-  maxWidth: "160px",
-  boxSizing: "border-box",
-};
+function orgCardStyle(leadership: boolean): CSSProperties {
+  return {
+    background: "#141414",
+    borderTop: "1px solid #2a2a2a",
+    borderRight: "1px solid #2a2a2a",
+    borderBottom: "1px solid #2a2a2a",
+    borderLeft: leadership ? "3px solid #E51937" : "1px solid #2a2a2a",
+    borderRadius: "12px",
+    padding: "16px 20px",
+    textAlign: "center",
+    minWidth: "160px",
+    maxWidth: "180px",
+    boxSizing: "border-box",
+  };
+}
 
 const connectorLine: CSSProperties = {
   width: "1px",
@@ -262,19 +358,11 @@ function OrgChartCard({
   member: OrgChartMember;
   tier: "president" | "executive" | "team";
 }) {
-  const [hovered, setHovered] = useState(false);
   const displayName = member.fullName || "Unknown";
 
   if (tier === "president") {
     return (
-      <div
-        style={{
-          ...orgCardBase,
-          borderColor: hovered ? "#333" : "#242424",
-        }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
+      <div style={orgCardStyle(true)}>
         <div className="mb-2 flex justify-center">
           <MemberAvatar
             avatarUrl={member.avatarUrl}
@@ -284,10 +372,13 @@ function OrgChartCard({
             borderColor="#E51937"
           />
         </div>
-        <MemberNameLink userId={member.userId}>
+        <MemberNameLink
+          userId={member.userId}
+          style={{ fontSize: "14px", fontWeight: 700, marginTop: "8px", display: "block" }}
+        >
           {displayName}
         </MemberNameLink>
-        <span style={roleBadgeStyle("owner")}>President</span>
+        <span style={{ ...roleBadgeStyle("owner"), marginTop: "6px" }}>President</span>
         {member.title ? (
           <p
             style={{
@@ -306,27 +397,23 @@ function OrgChartCard({
 
   if (tier === "executive") {
     return (
-      <div
-        style={{
-          ...orgCardBase,
-          borderColor: hovered ? "#333" : "#242424",
-        }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
+      <div style={orgCardStyle(true)}>
         <div className="mb-2 flex justify-center">
           <MemberAvatar
             avatarUrl={member.avatarUrl}
             name={displayName}
             size={48}
             borderWidth={2}
-            borderColor="#6b7cff"
+            borderColor="#E51937"
           />
         </div>
-        <MemberNameLink userId={member.userId}>
+        <MemberNameLink
+          userId={member.userId}
+          style={{ fontSize: "14px", fontWeight: 700, marginTop: "8px", display: "block" }}
+        >
           {displayName}
         </MemberNameLink>
-        <span style={roleBadgeStyle("executive")}>Executive</span>
+        <span style={{ ...roleBadgeStyle("executive"), marginTop: "6px" }}>Executive</span>
         {member.title ? (
           <p
             style={{
@@ -344,30 +431,20 @@ function OrgChartCard({
   }
 
   return (
-    <div
-      style={{
-        ...orgCardBase,
-        minWidth: "120px",
-        maxWidth: "140px",
-        padding: "12px 10px",
-        borderColor: hovered ? "#333" : "#242424",
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div style={orgCardStyle(false)}>
       <div className="mb-2 flex justify-center">
         <MemberAvatar
           avatarUrl={member.avatarUrl}
           name={displayName}
           size={36}
           borderWidth={1}
-          borderColor="#333"
+          borderColor="#333333"
         />
       </div>
       <MemberNameLink
         userId={member.userId}
         className="block"
-        style={{ fontSize: "12px", color: "#cccccc", margin: "0 0 4px", fontWeight: 500 }}
+        style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff", marginTop: "8px" }}
       >
         {displayName}
       </MemberNameLink>
@@ -539,8 +616,9 @@ function OrgChartView({ members }: { members: OrgChartMember[] }) {
 
 export default function ClubMembersPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { getClubById, getUserRole } = useClubContext();
+  const { getClubById, getUserRole, updateClub } = useClubContext();
   const club = getClubById(clubId ?? "");
 
   const role = getUserRole(clubId ?? "");
@@ -567,7 +645,13 @@ export default function ClubMembersPage() {
   const [editReportsTo, setEditReportsTo] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [regeneratingCode, setRegeneratingCode] = useState(false);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [memberRoleFilter, setMemberRoleFilter] = useState<MemberRoleFilter>("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   const [joinType, setJoinType] = useState<ClubJoinType>("open");
@@ -586,6 +670,40 @@ export default function ClubMembersPage() {
     (a, b) =>
       (roleOrder[a.role] ?? 99) - (roleOrder[b.role] ?? 99),
   );
+
+  const memberStats = useMemo(() => {
+    const executives = members.filter(
+      (m) => m.role === "owner" || m.role === "executive",
+    ).length;
+    const generalMembers = members.filter((m) => m.role === "member").length;
+    return {
+      total: members.length,
+      executives,
+      generalMembers,
+      pendingInvites: pendingInviteCount,
+    };
+  }, [members, pendingInviteCount]);
+
+  const filteredMembers = useMemo(() => {
+    let result = sortedMembers;
+    if (memberRoleFilter === "executives") {
+      result = result.filter(
+        (m) => m.role === "owner" || m.role === "executive",
+      );
+    } else if (memberRoleFilter === "members") {
+      result = result.filter((m) => m.role === "member");
+    }
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
+      result = result.filter(
+        (m) =>
+          (m.fullName?.toLowerCase().includes(query) ?? false) ||
+          (m.email?.toLowerCase().includes(query) ?? false) ||
+          (m.program?.toLowerCase().includes(query) ?? false),
+      );
+    }
+    return result;
+  }, [sortedMembers, memberRoleFilter, searchQuery]);
 
   const loadMemberMeta = useCallback(async () => {
     if (!clubId) return;
@@ -625,6 +743,24 @@ export default function ClubMembersPage() {
         setJoinType(normalizeJoinType(data?.join_type));
       });
   }, [clubId, club?.joinType]);
+
+  useEffect(() => {
+    if (!clubId) return;
+    void (async () => {
+      const { count, error } = await supabase
+        .from("club_invites")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .eq("status", "pending");
+
+      if (error) {
+        console.error("Failed to load pending invites:", error.message);
+        setPendingInviteCount(0);
+        return;
+      }
+      setPendingInviteCount(count ?? 0);
+    })();
+  }, [clubId, showInviteModal]);
 
   const loadApplications = useCallback(async () => {
     if (!clubId) return;
@@ -1021,8 +1157,8 @@ export default function ClubMembersPage() {
     if (!club?.joinCode) return;
     navigator.clipboard.writeText(club.joinCode).then(
       () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setCopiedCode(true);
+        setTimeout(() => setCopiedCode(false), 2000);
       },
       () => {
         setFeedback({ type: "error", text: "Failed to copy to clipboard." });
@@ -1030,63 +1166,103 @@ export default function ClubMembersPage() {
     );
   }
 
-  function renderAdminActions(
-    member: ClubMember,
-  ) {
+  function handleCopyLink() {
+    if (!club?.joinCode) return;
+    const link = `${window.location.origin}/join/${club.joinCode}`;
+    navigator.clipboard.writeText(link).then(
+      () => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      },
+      () => {
+        setFeedback({ type: "error", text: "Failed to copy link." });
+      },
+    );
+  }
+
+  async function handleRegenerateCode() {
+    if (!clubId || !isOwner) return;
+    if (!window.confirm("Regenerate invite code? The old code will stop working.")) {
+      return;
+    }
+    setRegeneratingCode(true);
+    setFeedback(null);
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const randomValues = crypto.getRandomValues(new Uint8Array(6));
+    const newCode = Array.from(randomValues, (v) => chars[v % chars.length]).join("");
+    const ok = await updateClub(clubId, { joinCode: newCode });
+    setRegeneratingCode(false);
+    if (ok) {
+      setFeedback({ type: "success", text: "Invite code regenerated." });
+    } else {
+      setFeedback({ type: "error", text: "Failed to regenerate invite code." });
+    }
+  }
+
+  function MemberRowActions({ member }: { member: ClubMember }) {
+    const [messageHovered, setMessageHovered] = useState(false);
+    const [roleHovered, setRoleHovered] = useState(false);
+    const [removeHovered, setRemoveHovered] = useState(false);
+
     const memberRole = member.role;
     const memberId = member.id;
     const memberUserId = member.userId;
-    const isOwner = role === "owner";
     const isSelf = memberUserId === user?.id;
     const isOtherOwner = memberRole === "owner";
-
-    if (isSelf) {
-      return null;
-    }
-
-    if (!canReorderRoster && !isOwner) {
-      return null;
-    }
-
     const busy = actionLoading === memberId;
-    const canEditRole = isOwner && !isOtherOwner;
+    const canEditRole = isOwner && !isOtherOwner && !isSelf;
     const canRemove =
-      canReorderRoster && !isTopClubModeratorRole(memberRole);
+      canReorderRoster && !isTopClubModeratorRole(memberRole) && !isSelf;
+    const canMessage = !isSelf && Boolean(clubId);
 
-    if (!canEditRole && !canRemove) {
+    if (isSelf && !canMessage) {
       return null;
     }
 
     return (
-      <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {canMessage ? (
+          <button
+            type="button"
+            onClick={() => navigate(`/app/clubs/${clubId}/chat?dm=${memberUserId}`)}
+            onMouseEnter={() => setMessageHovered(true)}
+            onMouseLeave={() => setMessageHovered(false)}
+            style={outlineActionButtonStyle(messageHovered)}
+          >
+            Message
+          </button>
+        ) : null}
         {canEditRole ? (
           <button
             type="button"
             disabled={busy}
             onClick={() => openEditRole(member)}
+            onMouseEnter={() => setRoleHovered(true)}
+            onMouseLeave={() => setRoleHovered(false)}
             style={{
-              background: "transparent",
-              border: "1px solid #333333",
-              color: "#888888",
-              borderRadius: "6px",
-              padding: "6px 12px",
-              fontSize: "12px",
+              ...outlineActionButtonStyle(roleHovered),
               cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.6 : 1,
             }}
           >
-            Edit Role
+            Change Role
           </button>
         ) : null}
         {canRemove ? (
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
+            type="button"
             disabled={busy}
-            className="text-red-400 hover:text-red-300"
-            onClick={() => handleRemove(memberId)}
+            onClick={() => void handleRemove(memberId)}
+            onMouseEnter={() => setRemoveHovered(true)}
+            onMouseLeave={() => setRemoveHovered(false)}
+            style={{
+              ...removeActionButtonStyle(removeHovered),
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.6 : 1,
+            }}
           >
             Remove
-          </Button>
+          </button>
         ) : null}
       </div>
     );
@@ -1133,21 +1309,23 @@ export default function ClubMembersPage() {
         <div>
           <h1
             style={{
-              fontWeight: 700,
-              fontSize: "22px",
+              fontWeight: 800,
+              fontSize: "28px",
               color: "#ffffff",
+              margin: 0,
             }}
           >
             Members
           </h1>
           <p
             style={{
-              fontSize: "13px",
+              fontSize: "14px",
               color: "#555555",
+              marginTop: "4px",
+              marginBottom: 0,
             }}
           >
-            {members.length} member{members.length !== 1 ? "s" : ""} in{" "}
-            {club?.name ?? "this club"}
+            Manage club members, roles, and team access.
           </p>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
@@ -1177,74 +1355,165 @@ export default function ClubMembersPage() {
         </div>
       </div>
 
-      {/* Join code section */}
-      {club?.joinCode && (
-        <div className="mb-6" style={inviteCardStyle}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3
-                style={{
-                  fontWeight: 600,
-                  fontSize: "14px",
-                  color: "#ffffff",
-                }}
-              >
-                Invite Code
-              </h3>
-              <p
-                style={{
-                  fontSize: "12px",
-                  color: "#555555",
-                }}
-              >
-                Share this code to invite new members
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div
-                style={{
-                  fontSize: "22px",
-                  fontWeight: 700,
-                  color: "#FFC429",
-                  letterSpacing: "0.15em",
-                }}
-              >
-                {club.joinCode}
-              </div>
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          marginBottom: "20px",
+          flexWrap: "wrap",
+        }}
+      >
+        <StatCard label="Total Members" value={memberStats.total} topColor="#777777" />
+        <StatCard label="Executives" value={memberStats.executives} topColor="#E51937" />
+        <StatCard
+          label="General Members"
+          value={memberStats.generalMembers}
+          topColor="#777777"
+        />
+        <StatCard
+          label="Pending Invites"
+          value={memberStats.pendingInvites}
+          topColor="#FFC429"
+          valueColor="#FFC429"
+        />
+      </div>
+
+      {club?.joinCode ? (
+        <div
+          style={{
+            background: "#141414",
+            borderTop: "1px solid #2a2a2a",
+            borderRight: "1px solid #2a2a2a",
+            borderBottom: "1px solid #2a2a2a",
+            borderLeft: "3px solid #FFC429",
+            borderRadius: "12px",
+            padding: "20px 24px",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "16px",
+          }}
+        >
+          <div>
+            <p
+              style={{
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: 0,
+              }}
+            >
+              Invite Code
+            </p>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#555555",
+                marginTop: "2px",
+                marginBottom: 0,
+              }}
+            >
+              Share this code or link to invite new members.
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <span
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                color: "#FFC429",
+                letterSpacing: "0.12em",
+              }}
+            >
+              {club.joinCode}
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyCode}
+              style={{
+                background: "#1a1200",
+                border: "1px solid #FFC429",
+                color: "#FFC429",
+                borderRadius: "8px",
+                padding: "8px 16px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {copiedCode ? "Copied" : "Copy Code"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              style={{
+                background: "transparent",
+                border: "1px solid #2a2a2a",
+                color: "#777777",
+                borderRadius: "8px",
+                padding: "8px 16px",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#555555";
+                e.currentTarget.style.color = "#aaaaaa";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.color = "#777777";
+              }}
+            >
+              {copiedLink ? "Copied" : "Copy Link"}
+            </button>
+            {isOwner ? (
               <button
                 type="button"
-                onClick={handleCopyCode}
-                className="cursor-pointer border-none transition-colors hover:bg-[#cc0020]"
+                onClick={() => void handleRegenerateCode()}
+                disabled={regeneratingCode}
                 style={{
-                  backgroundColor: "#E51937",
-                  color: "#ffffff",
-                  borderRadius: "6px",
-                  padding: "7px 16px",
-                  fontSize: "13px",
-                  fontWeight: 500,
+                  background: "none",
+                  border: "none",
+                  color: "#444444",
+                  fontSize: "12px",
+                  cursor: regeneratingCode ? "not-allowed" : "pointer",
+                  padding: 0,
                 }}
-                title="Copy to clipboard"
+                onMouseEnter={(e) => {
+                  if (!regeneratingCode) e.currentTarget.style.color = "#777777";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#444444";
+                }}
               >
-                {copied ? "✓ Copied" : "Copy"}
+                {regeneratingCode ? "Regenerating…" : "Regenerate"}
               </button>
-            </div>
+            ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Feedback message */}
-      {feedback && (
+      {feedback ? (
         <div
           role="alert"
-          className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${
-            feedback.type === "success"
-              ? "bg-green-500/10 text-green-400"
-              : "bg-primary/10 text-primary"
-          }`}
+          style={{
+            marginBottom: "16px",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            fontSize: "13px",
+            border:
+              feedback.type === "success"
+                ? "1px solid #3a2a00"
+                : "1px solid #3a1a1a",
+            background: feedback.type === "success" ? "#1a1500" : "#1a0505",
+            color: feedback.type === "success" ? "#FFC429" : "#E51937",
+          }}
         >
           {feedback.text}
         </div>
-      )}
+      ) : null}
 
       {/* Pending requests section — admin/exec only */}
       {canUseMembershipQueue && pendingMembers.length > 0 && (
@@ -1315,6 +1584,77 @@ export default function ClubMembersPage() {
         </div>
       )}
 
+      {viewMode === "list" ? (
+        <div
+          style={{
+            display: "flex",
+            gap: "12px",
+            alignItems: "center",
+            marginBottom: "16px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
+            <Search
+              size={15}
+              color="#555555"
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                pointerEvents: "none",
+              }}
+            />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Search by name, email, or program…"
+              style={{
+                width: "100%",
+                height: "40px",
+                background: "#111111",
+                border: `1px solid ${searchFocused ? "#E51937" : "#2a2a2a"}`,
+                borderRadius: "8px",
+                padding: "0 16px 0 40px",
+                fontSize: "14px",
+                color: "#ffffff",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {MEMBER_FILTER_OPTIONS.map((option) => {
+              const active = memberRoleFilter === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setMemberRoleFilter(option.value)}
+                  style={{
+                    background: active ? "#E51937" : "transparent",
+                    color: active ? "#ffffff" : "#777777",
+                    border: active ? "none" : "1px solid #333333",
+                    borderRadius: "20px",
+                    padding: "5px 14px",
+                    fontSize: "12px",
+                    fontWeight: active ? 600 : 400,
+                    cursor: "pointer",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {/* Org chart */}
       {viewMode === "orgChart" ? (
         orgChartLoading ? (
@@ -1322,7 +1662,26 @@ export default function ClubMembersPage() {
             <Spinner label="Loading org chart…" />
           </div>
         ) : (
-          <OrgChartView members={orgChartMembers} />
+          <>
+            <OrgChartView members={orgChartMembers} />
+            {members.length === 1 ? (
+              <div style={{ textAlign: "center", padding: "32px 24px", color: "#333333" }}>
+                <Users
+                  size={32}
+                  color="#2a2a2a"
+                  aria-hidden
+                  style={{ marginBottom: "10px" }}
+                />
+                <p style={{ fontSize: "14px", fontWeight: 600, color: "#333333", margin: 0 }}>
+                  Your org chart is just getting started
+                </p>
+                <p style={{ fontSize: "12px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
+                  Invite executives, coordinators, and team leads to build out your club
+                  structure.
+                </p>
+              </div>
+            ) : null}
+          </>
         )
       ) : null}
 
@@ -1479,9 +1838,9 @@ export default function ClubMembersPage() {
                       {admitted && application.status === "approved" ? (
                         <span
                           style={{
-                            background: "#0a1a0a",
-                            border: "1px solid #1a3a1a",
-                            color: "#4ade80",
+                            background: "#1a1200",
+                            border: "1px solid #FFC429",
+                            color: "#FFC429",
                             borderRadius: "20px",
                             padding: "4px 10px",
                             fontSize: "11px",
@@ -1615,9 +1974,9 @@ export default function ClubMembersPage() {
                             disabled={Boolean(myVote) || actionLoading === application.id}
                             onClick={() => void handleCastVote(application, "yes")}
                             style={{
-                              background: myVote === "yes" ? "#0a1a0a" : "transparent",
-                              border: "1px solid #4ade80",
-                              color: "#4ade80",
+                              background: myVote === "yes" ? "#1a1200" : "transparent",
+                              border: "1px solid #FFC429",
+                              color: "#FFC429",
                               borderRadius: "6px",
                               padding: "7px 18px",
                               fontSize: "13px",
@@ -1666,157 +2025,100 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
-      {/* Members list */}
       {viewMode === "list" && sortedMembers.length === 0 ? (
         <div
-          className="p-8 text-center"
           style={{
-            backgroundColor: "#1a1a1a",
-            border: "1px solid #242424",
-            borderRadius: "8px",
+            textAlign: "center",
+            padding: "48px 24px",
+            background: "#141414",
+            border: "1px solid #2a2a2a",
+            borderRadius: "10px",
           }}
         >
-          <p style={{ fontSize: "14px", color: "#555555" }}>
+          <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
             No members yet. Share the join code to invite people.
           </p>
         </div>
+      ) : viewMode === "list" && filteredMembers.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
+            No members match your search
+          </p>
+          <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px" }}>
+            Try a different filter or search term.
+          </p>
+        </div>
       ) : viewMode === "list" ? (
-        <div className="space-y-2">
-          {sortedMembers.map((member) => {
+        <div>
+          {filteredMembers.map((member) => {
             const memberTitle = memberTitles[member.id] ?? null;
             const normalizedRole = normalizeMemberRole(member.role);
             const isEditing = editingMemberId === member.id;
-
-            const adminActions = renderAdminActions(member);
+            const joinedLabel = new Date(member.joinedAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
 
             return (
-            <div key={member.id} style={memberCardStyle}>
-              {isMobile ? (
-                <>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
-                    <MemberAvatar
-                      avatarUrl={member.avatarUrl}
-                      name={member.fullName ?? member.email ?? "U"}
-                    />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
-                        <MemberNameLink userId={member.userId}>
-                          {member.fullName ?? "Unknown"}
-                        </MemberNameLink>
-                        <span style={roleBadgeStyle(normalizedRole)}>
-                          {roleBadgeLabel(normalizedRole, memberTitle)}
-                        </span>
-                      </div>
-                      {memberTitle ? (
-                        <p style={{ fontSize: "11px", color: "#747676", fontStyle: "italic", margin: "4px 0 0" }}>
-                          {memberTitle}
-                        </p>
-                      ) : null}
-                      {member.program ? (
-                        <p style={{ fontSize: "12px", color: "#747676", margin: "4px 0 0" }}>
-                          {member.program}
-                        </p>
-                      ) : null}
-                      <p style={{ fontSize: "12px", color: "#555555", margin: "4px 0 0" }}>
-                        {member.email}
-                      </p>
-                      <p style={{ fontSize: "11px", color: "#555555", margin: "8px 0 0" }}>
-                        Joined{" "}
-                        {new Date(member.joinedAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  {adminActions ? (
-                    <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                      {adminActions}
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-              <div className="flex items-center gap-3">
-                <MemberAvatar
-                  avatarUrl={member.avatarUrl}
-                  name={member.fullName ?? member.email ?? "U"}
-                />
+            <div key={member.id}>
+            <div
+              style={{
+                ...memberListCardStyle,
+                flexWrap: isMobile ? "wrap" : "nowrap",
+                marginBottom: isEditing ? 0 : "8px",
+              }}
+            >
+              <MemberAvatar
+                avatarUrl={member.avatarUrl}
+                name={member.fullName ?? member.email ?? "U"}
+                size={40}
+              />
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <MemberNameLink
-                      userId={member.userId}
-                      className="truncate"
-                    >
-                      {member.fullName ?? "Unknown"}
-                    </MemberNameLink>
-                    <span style={roleBadgeStyle(normalizedRole)}>
-                      {roleBadgeLabel(normalizedRole, memberTitle)}
-                    </span>
-                  </div>
-                  {memberTitle ? (
-                    <p
-                      className="truncate"
-                      style={{
-                        fontSize: "11px",
-                        color: "#747676",
-                        fontStyle: "italic",
-                        marginTop: "2px",
-                        marginBottom: 0,
-                      }}
-                    >
-                      {memberTitle}
-                    </p>
-                  ) : null}
-                  <p
-                    className="truncate"
-                    style={{
-                      fontSize: "12px",
-                      color: "#555555",
-                      marginTop: memberTitle ? "4px" : "2px",
-                    }}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                  <MemberNameLink
+                    userId={member.userId}
+                    style={{ fontSize: "15px", fontWeight: 700 }}
                   >
-                    {member.email}
-                  </p>
-                  {member.program && (
-                    <p
-                      className="truncate"
-                      style={{
-                        fontSize: "12px",
-                        color: "#747676",
-                      }}
-                    >
-                      {member.program}
-                    </p>
-                  )}
-                </div>
-
-                {adminActions ?? (
-                  <span
-                    className="ml-auto shrink-0 text-right"
-                    style={{
-                      fontSize: "11px",
-                      color: "#555555",
-                    }}
-                  >
-                    Joined{" "}
-                    {new Date(member.joinedAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {member.fullName ?? "Unknown"}
+                  </MemberNameLink>
+                  <span style={roleBadgeStyle(normalizedRole)}>
+                    {formatRoleLabel(normalizedRole)}
                   </span>
-                )}
+                </div>
+                {memberTitle ? (
+                  <p style={{ fontSize: "12px", color: "#555555", margin: "2px 0 0", fontStyle: "italic" }}>
+                    {memberTitle}
+                  </p>
+                ) : null}
+                <p style={{ fontSize: "12px", color: "#555555", marginTop: "2px", marginBottom: 0 }}>
+                  {member.email}
+                </p>
+                {member.program ? (
+                  <p style={{ fontSize: "12px", color: "#444444", margin: "2px 0 0" }}>
+                    {member.program}
+                  </p>
+                ) : null}
               </div>
-              )}
+
+              <div style={{ flexShrink: 0, textAlign: "right", width: isMobile ? "100%" : "auto" }}>
+                <p style={{ fontSize: "11px", color: "#444444", margin: "0 0 8px" }}>
+                  Joined {joinedLabel}
+                </p>
+                <MemberRowActions member={member} />
+              </div>
+            </div>
 
               {isEditing ? (
                 <div
                   style={{
-                    marginTop: "14px",
-                    padding: "16px",
+                    marginTop: 0,
+                    marginBottom: "8px",
+                    padding: "16px 20px",
                     background: "#111111",
                     border: "1px solid #2a2a2a",
-                    borderRadius: "8px",
+                    borderRadius: "0 0 10px 10px",
                   }}
                 >
                   <p

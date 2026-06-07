@@ -4,8 +4,9 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { Briefcase, MoreHorizontal } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -23,12 +24,24 @@ import {
   parseListingQuestions,
   parseOptionsText,
   listingQuestionsForApply,
+  positionTypeLabel,
   type CommitmentLevel,
   type HiringApplicationAnswer,
   type ListingQuestion,
   type PositionQuestionDraft,
   type PositionType,
 } from "./HiringBoardPage";
+
+type ListingStatus = "open" | "filled" | "closed";
+type PositionFilter = "all" | "open" | "pending_review" | "filled" | "closed";
+
+const POSITION_FILTER_OPTIONS: { value: PositionFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "open", label: "Open" },
+  { value: "pending_review", label: "Pending Review" },
+  { value: "filled", label: "Filled" },
+  { value: "closed", label: "Closed" },
+];
 
 interface ClubPosition {
   id: string;
@@ -41,6 +54,8 @@ interface ClubPosition {
   deadline: string | null;
   isOpen: boolean;
   applicantCount: number;
+  pendingCount: number;
+  acceptedCount: number;
   questions: ListingQuestion[];
 }
 
@@ -155,45 +170,47 @@ function normalizeUserRole(role: string): MemberRole {
   return "member";
 }
 
-function roleTypeBadgeStyle(positionType: string): CSSProperties {
-  if (positionType === "executive") {
-    return {
-      background: "#1a0a0a",
-      border: "1px solid #E51937",
-      color: "#E51937",
-      borderRadius: "20px",
-      padding: "2px 10px",
-      fontSize: "11px",
-      fontWeight: 500,
-      display: "inline-block",
-    };
-  }
+function roleTypeBadgeStyle(): CSSProperties {
   return {
-    background: "#111111",
-    border: "1px solid #333333",
-    color: "#747676",
-    borderRadius: "20px",
-    padding: "2px 10px",
+    background: "transparent",
+    border: "1px solid #E51937",
+    color: "#E51937",
+    borderRadius: "4px",
+    padding: "2px 8px",
     fontSize: "11px",
-    fontWeight: 500,
+    fontWeight: 600,
     display: "inline-block",
   };
 }
 
-function roleTypeLabel(positionType: string): string {
-  return positionType === "executive" ? "Executive" : "Member";
+function commitmentBadgeStyle(): CSSProperties {
+  return {
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    color: "#777777",
+    borderRadius: "4px",
+    padding: "2px 8px",
+    fontSize: "11px",
+    display: "inline-block",
+  };
 }
 
-function openStatusPillStyle(isOpen: boolean): CSSProperties {
-  if (isOpen) {
+function listingStatus(position: ClubPosition): ListingStatus {
+  if (position.isOpen) return "open";
+  if (position.acceptedCount > 0) return "filled";
+  return "closed";
+}
+
+function statusPillStyle(status: ListingStatus): CSSProperties {
+  if (status === "open" || status === "filled") {
     return {
-      background: "#0d2b0d",
-      border: "1px solid #1a4a1a",
-      color: "#4ade80",
-      borderRadius: "20px",
-      padding: "3px 10px",
+      background: "#1a1200",
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+      borderRadius: "4px",
+      padding: "2px 8px",
       fontSize: "11px",
-      fontWeight: 500,
+      fontWeight: 600,
       display: "inline-block",
     };
   }
@@ -201,12 +218,29 @@ function openStatusPillStyle(isOpen: boolean): CSSProperties {
     background: "#1a1a1a",
     border: "1px solid #333333",
     color: "#555555",
-    borderRadius: "20px",
-    padding: "3px 10px",
+    borderRadius: "4px",
+    padding: "2px 8px",
     fontSize: "11px",
-    fontWeight: 500,
+    fontWeight: 600,
     display: "inline-block",
   };
+}
+
+function statusPillLabel(status: ListingStatus): string {
+  if (status === "open") return "Open";
+  if (status === "filled") return "Filled";
+  return "Closed";
+}
+
+function formatCloseDate(deadline: string | null): string | null {
+  if (!deadline) return null;
+  const parsed = new Date(deadline);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function daysLeftMeta(deadline: string | null): { text: string; urgent: boolean } | null {
@@ -214,15 +248,36 @@ function daysLeftMeta(deadline: string | null): { text: string; urgent: boolean 
   const end = new Date(deadline);
   if (Number.isNaN(end.getTime())) return null;
   const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  if (days < 0) return { text: "Closed", urgent: true };
+  if (days < 0) return { text: "0 days left", urgent: true };
   return {
     text: `${days} day${days === 1 ? "" : "s"} left`,
-    urgent: days < 7,
+    urgent: days <= 14,
   };
 }
 
+function matchesPositionFilter(
+  position: ClubPosition,
+  filter: PositionFilter,
+): boolean {
+  const status = listingStatus(position);
+  switch (filter) {
+    case "all":
+      return true;
+    case "open":
+      return status === "open";
+    case "pending_review":
+      return position.pendingCount > 0;
+    case "filled":
+      return status === "filled";
+    case "closed":
+      return status === "closed";
+    default:
+      return true;
+  }
+}
+
 function applicationStatusColor(status: string): string {
-  if (status === "accepted") return "#4ade80";
+  if (status === "accepted") return "#FFC429";
   if (status === "reviewed" || status === "shortlisted") return "#FFC429";
   if (status === "rejected") return "#E51937";
   return "#747676";
@@ -241,53 +296,51 @@ function daysAgoLabel(iso: string): string {
   return `Applied ${days} days ago`;
 }
 
-function requirementLines(text: string): string[] {
-  return text
-    .split(/\n/)
-    .map((line) => line.replace(/^[-•*]\s*/, "").trim())
-    .filter(Boolean);
-}
-
 function StatCard({
   label,
   value,
-  accentColor,
+  topColor,
+  valueColor = "#ffffff",
 }: {
   label: string;
   value: number;
-  accentColor: string;
+  topColor: string;
+  valueColor?: string;
 }) {
   return (
     <div
       style={{
-        background: "#1a1a1a",
-        border: "1px solid #242424",
-        borderLeft: `3px solid ${accentColor}`,
-        borderRadius: "8px",
-        padding: "16px",
+        background: "#141414",
+        borderRadius: "12px",
+        padding: "18px 20px",
         flex: 1,
-        minWidth: "140px",
+        minWidth: 0,
+        borderTop: `3px solid ${topColor}`,
+        borderRight: "1px solid #2a2a2a",
+        borderBottom: "1px solid #2a2a2a",
+        borderLeft: "1px solid #2a2a2a",
       }}
     >
       <p
         style={{
-          fontSize: "2rem",
-          fontWeight: 700,
-          color: "#ffffff",
+          fontSize: "28px",
+          fontWeight: 800,
+          color: valueColor,
           margin: 0,
-          lineHeight: 1.15,
+          lineHeight: 1,
         }}
       >
         {value}
       </p>
       <p
         style={{
-          fontSize: "10px",
+          fontSize: "11px",
           fontWeight: 600,
-          letterSpacing: "0.1em",
+          color: "#555555",
           textTransform: "uppercase",
-          color: "#747676",
-          margin: "8px 0 0",
+          letterSpacing: "0.06em",
+          marginTop: "4px",
+          marginBottom: 0,
         }}
       >
         {label}
@@ -508,6 +561,7 @@ export default function ClubRecruitingPage() {
   const [applyPosition, setApplyPosition] = useState<ClubPosition | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const [positionFilter, setPositionFilter] = useState<PositionFilter>("all");
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -552,16 +606,25 @@ export default function ClubRecruitingPage() {
 
     const ids = (rows ?? []).map((r) => r.id as string);
     const counts: Record<string, number> = {};
+    const pendingCounts: Record<string, number> = {};
+    const acceptedCounts: Record<string, number> = {};
 
     if (ids.length > 0) {
       const { data: apps } = await supabase
         .from("hiring_applications")
-        .select("listing_id")
+        .select("listing_id, status")
         .in("listing_id", ids);
 
       (apps ?? []).forEach((a) => {
         const lid = a.listing_id as string;
+        const appStatus = (a.status as string) ?? "pending";
         counts[lid] = (counts[lid] ?? 0) + 1;
+        if (appStatus === "pending") {
+          pendingCounts[lid] = (pendingCounts[lid] ?? 0) + 1;
+        }
+        if (appStatus === "accepted") {
+          acceptedCounts[lid] = (acceptedCounts[lid] ?? 0) + 1;
+        }
       });
     }
 
@@ -577,6 +640,8 @@ export default function ClubRecruitingPage() {
         deadline: (row.deadline as string) ?? null,
         isOpen: Boolean(row.is_open),
         applicantCount: counts[row.id as string] ?? 0,
+        pendingCount: pendingCounts[row.id as string] ?? 0,
+        acceptedCount: acceptedCounts[row.id as string] ?? 0,
         questions: parseListingQuestions(row.questions),
       })),
     );
@@ -605,11 +670,17 @@ export default function ClubRecruitingPage() {
   }, [loadPositions]);
 
   const stats = useMemo(() => {
-    const openCount = positions.filter((p) => p.isOpen).length;
-    const filledCount = positions.filter((p) => !p.isOpen).length;
+    const openCount = positions.filter((p) => listingStatus(p) === "open").length;
+    const filledCount = positions.filter((p) => listingStatus(p) === "filled").length;
     const totalApplicants = positions.reduce((sum, p) => sum + p.applicantCount, 0);
-    return { openCount, filledCount, totalApplicants };
+    const pendingReview = positions.reduce((sum, p) => sum + p.pendingCount, 0);
+    return { openCount, filledCount, totalApplicants, pendingReview };
   }, [positions]);
+
+  const filteredPositions = useMemo(
+    () => positions.filter((p) => matchesPositionFilter(p, positionFilter)),
+    [positions, positionFilter],
+  );
 
   function resetPostForm() {
     setTitle("");
@@ -851,12 +922,26 @@ export default function ClubRecruitingPage() {
         }}
       >
         <div>
-          <h1 style={{ fontWeight: 700, fontSize: "22px", color: "#ffffff", margin: 0 }}>
+          <h1
+            style={{
+              fontWeight: 800,
+              fontSize: "28px",
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
             {isPrivileged ? "Hiring" : "We're Hiring"}
           </h1>
-          <p style={{ fontSize: "13px", color: "#555555", margin: "6px 0 0" }}>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#555555",
+              marginTop: "4px",
+              marginBottom: 0,
+            }}
+          >
             {isPrivileged
-              ? "Manage open positions and applications"
+              ? "Post open roles, review applicants, and build your club team."
               : `Open positions in ${clubName}`}
           </p>
         </div>
@@ -881,31 +966,153 @@ export default function ClubRecruitingPage() {
       </div>
 
       {isPrivileged ? (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "12px",
-            marginBottom: "24px",
-          }}
-        >
-          <StatCard label="Open Positions" value={stats.openCount} accentColor="#E51937" />
-          <StatCard label="Total Applicants" value={stats.totalApplicants} accentColor="#FFC429" />
-          <StatCard label="Positions Filled" value={stats.filledCount} accentColor="#747676" />
-        </div>
+        <>
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              marginBottom: "16px",
+              flexWrap: "wrap",
+            }}
+          >
+            <StatCard
+              label="Open Positions"
+              value={stats.openCount}
+              topColor="#E51937"
+            />
+            <StatCard
+              label="Pending Review"
+              value={stats.pendingReview}
+              topColor="#FFC429"
+              valueColor="#FFC429"
+            />
+            <StatCard
+              label="Total Applicants"
+              value={stats.totalApplicants}
+              topColor="#777777"
+            />
+            <StatCard
+              label="Positions Filled"
+              value={stats.filledCount}
+              topColor="#FFC429"
+              valueColor="#FFC429"
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              marginBottom: "24px",
+              flexWrap: "nowrap",
+              overflowX: "auto",
+            }}
+          >
+            {POSITION_FILTER_OPTIONS.map((option) => {
+              const active = positionFilter === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPositionFilter(option.value)}
+                  style={{
+                    background: active ? "#E51937" : "transparent",
+                    color: active ? "#ffffff" : "#777777",
+                    border: active ? "none" : "1px solid #333333",
+                    borderRadius: "20px",
+                    padding: "6px 16px",
+                    fontSize: "12px",
+                    fontWeight: active ? 600 : 400,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
       ) : null}
 
       {positions.length === 0 ? (
-        <p style={{ fontSize: "14px", color: "#555555" }}>No positions posted yet.</p>
+        isPrivileged ? (
+          <div style={{ textAlign: "center", padding: "64px 24px" }}>
+            <Briefcase
+              size={36}
+              color="#2a2a2a"
+              aria-hidden
+              style={{ marginBottom: "12px" }}
+            />
+            <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
+              No positions posted yet
+            </p>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#444444",
+                marginTop: "4px",
+                maxWidth: "280px",
+                margin: "4px auto 16px",
+              }}
+            >
+              Post executive roles, committee positions, or volunteer opportunities to build
+              your team.
+            </p>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "10px 20px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              + Post Position
+            </button>
+          </div>
+        ) : (
+          <p style={{ fontSize: "14px", color: "#555555" }}>No positions posted yet.</p>
+        )
+      ) : filteredPositions.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
+            No positions match this filter
+          </p>
+          <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px" }}>
+            Try a different filter or post a new position.
+          </p>
+        </div>
       ) : (
-        positions.map((position) => {
+        filteredPositions.map((position) => {
           const deadline = daysLeftMeta(position.deadline);
-          const legacyBadge = deadlineLabel(position.deadline);
+          const closeDate = formatCloseDate(position.deadline);
           const hasApplied = Boolean(myApplications[position.id]);
-          const reqs = requirementLines(position.requirements);
           const isExpanded = expandedPositionId === position.id;
           const menuOpen = openMenuId === position.id;
           const cardHovered = hoveredCardId === position.id;
+          const status = listingStatus(position);
+
+          const metaSegments: ReactNode[] = [];
+          if (closeDate) metaSegments.push(`Closes ${closeDate}`);
+          if (deadline) {
+            metaSegments.push(
+              <span style={{ color: deadline.urgent ? "#FFC429" : "#444444" }}>
+                {deadline.text}
+              </span>,
+            );
+          } else if (!closeDate && position.deadline) {
+            const legacy = deadlineLabel(position.deadline);
+            if (legacy) metaSegments.push(legacy);
+          }
+          metaSegments.push(
+            `${position.applicantCount} applicant${position.applicantCount === 1 ? "" : "s"}`,
+          );
 
           return (
             <div key={position.id}>
@@ -916,18 +1123,14 @@ export default function ClubRecruitingPage() {
                   setOpenMenuId((prev) => (prev === position.id ? null : prev));
                 }}
                 style={{
-                  background: "#1a1a1a",
-                  border: "1px solid #242424",
-                  borderRadius: "10px",
-                  padding: "20px",
+                  background: "#141414",
+                  borderTop: "1px solid #2a2a2a",
+                  borderRight: "1px solid #2a2a2a",
+                  borderBottom: "1px solid #2a2a2a",
+                  borderLeft: "3px solid #E51937",
+                  borderRadius: "12px",
+                  padding: "20px 24px",
                   marginBottom: isExpanded ? 0 : "12px",
-                  transition: "border-color 0.15s ease",
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.borderColor = "#333333";
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.borderColor = "#242424";
                 }}
               >
                 <div
@@ -940,134 +1143,180 @@ export default function ClubRecruitingPage() {
                   }}
                 >
                   <div style={{ flex: 1, minWidth: "220px" }}>
+                    <h3
+                      style={{
+                        fontSize: "18px",
+                        fontWeight: 700,
+                        color: "#ffffff",
+                        margin: 0,
+                      }}
+                    >
+                      {position.title}
+                    </h3>
                     <div
                       style={{
                         display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
                         gap: "8px",
+                        flexWrap: "wrap",
+                        marginTop: "6px",
                       }}
                     >
-                      <h3
-                        style={{
-                          fontSize: "16px",
-                          fontWeight: 700,
-                          color: "#ffffff",
-                          margin: 0,
-                        }}
-                      >
-                        {position.title}
-                      </h3>
-                      <span style={roleTypeBadgeStyle(position.positionType)}>
-                        {roleTypeLabel(position.positionType)}
+                      <span style={roleTypeBadgeStyle()}>
+                        {positionTypeLabel(position.positionType)}
                       </span>
-                      <span
-                        style={{
-                          background: "#111111",
-                          border: "1px solid #1e1e1e",
-                          color: "#747676",
-                          borderRadius: "4px",
-                          padding: "2px 8px",
-                          fontSize: "10px",
-                          fontWeight: 500,
-                          display: "inline-block",
-                        }}
-                      >
+                      <span style={commitmentBadgeStyle()}>
                         {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
                       </span>
-                      <span style={openStatusPillStyle(position.isOpen)}>
-                        {position.isOpen ? "Open" : "Closed"}
+                      <span style={statusPillStyle(status)}>
+                        {statusPillLabel(status)}
                       </span>
                     </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        gap: "12px",
-                        marginTop: "8px",
-                      }}
-                    >
-                      {deadline ? (
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            color: deadline.urgent ? "#E51937" : "#555555",
-                          }}
-                        >
-                          {deadline.text}
-                        </span>
-                      ) : legacyBadge ? (
-                        <span style={{ fontSize: "12px", color: "#555555" }}>{legacyBadge}</span>
-                      ) : null}
-                      <span style={{ fontSize: "12px", color: "#555555" }}>
-                        {position.applicantCount} applicant
-                        {position.applicantCount === 1 ? "" : "s"}
-                      </span>
-                    </div>
-
-                    {position.description ? (
-                      <p
-                        style={{
-                          fontSize: "13px",
-                          color: "#cccccc",
-                          lineHeight: 1.6,
-                          marginTop: "8px",
-                          marginBottom: 0,
-                          display: "-webkit-box",
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {position.description}
-                      </p>
-                    ) : null}
-
-                    {reqs.length > 0 ? (
-                      <ul
-                        style={{
-                          margin: "10px 0 0",
-                          paddingLeft: "18px",
-                          fontSize: "12px",
-                          color: "#777777",
-                        }}
-                      >
-                        {reqs.map((line) => (
-                          <li key={line} style={{ marginBottom: "4px" }}>
-                            {line}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
                   </div>
 
+                  {isPrivileged ? (
+                    <button
+                      type="button"
+                      onClick={() => void toggleApplications(position)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#555555",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        padding: 0,
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "#E51937";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = "#555555";
+                      }}
+                    >
+                      View Applications
+                    </button>
+                  ) : position.isOpen && !hasApplied ? (
+                    <button
+                      type="button"
+                      onClick={() => setApplyPosition(position)}
+                      style={{
+                        background: "#E51937",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Apply Now
+                    </button>
+                  ) : hasApplied ? (
+                    <span
+                      style={{
+                        background: "#1a1200",
+                        border: "1px solid #FFC429",
+                        color: "#FFC429",
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}
+                    >
+                      Applied ✓
+                    </span>
+                  ) : null}
+                </div>
+
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#444444",
+                    marginTop: "8px",
+                    marginBottom: "10px",
+                  }}
+                >
+                  {metaSegments.map((part, index) => (
+                    <span key={index}>
+                      {index > 0 ? " · " : null}
+                      {part}
+                    </span>
+                  ))}
+                </p>
+
+                {position.description ? (
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#555555",
+                      lineHeight: 1.6,
+                      margin: "0 0 16px",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {position.description}
+                  </p>
+                ) : (
+                  <div style={{ marginBottom: "16px" }} />
+                )}
+
+                {isPrivileged ? (
                   <div
                     style={{
                       display: "flex",
+                      flexWrap: "wrap",
                       alignItems: "center",
+                      justifyContent: "space-between",
                       gap: "10px",
-                      flexShrink: 0,
                     }}
                   >
-                    {isPrivileged ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => void toggleApplications(position)}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "#E51937",
-                            fontSize: "13px",
-                            cursor: "pointer",
-                            padding: 0,
-                          }}
-                        >
-                          View Applications ({position.applicantCount})
-                        </button>
-                        {cardHovered ? (
+                    <button
+                      type="button"
+                      onClick={() => void toggleApplications(position)}
+                      style={{
+                        background: "#E51937",
+                        color: "#ffffff",
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Review Applicants ({position.applicantCount})
+                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <button
+                        type="button"
+                        onClick={() => void openEditModal(position)}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid #2a2a2a",
+                          color: "#555555",
+                          borderRadius: "8px",
+                          padding: "8px 18px",
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "#555555";
+                          e.currentTarget.style.color = "#aaaaaa";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = "#2a2a2a";
+                          e.currentTarget.style.color = "#555555";
+                        }}
+                      >
+                        Edit Position
+                      </button>
+                      {cardHovered ? (
                         <div style={{ position: "relative" }}>
                           <button
                             type="button"
@@ -1103,13 +1352,6 @@ export default function ClubRecruitingPage() {
                                 overflow: "hidden",
                               }}
                             >
-                              <button
-                                type="button"
-                                onClick={() => void openEditModal(position)}
-                                style={menuItemStyle}
-                              >
-                                Edit
-                              </button>
                               {position.isOpen ? (
                                 <button
                                   type="button"
@@ -1129,42 +1371,10 @@ export default function ClubRecruitingPage() {
                             </div>
                           ) : null}
                         </div>
-                        ) : null}
-                      </>
-                    ) : position.isOpen && !hasApplied ? (
-                      <button
-                        type="button"
-                        onClick={() => setApplyPosition(position)}
-                        style={{
-                          background: "#E51937",
-                          color: "#ffffff",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "8px 20px",
-                          fontSize: "13px",
-                          fontWeight: 500,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Apply Now
-                      </button>
-                    ) : hasApplied ? (
-                      <span
-                        style={{
-                          background: "#1a0505",
-                          border: "1px solid #E51937",
-                          color: "#E51937",
-                          borderRadius: "20px",
-                          padding: "6px 14px",
-                          fontSize: "12px",
-                          fontWeight: 500,
-                        }}
-                      >
-                        Applied ✓
-                      </span>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
 
               {isPrivileged && isExpanded ? (

@@ -1,11 +1,13 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
-import { Check, Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -317,7 +319,7 @@ function deadlineBadgeStyle(
 const sectionHeadingStyle: CSSProperties = {
   fontSize: "11px",
   fontWeight: 600,
-  color: "#555555",
+  color: "#ffffff",
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   marginBottom: "8px",
@@ -465,18 +467,106 @@ function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
   );
 }
 
+const LISTING_DESC_READ_MORE = " Read more";
+const LISTING_DESC_LINE_HEIGHT = 1.5;
+const LISTING_DESC_FONT_SIZE = 12;
+const LISTING_DESC_MAX_LINES = 2;
+
+function computeListingDescriptionPreview(
+  description: string,
+  widthPx: number,
+): { preview: string | null } {
+  if (!description || widthPx <= 0) return { preview: null };
+
+  const measurer = document.createElement("p");
+  measurer.style.cssText = [
+    "position:absolute",
+    "visibility:hidden",
+    "pointer-events:none",
+    "margin:0",
+    `width:${widthPx}px`,
+    `font-size:${LISTING_DESC_FONT_SIZE}px`,
+    `line-height:${LISTING_DESC_LINE_HEIGHT}`,
+  ].join(";");
+  document.body.appendChild(measurer);
+
+  const maxHeight = LISTING_DESC_FONT_SIZE * LISTING_DESC_LINE_HEIGHT * LISTING_DESC_MAX_LINES;
+
+  const fits = (text: string) => {
+    measurer.textContent = text;
+    return measurer.scrollHeight <= maxHeight + 1;
+  };
+
+  try {
+    if (fits(description)) {
+      return { preview: null };
+    }
+
+    let low = 0;
+    let high = description.length;
+    let best = 0;
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const slice = description.slice(0, mid).trimEnd();
+      const candidate = `${slice}…${LISTING_DESC_READ_MORE}`;
+      if (fits(candidate)) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    let trimmed = description.slice(0, best).trimEnd();
+    const lastSpace = trimmed.lastIndexOf(" ");
+    if (lastSpace > trimmed.length * 0.55) {
+      trimmed = trimmed.slice(0, lastSpace);
+    }
+
+    return { preview: `${trimmed}…` };
+  } finally {
+    document.body.removeChild(measurer);
+  }
+}
+
 function HiringListingCard({
   position,
   selected,
   onSelect,
+  onReadMore,
 }: {
   position: BoardPosition;
   selected: boolean;
   onSelect: () => void;
+  onReadMore: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const descWrapperRef = useRef<HTMLDivElement>(null);
+  const [descriptionPreview, setDescriptionPreview] = useState<string | null>(null);
   const posted = postedDateLabel(position.createdAt);
   const description = position.description?.trim();
+
+  useLayoutEffect(() => {
+    const wrapper = descWrapperRef.current;
+    if (!wrapper || !description) {
+      setDescriptionPreview(null);
+      return;
+    }
+
+    const updatePreview = () => {
+      const { preview } = computeListingDescriptionPreview(
+        description,
+        wrapper.clientWidth,
+      );
+      setDescriptionPreview(preview);
+    };
+
+    updatePreview();
+    const observer = new ResizeObserver(updatePreview);
+    observer.observe(wrapper);
+    return () => observer.disconnect();
+  }, [description, selected, hovered]);
 
   return (
     <article
@@ -504,14 +594,24 @@ function HiringListingCard({
           size={36}
           borderRadius={8}
         />
-        <span style={{ fontSize: "12px", color: "#666666" }}>
+        <span
+          style={{
+            fontSize: "13px",
+            color: "#dddddd",
+            fontWeight: 500,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {position.clubName}
         </span>
         {posted ? (
           <span
             style={{
               fontSize: "11px",
-              color: "#444444",
+              color: "#aaaaaa",
               marginLeft: "auto",
               flexShrink: 0,
             }}
@@ -539,21 +639,44 @@ function HiringListingCard({
       <CompactPositionTagsRow position={position} />
 
       {description ? (
-        <p
-          style={{
-            fontSize: "12px",
-            color: "#777777",
-            marginTop: "8px",
-            marginBottom: 0,
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            lineHeight: 1.5,
-          }}
-        >
-          {description}
-        </p>
+        <div ref={descWrapperRef} style={{ marginTop: "8px" }}>
+          <p
+            style={{
+              fontSize: `${LISTING_DESC_FONT_SIZE}px`,
+              color: "#777777",
+              margin: 0,
+              lineHeight: LISTING_DESC_LINE_HEIGHT,
+            }}
+          >
+            {descriptionPreview !== null ? (
+              <>
+                {descriptionPreview}{" "}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReadMore();
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                    font: "inherit",
+                    fontWeight: 500,
+                    color: "#E51937",
+                    cursor: "pointer",
+                    display: "inline",
+                  }}
+                >
+                  Read more
+                </button>
+              </>
+            ) : (
+              description
+            )}
+          </p>
+        </div>
       ) : null}
     </article>
   );
@@ -596,23 +719,20 @@ function HiringDetailApplyButton({
         type="button"
         disabled
         style={{
-          background: "#1a1500",
-          border: fullWidth ? "2px solid #FFC429" : "1px solid #FFC429",
-          color: "#FFC429",
+          background: "transparent",
+          border: "1px solid #E51937",
+          color: "#E51937",
           borderRadius: "8px",
-          padding: fullWidth ? "14px 32px" : "12px 24px",
-          fontSize: fullWidth ? "15px" : "14px",
-          fontWeight: fullWidth ? 700 : 600,
+          padding: "8px 16px",
+          fontSize: "13px",
+          fontWeight: 600,
           cursor: "default",
-          width: fullWidth ? "100%" : undefined,
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
-          justifyContent: fullWidth ? "center" : undefined,
-          gap: "8px",
+          gap: "6px",
         }}
       >
         Application Submitted ✓
-        {fullWidth ? null : <Check size={16} color="#FFC429" aria-hidden />}
       </button>
     );
   }
@@ -925,16 +1045,17 @@ function HiringDetailPanel({
           maxWidth: "720px",
           width: "100%",
           margin: "0 auto",
-          padding: "48px 32px 32px",
+          padding: "36px 32px 32px",
           boxSizing: "border-box",
         }}
       >
         <p
           style={{
-            fontSize: "14px",
-            color: "#888888",
-            fontWeight: 500,
-            margin: "0 0 2px",
+            fontSize: "22px",
+            color: "#dddddd",
+            fontWeight: 600,
+            margin: "0 0 6px",
+            lineHeight: 1.2,
           }}
         >
           {position.clubName}
@@ -947,7 +1068,7 @@ function HiringDetailPanel({
               background: "none",
               border: "none",
               padding: 0,
-              marginBottom: "16px",
+              marginBottom: "20px",
               fontSize: "13px",
               color: "#E51937",
               fontWeight: 500,
@@ -981,12 +1102,12 @@ function HiringDetailPanel({
           <DetailPositionTagsRow position={position} />
         </div>
 
-        <div style={{ marginBottom: "32px", width: "100%" }}>
+        <div style={{ marginBottom: "32px" }}>
           <HiringDetailApplyButton
             user={user}
             alreadyApplied={alreadyApplied}
             onApply={onApply}
-            fullWidth
+            fullWidth={!alreadyApplied}
           />
         </div>
 
@@ -1036,6 +1157,84 @@ function HiringDetailPanel({
             ) : null}
           </>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function HiringListingDetailOverlay({
+  position,
+  user,
+  alreadyApplied,
+  onClose,
+  onApply,
+  onViewClub,
+}: {
+  position: BoardPosition;
+  user: { id: string } | null;
+  alreadyApplied: boolean;
+  onClose: () => void;
+  onApply: () => void;
+  onViewClub: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${position.title} details`}
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.85)",
+        zIndex: 1100,
+        overflowY: "auto",
+        padding: "32px 24px",
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: "820px",
+          margin: "0 auto",
+          background: "#0f0f0f",
+          borderRadius: "12px",
+          overflow: "hidden",
+          position: "relative",
+          border: "1px solid #2a2a2a",
+        }}
+      >
+        <button
+          type="button"
+          aria-label="Close details"
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            top: "16px",
+            right: "16px",
+            zIndex: 10,
+            background: "rgba(0,0,0,0.65)",
+            border: "none",
+            borderRadius: "50%",
+            width: "36px",
+            height: "36px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#cccccc",
+          }}
+        >
+          <X size={20} aria-hidden />
+        </button>
+        <HiringDetailPanel
+          position={position}
+          user={user}
+          alreadyApplied={alreadyApplied}
+          onApply={onApply}
+          onViewClub={onViewClub}
+        />
       </div>
     </div>
   );
@@ -1608,6 +1807,7 @@ export default function HiringBoardPage() {
   const [sortBy, setSortBy] = useState<"newest" | "closing_soon" | "a-z">("newest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [detailOverlayId, setDetailOverlayId] = useState<string | null>(null);
   const [applyPosition, setApplyPosition] = useState<BoardPosition | null>(null);
   const [myApplications, setMyApplications] = useState<Record<string, boolean>>({});
 
@@ -1616,6 +1816,7 @@ export default function HiringBoardPage() {
       navigate("/login?redirect=/hiring");
       return;
     }
+    setDetailOverlayId(null);
     setApplyPosition(position);
   }
 
@@ -1738,6 +1939,7 @@ export default function HiringBoardPage() {
     if (filtered.length === 0) {
       setSelectedId(null);
       setMobileDetailOpen(false);
+      setDetailOverlayId(null);
       return;
     }
     setSelectedId((current) => {
@@ -1748,6 +1950,24 @@ export default function HiringBoardPage() {
 
   const activePosition =
     filtered.find((p) => p.id === selectedId) ?? filtered[0] ?? null;
+
+  const overlayPosition =
+    detailOverlayId != null
+      ? filtered.find((p) => p.id === detailOverlayId) ?? null
+      : null;
+
+  function openListingDetail(position: BoardPosition) {
+    setSelectedId(position.id);
+    if (isMobile) {
+      setMobileDetailOpen(true);
+    } else {
+      setDetailOverlayId(position.id);
+    }
+  }
+
+  function closeListingDetailOverlay() {
+    setDetailOverlayId(null);
+  }
 
   return (
     <div
@@ -1917,6 +2137,7 @@ export default function HiringBoardPage() {
                   setSelectedId(position.id);
                   if (isMobile) setMobileDetailOpen(true);
                 }}
+                onReadMore={() => openListingDetail(position)}
               />
               ))}
             </>
@@ -1969,6 +2190,21 @@ export default function HiringBoardPage() {
           </div>
         ) : null}
       </div>
+
+      {overlayPosition ? (
+        <HiringListingDetailOverlay
+          position={overlayPosition}
+          user={user}
+          alreadyApplied={Boolean(myApplications[overlayPosition.id])}
+          onClose={closeListingDetailOverlay}
+          onApply={() => handleApplyFromDetail(overlayPosition)}
+          onViewClub={() => {
+            if (overlayPosition.clubSlug) {
+              navigate(`/clubs/${overlayPosition.clubSlug}`);
+            }
+          }}
+        />
+      ) : null}
 
       {isMobile && mobileDetailOpen && activePosition ? (
         <HiringDetailMobileModal
