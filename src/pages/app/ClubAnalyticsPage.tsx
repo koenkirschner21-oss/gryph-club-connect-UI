@@ -1,4 +1,11 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  Bell,
+  Calendar,
+  CheckSquare,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -22,13 +29,21 @@ import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole } from "../../types";
 
 const PAGE_BG = "#0f0f0f";
-const CARD_BG = "#1a1a1a";
-const CARD_BORDER = "#242424";
+const CARD_BG = "#141414";
+const CARD_BORDER = "#2a2a2a";
 const MUTED = "#555555";
 const ACCENT_RED = "#E51937";
 const ACCENT_GOLD = "#FFC429";
 const GRID = "#1e1e1e";
-const LABEL_MUTED = "#747676";
+
+type TimeRange = "30d" | "semester" | "year" | "all";
+
+const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
+  { value: "30d", label: "30 Days" },
+  { value: "semester", label: "Semester" },
+  { value: "year", label: "Year" },
+  { value: "all", label: "All Time" },
+];
 
 const EVENT_CATEGORY_LABELS: Record<string, string> = {
   general: "General",
@@ -41,14 +56,23 @@ const EVENT_CATEGORY_LABELS: Record<string, string> = {
 };
 
 const EVENT_CATEGORY_COLORS: Record<string, string> = {
-  general: "#747676",
-  weekly_meeting: "#6b7cff",
-  team_social: "#4ade80",
-  conference: "#FFC429",
-  workshop: "#E51937",
+  weekly_meeting: "#555555",
   public_event: "#E51937",
-  fundraiser: "#a78bfa",
+  workshop: "#FFC429",
+  fundraiser: "#FFC429",
+  team_social: "#777777",
+  general: "#333333",
+  conference: "#777777",
 };
+
+const EVENT_TYPE_FALLBACK_COLORS = [
+  "#E51937",
+  "#FFC429",
+  "#555555",
+  "#777777",
+  "#333333",
+  "#2a2a2a",
+];
 
 interface MemberRow {
   created_at: string;
@@ -68,6 +92,7 @@ interface EventRow {
   title: string;
   date: string;
   category: string | null;
+  visibility?: string | null;
 }
 
 interface RsvpRow {
@@ -92,13 +117,16 @@ const pageStyle = (isMobile: boolean): CSSProperties => ({
 
 const chartCardStyle: CSSProperties = {
   background: CARD_BG,
-  border: `1px solid ${CARD_BORDER}`,
-  borderRadius: "10px",
-  padding: "20px",
+  borderTop: `1px solid ${CARD_BORDER}`,
+  borderRight: `1px solid ${CARD_BORDER}`,
+  borderBottom: `1px solid ${CARD_BORDER}`,
+  borderLeft: `1px solid ${CARD_BORDER}`,
+  borderRadius: "14px",
+  padding: "24px",
 };
 
 const chartTitleStyle: CSSProperties = {
-  fontWeight: 600,
+  fontWeight: 700,
   fontSize: "15px",
   color: "#ffffff",
   margin: "0 0 16px",
@@ -129,7 +157,18 @@ function normalizeUserRole(role: string): MemberRole {
 
 function truncateLabel(value: string, max = 12): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, max)}…`;
+  return `${value.slice(0, max)}...`;
+}
+
+function countNewMembersThisMonth(members: MemberRow[]): number {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  return members.filter((m) => new Date(m.created_at) >= monthStart).length;
+}
+
+function countPostsThisMonth(posts: PostRow[]): number {
+  const thisMonth = monthKey(new Date());
+  return posts.filter((p) => monthKey(new Date(p.created_at)) === thisMonth).length;
 }
 
 function monthKey(date: Date): string {
@@ -188,9 +227,9 @@ function buildTaskBreakdown(tasks: TaskRow[]) {
   const inProgress = tasks.filter((t) => t.status === "in_progress").length;
   const done = tasks.filter((t) => t.status === "done").length;
   return [
-    { name: "To Do", value: todo, color: "#747676" },
-    { name: "In Progress", value: inProgress, color: ACCENT_GOLD },
-    { name: "Done", value: done, color: "#4ade80" },
+    { name: "To Do", value: todo, color: "#555555" },
+    { name: "In Progress", value: inProgress, color: ACCENT_RED },
+    { name: "Done", value: done, color: ACCENT_GOLD },
   ];
 }
 
@@ -201,11 +240,15 @@ function buildEventCategoryBreakdown(events: EventRow[]) {
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
-  return Array.from(counts.entries()).map(([key, value]) => ({
-    name: EVENT_CATEGORY_LABELS[key] ?? key,
-    value,
-    color: EVENT_CATEGORY_COLORS[key] ?? "#747676",
-  }));
+  return Array.from(counts.entries())
+    .map(([key, value], index) => ({
+      name: EVENT_CATEGORY_LABELS[key] ?? key,
+      value,
+      color:
+        EVENT_CATEGORY_COLORS[key] ??
+        EVENT_TYPE_FALLBACK_COLORS[index % EVENT_TYPE_FALLBACK_COLORS.length],
+    }))
+    .sort((a, b) => b.value - a.value);
 }
 
 function buildInsights(params: {
@@ -217,53 +260,60 @@ function buildInsights(params: {
   dmMessages: DirectMessageRow[];
 }): InsightItem[] {
   const insights: InsightItem[] = [];
-  const now = new Date();
-  const thisMonth = monthKey(now);
-  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonth = monthKey(lastMonthDate);
+  const newThisMonth = countNewMembersThisMonth(params.members);
+  const totalTasks = params.tasks.length;
+  const doneTasks = params.tasks.filter((t) => t.status === "done").length;
+  const taskPct =
+    totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const postsThisMonth = countPostsThisMonth(params.posts);
 
-  const membersThisMonthEnd = params.members.filter((m) => {
-    const joined = monthKey(new Date(m.created_at));
-    return joined <= thisMonth;
-  }).length;
-
-  const membersLastMonthEnd = params.members.filter((m) => {
-    const joined = monthKey(new Date(m.created_at));
-    return joined <= lastMonth;
-  }).length;
-
-  if (membersLastMonthEnd > 0) {
-    const growth = Math.round(
-      ((membersThisMonthEnd - membersLastMonthEnd) / membersLastMonthEnd) *
-        100,
-    );
+  if (newThisMonth === 0) {
     insights.push({
       dotColor: ACCENT_RED,
-      text: `Your club has grown ${growth >= 0 ? `${growth}%` : `${growth}%`} this month`,
+      text: "No new members this month. Share your invite code to grow your club.",
     });
-  } else if (membersThisMonthEnd > 0) {
+  } else {
     insights.push({
-      dotColor: ACCENT_RED,
-      text: `Your club has ${membersThisMonthEnd} member${membersThisMonthEnd === 1 ? "" : "s"} this month`,
+      dotColor: ACCENT_GOLD,
+      text: `${newThisMonth} new member${newThisMonth === 1 ? "" : "s"} joined this month — keep the momentum going.`,
     });
   }
 
-  const totalTasks = params.tasks.length;
-  const doneTasks = params.tasks.filter((t) => t.status === "done").length;
-  if (totalTasks > 0) {
-    const pct = Math.round((doneTasks / totalTasks) * 100);
+  if (totalTasks === 0) {
     insights.push({
-      dotColor: "#4ade80",
-      text: `${pct}% of tasks are completed`,
+      dotColor: MUTED,
+      text: "No tasks tracked yet. Create tasks to monitor team progress.",
+    });
+  } else if (taskPct < 50) {
+    insights.push({
+      dotColor: ACCENT_RED,
+      text: `Task completion is low — ${doneTasks} of ${totalTasks} tasks are done. Review assignments or update task statuses.`,
+    });
+  } else {
+    insights.push({
+      dotColor: ACCENT_GOLD,
+      text: `${taskPct}% of tasks are complete (${doneTasks} of ${totalTasks}).`,
+    });
+  }
+
+  if (postsThisMonth === 0) {
+    insights.push({
+      dotColor: ACCENT_RED,
+      text: "No announcements this month. Post an update to keep members engaged.",
+    });
+  } else {
+    insights.push({
+      dotColor: ACCENT_GOLD,
+      text: `${postsThisMonth} announcement${postsThisMonth === 1 ? "" : "s"} posted this month.`,
     });
   }
 
   const categoryCounts = buildEventCategoryBreakdown(params.events);
   if (categoryCounts.length > 0) {
-    const top = [...categoryCounts].sort((a, b) => b.value - a.value)[0];
+    const top = categoryCounts[0];
     insights.push({
-      dotColor: ACCENT_GOLD,
-      text: `Most popular event type: ${top.name}`,
+      dotColor: MUTED,
+      text: `Most common event type: ${top.name} (${top.value} event${top.value === 1 ? "" : "s"}).`,
     });
   }
 
@@ -278,18 +328,10 @@ function buildInsights(params: {
   }
   if (bestEvent && bestEvent.going > 0) {
     insights.push({
-      dotColor: "#6b7cff",
-      text: `Most attended event: ${bestEvent.title} with ${bestEvent.going} going`,
+      dotColor: ACCENT_GOLD,
+      text: `Top attendance: ${bestEvent.title} with ${bestEvent.going} going.`,
     });
   }
-
-  const postsThisMonth = params.posts.filter(
-    (p) => monthKey(new Date(p.created_at)) === thisMonth,
-  ).length;
-  insights.push({
-    dotColor: LABEL_MUTED,
-    text: `${postsThisMonth} announcement${postsThisMonth === 1 ? "" : "s"} posted this month`,
-  });
 
   if (params.dmMessages.length > 0) {
     const last7 = params.dmMessages.filter((m) => {
@@ -297,12 +339,77 @@ function buildInsights(params: {
       return d >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     }).length;
     insights.push({
-      dotColor: ACCENT_RED,
-      text: `${last7} direct message${last7 === 1 ? "" : "s"} sent in the last 7 days`,
+      dotColor: MUTED,
+      text: `${last7} direct message${last7 === 1 ? "" : "s"} sent in the last 7 days.`,
     });
   }
 
   return insights.slice(0, 5);
+}
+
+interface RecommendedAction {
+  icon: "CheckSquare" | "Bell" | "Users" | "Calendar";
+  text: string;
+  color: string;
+}
+
+function buildRecommendedActions(params: {
+  taskCompletionRate: number;
+  announcementsThisMonth: number;
+  totalMembers: number;
+}): RecommendedAction[] {
+  const actions: RecommendedAction[] = [];
+
+  if (params.taskCompletionRate === 0) {
+    actions.push({
+      icon: "CheckSquare",
+      text: "Mark completed tasks as done to improve your tracking.",
+      color: ACCENT_GOLD,
+    });
+  }
+  if (params.announcementsThisMonth === 0) {
+    actions.push({
+      icon: "Bell",
+      text: "Post an announcement to keep your members informed.",
+      color: ACCENT_RED,
+    });
+  }
+  if (params.totalMembers < 5) {
+    actions.push({
+      icon: "Users",
+      text: "Invite more members using your club invite code.",
+      color: ACCENT_GOLD,
+    });
+  }
+  actions.push({
+    icon: "Calendar",
+    text: "Add RSVP questions to upcoming public events.",
+    color: MUTED,
+  });
+
+  return actions.slice(0, 4);
+}
+
+function RecommendedActionIcon({
+  icon,
+  color,
+}: {
+  icon: RecommendedAction["icon"];
+  color: string;
+}) {
+  const props = { size: 16, color, "aria-hidden": true as const };
+  switch (icon) {
+    case "CheckSquare":
+      return <CheckSquare {...props} />;
+    case "Bell":
+      return <Bell {...props} />;
+    case "Users":
+      return <Users {...props} />;
+    case "Calendar":
+      return <Calendar {...props} />;
+    default:
+      return <Calendar {...props} />;
+  }
 }
 
 function AnalyticsRestrictedIcon() {
@@ -327,41 +434,60 @@ function AnalyticsRestrictedIcon() {
 function StatCard({
   label,
   value,
-  accentColor,
+  topColor,
+  valueColor = "#ffffff",
+  subtext,
 }: {
   label: string;
   value: string | number;
-  accentColor: string;
+  topColor: string;
+  valueColor?: string;
+  subtext?: string;
 }) {
   return (
     <div
       style={{
         background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderLeft: `3px solid ${accentColor}`,
-        borderRadius: "8px",
-        padding: "16px",
+        borderRadius: "12px",
+        padding: "18px 20px",
+        borderTop: `3px solid ${topColor}`,
+        borderRight: `1px solid ${CARD_BORDER}`,
+        borderBottom: `1px solid ${CARD_BORDER}`,
+        borderLeft: `1px solid ${CARD_BORDER}`,
       }}
     >
       <p
         style={{
-          fontSize: "2rem",
-          fontWeight: 700,
-          color: "#ffffff",
+          fontSize: "28px",
+          fontWeight: 800,
+          color: valueColor,
           margin: 0,
-          lineHeight: 1.15,
+          lineHeight: 1,
         }}
       >
         {value}
       </p>
+      {subtext ? (
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#444444",
+            marginTop: "4px",
+            marginBottom: 0,
+          }}
+        >
+          {subtext}
+        </p>
+      ) : null}
       <p
         style={{
-          fontSize: "10px",
+          fontSize: "11px",
           fontWeight: 600,
-          letterSpacing: "0.1em",
+          letterSpacing: "0.06em",
           textTransform: "uppercase",
-          color: LABEL_MUTED,
-          margin: "8px 0 0",
+          color: MUTED,
+          marginTop: subtext ? "8px" : "4px",
+          marginBottom: 0,
         }}
       >
         {label}
@@ -414,6 +540,7 @@ export default function ClubAnalyticsPage() {
   const [dmMessages, setDmMessages] = useState<DirectMessageRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>("all");
 
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
@@ -464,7 +591,7 @@ export default function ClubAnalyticsPage() {
         supabase.from("posts").select("created_at").eq("club_id", clubId),
         supabase
           .from("events")
-          .select("id, title, date, category")
+          .select("id, title, date, category, visibility")
           .eq("club_id", clubId),
         supabase.from("conversations").select("id").eq("club_id", clubId),
       ]);
@@ -562,6 +689,24 @@ export default function ClubAnalyticsPage() {
   const doneTasks = tasks.filter((t) => t.status === "done").length;
   const taskCompletionRate =
     totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const newMembersThisMonth = countNewMembersThisMonth(members);
+  const announcementsThisMonth = countPostsThisMonth(posts);
+  const publicEventCount = events.filter(
+    (e) => e.visibility !== "members_only",
+  ).length;
+  const internalEventCount = events.filter(
+    (e) => e.visibility === "members_only",
+  ).length;
+
+  const recommendedActions = useMemo(
+    () =>
+      buildRecommendedActions({
+        taskCompletionRate,
+        announcementsThisMonth,
+        totalMembers,
+      }),
+    [taskCompletionRate, announcementsThisMonth, totalMembers],
+  );
 
   if (!isPrivileged) {
     return (
@@ -657,17 +802,55 @@ export default function ClubAnalyticsPage() {
       <div style={{ marginBottom: "24px" }}>
         <h1
           style={{
-            fontWeight: 700,
-            fontSize: "22px",
+            fontWeight: 800,
+            fontSize: "28px",
             color: "#ffffff",
             margin: 0,
           }}
         >
           Club Analytics
         </h1>
-        <p style={{ fontSize: "13px", color: MUTED, margin: "4px 0 0" }}>
-          Overview of your club&apos;s activity and growth.
+        <p
+          style={{
+            fontSize: "14px",
+            color: MUTED,
+            marginTop: "4px",
+            marginBottom: 0,
+          }}
+        >
+          Track membership, engagement, events, and team activity.
         </p>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "16px",
+          }}
+        >
+          {TIME_RANGE_OPTIONS.map((option) => {
+            const active = timeRange === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setTimeRange(option.value)}
+                style={{
+                  background: active ? ACCENT_RED : "transparent",
+                  color: active ? "#ffffff" : "#777777",
+                  border: active ? "none" : "1px solid #333333",
+                  borderRadius: "6px",
+                  padding: "6px 16px",
+                  fontSize: "12px",
+                  fontWeight: active ? 600 : 400,
+                  cursor: "pointer",
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {error ? (
@@ -699,22 +882,27 @@ export default function ClubAnalyticsPage() {
         <StatCard
           label="Total Members"
           value={totalMembers}
-          accentColor={ACCENT_RED}
+          topColor="#777777"
+          subtext={`+${newMembersThisMonth} this month`}
         />
         <StatCard
           label="Total Events"
           value={totalEvents}
-          accentColor={ACCENT_GOLD}
+          topColor={ACCENT_RED}
+          subtext={`${publicEventCount} public · ${internalEventCount} internal`}
         />
         <StatCard
           label="Task Completion Rate"
           value={`${taskCompletionRate}%`}
-          accentColor="#4ade80"
+          topColor={ACCENT_GOLD}
+          valueColor={ACCENT_GOLD}
+          subtext={`${doneTasks} of ${totalTasks} tasks completed`}
         />
         <StatCard
           label="Total Announcements"
           value={totalAnnouncements}
-          accentColor={LABEL_MUTED}
+          topColor="#777777"
+          subtext={`${announcementsThisMonth} posted this month`}
         />
       </div>
 
@@ -773,19 +961,23 @@ export default function ClubAnalyticsPage() {
                   margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid stroke={GRID} vertical={false} />
-                  <XAxis dataKey="name" {...chartAxisProps} />
+                  <XAxis
+                    dataKey="name"
+                    {...chartAxisProps}
+                    tickFormatter={(value) => truncateLabel(String(value), 12)}
+                  />
                   <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
                   <Tooltip {...tooltipStyle} />
                   <Legend
                     wrapperStyle={{ fontSize: "11px", color: MUTED }}
                     iconType="circle"
                   />
-                  <Bar dataKey="going" name="Going" fill="#4ade80" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="maybe" name="Maybe" fill={ACCENT_GOLD} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="going" name="Going" fill={ACCENT_GOLD} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="maybe" name="Maybe" fill="#555555" radius={[4, 4, 0, 0]} />
                   <Bar
                     dataKey="notGoing"
                     name="Not Going"
-                    fill={MUTED}
+                    fill={ACCENT_RED}
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
@@ -855,7 +1047,7 @@ export default function ClubAnalyticsPage() {
 
         <div style={chartCardStyle}>
           <h3 style={chartTitleStyle}>Event Types</h3>
-          <div style={{ width: "100%", height: "200px" }}>
+          <div style={{ width: "100%", height: Math.max(200, eventCategories.length * 36) }}>
             {eventCategories.length === 0 ? (
               <p
                 style={{
@@ -869,33 +1061,45 @@ export default function ClubAnalyticsPage() {
               </p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={eventCategories}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={75}
-                    labelLine={false}
-                  >
+                <BarChart
+                  data={eventCategories}
+                  layout="vertical"
+                  margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
+                >
+                  <CartesianGrid stroke={GRID} horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={110}
+                    tick={{ fill: MUTED, fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip {...tooltipStyle} />
+                  <Bar dataKey="value" name="Events" radius={[0, 4, 4, 0]}>
                     {eventCategories.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
-                  </Pie>
-                  <Tooltip {...tooltipStyle} />
-                  <Legend
-                    wrapperStyle={{ fontSize: "11px", color: MUTED }}
-                    iconType="circle"
-                  />
-                </PieChart>
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             )}
           </div>
         </div>
 
         <div style={chartCardStyle}>
-          <h3 style={chartTitleStyle}>Insights</h3>
+          <h3
+            style={{
+              ...chartTitleStyle,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <TrendingUp size={16} color={ACCENT_GOLD} aria-hidden />
+            Insights
+          </h3>
           <div>
             {insights.length === 0 ? (
               <p style={{ fontSize: "13px", color: MUTED, margin: 0 }}>
@@ -909,10 +1113,10 @@ export default function ClubAnalyticsPage() {
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "10px",
-                    padding: "8px 0",
+                    padding: "10px 0",
                     borderBottom:
                       index < insights.length - 1
-                        ? `1px solid ${GRID}`
+                        ? "1px solid #1a1a1a"
                         : "none",
                   }}
                 >
@@ -923,7 +1127,7 @@ export default function ClubAnalyticsPage() {
                       borderRadius: "50%",
                       background: insight.dotColor,
                       flexShrink: 0,
-                      marginTop: "5px",
+                      marginTop: "6px",
                     }}
                   />
                   <p
@@ -931,7 +1135,7 @@ export default function ClubAnalyticsPage() {
                       fontSize: "13px",
                       color: "#cccccc",
                       margin: 0,
-                      lineHeight: 1.45,
+                      lineHeight: 1.6,
                     }}
                   >
                     {insight.text}
@@ -939,6 +1143,39 @@ export default function ClubAnalyticsPage() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+
+        <div style={{ ...chartCardStyle, gridColumn: isMobile ? undefined : "1 / -1" }}>
+          <h3 style={chartTitleStyle}>Recommended Actions</h3>
+          <div>
+            {recommendedActions.map((action, index) => (
+              <div
+                key={action.text}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "12px 0",
+                  borderBottom:
+                    index < recommendedActions.length - 1
+                      ? "1px solid #1a1a1a"
+                      : "none",
+                }}
+              >
+                <RecommendedActionIcon icon={action.icon} color={action.color} />
+                <p
+                  style={{
+                    fontSize: "13px",
+                    color: "#cccccc",
+                    margin: 0,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {action.text}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
