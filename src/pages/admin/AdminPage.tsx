@@ -830,7 +830,6 @@ export default function AdminPage() {
           contact_email: meta.contact_email || "",
           meeting_schedule: meta.meeting_schedule || "",
           meeting_location: meta.meeting_location || null,
-          social_links: meta.social_links ?? null,
           abbreviation: deriveClubAbbreviation(request.name),
           is_public: true,
           created_by: request.submitted_by,
@@ -875,7 +874,6 @@ export default function AdminPage() {
       .from("club_requests")
       .update({
         status: "approved",
-        club_id: clubId,
         reviewed_by: user.id,
         reviewed_at: new Date().toISOString(),
       })
