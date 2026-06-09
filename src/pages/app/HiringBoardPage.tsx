@@ -263,6 +263,37 @@ function parseDeadlineDate(deadline: string): Date | null {
   return Number.isNaN(end.getTime()) ? null : end;
 }
 
+function sortBoardPositions(
+  positions: BoardPosition[],
+  sortBy: "newest" | "closing_soon" | "a-z",
+): BoardPosition[] {
+  const sorted = [...positions];
+
+  if (sortBy === "newest") {
+    return sorted.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }
+
+  if (sortBy === "closing_soon") {
+    return sorted.sort((a, b) => {
+      const aDeadline = a.deadline ? parseDeadlineDate(a.deadline) : null;
+      const bDeadline = b.deadline ? parseDeadlineDate(b.deadline) : null;
+
+      if (!aDeadline && !bDeadline) return 0;
+      if (!aDeadline) return 1;
+      if (!bDeadline) return -1;
+
+      return aDeadline.getTime() - bDeadline.getTime();
+    });
+  }
+
+  return sorted.sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+  );
+}
+
 function postedDateLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -938,6 +969,22 @@ function HiringDetailContent({
   );
 }
 
+function HiringClubBannerFit({ bannerUrl }: { bannerUrl: string }) {
+  return (
+    <img
+      src={bannerUrl}
+      alt=""
+      style={{
+        width: "100%",
+        height: "auto",
+        maxHeight: "320px",
+        display: "block",
+        background: "#1a1a1a",
+      }}
+    />
+  );
+}
+
 function HiringDetailPanel({
   position,
   user,
@@ -990,7 +1037,8 @@ function HiringDetailPanel({
         <div
           style={{
             width: "100%",
-            height: "200px",
+            minHeight: position.clubBannerUrl ? undefined : "200px",
+            height: position.clubBannerUrl ? undefined : "200px",
             overflow: "hidden",
             position: "relative",
             backgroundColor: "#0f0f0f",
@@ -1000,19 +1048,7 @@ function HiringDetailPanel({
           }}
         >
           {position.clubBannerUrl ? (
-            <img
-              src={position.clubBannerUrl}
-              alt=""
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center center",
-                display: "block",
-              }}
-            />
+            <HiringClubBannerFit bannerUrl={position.clubBannerUrl} />
           ) : null}
         </div>
         <div
@@ -1924,7 +1960,7 @@ export default function HiringBoardPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return positions.filter((p) => {
+    const matches = positions.filter((p) => {
       if (typeFilter !== "all" && p.positionType !== typeFilter) return false;
       if (!q) return true;
       return (
@@ -1933,7 +1969,8 @@ export default function HiringBoardPage() {
         p.description.toLowerCase().includes(q)
       );
     });
-  }, [positions, search, typeFilter]);
+    return sortBoardPositions(matches, sortBy);
+  }, [positions, search, typeFilter, sortBy]);
 
   useEffect(() => {
     if (filtered.length === 0) {

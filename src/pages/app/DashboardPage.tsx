@@ -695,14 +695,21 @@ const overviewEmptyTextStyle = {
   margin: 0,
 } as const;
 
+function localIsoDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localIsoDate(new Date());
 }
 
 function addDaysIso(isoDate: string, days: number): string {
-  const d = new Date(`${isoDate}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const next = new Date(year, month - 1, day + days);
+  return localIsoDate(next);
 }
 
 const CALENDAR_WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -714,16 +721,15 @@ function calendarWeekDays(reference = new Date()): Array<{
 }> {
   const ref = new Date(reference);
   const dayOfWeek = ref.getDay();
-  const monday = new Date(ref);
+  const monday = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
   const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  monday.setDate(ref.getDate() + diff);
-  monday.setHours(12, 0, 0, 0);
+  monday.setDate(monday.getDate() + diff);
 
   return CALENDAR_WEEK_LABELS.map((label, index) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + index);
     return {
-      dateKey: d.toISOString().slice(0, 10),
+      dateKey: localIsoDate(d),
       label,
       dayNum: d.getDate(),
     };
