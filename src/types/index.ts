@@ -189,6 +189,7 @@ export interface Post {
   authorName?: string;
   attachmentUrl?: string | null;
   attachmentType?: string | null;
+  linkUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------

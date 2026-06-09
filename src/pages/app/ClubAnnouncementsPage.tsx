@@ -428,6 +428,7 @@ export default function ClubAnnouncementsPage() {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [existingAttachmentUrl, setExistingAttachmentUrl] = useState<string | null>(null);
   const [existingAttachmentType, setExistingAttachmentType] = useState<string | null>(null);
@@ -658,6 +659,7 @@ export default function ClubAnnouncementsPage() {
   function resetForm() {
     setTitle("");
     setContent("");
+    setLinkUrl("");
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -670,6 +672,7 @@ export default function ClubAnnouncementsPage() {
     setEditingPostId(null);
     setTitle("");
     setContent("");
+    setLinkUrl("");
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -691,6 +694,7 @@ export default function ClubAnnouncementsPage() {
     setEditingPostId(post.id);
     setTitle(post.title);
     setContent(post.content);
+    setLinkUrl(post.linkUrl ?? "");
     setSelectedFile(null);
     setExistingAttachmentUrl(post.attachmentUrl ?? null);
     setExistingAttachmentType(post.attachmentType ?? null);
@@ -755,6 +759,7 @@ export default function ClubAnnouncementsPage() {
       content: content.trim(),
       attachmentUrl,
       attachmentType,
+      linkUrl: linkUrl.trim() || null,
     };
 
     const isEditing = Boolean(editingPostId);
@@ -985,6 +990,13 @@ export default function ClubAnnouncementsPage() {
               placeholder="Write your announcement…"
               multiline
               required
+            />
+            <ThemedField
+              id="postLinkUrl"
+              label="Link (optional)"
+              value={linkUrl}
+              onChange={setLinkUrl}
+              placeholder="https://..."
             />
             <div>
               <label htmlFor="postAttachment" style={labelStyle}>
@@ -1414,6 +1426,24 @@ export default function ClubAnnouncementsPage() {
 
         {post.attachmentUrl && post.attachmentType ? (
           <PostAttachment url={post.attachmentUrl} type={post.attachmentType} title={post.title} />
+        ) : null}
+
+        {post.linkUrl ? (
+          <a
+            href={post.linkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-block",
+              marginTop: "12px",
+              color: ACCENT_RED,
+              fontSize: "13px",
+              fontWeight: 500,
+              textDecoration: "none",
+            }}
+          >
+            View Link →
+          </a>
         ) : null}
 
         <div

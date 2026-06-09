@@ -14,6 +14,7 @@ const POST_SELECT = `
   updated_at,
   attachment_url,
   attachment_type,
+  link_url,
   author:profiles!posts_author_profile_fkey (
     full_name
   )
@@ -33,12 +34,14 @@ function mapPostRow(row: Record<string, unknown>): Post {
     authorName: (profile.full_name as string) ?? undefined,
     attachmentUrl: (row.attachment_url as string | null) ?? null,
     attachmentType: (row.attachment_type as string | null) ?? null,
+    linkUrl: (row.link_url as string | null) ?? null,
   };
 }
 
 export type PostWriteFields = Pick<Post, "title" | "content"> & {
   attachmentUrl?: string | null;
   attachmentType?: string | null;
+  linkUrl?: string | null;
 };
 
 export interface UseClubPostsReturn {
@@ -103,6 +106,7 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           content: fields.content,
           attachment_url: fields.attachmentUrl ?? null,
           attachment_type: fields.attachmentType ?? null,
+          link_url: fields.linkUrl?.trim() || null,
         })
         .select(POST_SELECT)
         .single();
@@ -179,6 +183,7 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
                   content: fields.content,
                   attachmentUrl: fields.attachmentUrl ?? null,
                   attachmentType: fields.attachmentType ?? null,
+                  linkUrl: fields.linkUrl?.trim() || null,
                   updatedAt: new Date().toISOString(),
                 }
               : p,
