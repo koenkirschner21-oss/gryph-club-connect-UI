@@ -21,8 +21,16 @@ import {
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
+import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
 import { supabase } from "../../lib/supabaseClient";
-import type { ClubEvent, MemberRole, Post, Task, TaskStatus } from "../../types";
+import type {
+  ClubEvent,
+  MemberRole,
+  Post,
+  RsvpStatus,
+  Task,
+  TaskStatus,
+} from "../../types";
 import Spinner from "../../components/ui/Spinner";
 
 const CARD_BG = "#141414";
@@ -33,20 +41,54 @@ const sectionHeadingRow: CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   marginTop: "28px",
-  marginBottom: "14px",
-  paddingBottom: "12px",
-  borderBottom: "1px solid #1a1a1a",
+  marginBottom: "16px",
+  paddingBottom: "14px",
+  borderBottom: `1px solid ${CARD_BORDER}`,
 };
+
+const sectionBlockHeader: CSSProperties = {
+  ...sectionHeadingRow,
+  marginTop: 0,
+};
+
+const dashboardColumnStack: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "32px",
+  minWidth: 0,
+  flex: 1,
+};
+
+const dashboardSectionBlock: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  flex: 1,
+  minHeight: 0,
+};
+
+const dashboardSectionBlockFixed: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  flexShrink: 0,
+};
+
+const dashboardListStack: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+};
+
+const EVENT_DATE_BLOCK_SIZE = 44;
 
 const sectionHeading: CSSProperties = {
   fontWeight: 700,
-  fontSize: "14px",
+  fontSize: "16px",
   color: "#ffffff",
   margin: 0,
 };
 
 const viewAllLink: CSSProperties = {
-  fontSize: "12px",
+  fontSize: "13px",
   fontWeight: 500,
   color: "#E51937",
   textDecoration: "none",
@@ -116,6 +158,13 @@ function formatEventTime12h(timeStr: string): string {
   return t;
 }
 
+function firstSentencePreview(text: string): string {
+  const stripped = text.replace(/\s+/g, " ").trim();
+  if (!stripped) return "";
+  const match = stripped.match(/^[^.!?]+[.!?]?/);
+  return (match?.[0] ?? stripped.slice(0, 140)).trim();
+}
+
 function formatEventDateShort(dateStr: string): string {
   const trimmed = dateStr.trim();
   const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
@@ -135,65 +184,6 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
     .join("")
     .slice(0, maxLen)
     .toUpperCase();
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
-
-const AVATAR_COLORS = ["#E51937", "#FFC429", "#555555", "#777777", "#333333"];
-
-function deriveAvatarColor(name: string): string {
-  const char = (name.trim()[0] ?? "A").toUpperCase();
-  const code = char.charCodeAt(0) - 65;
-  return AVATAR_COLORS[Math.abs(code) % AVATAR_COLORS.length];
-}
-
-function AssigneeAvatar({
-  name,
-  avatarUrl,
-}: {
-  name: string;
-  avatarUrl?: string;
-}) {
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt=""
-        style={{
-          width: "36px",
-          height: "36px",
-          borderRadius: "50%",
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        width: "36px",
-        height: "36px",
-        borderRadius: "50%",
-        background: deriveAvatarColor(name),
-        color: "#ffffff",
-        fontSize: "13px",
-        fontWeight: 700,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {getInitials(name)}
-    </div>
-  );
 }
 
 interface DeduplicatedEvent extends ClubEvent {
@@ -294,9 +284,9 @@ function ClubStatCard({
   label,
   value,
   sublabel,
-  accentColor,
   to,
-  valueFontSize = "28px",
+  borderAccentColor = "#E51937",
+  valueFontSize = "30px",
   valueColor = "#ffffff",
   valueFontStyle,
   valueHint,
@@ -304,8 +294,8 @@ function ClubStatCard({
   label: string;
   value: string | number;
   sublabel: string;
-  accentColor: string;
   to?: string;
+  borderAccentColor?: string;
   valueFontSize?: string;
   valueColor?: string;
   valueFontStyle?: CSSProperties["fontStyle"];
@@ -321,7 +311,7 @@ function ClubStatCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         background: CARD_BG,
-        borderTop: `3px solid ${accentColor}`,
+        borderTop: `2px solid ${borderAccentColor}`,
         borderRight: `1px solid ${CARD_BORDER}`,
         borderBottom: `1px solid ${CARD_BORDER}`,
         borderLeft: `1px solid ${CARD_BORDER}`,
@@ -335,7 +325,7 @@ function ClubStatCard({
     >
       <p
         style={{
-          fontSize: "11px",
+          fontSize: "13px",
           fontWeight: 600,
           letterSpacing: "0.06em",
           color: "#555555",
@@ -360,7 +350,7 @@ function ClubStatCard({
       {valueHint ? (
         <p
           style={{
-            fontSize: "12px",
+            fontSize: "13px",
             color: "#E51937",
             margin: "4px 0 0",
           }}
@@ -371,7 +361,7 @@ function ClubStatCard({
       {sublabel ? (
         <p
           style={{
-            fontSize: "12px",
+            fontSize: "13px",
             color: "#444444",
             margin: "4px 0 0",
             overflow: "hidden",
@@ -405,147 +395,6 @@ function ClubStatCard({
   }
 
   return card;
-}
-
-function ClubEventCard({
-  title,
-  date,
-  time,
-  location,
-  clubName,
-  clubAbbreviation,
-  clubLogoUrl,
-  moreDatesCount = 0,
-  showRecurringBadge = false,
-}: {
-  title: string;
-  date: string;
-  time?: string;
-  location?: string;
-  clubName: string;
-  clubAbbreviation?: string;
-  clubLogoUrl?: string;
-  moreDatesCount?: number;
-  showRecurringBadge?: boolean;
-}) {
-  const parsedDate = new Date(`${date}T12:00:00`);
-  const monthLabel = Number.isNaN(parsedDate.getTime())
-    ? "---"
-    : parsedDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
-  const dayLabel = Number.isNaN(parsedDate.getTime())
-    ? "?"
-    : String(parsedDate.getDate());
-
-  const timeLabel =
-    time && time.trim() !== "" && time.toUpperCase() !== "TBD"
-      ? formatEventTime12h(time)
-      : null;
-  const locationLabel =
-    location && !isHiddenLocation(location) ? location.trim() : null;
-
-  const metaParts = [timeLabel, locationLabel].filter(Boolean);
-
-  return (
-    <div
-      className="flex"
-      style={{
-        gap: "14px",
-        alignItems: "center",
-        background: CARD_BG,
-        borderTop: `1px solid ${CARD_BORDER}`,
-        borderRight: `1px solid ${CARD_BORDER}`,
-        borderBottom: `1px solid ${CARD_BORDER}`,
-        borderLeft: `1px solid ${CARD_BORDER}`,
-        borderRadius: "10px",
-        padding: "12px 16px",
-        marginBottom: "8px",
-      }}
-    >
-      <div
-        className="flex shrink-0 flex-col items-center justify-center"
-        style={{
-          minWidth: "44px",
-          backgroundColor: "#E51937",
-          borderRadius: "8px",
-          padding: "6px 10px",
-          textAlign: "center",
-        }}
-      >
-        <span
-          style={{
-            fontSize: "10px",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            color: "#ffffff",
-            lineHeight: 1,
-          }}
-        >
-          {monthLabel}
-        </span>
-        <span
-          style={{
-            fontSize: "18px",
-            fontWeight: 800,
-            color: "#ffffff",
-            lineHeight: 1,
-          }}
-        >
-          {dayLabel}
-        </span>
-      </div>
-      <ClubLogoMark
-        name={clubName}
-        abbreviation={clubAbbreviation}
-        logoUrl={clubLogoUrl}
-        circular
-      />
-      <div className="min-w-0 flex-1">
-        <h3
-          style={{
-            fontSize: "14px",
-            fontWeight: 600,
-            color: "#ffffff",
-            margin: 0,
-            display: "flex",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "6px",
-          }}
-        >
-          <span>{title}</span>
-          {moreDatesCount > 0 ? (
-            <span style={{ fontSize: "12px", fontWeight: 500, color: "#555555" }}>
-              + {moreDatesCount} more date{moreDatesCount === 1 ? "" : "s"}
-            </span>
-          ) : null}
-          {showRecurringBadge ? (
-            <span
-              style={{
-                fontSize: "10px",
-                color: "#FFC429",
-                border: "1px solid #FFC429",
-                borderRadius: "4px",
-                padding: "1px 6px",
-              }}
-            >
-              Recurring
-            </span>
-          ) : null}
-        </h3>
-        {metaParts.length > 0 ? (
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#555555",
-              margin: "2px 0 0",
-            }}
-          >
-            {metaParts.join(" · ")}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
 }
 
 const detailModalOverlay: CSSProperties = {
@@ -632,43 +481,73 @@ function DashboardItemModal({
   );
 }
 
-function taskStatusTextColor(status: TaskStatus): string {
-  switch (status) {
-    case "in_progress":
-    case "done":
-      return "#FFC429";
-    default:
-      return "#555555";
-  }
+function clubHomeTaskStatusLabel(status: TaskStatus): string {
+  if (status === "in_progress") return "In Progress";
+  if (status === "done") return "Done";
+  return "To Do";
 }
 
-function ClubTaskCard({
+function clubHomeTaskStatusPillStyle(status: TaskStatus): CSSProperties {
+  if (status === "in_progress") {
+    return {
+      background: "#2a1f00",
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+      borderRadius: "20px",
+      padding: "3px 10px",
+      fontSize: "11px",
+      fontWeight: 500,
+      flexShrink: 0,
+    };
+  }
+  if (status === "done") {
+    return {
+      background: "#1a0a0a",
+      border: "1px solid #E51937",
+      color: "#E51937",
+      borderRadius: "20px",
+      padding: "3px 10px",
+      fontSize: "11px",
+      fontWeight: 500,
+      flexShrink: 0,
+    };
+  }
+  return {
+    background: "#222222",
+    border: "1px solid #444444",
+    color: "#888888",
+    borderRadius: "20px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    fontWeight: 500,
+    flexShrink: 0,
+  };
+}
+
+function clubHomeTaskLeftBorder(
+  status: TaskStatus,
+  urgency: ReturnType<typeof getTaskDueUrgency>,
+): string {
+  if (urgency === "overdue") return "#E51937";
+  if (status === "in_progress") return "#FFC429";
+  return "#2a2a2a";
+}
+
+function NeedsAttentionTaskRow({
   task,
   onClick,
 }: {
   task: Task;
   onClick: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-  const statusLabel =
-    task.status === "in_progress"
-      ? "In progress"
-      : task.status === "done"
-        ? "Done"
-        : "To do";
-  const assigneeName = task.assigneeName ?? "Unassigned";
-  const dueLabel = task.dueDate
-    ? new Date(task.dueDate).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })
-    : null;
+  const urgency = getTaskDueUrgency(task.dueDate, task.status);
+  const dueLabel = task.dueDate ? formatTaskDate(task.dueDate) : null;
+  const leftBorder = clubHomeTaskLeftBorder(task.status, urgency);
 
   return (
     <div
       role="button"
       tabIndex={0}
-      className="block cursor-pointer no-underline"
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -676,134 +555,383 @@ function ClubTaskCard({
           onClick();
         }
       }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        background: CARD_BG,
+        borderTop: `1px solid ${CARD_BORDER}`,
+        borderRight: `1px solid ${CARD_BORDER}`,
+        borderBottom: `1px solid ${CARD_BORDER}`,
+        borderLeft: `3px solid ${leftBorder}`,
+        borderRadius: "8px",
+        padding: "14px 16px",
+        cursor: "pointer",
+      }}
     >
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          background: CARD_BG,
-          borderTop: `1px solid ${CARD_BORDER}`,
-          borderRight: `1px solid ${CARD_BORDER}`,
-          borderBottom: `1px solid ${CARD_BORDER}`,
-          borderLeft:
-            task.status === "in_progress"
-              ? "3px solid #FFC429"
-              : `1px solid ${CARD_BORDER}`,
-          borderRadius: "10px",
-          padding: "14px 16px",
-          marginBottom: "8px",
-          transform: hovered ? "translateY(-1px)" : undefined,
-          transition: "all 0.15s ease",
-        }}
-      >
-        <AssigneeAvatar name={assigneeName} avatarUrl={task.assigneeAvatar} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <span style={clubHomeTaskStatusPillStyle(task.status)}>
+        {clubHomeTaskStatusLabel(task.status)}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: "0 0 4px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {task.title}
+        </p>
+        {task.assigneeName ? (
           <p
             style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              color: "#ffffff",
-              margin: "0 0 4px",
+              fontSize: "12px",
+              color: "#777777",
+              margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
-            {task.title}
+            {task.assigneeName}
           </p>
-          <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
-            <span style={{ color: taskStatusTextColor(task.status) }}>
-              {statusLabel}
-            </span>
-            {task.assigneeName ? ` · ${task.assigneeName}` : ""}
-          </p>
-          {dueLabel ? (
-            <p
-              style={{
-                fontSize: "11px",
-                color: "#444444",
-                margin: "4px 0 0",
-              }}
-            >
-              Due {dueLabel}
-            </p>
-          ) : null}
-        </div>
+        ) : null}
       </div>
+      {dueLabel ? (
+        <span
+          style={{
+            fontSize: "13px",
+            color: "#777777",
+            flexShrink: 0,
+          }}
+        >
+          {dueLabel}
+        </span>
+      ) : null}
     </div>
   );
 }
 
-function NextEventBanner({
-  event,
-  eventsPath,
-}: {
-  event: { title: string; date: string; time?: string };
-  eventsPath: string;
-}) {
-  const parsedDate = new Date(event.date);
+function EventDateBadge({ date }: { date: string }) {
+  const parsedDate = new Date(`${date}T12:00:00`);
   const monthLabel = Number.isNaN(parsedDate.getTime())
     ? "---"
     : parsedDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
   const dayLabel = Number.isNaN(parsedDate.getTime())
     ? "?"
     : String(parsedDate.getDate());
+
+  return (
+    <div
+      className="flex shrink-0 flex-col items-center justify-center"
+      style={{
+        width: `${EVENT_DATE_BLOCK_SIZE}px`,
+        height: `${EVENT_DATE_BLOCK_SIZE}px`,
+        backgroundColor: "#E51937",
+        borderRadius: "8px",
+      }}
+    >
+      <span
+        style={{
+          fontSize: "9px",
+          color: "#fff",
+          lineHeight: 1,
+          letterSpacing: "0.08em",
+        }}
+      >
+        {monthLabel}
+      </span>
+      <span style={{ fontSize: "18px", fontWeight: 700, color: "#fff", lineHeight: 1 }}>
+        {dayLabel}
+      </span>
+    </div>
+  );
+}
+
+function UpcomingEventRow({
+  title,
+  date,
+  time,
+  location,
+  clubName,
+  clubAbbreviation,
+  clubLogoUrl,
+  onOpen,
+}: {
+  title: string;
+  date: string;
+  time?: string;
+  location?: string;
+  clubName: string;
+  clubAbbreviation?: string;
+  clubLogoUrl?: string;
+  onOpen: () => void;
+}) {
+  const timeLabel =
+    time && time.trim() !== "" && time.toUpperCase() !== "TBD"
+      ? formatEventTime12h(time)
+      : null;
+  const locationLabel =
+    location && !isHiddenLocation(location) ? location.trim() : null;
+  const metaParts = [timeLabel, locationLabel].filter(Boolean);
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: "8px",
+        padding: "14px 16px",
+        cursor: "pointer",
+      }}
+    >
+      <EventDateBadge date={date} />
+      <ClubLogoMark
+        name={clubName}
+        abbreviation={clubAbbreviation}
+        logoUrl={clubLogoUrl}
+        circular
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: "0 0 4px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {title}
+        </p>
+        {metaParts.length > 0 ? (
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#777777",
+              margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {metaParts.join(" · ")}
+          </p>
+        ) : null}
+      </div>
+      <span
+        style={{
+          flexShrink: 0,
+          color: "#E51937",
+          fontSize: "13px",
+          fontWeight: 500,
+        }}
+      >
+        View Event →
+      </span>
+    </div>
+  );
+}
+
+function NextEventCard({
+  event,
+  rsvpStatus,
+  onRsvpClick,
+}: {
+  event: { title: string; date: string; time?: string; location?: string };
+  rsvpStatus?: RsvpStatus | null;
+  onRsvpClick: () => void;
+}) {
   const timeLabel =
     event.time && event.time.trim() !== "" && event.time.toUpperCase() !== "TBD"
       ? formatEventTime12h(event.time)
+      : null;
+  const locationLabel =
+    event.location && !isHiddenLocation(event.location)
+      ? event.location.trim()
       : null;
 
   return (
     <div
       style={{
-        background: "#1a1a1a",
-        border: "1px solid #E51937",
-        borderRadius: "10px",
-        padding: "16px 20px",
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: "8px",
+        padding: "14px 16px",
         display: "flex",
         alignItems: "center",
-        gap: "14px",
+        gap: "12px",
       }}
     >
-      <div
-        className="flex shrink-0 flex-col items-center justify-center"
-        style={{
-          width: "44px",
-          height: "44px",
-          backgroundColor: "#E51937",
-          borderRadius: "8px",
-        }}
-      >
-        <span style={{ fontSize: "9px", color: "#fff", lineHeight: 1 }}>
-          {monthLabel}
-        </span>
-        <span style={{ fontSize: "18px", fontWeight: 700, color: "#fff", lineHeight: 1 }}>
-          {dayLabel}
-        </span>
-      </div>
+      <EventDateBadge date={event.date} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p
           style={{
-            fontSize: "10px",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            color: "#747676",
-            margin: 0,
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#ffffff",
+            margin: "0 0 4px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
-          Next Event
-        </p>
-        <p style={{ fontSize: "16px", fontWeight: 700, color: "#fff", margin: "4px 0 0" }}>
           {event.title}
         </p>
+        {locationLabel ? (
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#777777",
+              margin: "0 0 2px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {locationLabel}
+          </p>
+        ) : null}
         {timeLabel ? (
-          <p style={{ fontSize: "12px", color: "#555555", margin: "4px 0 0" }}>{timeLabel}</p>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#777777",
+              margin: 0,
+            }}
+          >
+            {timeLabel}
+          </p>
         ) : null}
       </div>
-      <Link to={eventsPath} style={viewAllLink}>
-        View Event →
-      </Link>
+      {rsvpStatus === "going" ? (
+        <span
+          style={{
+            flexShrink: 0,
+            background: "#2a2200",
+            border: "1px solid #FFC429",
+            color: "#FFC429",
+            borderRadius: "20px",
+            padding: "4px 12px",
+            fontSize: "12px",
+            fontWeight: 600,
+          }}
+        >
+          Going ✓
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={onRsvpClick}
+          style={{
+            flexShrink: 0,
+            background: "transparent",
+            border: "1px solid #E51937",
+            color: "#E51937",
+            borderRadius: "6px",
+            padding: "6px 14px",
+            fontSize: "12px",
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          RSVP
+        </button>
+      )}
     </div>
+  );
+}
+
+function ClubAnnouncementPreviewCard({
+  post,
+  clubName,
+  announcementsPath,
+}: {
+  post: Post;
+  clubName: string;
+  announcementsPath: string;
+}) {
+  const preview = firstSentencePreview(post.content);
+
+  return (
+    <article
+      style={{
+        background: CARD_BG,
+        borderTop: `1px solid ${CARD_BORDER}`,
+        borderRight: `1px solid ${CARD_BORDER}`,
+        borderBottom: `1px solid ${CARD_BORDER}`,
+        borderLeft: "3px solid #E51937",
+        borderRadius: "8px",
+        padding: "14px 16px",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "11px",
+          color: "#E51937",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          margin: "0 0 6px",
+        }}
+      >
+        {clubName}
+      </p>
+      <h3
+        style={{
+          fontSize: "14px",
+          fontWeight: 700,
+          color: "#ffffff",
+          margin: "0 0 4px",
+        }}
+      >
+        {post.title}
+      </h3>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#777777",
+          margin: "0 0 8px",
+        }}
+      >
+        {formatRelativeTime(post.createdAt)}
+        {post.authorName ? ` · ${post.authorName}` : ""}
+      </p>
+      {preview ? (
+        <p
+          style={{
+            fontSize: "13px",
+            color: "#aaaaaa",
+            margin: "0 0 8px",
+            lineHeight: 1.5,
+          }}
+        >
+          {preview}
+        </p>
+      ) : null}
+      <Link to={announcementsPath} style={viewAllLink}>
+        Read more →
+      </Link>
+    </article>
   );
 }
 
@@ -826,9 +954,6 @@ export default function ClubHomePage() {
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
   const [newEventHovered, setNewEventHovered] = useState(false);
-  const [memberRsvps, setMemberRsvps] = useState<
-    Record<string, "going" | "maybe" | "not_going" | null>
-  >({});
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<
     (ClubEvent & { occurrenceDate: string }) | null
@@ -1089,29 +1214,21 @@ export default function ClubHomePage() {
 
   const tasksForRole =
     userRole === "owner" ? tasks : userRole === "executive" ? executiveTasks : memberTasks;
-  const previewTasks = tasksForRole.slice(0, 3);
-  const tasksSectionTitle =
-    userRole === "owner"
-      ? "Club Tasks"
-      : userRole === "executive"
-        ? "My Tasks"
-        : "My Tasks";
-  const totalTasks = tasksForRole.length;
-  const completedTasks = tasksForRole.filter((t) => t.status === "done").length;
-  const progressLabel =
-    userRole === "executive"
-      ? `${completedTasks} of ${totalTasks} of your tasks completed`
-      : `${completedTasks} of ${totalTasks} tasks completed`;
-
-  const postsCap = userRole === "member" ? 4 : 2;
-  const previewPosts = posts.slice(0, postsCap);
-  const eventsCap = userRole === "member" ? 4 : 3;
-  const previewEvents = deduplicatedEventsThisMonth.slice(0, eventsCap);
-  const previewEventIds = useMemo(
-    () => deduplicatedEventsThisMonth.slice(0, eventsCap).map((e) => e.id),
-    [deduplicatedEventsThisMonth, eventsCap],
+  const attentionTasks = useMemo(
+    () =>
+      tasksForRole
+        .filter((task) => task.status === "todo" || task.status === "in_progress")
+        .slice(0, 4),
+    [tasksForRole],
   );
-  const { counts: eventRsvpCounts } = useEventRsvps(previewEventIds);
+  const previewPosts = posts.slice(0, 2);
+  const previewUpcomingEvents = upcomingOccurrences.slice(0, 3);
+  const rsvpEventIds = useMemo(() => {
+    const ids = new Set(previewUpcomingEvents.map((event) => event.id));
+    if (nextEvent?.id) ids.add(nextEvent.id);
+    return Array.from(ids);
+  }, [previewUpcomingEvents, nextEvent]);
+  const { counts: eventRsvpCounts, myRsvps } = useEventRsvps(rsvpEventIds);
 
   if (!club) {
     return (
@@ -1146,6 +1263,10 @@ export default function ClubHomePage() {
       style={{
         backgroundColor: "#0f0f0f",
         padding: isMobile ? "16px" : "24px",
+        minHeight: "100%",
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box",
       }}
     >
       {showSetupBanner ? (
@@ -1341,7 +1462,7 @@ export default function ClubHomePage() {
             label="Open Tasks"
             value={openTaskCount}
             sublabel="Incomplete tasks"
-            accentColor="#E51937"
+            borderAccentColor="#FFC429"
             to={tasksPath}
           />
         ) : null}
@@ -1349,17 +1470,15 @@ export default function ClubHomePage() {
           label="Events This Month"
           value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
           sublabel="Scheduled this month"
-          accentColor="#FFC429"
-          valueColor="#FFC429"
           to={eventsPath}
         />
         <ClubStatCard
           label="Meeting"
           value={nextMeetingDisplay.value}
           sublabel={nextMeetingDisplay.sublabel}
-          accentColor="#777777"
+          borderAccentColor="#777777"
           to={eventsPath}
-          valueFontSize={nextMeetingDisplay.scheduled ? "24px" : "13px"}
+          valueFontSize={nextMeetingDisplay.scheduled ? "26px" : "14px"}
           valueColor={nextMeetingDisplay.scheduled ? "#ffffff" : "#555555"}
           valueFontStyle={nextMeetingDisplay.scheduled ? undefined : "italic"}
           valueHint={
@@ -1368,287 +1487,98 @@ export default function ClubHomePage() {
         />
       </div>
 
-      {userRole !== "member" ? (
-        <div>
-          <div style={sectionHeadingRow}>
-            <h2 style={sectionHeading}>Tasks Left To Do</h2>
-            {openTasksPreview.length > 0 ? (
+      <div
+        data-open-preview-count={openTasksPreview.length}
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "3fr 2fr",
+          gap: "28px",
+          marginTop: "28px",
+          alignItems: "stretch",
+          flex: 1,
+          minHeight: isMobile ? undefined : "calc(100vh - 4rem - 240px)",
+        }}
+      >
+        <div style={dashboardColumnStack}>
+          <div style={dashboardSectionBlock}>
+            <div style={sectionBlockHeader}>
+              <h2 style={sectionHeading}>Tasks</h2>
               <Link to={tasksPath} style={viewAllLink}>
                 View All →
               </Link>
-            ) : null}
-          </div>
-          {openTasksPreviewLoading ? (
-            <div className="flex justify-center py-6">
-              <Spinner label="Loading tasks…" />
             </div>
-          ) : openTasksPreview.length === 0 ? (
-            <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-              No open tasks
-            </p>
-          ) : (
-            <div>
-              {openTasksPreview.map((task) => {
-                const dueLabel = task.dueDate
-                  ? new Date(task.dueDate).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : null;
-                return (
-                  <div
-                    key={task.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      background: CARD_BG,
-                      borderTop: `1px solid ${CARD_BORDER}`,
-                      borderRight: `1px solid ${CARD_BORDER}`,
-                      borderBottom: `1px solid ${CARD_BORDER}`,
-                      borderLeft: "3px solid #E51937",
-                      borderRadius: "10px",
-                      padding: "12px 16px",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: "#ffffff",
-                        margin: 0,
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      {task.title}
-                    </p>
-                    {dueLabel ? (
-                      <span style={{ fontSize: "12px", color: "#444444", flexShrink: 0 }}>
-                        {dueLabel}
-                      </span>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {nextEvent ? (
-        <div>
-          <NextEventBanner
-            event={{
-              title: nextEvent.title,
-              date: nextEvent.occurrenceDate,
-              time: nextEvent.time,
-            }}
-            eventsPath={eventsPath}
-          />
-        </div>
-      ) : null}
-
-      <div>
-        <div style={sectionHeadingRow}>
-          <h2 style={sectionHeading}>Recent Announcements</h2>
-          {posts.length > 0 ? (
-            <Link to={announcementsPath} style={viewAllLink}>
-              View All →
-            </Link>
-          ) : null}
-        </div>
-        {postsLoading ? (
-          <div className="flex justify-center py-8">
-            <Spinner label="Loading announcements…" />
-          </div>
-        ) : posts.length === 0 ? (
-          <div
-            className="p-6 text-center"
-            style={{
-              backgroundColor: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "8px",
-            }}
-          >
-            <p className="text-sm" style={{ color: "#555555" }}>
-              No announcements yet. Check back soon!
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {previewPosts.map((post) => (
-              <article
-                key={post.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedAnnouncement(post)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSelectedAnnouncement(post);
-                  }
-                }}
+            {tasksLoading || openTasksPreviewLoading ? (
+              <div className="flex justify-center py-6">
+                <Spinner label="Loading tasks…" />
+              </div>
+            ) : attentionTasks.length === 0 ? (
+              <div
                 style={{
-                  background: CARD_BG,
-                  borderTop: `1px solid ${CARD_BORDER}`,
-                  borderRight: `1px solid ${CARD_BORDER}`,
-                  borderBottom: `1px solid ${CARD_BORDER}`,
-                  borderLeft: "3px solid #E51937",
-                  borderRadius: "10px",
-                  padding: "16px 20px",
-                  marginBottom: "10px",
-                  transition: "all 0.15s ease",
-                  cursor: "pointer",
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: CARD_BG,
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "12px",
+                  padding: "32px 24px",
+                  minHeight: "120px",
                 }}
               >
-                <h3
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    color: "#ffffff",
-                    margin: "0 0 4px",
-                  }}
-                >
-                  {post.title}
-                </h3>
-                <p
-                  style={{
-                    fontSize: "11px",
-                    color: "#444444",
-                    margin: "0 0 2px",
-                  }}
-                >
-                  {formatRelativeTime(post.createdAt)}
+                <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+                  {userRole === "owner"
+                    ? "No open tasks in this club."
+                    : "No open tasks assigned to you."}
                 </p>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#555555",
-                    margin: "0 0 8px",
-                  }}
-                >
-                  {post.authorName ?? "Unknown"}
-                </p>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#555555",
-                    lineHeight: 1.6,
-                    margin: 0,
-                    overflow: "hidden",
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                  }}
-                >
-                  {post.content}
-                </p>
-              </article>
-            ))}
+              </div>
+            ) : (
+              <div style={dashboardListStack}>
+                {attentionTasks.map((task) => (
+                  <NeedsAttentionTaskRow
+                    key={task.id}
+                    task={task}
+                    onClick={() => setSelectedTask(task)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {(userRole !== "member" || totalTasks > 0) ? (
-      <div>
-        <div style={sectionHeadingRow}>
-          <h2 style={sectionHeading}>{tasksSectionTitle}</h2>
-          {tasksForRole.length > 0 ? (
-            <Link to={tasksPath} style={viewAllLink}>
-              View All →
-            </Link>
-          ) : null}
-        </div>
-        {totalTasks > 0 ? (
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#444444",
-              margin: "0 0 12px",
-            }}
-          >
-            {progressLabel}
-          </p>
-        ) : null}
-        {tasksLoading ? (
-          <div className="flex justify-center py-8">
-            <Spinner label="Loading tasks…" />
-          </div>
-        ) : previewTasks.length === 0 ? (
-          <div
-            className="text-center"
-            style={{
-              background: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "8px",
-              padding: "16px",
-            }}
-          >
-            <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
-              {userRole === "owner"
-                ? "No active tasks in this club."
-                : "No active tasks assigned to you."}
-            </p>
-          </div>
-        ) : (
-          <div>
-            {previewTasks.map((task) => (
-              <ClubTaskCard
-                key={task.id}
-                task={task}
-                onClick={() => setSelectedTask(task)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-      ) : null}
-
-      <div>
-        <div style={sectionHeadingRow}>
-          <h2 style={sectionHeading}>Events This Month</h2>
-          {deduplicatedEventsThisMonth.length > 0 ? (
-            <Link to={eventsPath} style={viewAllLink}>
-              View All →
-            </Link>
-          ) : null}
-        </div>
-        {deduplicatedEventsThisMonth.length === 0 ? (
-          <div
-            className="p-6 text-center"
-            style={{
-              backgroundColor: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "8px",
-            }}
-          >
-            <p className="text-sm" style={{ color: "#555555" }}>
-              No events scheduled this month.
-            </p>
-            <Link to={eventsPath} className="mt-3 inline-block" style={viewAllLink}>
-              View Events Page →
-            </Link>
-          </div>
-        ) : (
-          <div>
-            {previewEvents.map((event) => (
-              <div key={`${event.id}-${event.occurrenceDate}`}>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="block cursor-pointer no-underline"
-                  onClick={() => setSelectedEvent(event)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSelectedEvent(event);
-                    }
-                  }}
-                >
-                  <ClubEventCard
+          <div style={dashboardSectionBlock}>
+            <div style={sectionBlockHeader}>
+              <h2 style={sectionHeading}>Upcoming Events</h2>
+              <Link to={eventsPath} style={viewAllLink}>
+                View All →
+              </Link>
+            </div>
+            {previewUpcomingEvents.length === 0 ? (
+              <div
+                className="text-center"
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: CARD_BG,
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "8px",
+                  padding: "32px 24px",
+                  minHeight: "120px",
+                }}
+              >
+                <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+                  No upcoming events scheduled.
+                </p>
+                <Link to={eventsPath} className="mt-3 inline-block" style={viewAllLink}>
+                  View Events Page →
+                </Link>
+              </div>
+            ) : (
+              <div style={dashboardListStack}>
+                {previewUpcomingEvents.map((event) => (
+                  <UpcomingEventRow
+                    key={`${event.id}-${event.occurrenceDate}`}
                     title={event.title}
                     date={event.occurrenceDate}
                     time={event.time}
@@ -1656,59 +1586,91 @@ export default function ClubHomePage() {
                     clubName={club.name}
                     clubAbbreviation={club.abbreviation}
                     clubLogoUrl={club.logoUrl}
-                    moreDatesCount={event.moreDatesCount}
-                    showRecurringBadge={event.showRecurringBadge}
+                    onOpen={() => setSelectedEvent(event)}
                   />
-                </div>
-                  {userRole === "member" ? (
-                    <div
-                      style={{
-                        marginTop: "-2px",
-                        marginBottom: "10px",
-                        marginLeft: "92px",
-                        display: "flex",
-                        gap: "8px",
-                      }}
-                    >
-                      {(["going", "maybe", "not_going"] as const).map((status) => {
-                        const active = memberRsvps[event.id] === status;
-                        const activeStyles =
-                          status === "going"
-                            ? { background: "#2a2200", color: "#FFC429", border: "1px solid #3a3200" }
-                            : status === "maybe"
-                              ? { background: "#2a2a0d", color: "#FFC429", border: "1px solid #3a3a1a" }
-                              : { background: "#1a1a1a", color: "#888888", border: "1px solid #333333" };
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMemberRsvps((prev) => ({
-                                ...prev,
-                                [event.id]: prev[event.id] === status ? null : status,
-                              }));
-                            }}
-                            style={{
-                              borderRadius: "6px",
-                              padding: "4px 10px",
-                              fontSize: "12px",
-                              cursor: "pointer",
-                              ...(active
-                                ? activeStyles
-                                : { background: "transparent", color: "#777777", border: "1px solid #333333" }),
-                            }}
-                          >
-                            {status === "going" ? "Going" : status === "maybe" ? "Maybe" : "Not Going"}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
+        </div>
+
+        <div style={dashboardColumnStack}>
+          <div style={dashboardSectionBlockFixed}>
+            <div style={sectionBlockHeader}>
+              <h2 style={sectionHeading}>Next Event</h2>
+            </div>
+            {nextEvent ? (
+              <NextEventCard
+                event={{
+                  title: nextEvent.title,
+                  date: nextEvent.occurrenceDate,
+                  time: nextEvent.time,
+                  location: nextEvent.location,
+                }}
+                rsvpStatus={myRsvps[nextEvent.id]}
+                onRsvpClick={() => navigate(eventsPath)}
+              />
+            ) : (
+              <div
+                style={{
+                  backgroundColor: CARD_BG,
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "8px",
+                  padding: "32px 24px",
+                  textAlign: "center",
+                }}
+              >
+                <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+                  No upcoming events scheduled.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div style={dashboardSectionBlock}>
+            <div style={sectionBlockHeader}>
+              <h2 style={sectionHeading}>Recent Updates</h2>
+              <Link to={announcementsPath} style={viewAllLink}>
+                View All →
+              </Link>
+            </div>
+            {postsLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner label="Loading announcements…" />
+              </div>
+            ) : posts.length === 0 ? (
+              <div
+                className="text-center"
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: CARD_BG,
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "12px",
+                  padding: "32px 24px",
+                  minHeight: "120px",
+                }}
+              >
+                <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+                  No announcements yet. Check back soon!
+                </p>
+              </div>
+            ) : (
+              <div style={{ ...dashboardListStack, flex: 1 }}>
+                {previewPosts.map((post) => (
+                  <ClubAnnouncementPreviewCard
+                    key={post.id}
+                    post={post}
+                    clubName={club.name}
+                    announcementsPath={announcementsPath}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {selectedAnnouncement ? (
