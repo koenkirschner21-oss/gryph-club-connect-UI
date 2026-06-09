@@ -234,7 +234,10 @@ function statusPillLabel(status: ListingStatus): string {
 
 function formatCloseDate(deadline: string | null): string | null {
   if (!deadline) return null;
-  const parsed = new Date(deadline);
+  const trimmed = deadline.trim();
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T23:59:59`)
+    : new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toLocaleDateString("en-US", {
     month: "short",
@@ -245,7 +248,10 @@ function formatCloseDate(deadline: string | null): string | null {
 
 function daysLeftMeta(deadline: string | null): { text: string; urgent: boolean } | null {
   if (!deadline) return null;
-  const end = new Date(deadline);
+  const trimmed = deadline.trim();
+  const end = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T23:59:59`)
+    : new Date(trimmed);
   if (Number.isNaN(end.getTime())) return null;
   const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   if (days < 0) return { text: "0 days left", urgent: true };
