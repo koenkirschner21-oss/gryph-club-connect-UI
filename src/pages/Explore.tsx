@@ -572,8 +572,7 @@ export default function Explore() {
                   <h2 style={sectionHeadingStyle}>All Clubs</h2>
                   <p style={sectionSubheadingStyle}>
                     Showing{" "}
-                    <span style={{ fontWeight: 600, color: "#ffffff" }}>{filteredClubs.length}</span>{" "}
-                    of 260+ clubs
+                    <span style={{ fontWeight: 600, color: "#ffffff" }}>260+</span> clubs
                     {activeCategory !== "All" ? (
                       <span>
                         {" "}

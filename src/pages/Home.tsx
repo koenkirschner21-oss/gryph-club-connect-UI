@@ -1,17 +1,14 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, UserPlus, Users } from "lucide-react";
+import { Search, UserPlus, Users, Check } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import {
-  getClubBannerBrandBackground,
   getClubInitials,
   isUploadedClubBanner,
-  sortClubsByMemberActivity,
 } from "../lib/clubUtils";
 import { supabase } from "../lib/supabaseClient";
 import BrandLogo from "../components/ui/BrandLogo";
-import ExploreClubCard from "../components/ui/ExploreClubCard";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
 
@@ -44,19 +41,20 @@ function DashboardHeroMockup() {
   return (
     <div
       style={{
-        background: "#111111",
-        border: "1px solid #1e1e1e",
+        background: "#161616",
+        border: "1px solid #2a2a2a",
         borderRadius: "12px",
         overflow: "hidden",
-        boxShadow: "0 24px 48px rgba(0,0,0,0.6)",
+        boxShadow: "0 24px 48px rgba(0,0,0,0.45)",
         width: "100%",
         maxWidth: "600px",
+        opacity: 1,
       }}
     >
       <div
         style={{
-          background: "#0a0a0a",
-          borderBottom: "1px solid #1e1e1e",
+          background: "#121212",
+          borderBottom: "1px solid #2a2a2a",
           padding: "8px 14px",
           display: "flex",
           alignItems: "center",
@@ -81,7 +79,7 @@ function DashboardHeroMockup() {
             flex: 1,
             textAlign: "center",
             fontSize: "10px",
-            color: "#444444",
+            color: "#666666",
           }}
         >
           GryphClubConnect
@@ -93,8 +91,8 @@ function DashboardHeroMockup() {
           style={{
             width: "44px",
             flexShrink: 0,
-            background: "#0f0f0f",
-            borderRight: "1px solid #1e1e1e",
+            background: "#141414",
+            borderRight: "1px solid #2a2a2a",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -121,12 +119,12 @@ function DashboardHeroMockup() {
           style={{
             flex: 1,
             padding: "14px",
-            background: "#111111",
+            background: "#161616",
             overflowY: "hidden",
             minWidth: 0,
           }}
         >
-          <p style={{ margin: 0, fontSize: "9px", color: "#555555" }}>
+          <p style={{ margin: 0, fontSize: "9px", color: "#777777" }}>
             Welcome back,
           </p>
           <p
@@ -313,12 +311,66 @@ function DashboardHeroMockup() {
   );
 }
 
-function HomeFeaturedClubCard({ club }: { club: Club }) {
+function HomeFeaturedClubBanner({ bannerUrl }: { bannerUrl: string }) {
+  return (
+    <div
+      style={{
+        height: "168px",
+        flexShrink: 0,
+        overflow: "hidden",
+        width: "100%",
+        position: "relative",
+        background: "#1a1a1a",
+        isolation: "isolate",
+      }}
+    >
+      <img
+        src={bannerUrl}
+        alt=""
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: "center",
+          filter: "blur(18px) brightness(0.5)",
+          transform: "scale(1.1)",
+        }}
+      />
+      <img
+        src={bannerUrl}
+        alt=""
+        style={{
+          position: "relative",
+          zIndex: 1,
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          objectPosition: "center",
+          display: "block",
+        }}
+      />
+    </div>
+  );
+}
+
+function HomeFeaturedClubCard({
+  club,
+  joined = false,
+}: {
+  club: Club;
+  joined?: boolean;
+}) {
   const [hovered, setHovered] = useState(false);
   const description = (club.shortDescription || club.description)?.trim();
   const bannerUrl = club.bannerUrl?.trim();
   const showBannerImage = isUploadedClubBanner(bannerUrl);
-  const brandBannerBg = getClubBannerBrandBackground(club.name);
+  const bannerFallbackLabel = (
+    club.abbreviation?.trim().slice(0, 2) ||
+    club.name.trim().slice(0, 2)
+  ).toUpperCase();
 
   return (
     <Link
@@ -337,7 +389,7 @@ function HomeFeaturedClubCard({ club }: { club: Club }) {
         style={{
           width: "100%",
           minWidth: 0,
-          height: "320px",
+          height: "348px",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -351,67 +403,60 @@ function HomeFeaturedClubCard({ club }: { club: Club }) {
           boxSizing: "border-box",
         }}
       >
-        <div
-          style={{
-            height: "160px",
-            flexShrink: 0,
-            overflow: "hidden",
-            width: "100%",
-            position: "relative",
-          }}
-        >
-          {showBannerImage ? (
-            <img
-              src={bannerUrl}
-              alt=""
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block",
-              }}
-            />
-          ) : (
+        {showBannerImage ? (
+          <HomeFeaturedClubBanner bannerUrl={bannerUrl!} />
+        ) : (
+          <div
+            style={{
+              height: "168px",
+              flexShrink: 0,
+              overflow: "hidden",
+              width: "100%",
+              position: "relative",
+              isolation: "isolate",
+            }}
+          >
             <div
               style={{
                 width: "100%",
                 height: "100%",
-                background: brandBannerBg,
+                background: "linear-gradient(135deg, #1a1a1a 0%, #2a1a1a 100%)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: "12px 16px",
                 boxSizing: "border-box",
               }}
               aria-hidden
             >
               <span
                 style={{
-                  fontSize: "13px",
+                  fontSize: "32px",
                   fontWeight: 700,
                   color: "#ffffff",
-                  textAlign: "center",
-                  lineHeight: 1.35,
-                  display: "-webkit-box",
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
+                  opacity: 0.15,
+                  lineHeight: 1,
+                  userSelect: "none",
                 }}
               >
-                {club.name}
+                {bannerFallbackLabel}
               </span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <div
           style={{
             flex: 1,
-            minWidth: 0,
+            minHeight: 0,
             padding: "16px",
+            overflow: "hidden",
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden",
+            minWidth: 0,
+            boxSizing: "border-box",
+            position: "relative",
+            zIndex: 1,
+            background: "#1a1a1a",
           }}
         >
           <h3
@@ -420,9 +465,11 @@ function HomeFeaturedClubCard({ club }: { club: Club }) {
               fontSize: "15px",
               fontWeight: 700,
               color: "#ffffff",
+              lineHeight: 1.35,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
             {club.name}
@@ -432,42 +479,90 @@ function HomeFeaturedClubCard({ club }: { club: Club }) {
             <p
               style={{
                 margin: "6px 0 0",
-                fontSize: "12px",
-                color: "#555555",
+                fontSize: "13px",
+                color: "#999999",
                 lineHeight: 1.5,
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxHeight: "39px",
+                flexShrink: 0,
               }}
             >
               {description}
             </p>
-          ) : club.category ? (
+          ) : (
             <p
               style={{
                 margin: "6px 0 0",
-                fontSize: "12px",
-                color: "#444444",
+                fontSize: "13px",
+                color: "#555555",
                 lineHeight: 1.5,
               }}
             >
-              {club.category}
+              No description available
             </p>
+          )}
+
+          {club.category ? (
+            <div style={{ marginTop: "10px" }}>
+              <span
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #333333",
+                  color: "#666666",
+                  borderRadius: "4px",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: 500,
+                  textTransform: "uppercase",
+                  display: "inline-block",
+                }}
+              >
+                {club.category}
+              </span>
+            </div>
           ) : null}
 
-          <p
+          <div
             style={{
               marginTop: "auto",
-              paddingTop: "8px",
-              marginBottom: 0,
-              color: "#E51937",
-              fontSize: "12px",
-              fontWeight: 500,
+              paddingTop: "10px",
+              borderTop: "1px solid #1e1e1e",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
-            View Club →
-          </p>
+            <div>
+              {joined ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                  }}
+                >
+                  <Check size={12} strokeWidth={2.5} aria-hidden />
+                  Joined
+                </span>
+              ) : null}
+            </div>
+            <span
+              style={{
+                color: "#ffffff",
+                fontSize: "12px",
+                fontWeight: 500,
+              }}
+            >
+              View Club →
+            </span>
+          </div>
         </div>
       </article>
     </Link>
@@ -479,7 +574,7 @@ const HOW_IT_WORKS = [
     step: "1",
     title: "Sign Up",
     description: "Create your account with your UofG email in seconds",
-    accent: "#E51937",
+    borderTop: "#E51937",
     Icon: UserPlus,
     iconColor: "#E51937",
   },
@@ -487,7 +582,7 @@ const HOW_IT_WORKS = [
     step: "2",
     title: "Find Your Club",
     description: "Browse 200+ clubs by category, size, or interest",
-    accent: "#FFC429",
+    borderTop: "#FFC429",
     Icon: Search,
     iconColor: "#FFC429",
   },
@@ -495,7 +590,7 @@ const HOW_IT_WORKS = [
     step: "3",
     title: "Get Involved",
     description: "Join clubs, attend events, and connect with your community",
-    accent: "#333333",
+    borderTop: "#E51937",
     Icon: Users,
     iconColor: "#ffffff",
   },
@@ -794,6 +889,16 @@ function HomeUpcomingEventCard({
           Open to all students
         </p>
       </div>
+      <span
+        style={{
+          flexShrink: 0,
+          color: "#E51937",
+          fontSize: "13px",
+          fontWeight: 500,
+        }}
+      >
+        View Event →
+      </span>
     </article>
   );
 }
@@ -968,7 +1073,8 @@ export default function Home() {
       const { data, error } = await supabase
         .from("clubs")
         .select("*")
-        .eq("is_public", true);
+        .eq("is_public", true)
+        .order("member_count", { ascending: false });
 
       if (cancelled) return;
 
@@ -983,7 +1089,7 @@ export default function Home() {
         mapClubFromRow(row as Record<string, unknown>),
       );
 
-      setFeaturedClubs(sortClubsByMemberActivity(mapped).slice(0, 8));
+      setFeaturedClubs(mapped.slice(0, 8));
       setFeaturedLoading(false);
     }
 
@@ -1068,7 +1174,8 @@ export default function Home() {
         </div>
 
         <div
-          className="mx-auto mt-auto grid w-full max-w-7xl grid-cols-2 gap-8 pt-16 lg:grid-cols-4"
+          className="mx-auto mt-auto grid w-full max-w-7xl grid-cols-2 gap-8 lg:grid-cols-4"
+          style={{ paddingTop: "28px" }}
         >
           {[
             { value: "260+", label: "Active Clubs" },
@@ -1091,7 +1198,7 @@ export default function Home() {
                 style={{
                   marginTop: "8px",
                   fontSize: "13px",
-                  color: "#555555",
+                  color: "#999999",
                 }}
               >
                 {stat.label}
@@ -1126,7 +1233,7 @@ export default function Home() {
               marginBottom: 0,
             }}
           >
-            Ranked by member activity
+            Ranked by club activity
           </p>
         </div>
         <div
@@ -1139,7 +1246,7 @@ export default function Home() {
         >
           {featuredClubs.map((club) => (
             <div key={club.id} style={{ minWidth: 0 }}>
-              <ExploreClubCard
+              <HomeFeaturedClubCard
                 club={club}
                 joined={Boolean(user && isJoined(club.id))}
               />
@@ -1193,7 +1300,7 @@ export default function Home() {
                 style={{
                   background: "#141414",
                   border: "1px solid #242424",
-                  borderTop: `2px solid ${item.accent}`,
+                  borderTop: `2px solid ${item.borderTop}`,
                   borderRadius: "10px",
                   padding: "24px",
                   textAlign: "left",
@@ -1313,7 +1420,13 @@ function CtaSection() {
   };
 
   return (
-    <section className="bg-[#0f0f0f] px-4 py-[60px] text-center sm:px-10">
+    <section
+      className="px-4 py-[60px] text-center sm:px-10"
+      style={{
+        borderTop: "1px solid #2a2a2a",
+        background: "linear-gradient(to bottom, #141414, #0f0f0f)",
+      }}
+    >
       <div className="mx-auto max-w-7xl">
         <h2
           style={{
