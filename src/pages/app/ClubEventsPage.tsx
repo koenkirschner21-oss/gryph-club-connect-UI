@@ -9,6 +9,8 @@ import {
 import {
   Calendar,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock,
   MapPin,
   MoreHorizontal,
@@ -58,24 +60,11 @@ function categoryBadgeStyle(): CSSProperties {
   };
 }
 
-function publicEventBadgeStyle(): CSSProperties {
+function visibilityBadgeStyle(): CSSProperties {
   return {
     background: "transparent",
-    border: "1px solid #E51937",
-    color: "#E51937",
-    borderRadius: "20px",
-    padding: "3px 10px",
-    fontSize: "11px",
-    display: "inline-block",
-    flexShrink: 0,
-  };
-}
-
-function membersOnlyBadgeStyle(): CSSProperties {
-  return {
-    background: "#1a1a1a",
-    border: "1px solid #333333",
-    color: "#555555",
+    border: "1px solid #555555",
+    color: "#777777",
     borderRadius: "20px",
     padding: "3px 10px",
     fontSize: "11px",
@@ -114,6 +103,7 @@ function matchesEventFilter(
 
 type EventListItem =
   | { kind: "event"; event: ClubEvent }
+  | { kind: "compact"; event: ClubEvent }
   | { kind: "expand"; title: string; remaining: number; expanded: boolean };
 
 function buildUpcomingDisplayList(
@@ -125,39 +115,52 @@ function buildUpcomingDisplayList(
     titleCounts.set(event.title, (titleCounts.get(event.title) ?? 0) + 1);
   }
 
-  const titleShown = new Map<string, number>();
-  const collapseInserted = new Set<string>();
+  const titleIndex = new Map<string, number>();
+  const expandBarInserted = new Set<string>();
   const result: EventListItem[] = [];
 
   for (const event of events) {
-    const count = titleCounts.get(event.title) ?? 1;
-    const shown = titleShown.get(event.title) ?? 0;
+    const total = titleCounts.get(event.title) ?? 1;
+    const index = titleIndex.get(event.title) ?? 0;
     const expanded = showAllRecurring[event.title] ?? false;
 
-    if (count > 3 && !expanded && shown >= 2) {
-      if (!collapseInserted.has(event.title)) {
-        collapseInserted.add(event.title);
+    if (total > 1) {
+      if (!expanded) {
+        if (index === 0) {
+          result.push({ kind: "event", event });
+        } else if (!expandBarInserted.has(event.title)) {
+          expandBarInserted.add(event.title);
+          result.push({
+            kind: "expand",
+            title: event.title,
+            remaining: total - 1,
+            expanded: false,
+          });
+        }
+        titleIndex.set(event.title, index + 1);
+        continue;
+      }
+
+      if (index === 0) {
+        result.push({ kind: "event", event });
+      } else {
+        result.push({ kind: "compact", event });
+      }
+      const nextIndex = index + 1;
+      titleIndex.set(event.title, nextIndex);
+      if (nextIndex === total) {
         result.push({
           kind: "expand",
           title: event.title,
-          remaining: count - 2,
-          expanded: false,
+          remaining: total - 1,
+          expanded: true,
         });
       }
       continue;
     }
 
     result.push({ kind: "event", event });
-    titleShown.set(event.title, shown + 1);
-
-    if (count > 3 && expanded && shown + 1 === count) {
-      result.push({
-        kind: "expand",
-        title: event.title,
-        remaining: count - 2,
-        expanded: true,
-      });
-    }
+    titleIndex.set(event.title, index + 1);
   }
 
   return result;
@@ -307,17 +310,48 @@ function downloadEventIcs(event: ClubEvent) {
   URL.revokeObjectURL(url);
 }
 
-function EventCategoryBadge({ category }: { category: string }) {
-  return (
-    <span style={categoryBadgeStyle()}>{eventCategoryLabel(category)}</span>
-  );
-}
+function EventCardBadges({
+  event,
+  category,
+  isRecurring,
+}: {
+  event: ClubEvent;
+  category: string;
+  isRecurring: boolean;
+}) {
+  const categoryLabel = eventCategoryLabel(category);
+  const visibilityLabel =
+    event.visibility === "members_only" ? "Members Only" : "Public Event";
+  const badges: { key: string; label: string }[] = [];
 
-function EventVisibilityBadge({ event }: { event: ClubEvent }) {
-  if (event.visibility === "members_only") {
-    return <span style={membersOnlyBadgeStyle()}>Members Only</span>;
+  if (categoryLabel !== visibilityLabel) {
+    badges.push({ key: "category", label: categoryLabel });
   }
-  return <span style={publicEventBadgeStyle()}>Public Event</span>;
+  badges.push({ key: "visibility", label: visibilityLabel });
+  if (isRecurring) {
+    badges.push({ key: "recurring", label: "Recurring" });
+  }
+
+  return (
+    <>
+      {badges.map((badge) =>
+        badge.key === "recurring" ? (
+          <EventRecurringBadge key={badge.key} />
+        ) : (
+          <span
+            key={badge.key}
+            style={
+              badge.key === "category"
+                ? categoryBadgeStyle()
+                : visibilityBadgeStyle()
+            }
+          >
+            {badge.label}
+          </span>
+        ),
+      )}
+    </>
+  );
 }
 
 type RecurrenceFrequency = "weekly" | "biweekly" | "monthly";
@@ -768,103 +802,115 @@ function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
   );
 }
 
-function rsvpButtonStyle(
-  value: RsvpStatus,
-  active: boolean,
-  hovered: boolean,
-): CSSProperties {
+function formatAttendeeCounts(counts: {
+  going: number;
+  maybe: number;
+  not_going: number;
+}): string | null {
+  const parts: string[] = [];
+  if (counts.going > 0) parts.push(`${counts.going} going`);
+  if (counts.maybe > 0) parts.push(`${counts.maybe} maybe`);
+  if (counts.not_going > 0) parts.push(`${counts.not_going} not going`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function SmartRsvpButton({
+  eventId,
+  status,
+  onRsvp,
+}: {
+  eventId: string;
+  status?: RsvpStatus;
+  onRsvp: (eventId: string, status: RsvpStatus) => void;
+}) {
   const base: CSSProperties = {
-    background: "transparent",
-    borderRadius: "6px",
+    width: "100px",
+    textAlign: "center",
     padding: "6px 14px",
     fontSize: "12px",
     cursor: "pointer",
-    transition: "border-color 0.15s ease, color 0.15s ease",
+    boxSizing: "border-box",
   };
 
-  if (active && value === "going") {
-    return {
-      ...base,
-      background: "#1a1200",
-      border: "1px solid #FFC429",
-      color: "#FFC429",
-    };
-  }
-  if (active && value === "not_going") {
-    return {
-      ...base,
-      background: "#1a0505",
-      border: "1px solid #E51937",
-      color: "#E51937",
-    };
-  }
-  if (active && value === "maybe") {
-    return {
-      ...base,
-      background: "#1a1a1a",
-      border: "1px solid #555555",
-      color: "#aaaaaa",
-    };
+  if (!status) {
+    return (
+      <button
+        type="button"
+        onClick={() => onRsvp(eventId, "going")}
+        style={{
+          ...base,
+          background: "transparent",
+          border: "1px solid #555555",
+          color: "#999999",
+          borderRadius: "6px",
+        }}
+      >
+        RSVP
+      </button>
+    );
   }
 
-  if (hovered && value === "going") {
-    return { ...base, border: "1px solid #FFC429", color: "#FFC429" };
-  }
-  if (hovered && value === "maybe") {
-    return { ...base, border: "1px solid #555555", color: "#aaaaaa" };
-  }
-  if (hovered && value === "not_going") {
-    return { ...base, border: "1px solid #E51937", color: "#E51937" };
+  if (status === "going") {
+    return (
+      <button
+        type="button"
+        onClick={() => onRsvp(eventId, "going")}
+        style={{
+          ...base,
+          background: "#FFC429",
+          color: "#000000",
+          border: "none",
+          borderRadius: "20px",
+          fontWeight: 600,
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "4px",
+          }}
+        >
+          Going
+          <Check size={14} aria-hidden />
+        </span>
+      </button>
+    );
   }
 
-  return { ...base, border: "1px solid #333333", color: "#777777" };
-}
+  if (status === "maybe") {
+    return (
+      <button
+        type="button"
+        onClick={() => onRsvp(eventId, "maybe")}
+        style={{
+          ...base,
+          background: "transparent",
+          border: "1px solid #FFC429",
+          color: "#FFC429",
+          borderRadius: "6px",
+        }}
+      >
+        Maybe
+      </button>
+    );
+  }
 
-function RsvpButton({
-  value,
-  label,
-  active,
-  onClick,
-}: {
-  value: RsvpStatus;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
   return (
     <button
       type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={rsvpButtonStyle(value, active, hovered)}
-    >
-      {label}
-    </button>
-  );
-}
-
-function RegisteredButton() {
-  return (
-    <span
+      onClick={() => onRsvp(eventId, "not_going")}
       style={{
-        background: "#1a1200",
-        border: "1px solid #FFC429",
-        color: "#FFC429",
-        borderRadius: "8px",
-        padding: "8px 18px",
-        fontSize: "13px",
-        fontWeight: 600,
-        cursor: "default",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "6px",
+        ...base,
+        background: "transparent",
+        border: "1px solid #555555",
+        color: "#555555",
+        borderRadius: "6px",
       }}
     >
-      Registered
-      <Check size={14} color="#FFC429" aria-hidden />
-    </span>
+      Not Going
+    </button>
   );
 }
 
@@ -873,7 +919,7 @@ const eventCardStyle: CSSProperties = {
   border: "1px solid #2a2a2a",
   borderLeft: "1px solid #2a2a2a",
   borderRadius: "14px",
-  padding: "20px",
+  padding: "14px 16px",
   marginBottom: "12px",
 };
 
@@ -955,6 +1001,65 @@ function cleanEventLocation(value: string): string | null {
   return raw;
 }
 
+function CompactEventRow({
+  event,
+  myStatus,
+  onRsvp,
+}: {
+  event: ClubEvent;
+  myStatus?: RsvpStatus;
+  onRsvp: (eventId: string, status: RsvpStatus) => void;
+}) {
+  const timeLabel = formatEventTime(event.time);
+  const locationLabel = cleanEventLocation(event.location);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "10px 16px",
+        background: "#0d0d0d",
+        border: "1px solid #1a1a1a",
+        borderRadius: "8px",
+        marginBottom: "8px",
+      }}
+    >
+      <EventDateBlock date={event.date} />
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: "13px",
+          color: "#666666",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          flexWrap: "wrap",
+        }}
+      >
+        {timeLabel ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <Clock size={13} color="#555555" aria-hidden />
+            {timeLabel}
+          </span>
+        ) : null}
+        {timeLabel && locationLabel ? (
+          <span style={{ color: "#444444" }}>·</span>
+        ) : null}
+        {locationLabel ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <MapPin size={13} color="#555555" aria-hidden />
+            {locationLabel}
+          </span>
+        ) : null}
+      </div>
+      <SmartRsvpButton eventId={event.id} status={myStatus} onRsvp={onRsvp} />
+    </div>
+  );
+}
+
 function EventCard({
   event,
   category,
@@ -1006,9 +1111,9 @@ function EventCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [attendeesHovered, setAttendeesHovered] = useState(false);
   const timeLabel = formatEventTime(event.time);
   const locationLabel = cleanEventLocation(event.location);
+  const attendeeCountLabel = formatAttendeeCounts(counts);
 
   return (
     <div
@@ -1086,9 +1191,11 @@ function EventCard({
               marginBottom: "8px",
             }}
           >
-            <EventCategoryBadge category={category} />
-            <EventVisibilityBadge event={event} />
-            {isRecurring ? <EventRecurringBadge /> : null}
+            <EventCardBadges
+              event={event}
+              category={category}
+              isRecurring={isRecurring}
+            />
           </div>
 
           {timeLabel || locationLabel ? (
@@ -1121,26 +1228,11 @@ function EventCard({
             </div>
           ) : null}
 
-          {event.description ? (
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#555555",
-                lineHeight: 1.6,
-                margin: "0 0 10px",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {event.description}
+          {attendeeCountLabel ? (
+            <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 8px" }}>
+              {attendeeCountLabel}
             </p>
           ) : null}
-
-          <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 12px" }}>
-            {counts.going} going · {counts.maybe} maybe · {counts.not_going} not going
-          </p>
 
           {attendeesList && isPrivileged ? (
             <div
@@ -1369,51 +1461,56 @@ function EventCard({
             </div>
           ) : null}
 
-          {showViewAttendees && isPrivileged ? (
-            <button
-              type="button"
-              onClick={() => onToggleAttendees(event.id)}
-              onMouseEnter={() => setAttendeesHovered(true)}
-              onMouseLeave={() => setAttendeesHovered(false)}
-              style={{
-                background: "none",
-                border: "none",
-                padding: 0,
-                color: attendeesHovered ? "#E51937" : "#555555",
-                fontSize: "12px",
-                cursor: "pointer",
-              }}
-            >
-              {attendeesList ? "Hide Attendees" : "View Attendees"}
-            </button>
-          ) : null}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: "6px",
+            }}
+          >
+            {isPrivileged && !past ? (
+              <button
+                type="button"
+                onClick={() => onStartEdit(event)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "#E51937",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Manage →
+              </button>
+            ) : null}
 
-          {!past ? (
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {myStatus === "going" ? (
-                <RegisteredButton />
-              ) : (
-                <RsvpButton
-                  value="going"
-                  label="Going"
-                  active={false}
-                  onClick={() => onRsvp(event.id, "going")}
-                />
-              )}
-              <RsvpButton
-                value="maybe"
-                label="Maybe"
-                active={myStatus === "maybe"}
-                onClick={() => onRsvp(event.id, "maybe")}
+            {showViewAttendees && isPrivileged ? (
+              <button
+                type="button"
+                onClick={() => onToggleAttendees(event.id)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "#777777",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                {attendeesList ? "Hide Attendees" : "View Attendees"}
+              </button>
+            ) : null}
+
+            {!past ? (
+              <SmartRsvpButton
+                eventId={event.id}
+                status={myStatus}
+                onRsvp={onRsvp}
               />
-              <RsvpButton
-                value="not_going"
-                label="Not Going"
-                active={myStatus === "not_going"}
-                onClick={() => onRsvp(event.id, "not_going")}
-              />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -2650,6 +2747,22 @@ export default function ClubEventsPage() {
     [filteredUpcomingEvents, showAllRecurring],
   );
 
+  const eventFilterCounts = useMemo(() => {
+    const isRecurringFor = (eventId: string) =>
+      eventRecurring[eventId]?.isRecurring ?? false;
+    return {
+      all: upcomingEvents.length,
+      public: upcomingEvents.filter((e) => isEventPublic(e)).length,
+      members_only: upcomingEvents.filter((e) => e.visibility === "members_only")
+        .length,
+      recurring: upcomingEvents.filter((e) => isRecurringFor(e.id)).length,
+      my_rsvps: upcomingEvents.filter((e) => {
+        const status = myRsvps[e.id];
+        return status === "going" || status === "maybe";
+      }).length,
+    } satisfies Record<EventFilter, number>;
+  }, [upcomingEvents, eventRecurring, myRsvps]);
+
   const pastEvents = events
     .filter((e) => new Date(e.date) < now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -2748,7 +2861,7 @@ export default function ClubEventsPage() {
                 flexShrink: 0,
               }}
             >
-              {option.label}
+              {option.label} · {eventFilterCounts[option.value]}
             </button>
           );
         })}
@@ -2944,21 +3057,42 @@ export default function ClubEventsPage() {
                     }))
                   }
                   style={{
-                    background: "transparent",
-                    border: "1px solid #2a2a2a",
+                    background: "#141414",
+                    border: "none",
                     color: "#555555",
                     borderRadius: "8px",
-                    padding: "10px 20px",
+                    padding: "10px 16px",
                     fontSize: "13px",
                     width: "100%",
-                    marginBottom: "12px",
+                    marginBottom: "8px",
                     cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
                   }}
                 >
                   {item.expanded
-                    ? "Show fewer dates ↑"
+                    ? `Show fewer dates for "${item.title}"`
                     : `+ Show ${item.remaining} more dates for "${item.title}"`}
+                  {item.expanded ? (
+                    <ChevronUp size={14} aria-hidden />
+                  ) : (
+                    <ChevronDown size={14} aria-hidden />
+                  )}
                 </button>
+              );
+            }
+
+            if (item.kind === "compact") {
+              const event = item.event;
+              return (
+                <CompactEventRow
+                  key={event.id}
+                  event={event}
+                  myStatus={myRsvps[event.id]}
+                  onRsvp={handleRsvp}
+                />
               );
             }
 
