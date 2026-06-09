@@ -21,6 +21,15 @@ export function getClubBannerBrandBackground(clubName: string): string {
   return CLUB_BANNER_BRAND_BACKGROUNDS[index];
 }
 
+/** Rank clubs by member count (Explore / home featured “most active”). */
+export function sortClubsByMemberActivity(clubs: Club[]): Club[] {
+  return [...clubs].sort((a, b) => {
+    const memberDiff = b.memberCount - a.memberCount;
+    if (memberDiff !== 0) return memberDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 /** Generate display initials from a club's abbreviation or name. */
 export function getClubInitials(club: Pick<Club, "abbreviation" | "name">): string {
   if (club.abbreviation) return club.abbreviation.slice(0, 3).toUpperCase();

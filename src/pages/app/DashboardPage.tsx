@@ -562,7 +562,6 @@ export default function DashboardPage() {
           mySavedClubs={mySavedClubs}
           upcomingEvents={upcomingEvents}
           eventsLoading={eventsLoading}
-          totalClubs={clubs.length}
           myRsvps={myRsvps}
           rsvpCounts={rsvpCounts}
           getUserRole={getUserRole}
@@ -1862,7 +1861,6 @@ function OverviewTab({
   mySavedClubs,
   upcomingEvents,
   eventsLoading,
-  totalClubs,
   myRsvps,
   rsvpCounts,
   getUserRole,
@@ -1876,7 +1874,6 @@ function OverviewTab({
   mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
-  totalClubs: number;
   myRsvps: Record<string, string>;
   rsvpCounts: Record<string, import("../../types").RsvpCounts>;
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
@@ -2138,7 +2135,7 @@ function OverviewTab({
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              Explore {totalClubs}+ clubs at U of G
+              Explore 260+ clubs at U of G
             </Link>
           </Card>
           </div>

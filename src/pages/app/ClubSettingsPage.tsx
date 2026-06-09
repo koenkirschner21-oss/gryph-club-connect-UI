@@ -1493,23 +1493,6 @@ export default function ClubSettingsPage() {
             </SettingsField>
 
             <SettingsField label="Club Banner">
-              {bannerUrl ? (
-                <img
-                  src={bannerUrl}
-                  alt="Club banner preview"
-                  style={{
-                    width: "100%",
-                    maxHeight: "120px",
-                    objectFit: "cover",
-                    borderRadius: "8px",
-                    marginBottom: "12px",
-                    display: "block",
-                  }}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              ) : null}
               <ImageUpload
                 currentUrl={bannerUrl}
                 onFileSelected={handleBannerUpload}

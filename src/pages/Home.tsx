@@ -7,9 +7,11 @@ import {
   getClubBannerBrandBackground,
   getClubInitials,
   isUploadedClubBanner,
+  sortClubsByMemberActivity,
 } from "../lib/clubUtils";
 import { supabase } from "../lib/supabaseClient";
 import BrandLogo from "../components/ui/BrandLogo";
+import ExploreClubCard from "../components/ui/ExploreClubCard";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
 
@@ -953,7 +955,7 @@ function HomeUpcomingEventsBlock() {
 
 export default function Home() {
   const { user } = useAuthContext();
-  const { clubs, savedClubs } = useClubContext();
+  const { clubs, savedClubs, isJoined } = useClubContext();
   const [featuredClubs, setFeaturedClubs] = useState<Club[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState(true);
   const savedClubList = clubs.filter((c) => savedClubs.includes(c.id));
@@ -963,22 +965,25 @@ export default function Home() {
 
     async function loadFeaturedClubs() {
       setFeaturedLoading(true);
-      const { data, error } = await supabase.from("clubs").select("*");
+      const { data, error } = await supabase
+        .from("clubs")
+        .select("*")
+        .eq("is_public", true);
 
       if (cancelled) return;
 
       if (error) {
         console.error("Failed to load featured clubs:", error.message);
         setFeaturedClubs([]);
-      } else {
-        const mapped = (data ?? []).map((row) =>
-          mapClubFromRow(row as Record<string, unknown>),
-        );
-        setFeaturedClubs(
-          [...mapped].sort(() => Math.random() - 0.5).slice(0, 8),
-        );
+        setFeaturedLoading(false);
+        return;
       }
 
+      const mapped = (data ?? []).map((row) =>
+        mapClubFromRow(row as Record<string, unknown>),
+      );
+
+      setFeaturedClubs(sortClubsByMemberActivity(mapped).slice(0, 8));
       setFeaturedLoading(false);
     }
 
@@ -1121,20 +1126,23 @@ export default function Home() {
               marginBottom: 0,
             }}
           >
-            A few clubs you might like
+            Ranked by member activity
           </p>
         </div>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: "16px",
+            gap: "20px",
             width: "100%",
           }}
         >
           {featuredClubs.map((club) => (
             <div key={club.id} style={{ minWidth: 0 }}>
-              <HomeFeaturedClubCard club={club} />
+              <ExploreClubCard
+                club={club}
+                joined={Boolean(user && isJoined(club.id))}
+              />
             </div>
           ))}
         </div>
