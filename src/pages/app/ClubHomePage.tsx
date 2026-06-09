@@ -42,7 +42,7 @@ const sectionHeadingRow: CSSProperties = {
   justifyContent: "space-between",
   marginTop: "28px",
   marginBottom: "16px",
-  paddingBottom: "14px",
+  paddingBottom: "12px",
   borderBottom: `1px solid ${CARD_BORDER}`,
 };
 
@@ -81,7 +81,7 @@ const dashboardListStack: CSSProperties = {
 const EVENT_DATE_BLOCK_SIZE = 44;
 
 const sectionHeading: CSSProperties = {
-  fontWeight: 700,
+  fontWeight: 600,
   fontSize: "16px",
   color: "#ffffff",
   margin: 0,
@@ -190,6 +190,29 @@ interface DeduplicatedEvent extends ClubEvent {
   occurrenceDate: string;
   moreDatesCount: number;
   showRecurringBadge: boolean;
+}
+
+function deduplicateUpcomingEventsByTitleAndDate(
+  events: (ClubEvent & { occurrenceDate: string })[],
+  limit = 3,
+): (ClubEvent & { occurrenceDate: string })[] {
+  const seen = new Set<string>();
+  const result: (ClubEvent & { occurrenceDate: string })[] = [];
+
+  for (const event of events) {
+    const key = `${event.title.trim().toLowerCase()}|${event.occurrenceDate}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(event);
+    if (result.length >= limit) break;
+  }
+
+  return result;
+}
+
+function isPostPinned(post: Post): boolean {
+  const extended = post as Post & { isPinned?: boolean; is_pinned?: boolean };
+  return Boolean(extended.isPinned ?? extended.is_pinned);
 }
 
 function deduplicateMonthlyEvents(
@@ -753,12 +776,12 @@ function UpcomingEventRow({
 
 function NextEventCard({
   event,
+  eventsPath,
   rsvpStatus,
-  onRsvpClick,
 }: {
   event: { title: string; date: string; time?: string; location?: string };
+  eventsPath: string;
   rsvpStatus?: RsvpStatus | null;
-  onRsvpClick: () => void;
 }) {
   const timeLabel =
     event.time && event.time.trim() !== "" && event.time.toUpperCase() !== "TBD"
@@ -838,24 +861,15 @@ function NextEventCard({
           Going ✓
         </span>
       ) : (
-        <button
-          type="button"
-          onClick={onRsvpClick}
+        <Link
+          to={eventsPath}
           style={{
+            ...viewAllLink,
             flexShrink: 0,
-            background: "transparent",
-            border: "1px solid #E51937",
-            color: "#E51937",
-            borderRadius: "6px",
-            padding: "6px 14px",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "inherit",
           }}
         >
-          RSVP
-        </button>
+          View Event →
+        </Link>
       )}
     </div>
   );
@@ -865,10 +879,12 @@ function ClubAnnouncementPreviewCard({
   post,
   clubName,
   announcementsPath,
+  isPinned = false,
 }: {
   post: Post;
   clubName: string;
   announcementsPath: string;
+  isPinned?: boolean;
 }) {
   const preview = firstSentencePreview(post.content);
 
@@ -879,7 +895,7 @@ function ClubAnnouncementPreviewCard({
         borderTop: `1px solid ${CARD_BORDER}`,
         borderRight: `1px solid ${CARD_BORDER}`,
         borderBottom: `1px solid ${CARD_BORDER}`,
-        borderLeft: "3px solid #E51937",
+        borderLeft: isPinned ? "3px solid #E51937" : `1px solid ${CARD_BORDER}`,
         borderRadius: "8px",
         padding: "14px 16px",
       }}
@@ -923,6 +939,10 @@ function ClubAnnouncementPreviewCard({
             color: "#aaaaaa",
             margin: "0 0 8px",
             lineHeight: 1.5,
+            display: "-webkit-box",
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
           }}
         >
           {preview}
@@ -1222,7 +1242,10 @@ export default function ClubHomePage() {
     [tasksForRole],
   );
   const previewPosts = posts.slice(0, 2);
-  const previewUpcomingEvents = upcomingOccurrences.slice(0, 3);
+  const previewUpcomingEvents = useMemo(
+    () => deduplicateUpcomingEventsByTitleAndDate(upcomingOccurrences, 3),
+    [upcomingOccurrences],
+  );
   const rsvpEventIds = useMemo(() => {
     const ids = new Set(previewUpcomingEvents.map((event) => event.id));
     if (nextEvent?.id) ids.add(nextEvent.id);
@@ -1462,7 +1485,7 @@ export default function ClubHomePage() {
             label="Open Tasks"
             value={openTaskCount}
             sublabel="Incomplete tasks"
-            borderAccentColor="#FFC429"
+            borderAccentColor="#E51937"
             to={tasksPath}
           />
         ) : null}
@@ -1470,13 +1493,14 @@ export default function ClubHomePage() {
           label="Events This Month"
           value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
           sublabel="Scheduled this month"
+          borderAccentColor="#FFC429"
           to={eventsPath}
         />
         <ClubStatCard
-          label="Meeting"
+          label="Next Meeting"
           value={nextMeetingDisplay.value}
           sublabel={nextMeetingDisplay.sublabel}
-          borderAccentColor="#777777"
+          borderAccentColor="#333333"
           to={eventsPath}
           valueFontSize={nextMeetingDisplay.scheduled ? "26px" : "14px"}
           valueColor={nextMeetingDisplay.scheduled ? "#ffffff" : "#555555"}
@@ -1607,8 +1631,8 @@ export default function ClubHomePage() {
                   time: nextEvent.time,
                   location: nextEvent.location,
                 }}
+                eventsPath={eventsPath}
                 rsvpStatus={myRsvps[nextEvent.id]}
-                onRsvpClick={() => navigate(eventsPath)}
               />
             ) : (
               <div
@@ -1665,6 +1689,7 @@ export default function ClubHomePage() {
                     post={post}
                     clubName={club.name}
                     announcementsPath={announcementsPath}
+                    isPinned={isPostPinned(post)}
                   />
                 ))}
               </div>
