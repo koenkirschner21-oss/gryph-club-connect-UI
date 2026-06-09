@@ -192,7 +192,7 @@ interface DeduplicatedEvent extends ClubEvent {
   showRecurringBadge: boolean;
 }
 
-function deduplicateUpcomingEventsByTitleAndDate(
+function deduplicateUpcomingEventsByTitle(
   events: (ClubEvent & { occurrenceDate: string })[],
   limit = 3,
 ): (ClubEvent & { occurrenceDate: string })[] {
@@ -200,7 +200,7 @@ function deduplicateUpcomingEventsByTitleAndDate(
   const result: (ClubEvent & { occurrenceDate: string })[] = [];
 
   for (const event of events) {
-    const key = `${event.title.trim().toLowerCase()}|${event.occurrenceDate}`;
+    const key = event.title.trim().toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(event);
@@ -420,6 +420,104 @@ function ClubStatCard({
   return card;
 }
 
+function NextMeetingStatCard({
+  display,
+  to,
+}: {
+  display: {
+    scheduled: boolean;
+    dateLine: string;
+    weekdayTimeLine: string;
+    locationLine: string;
+  };
+  to: string;
+}) {
+  const navigate = useNavigate();
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      role="link"
+      tabIndex={0}
+      className="block h-full cursor-pointer no-underline"
+      onClick={() => navigate(to)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          navigate(to);
+        }
+      }}
+    >
+      <div
+        className="flex h-full min-h-[120px] flex-col justify-center"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          background: CARD_BG,
+          borderTop: "2px solid #333333",
+          borderRight: `1px solid ${CARD_BORDER}`,
+          borderBottom: `1px solid ${CARD_BORDER}`,
+          borderLeft: `1px solid ${CARD_BORDER}`,
+          borderRadius: "12px",
+          padding: "18px 20px",
+          flex: 1,
+          transform: hovered ? "translateY(-1px)" : undefined,
+          transition: "all 0.15s ease",
+        }}
+      >
+        <p
+          style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            color: "#777777",
+            margin: 0,
+            textTransform: "uppercase",
+          }}
+        >
+          Next Meeting
+        </p>
+        <p
+          style={{
+            fontSize: display.scheduled ? "26px" : "14px",
+            fontWeight: display.scheduled ? 800 : 400,
+            color: display.scheduled ? "#ffffff" : "#555555",
+            lineHeight: 1.15,
+            margin: "8px 0 0",
+          }}
+        >
+          {display.dateLine}
+        </p>
+        {display.weekdayTimeLine ? (
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#999999",
+              margin: "6px 0 0",
+            }}
+          >
+            {display.weekdayTimeLine}
+          </p>
+        ) : null}
+        {display.locationLine ? (
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#777777",
+              margin: "4px 0 0",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {display.locationLine}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 const detailModalOverlay: CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -566,6 +664,7 @@ function NeedsAttentionTaskRow({
   const urgency = getTaskDueUrgency(task.dueDate, task.status);
   const dueLabel = task.dueDate ? formatTaskDate(task.dueDate) : null;
   const leftBorder = clubHomeTaskLeftBorder(task.status, urgency);
+  const metaParts = [task.assigneeName, dueLabel].filter(Boolean);
 
   return (
     <div
@@ -592,14 +691,11 @@ function NeedsAttentionTaskRow({
         cursor: "pointer",
       }}
     >
-      <span style={clubHomeTaskStatusPillStyle(task.status)}>
-        {clubHomeTaskStatusLabel(task.status)}
-      </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p
           style={{
             fontSize: "14px",
-            fontWeight: 600,
+            fontWeight: 700,
             color: "#ffffff",
             margin: "0 0 4px",
             overflow: "hidden",
@@ -609,7 +705,7 @@ function NeedsAttentionTaskRow({
         >
           {task.title}
         </p>
-        {task.assigneeName ? (
+        {metaParts.length > 0 ? (
           <p
             style={{
               fontSize: "12px",
@@ -620,21 +716,13 @@ function NeedsAttentionTaskRow({
               whiteSpace: "nowrap",
             }}
           >
-            {task.assigneeName}
+            {metaParts.join(" · ")}
           </p>
         ) : null}
       </div>
-      {dueLabel ? (
-        <span
-          style={{
-            fontSize: "13px",
-            color: "#777777",
-            flexShrink: 0,
-          }}
-        >
-          {dueLabel}
-        </span>
-      ) : null}
+      <span style={clubHomeTaskStatusPillStyle(task.status)}>
+        {clubHomeTaskStatusLabel(task.status)}
+      </span>
     </div>
   );
 }
@@ -904,9 +992,7 @@ function ClubAnnouncementPreviewCard({
         style={{
           fontSize: "11px",
           color: "#E51937",
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
+          fontWeight: 400,
           margin: "0 0 6px",
         }}
       >
@@ -972,7 +1058,7 @@ export default function ClubHomePage() {
     : null;
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
-  const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
+  const [profileFullName, setProfileFullName] = useState<string | null>(null);
   const [newEventHovered, setNewEventHovered] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<
@@ -988,6 +1074,35 @@ export default function ClubHomePage() {
     Pick<Task, "id" | "title" | "status" | "dueDate">[]
   >([]);
   const [openTasksPreviewLoading, setOpenTasksPreviewLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setProfileFullName(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load profile name:", error.message);
+          setProfileFullName(null);
+          return;
+        }
+        const name = (data?.full_name as string | null)?.trim();
+        setProfileFullName(name || null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
@@ -1201,26 +1316,33 @@ export default function ClubHomePage() {
         nextRecurring.location && !isHiddenLocation(nextRecurring.location)
           ? nextRecurring.location.trim()
           : "";
-      const sublabelParts = [weekday, timeLabel, locationLabel].filter(Boolean);
+      const weekdayTimeLine = [weekday, timeLabel].filter(Boolean).join(" · ");
       return {
-        value,
-        sublabel: sublabelParts.join(" · "),
         scheduled: true,
+        dateLine: value,
+        weekdayTimeLine,
+        locationLine: locationLabel,
       };
     }
 
     if (scheduleText) {
       return {
-        value: scheduleText,
-        sublabel:
+        scheduled: true,
+        dateLine: scheduleText,
+        weekdayTimeLine: "",
+        locationLine:
           club?.location && !isHiddenLocation(club.location)
             ? club.location.trim()
             : "",
-        scheduled: true,
       };
     }
 
-    return { value: "Not scheduled", sublabel: "", scheduled: false };
+    return {
+      scheduled: false,
+      dateLine: "No meetings scheduled",
+      weekdayTimeLine: "",
+      locationLine: "",
+    };
   }, [club, upcomingOccurrences, eventRecurring]);
 
   const executiveTasks = useMemo(() => {
@@ -1243,7 +1365,7 @@ export default function ClubHomePage() {
   );
   const previewPosts = posts.slice(0, 2);
   const previewUpcomingEvents = useMemo(
-    () => deduplicateUpcomingEventsByTitleAndDate(upcomingOccurrences, 3),
+    () => deduplicateUpcomingEventsByTitle(upcomingOccurrences, 3),
     [upcomingOccurrences],
   );
   const rsvpEventIds = useMemo(() => {
@@ -1271,7 +1393,6 @@ export default function ClubHomePage() {
     );
   }
 
-  const clubPublicPath = club.slug ? `/clubs/${club.slug}` : "/explore";
   const settingsPath = `${clubBasePath}/settings`;
 
   const hasLogo = Boolean(club.logoUrl);
@@ -1280,6 +1401,16 @@ export default function ClubHomePage() {
   const showSetupBanner =
     userRole === "owner" && !hasLogo && !hasDescription && !hasExtraMembers;
   const isMobile = useIsMobile();
+  const userMeta = user?.user_metadata as Record<string, unknown> | undefined;
+  const fullNameSource =
+    profileFullName ||
+    (typeof userMeta?.full_name === "string" ? userMeta.full_name.trim() : "") ||
+    (typeof userMeta?.display_name === "string"
+      ? userMeta.display_name.trim()
+      : "");
+  const firstName = fullNameSource
+    ? fullNameSource.split(/\s+/)[0]
+    : user?.email?.split("@")[0] || "there";
 
   return (
     <div
@@ -1387,54 +1518,27 @@ export default function ClubHomePage() {
           marginBottom: "24px",
         }}
       >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => navigate(clubPublicPath)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              navigate(clubPublicPath);
-            }
-          }}
-          onMouseEnter={() => setClubHeaderHovered(true)}
-          onMouseLeave={() => setClubHeaderHovered(false)}
-          style={{
-            display: "inline-flex",
-            alignItems: "flex-start",
-            gap: "12px",
-            cursor: "pointer",
-            opacity: clubHeaderHovered ? 0.8 : 1,
-            transition: "opacity 0.15s ease",
-          }}
-        >
-          <ClubLogoMark
-            name={club.name}
-            abbreviation={club.abbreviation}
-            logoUrl={club.logoUrl}
-          />
-          <div>
-            <h1
-              style={{
-                fontWeight: 800,
-                fontSize: "24px",
-                color: "#ffffff",
-                margin: 0,
-              }}
-            >
-              {club.name}
-            </h1>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#555555",
-                marginTop: "2px",
-                marginBottom: 0,
-              }}
-            >
-              {club.category?.trim() || club.description?.trim() || ""}
-            </p>
-          </div>
+        <div>
+          <h1
+            style={{
+              fontWeight: 800,
+              fontSize: "24px",
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
+            Welcome back, {firstName}
+          </h1>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#777777",
+              marginTop: "4px",
+              marginBottom: 0,
+            }}
+          >
+            Here&apos;s what&apos;s happening in {club.name}.
+          </p>
         </div>
 
         {userRole === "owner" || userRole === "executive" ? (
@@ -1492,23 +1596,11 @@ export default function ClubHomePage() {
         <ClubStatCard
           label="Events This Month"
           value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
-          sublabel="Scheduled this month"
+          sublabel="Club events this month"
           borderAccentColor="#FFC429"
           to={eventsPath}
         />
-        <ClubStatCard
-          label="Next Meeting"
-          value={nextMeetingDisplay.value}
-          sublabel={nextMeetingDisplay.sublabel}
-          borderAccentColor="#333333"
-          to={eventsPath}
-          valueFontSize={nextMeetingDisplay.scheduled ? "26px" : "14px"}
-          valueColor={nextMeetingDisplay.scheduled ? "#ffffff" : "#555555"}
-          valueFontStyle={nextMeetingDisplay.scheduled ? undefined : "italic"}
-          valueHint={
-            nextMeetingDisplay.scheduled ? undefined : "Click to schedule →"
-          }
-        />
+        <NextMeetingStatCard display={nextMeetingDisplay} to={eventsPath} />
       </div>
 
       <div
@@ -1518,13 +1610,11 @@ export default function ClubHomePage() {
           gridTemplateColumns: isMobile ? "1fr" : "3fr 2fr",
           gap: "28px",
           marginTop: "28px",
-          alignItems: "stretch",
-          flex: 1,
-          minHeight: isMobile ? undefined : "calc(100vh - 4rem - 240px)",
+          alignItems: "start",
         }}
       >
         <div style={dashboardColumnStack}>
-          <div style={dashboardSectionBlock}>
+          <div style={dashboardSectionBlockFixed}>
             <div style={sectionBlockHeader}>
               <h2 style={sectionHeading}>Tasks</h2>
               <Link to={tasksPath} style={viewAllLink}>
@@ -1538,15 +1628,10 @@ export default function ClubHomePage() {
             ) : attentionTasks.length === 0 ? (
               <div
                 style={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
                   backgroundColor: CARD_BG,
                   border: `1px solid ${CARD_BORDER}`,
                   borderRadius: "12px",
-                  padding: "32px 24px",
-                  minHeight: "120px",
+                  padding: "24px 20px",
                 }}
               >
                 <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>

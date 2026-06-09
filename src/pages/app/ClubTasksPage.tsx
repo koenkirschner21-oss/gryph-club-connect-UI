@@ -168,17 +168,6 @@ function getSectionNextDue(
   };
 }
 
-const viewDetailsLinkStyle: CSSProperties = {
-  color: "#E51937",
-  fontSize: "12px",
-  fontWeight: 500,
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  padding: 0,
-  marginTop: "8px",
-};
-
 const sectionLabelStyle: CSSProperties = {
   fontSize: "11px",
   fontWeight: 700,
@@ -233,10 +222,52 @@ function kanbanBackLabel(status: TaskStatus): string | null {
 }
 
 function listQuickActionLabel(status: TaskStatus): string | null {
-  if (status === "todo") return "Mark In Progress";
+  if (status === "todo") return "Start Task";
   if (status === "in_progress") return "Mark Done";
   return null;
 }
+
+const startTaskButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #FFC429",
+  color: "#FFC429",
+  borderRadius: "6px",
+  padding: "5px 12px",
+  fontSize: "12px",
+  fontWeight: 500,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  fontFamily: "inherit",
+};
+
+const markDoneButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #E51937",
+  color: "#E51937",
+  borderRadius: "6px",
+  padding: "5px 12px",
+  fontSize: "12px",
+  fontWeight: 500,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  fontFamily: "inherit",
+};
+
+const viewDetailsPlainStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "#555555",
+  fontSize: "12px",
+  fontWeight: 500,
+  cursor: "pointer",
+  padding: 0,
+  fontFamily: "inherit",
+};
+
+const viewDetailsLinkStyle: CSSProperties = {
+  ...viewDetailsPlainStyle,
+  marginTop: "8px",
+};
 
 function dueDateColor(dueDate: string | undefined, status: TaskStatus): string {
   return taskDueDateColor(getTaskDueUrgency(dueDate, status));
@@ -878,6 +909,10 @@ export default function ClubTasksPage() {
     filteredTotalCount === 0
       ? 0
       : (filteredDoneCount / filteredTotalCount) * 100;
+  const progressPercent =
+    filteredTotalCount === 0
+      ? 0
+      : Math.round((filteredDoneCount / filteredTotalCount) * 100);
 
   const tasksByStatus = useMemo(() => {
     const grouped: Record<TaskStatus, Task[]> = {
@@ -1128,7 +1163,7 @@ export default function ClubTasksPage() {
           padding: "14px",
           marginBottom: "8px",
           cursor: "pointer",
-          opacity: isDone ? 0.5 : isAnimating ? 0.5 : 1,
+          opacity: isDone ? 0.65 : isAnimating ? 0.5 : 1,
           transform: isHovered ? "translateY(-1px)" : undefined,
           transition: "border-color 0.15s ease, transform 0.15s ease, opacity 0.2s ease",
         }}
@@ -1492,7 +1527,7 @@ export default function ClubTasksPage() {
           borderRadius: "8px",
           padding: "14px 16px",
           marginBottom: "8px",
-          opacity: isDone ? 0.5 : 1,
+          opacity: isDone ? 0.65 : 1,
           transition: "opacity 0.15s ease, border-color 0.15s ease",
         }}
       >
@@ -1577,17 +1612,9 @@ export default function ClubTasksPage() {
               onClick={() => {
                 if (next) void handleStatusChange(task.id, next);
               }}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: task.status === "todo" ? "#FFC429" : "#E51937",
-                padding: "4px 8px",
-                fontSize: "12px",
-                fontWeight: 500,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                fontFamily: "inherit",
-              }}
+              style={
+                task.status === "todo" ? startTaskButtonStyle : markDoneButtonStyle
+              }
             >
               {listAction}
             </button>
@@ -1595,16 +1622,7 @@ export default function ClubTasksPage() {
             <button
               type="button"
               onClick={() => openTaskDetail(task)}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#777777",
-                fontSize: "12px",
-                fontWeight: 500,
-                cursor: "pointer",
-                padding: 0,
-                fontFamily: "inherit",
-              }}
+              style={viewDetailsPlainStyle}
             >
               View Details
             </button>
@@ -1722,7 +1740,7 @@ export default function ClubTasksPage() {
             whiteSpace: "nowrap",
           }}
         >
-          {filteredDoneCount} of {filteredTotalCount} tasks complete
+          {filteredDoneCount} of {filteredTotalCount} tasks complete · {progressPercent}%
         </span>
         <div
           style={{
@@ -1753,6 +1771,17 @@ export default function ClubTasksPage() {
         active={activeFilter}
         onChange={setActiveFilter}
       />
+
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#555555",
+          marginTop: 0,
+          marginBottom: "16px",
+        }}
+      >
+        Grouped by status · Sorted by due date
+      </p>
 
       {feedback ? (
         <div
@@ -2143,15 +2172,11 @@ export default function ClubTasksPage() {
                     const target = nextStatus(detailTask.status);
                     if (target) void handleStatusChange(detailTask.id, target);
                   }}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #E51937",
-                    borderRadius: "20px",
-                    padding: "5px 12px",
-                    fontSize: "11px",
-                    color: "#E51937",
-                    cursor: "pointer",
-                  }}
+                  style={
+                    detailTask.status === "todo"
+                      ? startTaskButtonStyle
+                      : markDoneButtonStyle
+                  }
                 >
                   {listQuickActionLabel(detailTask.status)}
                 </button>
