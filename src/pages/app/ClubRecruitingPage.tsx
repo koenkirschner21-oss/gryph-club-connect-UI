@@ -6,10 +6,11 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Briefcase, MoreHorizontal } from "lucide-react";
+import { Briefcase, Clipboard, MoreHorizontal } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole } from "../../types";
 import Spinner from "../../components/ui/Spinner";
@@ -318,8 +319,7 @@ function StatCard({
       style={{
         background: "#141414",
         borderRadius: "12px",
-        padding: "18px 20px",
-        flex: 1,
+        padding: "12px",
         minWidth: 0,
         borderTop: `3px solid ${topColor}`,
         borderRight: "1px solid #2a2a2a",
@@ -329,7 +329,7 @@ function StatCard({
     >
       <p
         style={{
-          fontSize: "28px",
+          fontSize: "24px",
           fontWeight: 800,
           color: valueColor,
           margin: 0,
@@ -688,6 +688,10 @@ export default function ClubRecruitingPage() {
     [positions, positionFilter],
   );
 
+  const isMobile = useIsMobile();
+  const selectedPosition =
+    positions.find((p) => p.id === expandedPositionId) ?? null;
+
   function resetPostForm() {
     setTitle("");
     setDescription("");
@@ -893,6 +897,18 @@ export default function ClubRecruitingPage() {
     await loadApplicationsForPosition(position.id);
   }
 
+  useEffect(() => {
+    if (
+      !isPrivileged ||
+      loading ||
+      positions.length === 0 ||
+      expandedPositionId !== null
+    ) {
+      return;
+    }
+    void toggleApplications(positions[0]);
+  }, [isPrivileged, loading, positions]);
+
   async function updateApplicationStatus(applicationId: string, status: string) {
     const { error } = await supabase
       .from("hiring_applications")
@@ -907,6 +923,339 @@ export default function ClubRecruitingPage() {
     }
   }
 
+  function renderPositionsList(): ReactNode {
+    if (positions.length === 0) {
+      return isPrivileged ? (
+        <div style={{ textAlign: "center", padding: "64px 24px" }}>
+          <Briefcase
+            size={36}
+            color="#2a2a2a"
+            aria-hidden
+            style={{ marginBottom: "12px" }}
+          />
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
+            No positions posted yet
+          </p>
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#444444",
+              marginTop: "4px",
+              maxWidth: "280px",
+              margin: "4px auto 16px",
+            }}
+          >
+            Post executive roles, committee positions, or volunteer opportunities to build
+            your team.
+          </p>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            style={{
+              background: "#E51937",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "10px 20px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            + Post Position
+          </button>
+        </div>
+      ) : (
+        <p style={{ fontSize: "14px", color: "#555555" }}>No positions posted yet.</p>
+      );
+    }
+
+    if (filteredPositions.length === 0) {
+      return (
+        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
+            No positions match this filter
+          </p>
+          <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px" }}>
+            Try a different filter or post a new position.
+          </p>
+        </div>
+      );
+    }
+
+    return filteredPositions.map((position) => {
+      const deadline = daysLeftMeta(position.deadline);
+      const closeDate = formatCloseDate(position.deadline);
+      const hasApplied = Boolean(myApplications[position.id]);
+      const isExpanded = expandedPositionId === position.id;
+      const menuOpen = openMenuId === position.id;
+      const cardHovered = hoveredCardId === position.id;
+      const status = listingStatus(position);
+
+      const metaSegments: ReactNode[] = [];
+      if (closeDate) metaSegments.push(`Closes ${closeDate}`);
+      if (deadline) {
+        metaSegments.push(
+          <span style={{ color: deadline.urgent ? "#FFC429" : "#444444" }}>
+            {deadline.text}
+          </span>,
+        );
+      } else if (!closeDate && position.deadline) {
+        const legacy = deadlineLabel(position.deadline);
+        if (legacy) metaSegments.push(legacy);
+      }
+      metaSegments.push(
+        `${position.applicantCount} applicant${position.applicantCount === 1 ? "" : "s"}`,
+      );
+
+      return (
+        <div
+          key={position.id}
+          onMouseEnter={() => setHoveredCardId(position.id)}
+          onMouseLeave={() => {
+            setHoveredCardId((prev) => (prev === position.id ? null : prev));
+            setOpenMenuId((prev) => (prev === position.id ? null : prev));
+          }}
+          style={{
+            background: "#141414",
+            borderRadius: "12px",
+            padding: "20px 24px",
+            marginBottom: "12px",
+            ...(isPrivileged && isExpanded
+              ? { border: "1px solid #E51937" }
+              : {
+                  borderTop: "1px solid #2a2a2a",
+                  borderRight: "1px solid #2a2a2a",
+                  borderBottom: "1px solid #2a2a2a",
+                  borderLeft: "3px solid #E51937",
+                }),
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: "12px",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: "220px" }}>
+              <h3
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  margin: 0,
+                }}
+              >
+                {position.title}
+              </h3>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                  marginTop: "6px",
+                }}
+              >
+                <span style={roleTypeBadgeStyle()}>
+                  {positionTypeLabel(position.positionType)}
+                </span>
+                <span style={commitmentBadgeStyle()}>
+                  {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+                </span>
+                <span style={statusPillStyle(status)}>
+                  {statusPillLabel(status)}
+                </span>
+              </div>
+            </div>
+
+            {!isPrivileged && position.isOpen && !hasApplied ? (
+              <button
+                type="button"
+                onClick={() => setApplyPosition(position)}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 18px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                Apply Now
+              </button>
+            ) : !isPrivileged && hasApplied ? (
+              <span
+                style={{
+                  background: "#1a1200",
+                  border: "1px solid #FFC429",
+                  color: "#FFC429",
+                  borderRadius: "8px",
+                  padding: "8px 18px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  flexShrink: 0,
+                }}
+              >
+                Applied ✓
+              </span>
+            ) : null}
+          </div>
+
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#444444",
+              marginTop: "8px",
+              marginBottom: "10px",
+            }}
+          >
+            {metaSegments.map((part, index) => (
+              <span key={index}>
+                {index > 0 ? " · " : null}
+                {part}
+              </span>
+            ))}
+          </p>
+
+          {position.description ? (
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#555555",
+                lineHeight: 1.6,
+                margin: "0 0 16px",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {position.description}
+            </p>
+          ) : (
+            <div style={{ marginBottom: "16px" }} />
+          )}
+
+          {isPrivileged ? (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "10px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void toggleApplications(position)}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  borderRadius: "8px",
+                  padding: "8px 18px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Review Applicants ({position.applicantCount})
+              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => void openEditModal(position)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #2a2a2a",
+                    color: "#555555",
+                    borderRadius: "8px",
+                    padding: "8px 18px",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "#555555";
+                    e.currentTarget.style.color = "#aaaaaa";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "#2a2a2a";
+                    e.currentTarget.style.color = "#555555";
+                  }}
+                >
+                  Edit Position
+                </button>
+                {cardHovered ? (
+                  <div style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      aria-label="Position options"
+                      onClick={() =>
+                        setOpenMenuId((prev) =>
+                          prev === position.id ? null : position.id,
+                        )
+                      }
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#747676",
+                        cursor: "pointer",
+                        display: "flex",
+                        padding: "2px",
+                      }}
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
+                    {menuOpen ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: 0,
+                          top: "100%",
+                          marginTop: "4px",
+                          background: "#151515",
+                          border: "1px solid #2a2a2a",
+                          borderRadius: "8px",
+                          minWidth: "150px",
+                          zIndex: 20,
+                          overflow: "hidden",
+                        }}
+                      >
+                        {position.isOpen ? (
+                          <button
+                            type="button"
+                            onClick={() => void closePosition(position)}
+                            style={menuItemStyle}
+                          >
+                            Close Position
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void deletePosition(position.id)}
+                          style={{ ...menuItemStyle, color: "#E51937" }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      );
+    });
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
@@ -916,7 +1265,7 @@ export default function ClubRecruitingPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6" style={{ maxWidth: "900px" }}>
+    <div className="p-4 sm:p-6" style={{ width: "100%" }}>
       <div
         style={{
           display: "flex",
@@ -972,556 +1321,277 @@ export default function ClubRecruitingPage() {
       </div>
 
       {isPrivileged ? (
-        <>
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexDirection: isMobile ? "column" : "row",
+            width: "100%",
+          }}
+        >
           <div
             style={{
-              display: "flex",
-              gap: "12px",
-              marginBottom: "16px",
-              flexWrap: "wrap",
+              flex: 1,
+              minWidth: 0,
             }}
           >
-            <StatCard
-              label="Open Positions"
-              value={stats.openCount}
-              topColor="#E51937"
-            />
-            <StatCard
-              label="Pending Review"
-              value={stats.pendingReview}
-              topColor="#FFC429"
-              valueColor="#FFC429"
-            />
-            <StatCard
-              label="Total Applicants"
-              value={stats.totalApplicants}
-              topColor="#777777"
-            />
-            <StatCard
-              label="Positions Filled"
-              value={stats.filledCount}
-              topColor="#FFC429"
-              valueColor="#FFC429"
-            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: "8px",
+                marginBottom: "16px",
+              }}
+            >
+              <StatCard
+                label="Open Positions"
+                value={stats.openCount}
+                topColor="#E51937"
+              />
+              <StatCard
+                label="Pending Review"
+                value={stats.pendingReview}
+                topColor="#FFC429"
+                valueColor="#FFC429"
+              />
+              <StatCard
+                label="Total Applicants"
+                value={stats.totalApplicants}
+                topColor="#777777"
+              />
+              <StatCard
+                label="Positions Filled"
+                value={stats.filledCount}
+                topColor="#FFC429"
+                valueColor="#FFC429"
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                marginBottom: "24px",
+                flexWrap: "nowrap",
+                overflowX: "auto",
+              }}
+            >
+              {POSITION_FILTER_OPTIONS.map((option) => {
+                const active = positionFilter === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setPositionFilter(option.value)}
+                    style={{
+                      background: active ? "#E51937" : "transparent",
+                      color: active ? "#ffffff" : "#777777",
+                      border: active ? "none" : "1px solid #333333",
+                      borderRadius: "20px",
+                      padding: "6px 16px",
+                      fontSize: "12px",
+                      fontWeight: active ? 600 : 400,
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {renderPositionsList()}
           </div>
 
           <div
             style={{
-              display: "flex",
-              gap: "8px",
-              marginBottom: "24px",
-              flexWrap: "nowrap",
-              overflowX: "auto",
+              flex: 1,
+              minWidth: 0,
+              background: "#141414",
+              border: "1px solid #2a2a2a",
+              borderRadius: "10px",
+              padding: "20px",
+              minHeight: "400px",
             }}
           >
-            {POSITION_FILTER_OPTIONS.map((option) => {
-              const active = positionFilter === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setPositionFilter(option.value)}
-                  style={{
-                    background: active ? "#E51937" : "transparent",
-                    color: active ? "#ffffff" : "#777777",
-                    border: active ? "none" : "1px solid #333333",
-                    borderRadius: "20px",
-                    padding: "6px 16px",
-                    fontSize: "12px",
-                    fontWeight: active ? 600 : 400,
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      ) : null}
-
-      {positions.length === 0 ? (
-        isPrivileged ? (
-          <div style={{ textAlign: "center", padding: "64px 24px" }}>
-            <Briefcase
-              size={36}
-              color="#2a2a2a"
-              aria-hidden
-              style={{ marginBottom: "12px" }}
-            />
-            <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
-              No positions posted yet
-            </p>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#444444",
-                marginTop: "4px",
-                maxWidth: "280px",
-                margin: "4px auto 16px",
-              }}
-            >
-              Post executive roles, committee positions, or volunteer opportunities to build
-              your team.
-            </p>
-            <button
-              type="button"
-              onClick={openCreateModal}
-              style={{
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "10px 20px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              + Post Position
-            </button>
-          </div>
-        ) : (
-          <p style={{ fontSize: "14px", color: "#555555" }}>No positions posted yet.</p>
-        )
-      ) : filteredPositions.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "48px 24px" }}>
-          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
-            No positions match this filter
-          </p>
-          <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px" }}>
-            Try a different filter or post a new position.
-          </p>
-        </div>
-      ) : (
-        filteredPositions.map((position) => {
-          const deadline = daysLeftMeta(position.deadline);
-          const closeDate = formatCloseDate(position.deadline);
-          const hasApplied = Boolean(myApplications[position.id]);
-          const isExpanded = expandedPositionId === position.id;
-          const menuOpen = openMenuId === position.id;
-          const cardHovered = hoveredCardId === position.id;
-          const status = listingStatus(position);
-
-          const metaSegments: ReactNode[] = [];
-          if (closeDate) metaSegments.push(`Closes ${closeDate}`);
-          if (deadline) {
-            metaSegments.push(
-              <span style={{ color: deadline.urgent ? "#FFC429" : "#444444" }}>
-                {deadline.text}
-              </span>,
-            );
-          } else if (!closeDate && position.deadline) {
-            const legacy = deadlineLabel(position.deadline);
-            if (legacy) metaSegments.push(legacy);
-          }
-          metaSegments.push(
-            `${position.applicantCount} applicant${position.applicantCount === 1 ? "" : "s"}`,
-          );
-
-          return (
-            <div key={position.id}>
+            {!expandedPositionId || !selectedPosition ? (
               <div
-                onMouseEnter={() => setHoveredCardId(position.id)}
-                onMouseLeave={() => {
-                  setHoveredCardId((prev) => (prev === position.id ? null : prev));
-                  setOpenMenuId((prev) => (prev === position.id ? null : prev));
-                }}
                 style={{
-                  background: "#141414",
-                  borderTop: "1px solid #2a2a2a",
-                  borderRight: "1px solid #2a2a2a",
-                  borderBottom: "1px solid #2a2a2a",
-                  borderLeft: "3px solid #E51937",
-                  borderRadius: "12px",
-                  padding: "20px 24px",
-                  marginBottom: isExpanded ? 0 : "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: "360px",
+                  textAlign: "center",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    gap: "12px",
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: "220px" }}>
-                    <h3
-                      style={{
-                        fontSize: "18px",
-                        fontWeight: 700,
-                        color: "#ffffff",
-                        margin: 0,
-                      }}
-                    >
-                      {position.title}
-                    </h3>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        flexWrap: "wrap",
-                        marginTop: "6px",
-                      }}
-                    >
-                      <span style={roleTypeBadgeStyle()}>
-                        {positionTypeLabel(position.positionType)}
-                      </span>
-                      <span style={commitmentBadgeStyle()}>
-                        {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-                      </span>
-                      <span style={statusPillStyle(status)}>
-                        {statusPillLabel(status)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isPrivileged ? (
-                    <button
-                      type="button"
-                      onClick={() => void toggleApplications(position)}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: "#555555",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        padding: 0,
-                        flexShrink: 0,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = "#E51937";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = "#555555";
-                      }}
-                    >
-                      View Applications
-                    </button>
-                  ) : position.isOpen && !hasApplied ? (
-                    <button
-                      type="button"
-                      onClick={() => setApplyPosition(position)}
-                      style={{
-                        background: "#E51937",
-                        color: "#ffffff",
-                        border: "none",
-                        borderRadius: "8px",
-                        padding: "8px 18px",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      Apply Now
-                    </button>
-                  ) : hasApplied ? (
-                    <span
-                      style={{
-                        background: "#1a1200",
-                        border: "1px solid #FFC429",
-                        color: "#FFC429",
-                        borderRadius: "8px",
-                        padding: "8px 18px",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        flexShrink: 0,
-                      }}
-                    >
-                      Applied ✓
-                    </span>
-                  ) : null}
-                </div>
-
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#444444",
-                    marginTop: "8px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  {metaSegments.map((part, index) => (
-                    <span key={index}>
-                      {index > 0 ? " · " : null}
-                      {part}
-                    </span>
-                  ))}
+                <Clipboard
+                  size={36}
+                  color="#333333"
+                  aria-hidden
+                  style={{ marginBottom: "12px" }}
+                />
+                <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+                  Select a position to review applicants
                 </p>
-
-                {position.description ? (
-                  <p
-                    style={{
-                      fontSize: "13px",
-                      color: "#555555",
-                      lineHeight: 1.6,
-                      margin: "0 0 16px",
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {position.description}
+              </div>
+            ) : (
+              <>
+                <h2
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "16px",
+                    color: "#ffffff",
+                    margin: "0 0 16px",
+                  }}
+                >
+                  {selectedPosition.title}
+                </h2>
+                {appsLoading ? (
+                  <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                    Loading…
+                  </p>
+                ) : applications.length === 0 ? (
+                  <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                    No applications yet.
                   </p>
                 ) : (
-                  <div style={{ marginBottom: "16px" }} />
-                )}
-
-                {isPrivileged ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "10px",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => void toggleApplications(position)}
+                  applications.map((app) => (
+                    <div
+                      key={app.id}
                       style={{
-                        background: "#E51937",
-                        color: "#ffffff",
-                        borderRadius: "8px",
-                        padding: "8px 18px",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                        border: "none",
-                        cursor: "pointer",
+                        borderTop: "1px solid #2a2a2a",
+                        paddingTop: "14px",
+                        marginTop: "14px",
                       }}
                     >
-                      Review Applicants ({position.applicantCount})
-                    </button>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <button
-                        type="button"
-                        onClick={() => void openEditModal(position)}
+                      <div
                         style={{
-                          background: "transparent",
-                          border: "1px solid #2a2a2a",
-                          color: "#555555",
-                          borderRadius: "8px",
-                          padding: "8px 18px",
-                          fontSize: "13px",
-                          cursor: "pointer",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "#555555";
-                          e.currentTarget.style.color = "#aaaaaa";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = "#2a2a2a";
-                          e.currentTarget.style.color = "#555555";
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          gap: "10px",
                         }}
                       >
-                        Edit Position
-                      </button>
-                      {cardHovered ? (
-                        <div style={{ position: "relative" }}>
-                          <button
-                            type="button"
-                            aria-label="Position options"
-                            onClick={() =>
-                              setOpenMenuId((prev) =>
-                                prev === position.id ? null : position.id,
-                              )
-                            }
+                        {app.profile?.avatar_url ? (
+                          <img
+                            src={app.profile.avatar_url}
+                            alt=""
                             style={{
-                              background: "transparent",
-                              border: "none",
-                              color: "#747676",
-                              cursor: "pointer",
+                              width: 36,
+                              height: 36,
+                              borderRadius: "50%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: "50%",
+                              background: "#242424",
+                              color: "#E51937",
                               display: "flex",
-                              padding: "2px",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontWeight: 700,
+                              fontSize: "13px",
                             }}
                           >
-                            <MoreHorizontal size={18} />
-                          </button>
-                          {menuOpen ? (
-                            <div
-                              style={{
-                                position: "absolute",
-                                right: 0,
-                                top: "100%",
-                                marginTop: "4px",
-                                background: "#151515",
-                                border: "1px solid #2a2a2a",
-                                borderRadius: "8px",
-                                minWidth: "150px",
-                                zIndex: 20,
-                                overflow: "hidden",
-                              }}
-                            >
-                              {position.isOpen ? (
-                                <button
-                                  type="button"
-                                  onClick={() => void closePosition(position)}
-                                  style={menuItemStyle}
-                                >
-                                  Close Position
-                                </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                onClick={() => void deletePosition(position.id)}
-                                style={{ ...menuItemStyle, color: "#E51937" }}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          ) : null}
+                            {(app.profile?.full_name ?? "M").charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div style={{ flex: 1, minWidth: "140px" }}>
+                          <p
+                            style={{
+                              fontSize: "14px",
+                              fontWeight: 600,
+                              color: "#ffffff",
+                              margin: 0,
+                            }}
+                          >
+                            {app.profile?.full_name ?? "Member"}
+                          </p>
+                          <p
+                            style={{
+                              fontSize: "12px",
+                              color: "#555555",
+                              margin: "2px 0 0",
+                            }}
+                          >
+                            {daysAgoLabel(app.createdAt)}
+                          </p>
                         </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              {isPrivileged && isExpanded ? (
-                <div
-                  style={{
-                    background: "#141414",
-                    border: "1px solid #242424",
-                    borderTop: "none",
-                    borderRadius: "0 0 10px 10px",
-                    padding: "16px 20px 20px",
-                    marginBottom: "12px",
-                  }}
-                >
-                  {appsLoading ? (
-                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>Loading…</p>
-                  ) : applications.length === 0 ? (
-                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                      No applications yet.
-                    </p>
-                  ) : (
-                    applications.map((app) => (
-                      <div
-                        key={app.id}
-                        style={{
-                          borderTop: "1px solid #2a2a2a",
-                          paddingTop: "14px",
-                          marginTop: "14px",
-                        }}
-                      >
-                        <div
+                        <select
+                          value={app.status}
+                          onChange={(e) =>
+                            void updateApplicationStatus(app.id, e.target.value)
+                          }
                           style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            alignItems: "center",
-                            gap: "10px",
+                            ...darkInputStyle,
+                            color: applicationStatusColor(app.status),
+                            fontSize: "12px",
+                            width: "auto",
                           }}
                         >
-                          {app.profile?.avatar_url ? (
-                            <img
-                              src={app.profile.avatar_url}
-                              alt=""
-                              style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: "50%",
-                                objectFit: "cover",
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: "50%",
-                                background: "#242424",
-                                color: "#E51937",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontWeight: 700,
-                                fontSize: "13px",
-                              }}
-                            >
-                              {(app.profile?.full_name ?? "M")
-                                .charAt(0)
-                                .toUpperCase()}
-                            </div>
-                          )}
-                          <div style={{ flex: 1, minWidth: "140px" }}>
-                            <p
-                              style={{
-                                fontSize: "14px",
-                                fontWeight: 600,
-                                color: "#ffffff",
-                                margin: 0,
-                              }}
-                            >
-                              {app.profile?.full_name ?? "Member"}
-                            </p>
-                            <p style={{ fontSize: "12px", color: "#555555", margin: "2px 0 0" }}>
-                              {daysAgoLabel(app.createdAt)}
-                            </p>
-                          </div>
-                          <select
-                            value={app.status}
-                            onChange={(e) =>
-                              void updateApplicationStatus(app.id, e.target.value)
-                            }
+                          {HIRING_APPLICATION_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {applicationStatusLabel(s)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ marginTop: "12px", paddingLeft: "46px" }}>
+                        {app.profile?.email ? (
+                          <p
                             style={{
-                              ...darkInputStyle,
-                              color: applicationStatusColor(app.status),
                               fontSize: "12px",
-                              width: "auto",
+                              color: "#555555",
+                              margin: "0 0 10px",
                             }}
                           >
-                            {HIRING_APPLICATION_STATUSES.map((s) => (
-                              <option key={s} value={s}>
-                                {applicationStatusLabel(s)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div style={{ marginTop: "12px", paddingLeft: "46px" }}>
-                          {app.profile?.email ? (
-                            <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 10px" }}>
-                              {app.profile.email}
-                            </p>
-                          ) : null}
-                          {app.answers.length === 0 ? (
-                            <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>—</p>
-                          ) : (
-                            app.answers.map((ans) => (
-                              <div key={ans.question_id} style={{ marginBottom: "10px" }}>
-                                <p
-                                  style={{
-                                    fontSize: "12px",
-                                    color: "#888888",
-                                    margin: "0 0 4px",
-                                  }}
-                                >
-                                  {answerLabel(
-                                    ans.question_id,
-                                    listingQuestionsForApply(position.questions),
-                                  )}
-                                </p>
-                                <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
-                                  {ans.answer}
-                                </p>
-                              </div>
-                            ))
-                          )}
-                        </div>
+                            {app.profile.email}
+                          </p>
+                        ) : null}
+                        {app.answers.length === 0 ? (
+                          <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
+                            —
+                          </p>
+                        ) : (
+                          app.answers.map((ans) => (
+                            <div key={ans.question_id} style={{ marginBottom: "10px" }}>
+                              <p
+                                style={{
+                                  fontSize: "12px",
+                                  color: "#888888",
+                                  margin: "0 0 4px",
+                                }}
+                              >
+                                {answerLabel(
+                                  ans.question_id,
+                                  listingQuestionsForApply(selectedPosition.questions),
+                                )}
+                              </p>
+                              <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
+                                {ans.answer}
+                              </p>
+                            </div>
+                          ))
+                        )}
                       </div>
-                    ))
-                  )}
-                </div>
-              ) : null}
-            </div>
-          );
-        })
+                    </div>
+                  ))
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        renderPositionsList()
       )}
 
       {showPostModal ? (
