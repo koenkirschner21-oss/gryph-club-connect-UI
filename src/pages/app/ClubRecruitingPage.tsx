@@ -132,6 +132,19 @@ const HIRING_APPLICATION_STATUSES = [
   "rejected",
 ] as const;
 
+type ApplicantStatusFilter = "all" | (typeof HIRING_APPLICATION_STATUSES)[number];
+
+const APPLICANT_STATUS_FILTER_OPTIONS: {
+  value: ApplicantStatusFilter;
+  label: string;
+}[] = [
+  { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "reviewed", label: "Reviewed" },
+  { value: "accepted", label: "Accepted" },
+  { value: "rejected", label: "Rejected" },
+];
+
 function parseHiringAnswers(raw: unknown): HiringApplicationAnswer[] {
   if (Array.isArray(raw)) {
     return raw
@@ -294,6 +307,26 @@ function applicationStatusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+function applicationStatusPillStyle(status: string): CSSProperties {
+  const color = applicationStatusColor(status);
+  return {
+    borderRadius: "20px",
+    padding: "3px 10px",
+    fontSize: "11px",
+    fontWeight: 600,
+    flexShrink: 0,
+    background:
+      status === "accepted"
+        ? "#1a1200"
+        : status === "rejected"
+          ? "#1a0505"
+          : "#1a1a1a",
+    color,
+    border: `1px solid ${color}`,
+    display: "inline-block",
+  };
+}
+
 function daysAgoLabel(iso: string): string {
   const created = new Date(iso);
   if (Number.isNaN(created.getTime())) return "Recently";
@@ -319,7 +352,7 @@ function StatCard({
       style={{
         background: "#141414",
         borderRadius: "12px",
-        padding: "12px",
+        padding: "18px 20px",
         minWidth: 0,
         borderTop: `3px solid ${topColor}`,
         borderRight: "1px solid #2a2a2a",
@@ -329,7 +362,7 @@ function StatCard({
     >
       <p
         style={{
-          fontSize: "24px",
+          fontSize: "28px",
           fontWeight: 800,
           color: valueColor,
           margin: 0,
@@ -568,6 +601,12 @@ export default function ClubRecruitingPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [positionFilter, setPositionFilter] = useState<PositionFilter>("all");
+  const [applicantSearch, setApplicantSearch] = useState("");
+  const [applicantStatusFilter, setApplicantStatusFilter] =
+    useState<ApplicantStatusFilter>("all");
+  const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -691,6 +730,26 @@ export default function ClubRecruitingPage() {
   const isMobile = useIsMobile();
   const selectedPosition =
     positions.find((p) => p.id === expandedPositionId) ?? null;
+
+  const filteredApplications = useMemo(() => {
+    let list = applications;
+    if (applicantStatusFilter !== "all") {
+      list = list.filter((app) => app.status === applicantStatusFilter);
+    }
+    const query = applicantSearch.trim().toLowerCase();
+    if (query) {
+      list = list.filter((app) =>
+        (app.profile?.full_name ?? "Member").toLowerCase().includes(query),
+      );
+    }
+    return list;
+  }, [applications, applicantStatusFilter, applicantSearch]);
+
+  useEffect(() => {
+    setSelectedApplicantId(null);
+    setApplicantSearch("");
+    setApplicantStatusFilter("all");
+  }, [expandedPositionId]);
 
   function resetPostForm() {
     setTitle("");
@@ -1321,275 +1380,357 @@ export default function ClubRecruitingPage() {
       </div>
 
       {isPrivileged ? (
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexDirection: isMobile ? "column" : "row",
-            width: "100%",
-          }}
-        >
+        <>
           <div
             style={{
-              flex: 1,
-              minWidth: 0,
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "12px",
+              marginBottom: "24px",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: "8px",
-                marginBottom: "16px",
-              }}
-            >
-              <StatCard
-                label="Open Positions"
-                value={stats.openCount}
-                topColor="#E51937"
-              />
-              <StatCard
-                label="Pending Review"
-                value={stats.pendingReview}
-                topColor="#FFC429"
-                valueColor="#FFC429"
-              />
-              <StatCard
-                label="Total Applicants"
-                value={stats.totalApplicants}
-                topColor="#777777"
-              />
-              <StatCard
-                label="Positions Filled"
-                value={stats.filledCount}
-                topColor="#FFC429"
-                valueColor="#FFC429"
-              />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                marginBottom: "24px",
-                flexWrap: "nowrap",
-                overflowX: "auto",
-              }}
-            >
-              {POSITION_FILTER_OPTIONS.map((option) => {
-                const active = positionFilter === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setPositionFilter(option.value)}
-                    style={{
-                      background: active ? "#E51937" : "transparent",
-                      color: active ? "#ffffff" : "#777777",
-                      border: active ? "none" : "1px solid #333333",
-                      borderRadius: "20px",
-                      padding: "6px 16px",
-                      fontSize: "12px",
-                      fontWeight: active ? 600 : 400,
-                      cursor: "pointer",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {renderPositionsList()}
+            <StatCard
+              label="Open Positions"
+              value={stats.openCount}
+              topColor="#E51937"
+            />
+            <StatCard
+              label="Pending Review"
+              value={stats.pendingReview}
+              topColor="#FFC429"
+              valueColor="#FFC429"
+            />
+            <StatCard
+              label="Total Applicants"
+              value={stats.totalApplicants}
+              topColor="#777777"
+            />
+            <StatCard
+              label="Positions Filled"
+              value={stats.filledCount}
+              topColor="#FFC429"
+              valueColor="#FFC429"
+            />
           </div>
 
           <div
             style={{
-              flex: 1,
-              minWidth: 0,
-              background: "#141414",
-              border: "1px solid #2a2a2a",
-              borderRadius: "10px",
-              padding: "20px",
-              minHeight: "400px",
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              flexDirection: isMobile ? "column" : "row",
+              width: "100%",
             }}
           >
-            {!expandedPositionId || !selectedPosition ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: "360px",
-                  textAlign: "center",
-                }}
-              >
-                <Clipboard
-                  size={36}
-                  color="#333333"
-                  aria-hidden
-                  style={{ marginBottom: "12px" }}
-                />
-                <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-                  Select a position to review applicants
-                </p>
-              </div>
-            ) : (
-              <>
-                <h2
+            <div
+              style={{
+                flex: isMobile ? "1 1 auto" : "0 0 40%",
+                minWidth: 0,
+                width: isMobile ? "100%" : undefined,
+              }}
+            >
+              {renderPositionsList()}
+            </div>
+
+            <div
+              style={{
+                flex: isMobile ? "1 1 auto" : "0 0 58%",
+                minWidth: 0,
+                width: isMobile ? "100%" : undefined,
+                background: "#141414",
+                border: "1px solid #2a2a2a",
+                borderRadius: "10px",
+                padding: "20px",
+                minHeight: "600px",
+              }}
+            >
+              {!expandedPositionId || !selectedPosition ? (
+                <div
                   style={{
-                    fontWeight: 700,
-                    fontSize: "16px",
-                    color: "#ffffff",
-                    margin: "0 0 16px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minHeight: "460px",
+                    textAlign: "center",
                   }}
                 >
-                  {selectedPosition.title}
-                </h2>
-                {appsLoading ? (
-                  <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                    Loading…
+                  <Clipboard
+                    size={36}
+                    color="#333333"
+                    aria-hidden
+                    style={{ marginBottom: "12px" }}
+                  />
+                  <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+                    Select a position to review applicants
                   </p>
-                ) : applications.length === 0 ? (
-                  <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                    No applications yet.
-                  </p>
-                ) : (
-                  applications.map((app) => (
-                    <div
-                      key={app.id}
-                      style={{
-                        borderTop: "1px solid #2a2a2a",
-                        paddingTop: "14px",
-                        marginTop: "14px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                          gap: "10px",
-                        }}
-                      >
-                        {app.profile?.avatar_url ? (
-                          <img
-                            src={app.profile.avatar_url}
-                            alt=""
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: "50%",
-                              objectFit: "cover",
-                            }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: "50%",
-                              background: "#242424",
-                              color: "#E51937",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontWeight: 700,
-                              fontSize: "13px",
-                            }}
-                          >
-                            {(app.profile?.full_name ?? "M").charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                        <div style={{ flex: 1, minWidth: "140px" }}>
-                          <p
-                            style={{
-                              fontSize: "14px",
-                              fontWeight: 600,
-                              color: "#ffffff",
-                              margin: 0,
-                            }}
-                          >
-                            {app.profile?.full_name ?? "Member"}
-                          </p>
-                          <p
-                            style={{
-                              fontSize: "12px",
-                              color: "#555555",
-                              margin: "2px 0 0",
-                            }}
-                          >
-                            {daysAgoLabel(app.createdAt)}
-                          </p>
-                        </div>
-                        <select
-                          value={app.status}
-                          onChange={(e) =>
-                            void updateApplicationStatus(app.id, e.target.value)
-                          }
+                </div>
+              ) : (
+                <>
+                  <h2
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "16px",
+                      color: "#ffffff",
+                      margin: "0 0 16px",
+                    }}
+                  >
+                    {selectedPosition.title}
+                  </h2>
+
+                  <input
+                    type="search"
+                    value={applicantSearch}
+                    onChange={(e) => setApplicantSearch(e.target.value)}
+                    placeholder="Search applicants..."
+                    style={{
+                      width: "100%",
+                      background: "#1a1a1a",
+                      border: "1px solid #2a2a2a",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      marginBottom: "12px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "8px",
+                      marginBottom: "16px",
+                      flexWrap: "nowrap",
+                      overflowX: "auto",
+                    }}
+                  >
+                    {APPLICANT_STATUS_FILTER_OPTIONS.map((option) => {
+                      const active = applicantStatusFilter === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setApplicantStatusFilter(option.value)}
                           style={{
-                            ...darkInputStyle,
-                            color: applicationStatusColor(app.status),
+                            background: active ? "#E51937" : "transparent",
+                            color: active ? "#ffffff" : "#777777",
+                            border: active ? "none" : "1px solid #333333",
+                            borderRadius: "20px",
+                            padding: "6px 16px",
                             fontSize: "12px",
-                            width: "auto",
+                            fontWeight: active ? 600 : 400,
+                            cursor: "pointer",
+                            flexShrink: 0,
                           }}
                         >
-                          {HIRING_APPLICATION_STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {applicationStatusLabel(s)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                      <div style={{ marginTop: "12px", paddingLeft: "46px" }}>
-                        {app.profile?.email ? (
-                          <p
-                            style={{
-                              fontSize: "12px",
-                              color: "#555555",
-                              margin: "0 0 10px",
-                            }}
-                          >
-                            {app.profile.email}
-                          </p>
-                        ) : null}
-                        {app.answers.length === 0 ? (
-                          <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
-                            —
-                          </p>
-                        ) : (
-                          app.answers.map((ans) => (
-                            <div key={ans.question_id} style={{ marginBottom: "10px" }}>
-                              <p
+                  {appsLoading ? (
+                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                      Loading…
+                    </p>
+                  ) : applications.length === 0 ? (
+                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                      No applications yet.
+                    </p>
+                  ) : filteredApplications.length === 0 ? (
+                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                      No applicants match your search.
+                    </p>
+                  ) : (
+                    <div>
+                      {filteredApplications.map((app) => {
+                        const isSelected = selectedApplicantId === app.id;
+                        return (
+                          <div key={app.id} style={{ marginBottom: "6px" }}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedApplicantId((prev) =>
+                                  prev === app.id ? null : app.id,
+                                )
+                              }
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "10px",
+                                width: "100%",
+                                padding: "10px 12px",
+                                background: isSelected ? "#1a1a1a" : "transparent",
+                                border: isSelected
+                                  ? "1px solid #333"
+                                  : "1px solid #2a2a2a",
+                                borderRadius: isSelected ? "8px 8px 0 0" : "8px",
+                                cursor: "pointer",
+                                textAlign: "left",
+                              }}
+                            >
+                              {app.profile?.avatar_url ? (
+                                <img
+                                  src={app.profile.avatar_url}
+                                  alt=""
+                                  style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: "50%",
+                                    objectFit: "cover",
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: "50%",
+                                    background: "#242424",
+                                    color: "#E51937",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontWeight: 700,
+                                    fontSize: "13px",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {(app.profile?.full_name ?? "M")
+                                    .charAt(0)
+                                    .toUpperCase()}
+                                </div>
+                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p
+                                  style={{
+                                    fontSize: "14px",
+                                    fontWeight: 600,
+                                    color: "#ffffff",
+                                    margin: 0,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {app.profile?.full_name ?? "Member"}
+                                </p>
+                                <p
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "#555555",
+                                    margin: "2px 0 0",
+                                  }}
+                                >
+                                  {daysAgoLabel(app.createdAt)}
+                                </p>
+                              </div>
+                              <span style={applicationStatusPillStyle(app.status)}>
+                                {applicationStatusLabel(app.status)}
+                              </span>
+                            </button>
+
+                            {isSelected && selectedPosition ? (
+                              <div
                                 style={{
-                                  fontSize: "12px",
-                                  color: "#888888",
-                                  margin: "0 0 4px",
+                                  background: "#1a1a1a",
+                                  border: "1px solid #333",
+                                  borderTop: "none",
+                                  borderRadius: "0 0 8px 8px",
+                                  padding: "12px 16px 16px",
                                 }}
                               >
-                                {answerLabel(
-                                  ans.question_id,
-                                  listingQuestionsForApply(selectedPosition.questions),
+                                {app.profile?.email ? (
+                                  <p
+                                    style={{
+                                      fontSize: "13px",
+                                      color: "#555555",
+                                      margin: "0 0 12px",
+                                    }}
+                                  >
+                                    {app.profile.email}
+                                  </p>
+                                ) : null}
+
+                                {app.answers.length === 0 ? (
+                                  <p
+                                    style={{
+                                      fontSize: "13px",
+                                      color: "#cccccc",
+                                      margin: "0 0 12px",
+                                    }}
+                                  >
+                                    —
+                                  </p>
+                                ) : (
+                                  app.answers.map((ans) => (
+                                    <div
+                                      key={ans.question_id}
+                                      style={{ marginBottom: "12px" }}
+                                    >
+                                      <p
+                                        style={{
+                                          fontSize: "12px",
+                                          fontWeight: 700,
+                                          color: "#ffffff",
+                                          margin: "0 0 4px",
+                                        }}
+                                      >
+                                        {answerLabel(
+                                          ans.question_id,
+                                          listingQuestionsForApply(
+                                            selectedPosition.questions,
+                                          ),
+                                        )}
+                                      </p>
+                                      <p
+                                        style={{
+                                          fontSize: "13px",
+                                          color: "#cccccc",
+                                          margin: 0,
+                                        }}
+                                      >
+                                        {ans.answer}
+                                      </p>
+                                    </div>
+                                  ))
                                 )}
-                              </p>
-                              <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
-                                {ans.answer}
-                              </p>
-                            </div>
-                          ))
-                        )}
-                      </div>
+
+                                <select
+                                  value={app.status}
+                                  onChange={(e) =>
+                                    void updateApplicationStatus(
+                                      app.id,
+                                      e.target.value,
+                                    )
+                                  }
+                                  style={{
+                                    ...darkInputStyle,
+                                    color: applicationStatusColor(app.status),
+                                    fontSize: "12px",
+                                    width: "auto",
+                                  }}
+                                >
+                                  {HIRING_APPLICATION_STATUSES.map((s) => (
+                                    <option key={s} value={s}>
+                                      {applicationStatusLabel(s)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))
-                )}
-              </>
-            )}
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       ) : (
         renderPositionsList()
       )}
