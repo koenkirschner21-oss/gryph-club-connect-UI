@@ -3,6 +3,12 @@
 // ---------------------------------------------------------------------------
 export type ClubJoinType = "open" | "application" | "vote";
 
+export type MembershipType =
+  | "open"
+  | "approval_required"
+  | "invite_only"
+  | "no_membership";
+
 export interface JoinQuestion {
   id: string;
   question: string;
@@ -48,6 +54,7 @@ export interface Club {
   events: ClubEvent[];
   requiresApproval?: boolean;
   joinType?: ClubJoinType;
+  membershipType?: MembershipType;
   joinQuestions?: JoinQuestion[];
   createdBy?: string;
   createdAt?: string;

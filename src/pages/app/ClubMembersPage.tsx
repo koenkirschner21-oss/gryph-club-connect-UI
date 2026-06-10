@@ -6,9 +6,9 @@ import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
-import { normalizeJoinType } from "../../lib/clubJoinUtils";
+import { membershipUsesApplicationQueue } from "../../lib/clubJoinUtils";
 import { notifyUsers } from "../../lib/notifyUsers";
-import type { ClubJoinType, ClubMember, JoinAnswer, MemberRole } from "../../types";
+import type { ClubMember, JoinAnswer, MemberRole } from "../../types";
 import {
   isPrivilegedClubRole,
   isTopClubModeratorRole,
@@ -311,12 +311,6 @@ interface JoinApplicationRow {
   createdAt: string;
   fullName: string;
   avatarUrl?: string;
-}
-
-interface JoinVoteRow {
-  applicantId: string;
-  voterId: string;
-  vote: "yes" | "no";
 }
 
 interface OrgChartMember {
@@ -628,8 +622,16 @@ export default function ClubMembersPage() {
   const canReorderRoster = isTopClubModeratorRole(role);
   const canUseMembershipQueue = isPrivilegedClubRole(role);
 
-  const { members, pendingMembers, loading, removeMember, approveRequest, rejectRequest, refresh } =
-    useClubMembers(clubId);
+  const {
+    members,
+    pendingMembers,
+    membershipType,
+    loading,
+    removeMember,
+    approveRequest,
+    rejectRequest,
+    refresh,
+  } = useClubMembers(clubId);
   const isMobile = useIsMobile();
 
   const [viewMode, setViewMode] = useState<ViewMode>("orgChart");
@@ -654,9 +656,7 @@ export default function ClubMembersPage() {
   const [memberRoleFilter, setMemberRoleFilter] = useState<MemberRoleFilter>("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
 
-  const [joinType, setJoinType] = useState<ClubJoinType>("open");
   const [applications, setApplications] = useState<JoinApplicationRow[]>([]);
-  const [applicationVotes, setApplicationVotes] = useState<JoinVoteRow[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [applicationFilter, setApplicationFilter] = useState<ApplicationFilter>("pending");
   const [expandedApplicationId, setExpandedApplicationId] = useState<string | null>(null);
@@ -730,22 +730,6 @@ export default function ClubMembersPage() {
 
   useEffect(() => {
     if (!clubId) return;
-    if (club?.joinType) {
-      setJoinType(club.joinType);
-      return;
-    }
-    supabase
-      .from("clubs")
-      .select("join_type")
-      .eq("id", clubId)
-      .maybeSingle()
-      .then(({ data }) => {
-        setJoinType(normalizeJoinType(data?.join_type));
-      });
-  }, [clubId, club?.joinType]);
-
-  useEffect(() => {
-    if (!clubId) return;
     void (async () => {
       const { count, error } = await supabase
         .from("club_invites")
@@ -775,7 +759,6 @@ export default function ClubMembersPage() {
     if (error) {
       console.error("Failed to load join applications:", error.message);
       setApplications([]);
-      setApplicationVotes([]);
       setApplicationsLoading(false);
       return;
     }
@@ -821,39 +804,17 @@ export default function ClubMembersPage() {
     });
 
     setApplications(mapped);
-
-    if (joinType === "vote" && applicantIds.length > 0) {
-      const { data: votes } = await supabase
-        .from("club_join_votes")
-        .select("applicant_id, voter_id, vote")
-        .eq("club_id", clubId)
-        .in("applicant_id", applicantIds);
-
-      setApplicationVotes(
-        (votes ?? []).map((row) => ({
-          applicantId: row.applicant_id as string,
-          voterId: row.voter_id as string,
-          vote: row.vote as "yes" | "no",
-        })),
-      );
-    } else {
-      setApplicationVotes([]);
-    }
-
     setApplicationsLoading(false);
-  }, [clubId, joinType]);
+  }, [clubId]);
 
   useEffect(() => {
-    if (viewMode === "applications" && joinType !== "open") {
+    if (
+      viewMode === "applications" &&
+      membershipUsesApplicationQueue(membershipType)
+    ) {
       void loadApplications();
     }
-  }, [viewMode, joinType, loadApplications]);
-
-  const eligibleVoters = members.filter(
-    (m) =>
-      m.status === "active" &&
-      (m.role === "owner" || m.role === "executive"),
-  );
+  }, [viewMode, membershipType, loadApplications]);
 
   const filteredApplications = applications.filter(
     (app) => app.status === applicationFilter,
@@ -925,59 +886,6 @@ export default function ClubMembersPage() {
       },
     ]);
 
-    void loadApplications();
-  }
-
-  async function handleCastVote(
-    application: JoinApplicationRow,
-    vote: "yes" | "no",
-  ) {
-    if (!clubId || !user?.id) return;
-    setActionLoading(application.id);
-
-    const { error } = await supabase.from("club_join_votes").upsert(
-      {
-        club_id: clubId,
-        applicant_id: application.applicantId,
-        voter_id: user.id,
-        vote,
-      },
-      { onConflict: "club_id,applicant_id,voter_id" },
-    );
-
-    if (error) {
-      console.error("Failed to cast vote:", error.message);
-      setFeedback({ type: "error", text: "Failed to submit vote." });
-      setActionLoading(null);
-      return;
-    }
-
-    const updatedVotes = [
-      ...applicationVotes.filter(
-        (v) =>
-          !(
-            v.applicantId === application.applicantId &&
-            v.voterId === user.id
-          ),
-      ),
-      { applicantId: application.applicantId, voterId: user.id, vote },
-    ];
-    setApplicationVotes(updatedVotes);
-
-    const appVotes = updatedVotes.filter(
-      (v) => v.applicantId === application.applicantId,
-    );
-    const yesCount = appVotes.filter((v) => v.vote === "yes").length;
-    const noCount = appVotes.filter((v) => v.vote === "no").length;
-    const threshold = Math.ceil(eligibleVoters.length / 2);
-
-    if (yesCount >= threshold && yesCount > noCount) {
-      await admitApplicant(application);
-    } else if (noCount >= threshold && noCount > yesCount) {
-      await rejectApplication(application);
-    }
-
-    setActionLoading(null);
     void loadApplications();
   }
 
@@ -1349,7 +1257,8 @@ export default function ClubMembersPage() {
           ) : null}
           {viewToggleButton("list", "List")}
           {viewToggleButton("orgChart", "Org Chart")}
-          {canUseMembershipQueue && joinType !== "open"
+          {canUseMembershipQueue &&
+          membershipUsesApplicationQueue(membershipType)
             ? viewToggleButton("applications", "Applications")
             : null}
         </div>
@@ -1740,28 +1649,13 @@ export default function ClubMembersPage() {
               }}
             >
               <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-                {joinType === "vote"
-                  ? "No pending membership requests"
-                  : "No applications yet"}
+                No applications yet
               </p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {filteredApplications.map((application) => {
-                const appVotes = applicationVotes.filter(
-                  (v) => v.applicantId === application.applicantId,
-                );
-                const yesCount = appVotes.filter((v) => v.vote === "yes").length;
-                const noCount = appVotes.filter((v) => v.vote === "no").length;
-                const myVote = appVotes.find((v) => v.voterId === user?.id)?.vote;
                 const expanded = expandedApplicationId === application.id;
-                const threshold = Math.ceil(eligibleVoters.length / 2);
-                const admitted =
-                  application.status === "approved" ||
-                  (yesCount >= threshold && yesCount > noCount);
-                const declined =
-                  application.status === "rejected" ||
-                  (noCount >= threshold && noCount > yesCount);
 
                 return (
                   <div
@@ -1835,7 +1729,7 @@ export default function ClubMembersPage() {
                           )}
                         </p>
                       </div>
-                      {admitted && application.status === "approved" ? (
+                      {application.status === "approved" ? (
                         <span
                           style={{
                             background: "#1a1200",
@@ -1850,7 +1744,7 @@ export default function ClubMembersPage() {
                           Admitted
                         </span>
                       ) : null}
-                      {declined && application.status === "rejected" ? (
+                      {application.status === "rejected" ? (
                         <span
                           style={{
                             background: "#1a1a1a",
@@ -1917,7 +1811,9 @@ export default function ClubMembersPage() {
                       </div>
                     ) : null}
 
-                    {application.status === "pending" && joinType === "application" && (isOwner || isExecutive) ? (
+                    {application.status === "pending" &&
+                    membershipUsesApplicationQueue(membershipType) &&
+                    (isOwner || isExecutive) ? (
                       <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
                         <button
                           type="button"
@@ -1953,68 +1849,6 @@ export default function ClubMembersPage() {
                         >
                           Decline
                         </button>
-                      </div>
-                    ) : null}
-
-                    {application.status === "pending" && joinType === "vote" && canUseMembershipQueue ? (
-                      <div style={{ marginTop: "16px" }}>
-                        <p
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            color: "#ffffff",
-                            margin: "0 0 10px",
-                          }}
-                        >
-                          Vote to Admit
-                        </p>
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            disabled={Boolean(myVote) || actionLoading === application.id}
-                            onClick={() => void handleCastVote(application, "yes")}
-                            style={{
-                              background: myVote === "yes" ? "#1a1200" : "transparent",
-                              border: "1px solid #FFC429",
-                              color: "#FFC429",
-                              borderRadius: "6px",
-                              padding: "7px 18px",
-                              fontSize: "13px",
-                              fontWeight: 600,
-                              cursor: myVote ? "default" : "pointer",
-                              opacity: myVote && myVote !== "yes" ? 0.5 : 1,
-                            }}
-                          >
-                            Yes
-                          </button>
-                          <button
-                            type="button"
-                            disabled={Boolean(myVote) || actionLoading === application.id}
-                            onClick={() => void handleCastVote(application, "no")}
-                            style={{
-                              background: myVote === "no" ? "#1a0505" : "transparent",
-                              border: "1px solid #E51937",
-                              color: "#E51937",
-                              borderRadius: "6px",
-                              padding: "7px 18px",
-                              fontSize: "13px",
-                              fontWeight: 600,
-                              cursor: myVote ? "default" : "pointer",
-                              opacity: myVote && myVote !== "no" ? 0.5 : 1,
-                            }}
-                          >
-                            No
-                          </button>
-                        </div>
-                        <p
-                          style={{
-                            margin: "10px 0 0",
-                            fontSize: "12px",
-                            color: "#555555",
-                          }}
-                        >
-                          {yesCount} yes · {noCount} no
-                        </p>
                       </div>
                     ) : null}
                   </div>

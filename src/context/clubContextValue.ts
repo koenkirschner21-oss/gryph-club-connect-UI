@@ -17,7 +17,10 @@ export interface ClubContextValue {
   joinedClubs: string[];
   pendingClubs: string[];
   savedClubs: string[];
-  joinClub: (clubId: string) => Promise<boolean>;
+  joinClub: (
+    clubId: string,
+    options?: { viaJoinCode?: boolean },
+  ) => Promise<boolean>;
   leaveClub: (clubId: string) => void;
   toggleSaveClub: (clubId: string) => void;
   isJoined: (clubId: string) => boolean;

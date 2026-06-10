@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  membershipRequiresApproval,
+  normalizeMembershipType,
+} from "../../lib/clubJoinUtils";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import Button from "../../components/ui/Button";
@@ -54,7 +58,13 @@ export default function JoinClubPage() {
 
       const clubId = clubRow.id as string;
       const clubName = clubRow.name as string;
-      const requiresApproval = (clubRow.requires_approval as boolean) ?? false;
+      const membershipType = normalizeMembershipType(clubRow.membership_type);
+
+      if (membershipType === "no_membership") {
+        showToast("This club does not accept general members.", "error");
+        setLoading(false);
+        return;
+      }
 
       // Check if already a member
       if (isJoined(clubId)) {
@@ -70,14 +80,14 @@ export default function JoinClubPage() {
         return;
       }
 
-      const joined = await joinClub(clubId);
+      const joined = await joinClub(clubId, { viaJoinCode: true });
 
       if (!joined) {
         showToast("Failed to join club. Please try again.", "error");
         return;
       }
 
-      if (requiresApproval) {
+      if (membershipRequiresApproval(membershipType)) {
         showToast(
           `Request sent to join "${clubName}". An admin will review your request.`,
           "success",

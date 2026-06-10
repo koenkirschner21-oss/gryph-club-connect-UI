@@ -7,7 +7,11 @@ import {
 } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { normalizeTags } from "../lib/normalizeTags";
-import { parseJoinQuestions } from "../lib/clubJoinUtils";
+import {
+  membershipRequiresApproval,
+  normalizeMembershipType,
+  parseJoinQuestions,
+} from "../lib/clubJoinUtils";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club, MemberRole } from "../types";
@@ -62,6 +66,7 @@ function mapRow(row: Record<string, unknown>): Club {
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
     joinType: ((row.join_type as string) ?? "open") as Club["joinType"],
+    membershipType: normalizeMembershipType(row.membership_type),
     joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
@@ -247,11 +252,14 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   }, [activeClubId, joinedClubs, switchClub, userId]);
 
   const joinClub = useCallback(
-    async (clubId: string): Promise<boolean> => {
+    async (
+      clubId: string,
+      options?: { viaJoinCode?: boolean },
+    ): Promise<boolean> => {
       if (!user) return false;
 
       const localClub = clubs.find((c) => c.id === clubId);
-      let needsApproval = localClub?.requiresApproval ?? false;
+      let membershipType = localClub?.membershipType ?? "open";
 
       if (!localClub) {
         const { data, error } = await supabase
@@ -264,12 +272,22 @@ export function ClubProvider({ children }: { children: ReactNode }) {
           return false;
         }
         const c = mapRow(data as Record<string, unknown>);
-        needsApproval = c.requiresApproval ?? false;
+        membershipType = c.membershipType ?? "open";
         setClubs((prev) =>
           prev.some((x) => x.id === c.id) ? prev : [...prev, c]);
       }
 
-      const status = needsApproval ? "pending" : "active";
+      if (membershipType === "no_membership") {
+        return false;
+      }
+
+      if (membershipType === "invite_only" && !options?.viaJoinCode) {
+        return false;
+      }
+
+      const status = membershipRequiresApproval(membershipType)
+        ? "pending"
+        : "active";
 
       const { error } = await supabase
         .from("club_members")
@@ -288,7 +306,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      if (needsApproval) {
+      if (membershipRequiresApproval(membershipType)) {
         setPendingClubs((prev) =>
           prev.includes(clubId) ? prev : [...prev, clubId],
         );
@@ -454,6 +472,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.bannerUrl !== undefined) row.banner_url = fields.bannerUrl;
       if (fields.requiresApproval !== undefined)
         row.requires_approval = fields.requiresApproval;
+      if (fields.membershipType !== undefined)
+        row.membership_type = fields.membershipType;
       if (fields.joinCode !== undefined) row.join_code = fields.joinCode;
 
       const { data, error } = await supabase

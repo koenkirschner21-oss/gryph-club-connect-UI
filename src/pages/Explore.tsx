@@ -9,6 +9,7 @@ import {
 import { ChevronDown } from "lucide-react";
 import {
   normalizeJoinType,
+  normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
 import { useClubContext } from "../context/useClubContext";
@@ -298,6 +299,7 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
     joinType: normalizeJoinType(row.join_type),
+    membershipType: normalizeMembershipType(row.membership_type),
     joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,

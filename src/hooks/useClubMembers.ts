@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { notifyUsers } from "../lib/notifyUsers";
-import type { ClubMember, MemberRole } from "../types";
+import { normalizeMembershipType } from "../lib/clubJoinUtils";
+import type { ClubMember, MemberRole, MembershipType } from "../types";
 
 /** Map a joined club_members + profiles row to our ClubMember type. */
 function mapMemberRow(row: Record<string, unknown>): ClubMember {
@@ -23,6 +24,7 @@ function mapMemberRow(row: Record<string, unknown>): ClubMember {
 export interface UseClubMembersReturn {
   members: ClubMember[];
   pendingMembers: ClubMember[];
+  membershipType: MembershipType;
   loading: boolean;
   error: string | null;
   updateRole: (memberId: string, newRole: MemberRole) => Promise<boolean>;
@@ -41,6 +43,7 @@ export function useClubMembers(
 ): UseClubMembersReturn {
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [pendingMembers, setPendingMembers] = useState<ClubMember[]>([]);
+  const [membershipType, setMembershipType] = useState<MembershipType>("open");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -52,6 +55,11 @@ export function useClubMembers(
     let cancelled = false;
 
     Promise.all([
+      supabase
+        .from("clubs")
+        .select("membership_type")
+        .eq("id", clubId)
+        .maybeSingle(),
       supabase
         .from("club_members")
         .select(`
@@ -90,8 +98,15 @@ export function useClubMembers(
         .eq("club_id", clubId)
         .eq("status", "pending")
         .order("created_at", { ascending: true }),
-    ]).then(([activeRes, pendingRes]) => {
+    ]).then(([clubRes, activeRes, pendingRes]) => {
       if (cancelled) return;
+      if (clubRes.error) {
+        console.error("Failed to load club membership type:", clubRes.error.message);
+      } else {
+        setMembershipType(
+          normalizeMembershipType(clubRes.data?.membership_type),
+        );
+      }
       if (activeRes.error) {
         console.error("Failed to load members:", activeRes.error.message);
         setError(activeRes.error.message);
@@ -219,5 +234,16 @@ export function useClubMembers(
     [],
   );
 
-  return { members, pendingMembers, loading, error, updateRole, removeMember, approveRequest, rejectRequest, refresh };
+  return {
+    members,
+    pendingMembers,
+    membershipType,
+    loading,
+    error,
+    updateRole,
+    removeMember,
+    approveRequest,
+    rejectRequest,
+    refresh,
+  };
 }

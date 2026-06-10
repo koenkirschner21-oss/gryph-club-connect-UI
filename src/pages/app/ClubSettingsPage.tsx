@@ -8,15 +8,18 @@ import {
   type ReactNode,
 } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
-import { Users, ClipboardList, Vote, Camera, Globe } from "lucide-react";
+import { Users, ClipboardList, Link2, Bookmark, Camera, Globe } from "lucide-react";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
-import { parseJoinQuestions } from "../../lib/clubJoinUtils";
+import {
+  normalizeMembershipType,
+  parseJoinQuestions,
+} from "../../lib/clubJoinUtils";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
-import type { ClubJoinType, JoinQuestion, MemberRole } from "../../types";
+import type { JoinQuestion, MemberRole, MembershipType } from "../../types";
 import ImageUpload from "../../components/ui/ImageUpload";
 import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
@@ -184,7 +187,7 @@ interface FormSnapshot {
   category: string;
   abbreviation: string;
   brandColor: string;
-  requiresApproval: boolean;
+  membershipType: MembershipType;
   logoUrl: string;
   bannerUrl: string;
   instagramUrl: string;
@@ -426,29 +429,35 @@ function SocialLinkField({
   );
 }
 
-const JOIN_TYPE_OPTIONS: {
-  value: ClubJoinType;
+const MEMBERSHIP_TYPE_OPTIONS: {
+  value: MembershipType;
   label: string;
   description: string;
   icon: typeof Users;
 }[] = [
   {
     value: "open",
-    label: "Open",
+    label: "Open Membership",
     description: "Anyone can join instantly",
     icon: Users,
   },
   {
-    value: "application",
-    label: "Application",
-    description: "Members must apply and be approved by an executive",
+    value: "approval_required",
+    label: "Approval Required",
+    description: "Members request to join, you review and approve",
     icon: ClipboardList,
   },
   {
-    value: "vote",
-    label: "Vote",
-    description: "Executives vote yes/no, majority wins",
-    icon: Vote,
+    value: "invite_only",
+    label: "Invite Only",
+    description: "Members need an invite link or join code",
+    icon: Link2,
+  },
+  {
+    value: "no_membership",
+    label: "No General Membership",
+    description: "No general members, students can only save or follow",
+    icon: Bookmark,
   },
 ];
 
@@ -608,10 +617,6 @@ export default function ClubSettingsPage() {
     club?.abbreviation ?? "",
   );
   const [brandColor, setBrandColor] = useState(club?.brandColor ?? "#C20430");
-  const [requiresApproval, setRequiresApproval] = useState(
-    club?.requiresApproval ?? false,
-  );
-
   const [logoUrl, setLogoUrl] = useState(club?.logoUrl ?? "");
   const [bannerUrl, setBannerUrl] = useState(club?.bannerUrl ?? "");
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -649,10 +654,11 @@ export default function ClubSettingsPage() {
   const [twitterUrl, setTwitterUrl] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
 
-  const [joinType, setJoinType] = useState<ClubJoinType>("open");
+  const [membershipType, setMembershipType] = useState<MembershipType>(
+    club?.membershipType ?? "open",
+  );
   const [joinQuestions, setJoinQuestions] = useState<JoinQuestion[]>([]);
   const [savingJoinQuestions, setSavingJoinQuestions] = useState(false);
-  const [updatingJoinType, setUpdatingJoinType] = useState(false);
 
   const isOwner = userRole === "owner";
 
@@ -664,7 +670,7 @@ export default function ClubSettingsPage() {
       category: club?.category ?? "",
       abbreviation: club?.abbreviation ?? "",
       brandColor: club?.brandColor ?? "#C20430",
-      requiresApproval: club?.requiresApproval ?? false,
+      membershipType: club?.membershipType ?? "open",
       logoUrl: club?.logoUrl ?? "",
       bannerUrl: club?.bannerUrl ?? "",
       instagramUrl: "",
@@ -686,7 +692,7 @@ export default function ClubSettingsPage() {
     setCategory(snapshot.category);
     setAbbreviation(snapshot.abbreviation);
     setBrandColor(snapshot.brandColor);
-    setRequiresApproval(snapshot.requiresApproval);
+    setMembershipType(snapshot.membershipType);
     setLogoUrl(snapshot.logoUrl);
     setBannerUrl(snapshot.bannerUrl);
     setInstagramUrl(snapshot.instagramUrl);
@@ -760,11 +766,7 @@ export default function ClubSettingsPage() {
         setLinkedinUrl(loadedLinkedin);
         setTwitterUrl(loadedTwitter);
         setWebsiteUrl(loadedWebsite);
-        setJoinType(
-          data.join_type === "application" || data.join_type === "vote"
-            ? data.join_type
-            : "open",
-        );
+        setMembershipType(normalizeMembershipType(data.membership_type));
         setJoinQuestions(parseJoinQuestions(data.join_questions));
         setSavedSnapshot((prev) =>
           prev
@@ -840,7 +842,7 @@ export default function ClubSettingsPage() {
             brandColor: brandColor.trim() || undefined,
             logoUrl: logoUrl.trim() || undefined,
             bannerUrl: bannerUrl.trim() || undefined,
-            requiresApproval,
+            membershipType,
           }
         : {
             name: name.trim(),
@@ -880,7 +882,7 @@ export default function ClubSettingsPage() {
         category: category.trim(),
         abbreviation: abbreviation.trim(),
         brandColor: brandColor.trim(),
-        requiresApproval,
+        membershipType,
         logoUrl: logoUrl.trim(),
         bannerUrl: bannerUrl.trim(),
         instagramUrl: instagramUrl.trim(),
@@ -1005,25 +1007,6 @@ export default function ClubSettingsPage() {
     setLeaving(false);
     setShowLeaveModal(false);
     navigate("/app", { replace: true });
-  }
-
-  async function handleJoinTypeChange(nextType: ClubJoinType) {
-    if (!clubId || joinType === nextType) return;
-    setUpdatingJoinType(true);
-    const { error } = await supabase
-      .from("clubs")
-      .update({ join_type: nextType })
-      .eq("id", clubId);
-
-    setUpdatingJoinType(false);
-    if (error) {
-      console.error("Failed to update join type:", error.message);
-      showToast("Failed to update membership type", "error");
-      return;
-    }
-
-    setJoinType(nextType);
-    showToast("Membership type updated", "success");
   }
 
   async function handleSaveJoinQuestions() {
@@ -1579,6 +1562,7 @@ export default function ClubSettingsPage() {
         ) : null}
 
         {isOwner ? (
+          <>
           <SettingsSection
             title="Social Links"
             subtitle="Connect your club's social profiles and website."
@@ -1620,66 +1604,37 @@ export default function ClubSettingsPage() {
               placeholder="https://yourclub.com"
             />
           </SettingsSection>
-        ) : null}
 
-        {!hasUnsavedChanges ? (
-          <div style={{ marginBottom: "20px" }}>
-            <button
-              type="submit"
-              disabled={saving}
-              style={{
-                background: ACCENT_RED,
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "9px 20px",
-                fontSize: "14px",
-                fontWeight: 700,
-                cursor: saving ? "wait" : "pointer",
-                opacity: saving ? 0.7 : 1,
-              }}
-            >
-              {saving ? "Saving…" : "Save Changes"}
-            </button>
-          </div>
-        ) : null}
-      </form>
-
-      {isOwner ? (
-        <>
           <SettingsSection
             title="Membership"
             subtitle="Control how new members join your club."
           >
             <div
               style={{
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
                 gap: "12px",
-                flexWrap: "wrap",
               }}
             >
-              {JOIN_TYPE_OPTIONS.map((option) => {
-                const selected = joinType === option.value;
+              {MEMBERSHIP_TYPE_OPTIONS.map((option) => {
+                const selected = membershipType === option.value;
                 const Icon = option.icon;
                 return (
                   <button
                     key={option.value}
                     type="button"
-                    disabled={updatingJoinType}
-                    onClick={() => void handleJoinTypeChange(option.value)}
+                    onClick={() => {
+                      setMembershipType(option.value);
+                      markDirty();
+                    }}
                     style={{
-                      background: selected ? "#1a0505" : INPUT_BG,
-                      borderTop: `1px solid ${CARD_BORDER}`,
-                      borderRight: `1px solid ${CARD_BORDER}`,
-                      borderBottom: `1px solid ${CARD_BORDER}`,
-                      borderLeft: selected
-                        ? `3px solid ${ACCENT_RED}`
-                        : `1px solid ${CARD_BORDER}`,
+                      background: "#141414",
+                      border: selected
+                        ? "1px solid #E51937"
+                        : "1px solid #2a2a2a",
                       borderRadius: "10px",
                       padding: "16px",
-                      cursor: updatingJoinType ? "wait" : "pointer",
-                      flex: "1 1 180px",
+                      cursor: "pointer",
                       textAlign: "left",
                     }}
                   >
@@ -1714,7 +1669,7 @@ export default function ClubSettingsPage() {
               })}
             </div>
 
-            {joinType === "application" ? (
+            {membershipType === "approval_required" ? (
               <div style={{ marginTop: "20px" }}>
                 <h3
                   style={{
@@ -1751,80 +1706,35 @@ export default function ClubSettingsPage() {
                 </button>
               </div>
             ) : null}
+          </SettingsSection>
+          </>
+        ) : null}
 
-            <div
+        {!hasUnsavedChanges ? (
+          <div style={{ marginBottom: "20px" }}>
+            <button
+              type="submit"
+              disabled={saving}
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                paddingTop: "16px",
-                marginTop: "16px",
-                borderTop: "1px solid #1a1a1a",
+                background: ACCENT_RED,
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "9px 20px",
+                fontSize: "14px",
+                fontWeight: 700,
+                cursor: saving ? "wait" : "pointer",
+                opacity: saving ? 0.7 : 1,
               }}
             >
-              <div>
-                <p
-                  style={{
-                    fontSize: "14px",
-                    color: "#ffffff",
-                    fontWeight: 500,
-                    margin: 0,
-                  }}
-                >
-                  Require Join Approval
-                </p>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "#555555",
-                    marginTop: "2px",
-                    marginBottom: 0,
-                  }}
-                >
-                  New members must be approved by an admin or exec
-                </p>
-              </div>
-              <button
-                id="requires-approval"
-                type="button"
-                role="switch"
-                aria-checked={requiresApproval}
-                onClick={() => {
-                  setRequiresApproval((v) => !v);
-                  markDirty();
-                }}
-                style={{
-                  position: "relative",
-                  display: "inline-flex",
-                  height: "24px",
-                  width: "44px",
-                  flexShrink: 0,
-                  cursor: "pointer",
-                  borderRadius: "9999px",
-                  border: "2px solid transparent",
-                  background: requiresApproval ? ACCENT_RED : "#333333",
-                  transition: "background 0.2s ease",
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    pointerEvents: "none",
-                    display: "inline-block",
-                    height: "20px",
-                    width: "20px",
-                    borderRadius: "50%",
-                    background: "#ffffff",
-                    transform: requiresApproval
-                      ? "translateX(20px)"
-                      : "translateX(0)",
-                    transition: "transform 0.2s ease",
-                  }}
-                />
-              </button>
-            </div>
-          </SettingsSection>
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </div>
+        ) : null}
+      </form>
 
+      {isOwner ? (
+        <>
           <SettingsSection
             title="Join Code"
             subtitle="Share this code to let people join your club."

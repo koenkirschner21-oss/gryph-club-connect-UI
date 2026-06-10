@@ -4,16 +4,22 @@ import { Globe, Users, X } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { getClubInitials } from "../lib/clubUtils";
 import {
-  joinTypeBadgeLabel,
-  joinTypeBadgeStyle,
-  normalizeJoinType,
+  membershipBadgeLabel,
+  membershipBadgeStyle,
+  normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
 import { notifyUsers } from "../lib/notifyUsers";
-import type { Club, ClubEvent, ClubJoinType, JoinAnswer, JoinQuestion } from "../types";
+import type {
+  Club,
+  ClubEvent,
+  JoinAnswer,
+  JoinQuestion,
+  MembershipType,
+} from "../types";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
@@ -34,7 +40,7 @@ interface PublicClubProfile {
   twitterUrl?: string;
   websiteUrl?: string;
   createdAt?: string;
-  joinType: ClubJoinType;
+  membershipType: MembershipType;
   joinQuestions: JoinQuestion[];
 }
 
@@ -524,7 +530,7 @@ export default function ClubPublicProfilePage() {
         twitterUrl: (clubRow.twitter_url as string) ?? undefined,
         websiteUrl: (clubRow.website_url as string) ?? undefined,
         createdAt: (clubRow.created_at as string) ?? undefined,
-        joinType: normalizeJoinType(clubRow.join_type),
+        membershipType: normalizeMembershipType(clubRow.membership_type),
         joinQuestions: parseJoinQuestions(clubRow.join_questions),
       };
 
@@ -636,8 +642,9 @@ export default function ClubPublicProfilePage() {
 
   async function handleJoinOrLeave() {
     if (!clubId) return;
-    const joinType = profile?.joinType ?? contextClub?.joinType ?? "open";
-    if (joinType !== "open") return;
+    const membershipType =
+      profile?.membershipType ?? contextClub?.membershipType ?? "open";
+    if (membershipType !== "open") return;
     if (joined || pending) {
       leaveClub(clubId);
       return;
@@ -667,55 +674,6 @@ export default function ClubPublicProfilePage() {
         },
       ]);
     }
-  }
-
-  async function handleRequestVoteJoin() {
-    if (!clubId || !user?.id) {
-      navigate(`/signup?redirect=${encodeURIComponent(window.location.pathname)}`);
-      return;
-    }
-    if (applicationStatus === "pending" || joined) return;
-
-    setSubmittingApplication(true);
-    setJoinError(false);
-    setJoinNotice(null);
-
-    const { data: existing } = await supabase
-      .from("club_join_applications")
-      .select("id")
-      .eq("club_id", clubId)
-      .eq("applicant_id", user.id)
-      .eq("status", "pending")
-      .maybeSingle();
-
-    if (existing) {
-      setSubmittingApplication(false);
-      setJoinNotice("Your request is already pending");
-      setApplicationStatus("pending");
-      return;
-    }
-
-    const { error } = await supabase.from("club_join_applications").insert({
-      club_id: clubId,
-      applicant_id: user.id,
-      answers: [],
-      status: "pending",
-    });
-
-    setSubmittingApplication(false);
-    if (error) {
-      console.error("Failed to submit join request:", error.message);
-      setJoinError(true);
-      return;
-    }
-    setApplicationStatus("pending");
-
-    const name =
-      profile?.name ?? contextClub?.name ?? "your club";
-    await notifyClubOwnerJoin(
-      clubId,
-      `Someone has requested to join ${name}. Executives can vote in the members page.`,
-    );
   }
 
   async function handleSubmitJoinApplication(answers: JoinAnswer[]) {
@@ -792,14 +750,14 @@ export default function ClubPublicProfilePage() {
     imageUrl: contextClub!.imageUrl,
     category: contextClub!.category,
     createdAt: contextClub!.createdAt,
-    joinType: contextClub!.joinType ?? "open",
+    membershipType: contextClub!.membershipType ?? "open",
     joinQuestions: contextClub!.joinQuestions ?? [],
   };
 
-  const joinType = club.joinType ?? "open";
+  const membershipType = club.membershipType ?? "open";
   const joinQuestions = club.joinQuestions ?? [];
-  const joinBadgeStyle = joinTypeBadgeStyle(joinType);
-  const joinBadgeLabel = joinTypeBadgeLabel(joinType);
+  const joinBadgeStyle = membershipBadgeStyle(membershipType);
+  const joinBadgeLabel = membershipBadgeLabel(membershipType);
 
   const aboutText =
     club.longDescription?.trim() || club.shortDescription?.trim() || "";
@@ -828,16 +786,14 @@ export default function ClubPublicProfilePage() {
 
   function handleEventJoinAction() {
     setSelectedEvent(null);
-    const joinType = club.joinType ?? "open";
-    if (joinType === "application") {
+    const type = club.membershipType ?? "open";
+    if (type === "approval_required") {
       openApplicationFlow();
       return;
     }
-    if (joinType === "vote") {
-      void handleRequestVoteJoin();
-      return;
+    if (type === "open") {
+      void handleJoinOrLeave();
     }
-    void handleJoinOrLeave();
   }
 
   const headerPadding = isMobile ? "0 16px" : "0 32px";
@@ -1022,14 +978,13 @@ export default function ClubPublicProfilePage() {
                 </>
               ) : (
                 <ClubJoinAction
-                  joinType={joinType}
+                  membershipType={membershipType}
                   pending={pending}
                   joining={joining}
                   submittingApplication={submittingApplication}
                   applicationStatus={applicationStatus}
                   onOpenJoin={() => void handleJoinOrLeave()}
                   onOpenApplication={openApplicationFlow}
-                  onRequestVote={() => void handleRequestVoteJoin()}
                   fullWidth={isMobile}
                 />
               )}
@@ -1169,7 +1124,7 @@ export default function ClubPublicProfilePage() {
           club={club}
           initialsClub={initialsClub}
           memberCount={memberCount}
-          joinType={joinType}
+          membershipType={membershipType}
           joinBadgeLabel={joinBadgeLabel}
           joinBadgeStyle={joinBadgeStyle}
           events={events.slice(0, 2)}
@@ -1179,11 +1134,9 @@ export default function ClubPublicProfilePage() {
           onOpenWorkspace={() => navigate(`/app/clubs/${club.id}`)}
           onJoin={() => {
             setShowAboutModal(false);
-            if (joinType === "application") {
+            if (membershipType === "approval_required") {
               openApplicationFlow();
-            } else if (joinType === "vote") {
-              void handleRequestVoteJoin();
-            } else {
+            } else if (membershipType === "open") {
               void handleJoinOrLeave();
             }
           }}
@@ -1414,7 +1367,7 @@ function ClubAboutModal({
   club,
   initialsClub,
   memberCount,
-  joinType,
+  membershipType,
   joinBadgeLabel,
   joinBadgeStyle,
   events,
@@ -1427,7 +1380,7 @@ function ClubAboutModal({
   club: PublicClubProfile;
   initialsClub: Pick<Club, "name" | "abbreviation">;
   memberCount: number;
-  joinType: ClubJoinType;
+  membershipType: MembershipType;
   joinBadgeLabel: string | null;
   joinBadgeStyle: CSSProperties | null;
   events: ClubEvent[];
@@ -1441,10 +1394,10 @@ function ClubAboutModal({
     club.longDescription?.trim() || club.shortDescription?.trim() || "";
 
   const joinLabel =
-    joinType === "application"
+    membershipType === "approval_required"
       ? "Apply to Join"
-      : joinType === "vote"
-        ? "Request to Join"
+      : membershipType === "no_membership" || membershipType === "invite_only"
+        ? "Save Club"
         : "Join Club";
 
   return (
@@ -1591,7 +1544,8 @@ function ClubAboutModal({
             >
               Open Workspace
             </button>
-          ) : (
+          ) : membershipType === "no_membership" ||
+            membershipType === "invite_only" ? null : (
             <button
               type="button"
               onClick={onJoin}
@@ -1966,27 +1920,53 @@ function statusBadgeStyle(base: CSSProperties): CSSProperties {
 }
 
 function ClubJoinAction({
-  joinType,
+  membershipType,
   pending,
   joining,
   submittingApplication,
   applicationStatus,
   onOpenJoin,
   onOpenApplication,
-  onRequestVote,
   fullWidth,
 }: {
-  joinType: ClubJoinType;
+  membershipType: MembershipType;
   pending: boolean;
   joining: boolean;
   submittingApplication: boolean;
   applicationStatus: JoinApplicationStatus;
   onOpenJoin: () => void;
   onOpenApplication: () => void;
-  onRequestVote: () => void;
   fullWidth?: boolean;
 }) {
-  if (joinType === "application") {
+  if (membershipType === "no_membership") {
+    return (
+      <span
+        style={statusBadgeStyle({
+          background: "#1a1a1a",
+          border: "1px solid #333333",
+          color: "#777777",
+        })}
+      >
+        No general membership
+      </span>
+    );
+  }
+
+  if (membershipType === "invite_only") {
+    return (
+      <span
+        style={statusBadgeStyle({
+          background: "#0a0a1a",
+          border: "1px solid #6b7cff",
+          color: "#6b7cff",
+        })}
+      >
+        Invite only
+      </span>
+    );
+  }
+
+  if (membershipType === "approval_required") {
     if (applicationStatus === "pending") {
       return (
         <span
@@ -2033,57 +2013,6 @@ function ClubJoinAction({
         }}
       >
         {submittingApplication ? "Submitting…" : "Apply to Join"}
-      </button>
-    );
-  }
-
-  if (joinType === "vote") {
-    if (applicationStatus === "pending") {
-      return (
-        <span
-          style={statusBadgeStyle({
-            background: "#0a0a1a",
-            border: "1px solid #6b7cff",
-            color: "#6b7cff",
-          })}
-        >
-          Vote in Progress
-        </span>
-      );
-    }
-    if (applicationStatus === "rejected") {
-      return (
-        <span
-          style={statusBadgeStyle({
-            background: "#1a1a1a",
-            border: "1px solid #333333",
-            color: "#747676",
-          })}
-        >
-          Declined
-        </span>
-      );
-    }
-    return (
-      <button
-        type="button"
-        disabled={submittingApplication}
-        onClick={onRequestVote}
-        style={{
-          background: "#E51937",
-          color: "#ffffff",
-          border: "none",
-          borderRadius: "8px",
-          padding: "10px 24px",
-          fontWeight: 600,
-          fontSize: "14px",
-          cursor: submittingApplication ? "wait" : "pointer",
-          whiteSpace: "nowrap",
-          width: fullWidth ? "100%" : undefined,
-          boxSizing: "border-box",
-        }}
-      >
-        {submittingApplication ? "Submitting…" : "Request to Join"}
       </button>
     );
   }
