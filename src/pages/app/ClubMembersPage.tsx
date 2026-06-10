@@ -7,6 +7,13 @@ import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { membershipUsesApplicationQueue } from "../../lib/clubJoinUtils";
+import {
+  ROLE_TITLE_CUSTOM,
+  formatMemberDisplayRole,
+  resolveRoleTitleFromSelection,
+  resolveRoleTitleSelection,
+  roleTitleOptionsForRole,
+} from "../../lib/memberRoleTitle";
 import { notifyUsers } from "../../lib/notifyUsers";
 import type { ClubMember, JoinAnswer, MemberRole } from "../../types";
 import {
@@ -195,12 +202,6 @@ function normalizeMemberRole(role: string): MemberRole {
   return "member";
 }
 
-function formatRoleLabel(role: MemberRole | string): string {
-  if (role === "executive" || role === "exec") return "Executive";
-  if (role === "owner") return "President";
-  return "Member";
-}
-
 const ROLE_OPTIONS: { value: MemberRole; label: string }[] = [
   { value: "owner", label: "President" },
   { value: "executive", label: "Executive" },
@@ -226,6 +227,59 @@ function roleOptionCardSelected(base: CSSProperties): CSSProperties {
     border: "1px solid #E51937",
     background: "#1f0a0a",
   };
+}
+
+function RoleTitleSelector({
+  role,
+  selection,
+  customValue,
+  onSelectionChange,
+  onCustomChange,
+}: {
+  role: MemberRole;
+  selection: string;
+  customValue: string;
+  onSelectionChange: (value: string) => void;
+  onCustomChange: (value: string) => void;
+}) {
+  const options = roleTitleOptionsForRole(role);
+  const inputStyle: CSSProperties = {
+    width: "100%",
+    background: "#111111",
+    border: "1px solid #2a2a2a",
+    borderRadius: "6px",
+    padding: "8px 12px",
+    color: "#ffffff",
+    fontSize: "13px",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div>
+      <select
+        value={selection}
+        onChange={(e) => onSelectionChange(e.target.value)}
+        style={inputStyle}
+      >
+        <option value="">No title</option>
+        {options.map((title) => (
+          <option key={title} value={title}>
+            {title}
+          </option>
+        ))}
+        <option value={ROLE_TITLE_CUSTOM}>Custom</option>
+      </select>
+      {selection === ROLE_TITLE_CUSTOM ? (
+        <input
+          type="text"
+          value={customValue}
+          onChange={(e) => onCustomChange(e.target.value)}
+          placeholder="Enter a custom title"
+          style={{ ...inputStyle, marginTop: "8px" }}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 function RoleSelector({
@@ -643,7 +697,8 @@ export default function ClubMembersPage() {
   >({});
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<MemberRole>("member");
-  const [editTitle, setEditTitle] = useState("");
+  const [editTitleSelection, setEditTitleSelection] = useState("");
+  const [editTitleCustom, setEditTitleCustom] = useState("");
   const [editReportsTo, setEditReportsTo] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -959,14 +1014,21 @@ export default function ClubMembersPage() {
 
   function openEditRole(member: ClubMember) {
     setEditingMemberId(member.id);
-    setEditRole(normalizeMemberRole(member.role));
-    setEditTitle(memberTitles[member.id] ?? "");
+    const normalizedRole = normalizeMemberRole(member.role);
+    setEditRole(normalizedRole);
+    const { selection, custom } = resolveRoleTitleSelection(
+      normalizedRole,
+      member.roleTitle ?? memberTitles[member.id],
+    );
+    setEditTitleSelection(selection);
+    setEditTitleCustom(custom);
     setEditReportsTo(memberReportsTo[member.id] ?? "");
   }
 
   function closeEditRole() {
     setEditingMemberId(null);
-    setEditTitle("");
+    setEditTitleSelection("");
+    setEditTitleCustom("");
     setEditReportsTo("");
   }
 
@@ -974,7 +1036,10 @@ export default function ClubMembersPage() {
     setActionLoading(memberId);
     setFeedback(null);
 
-    const trimmedTitle = editTitle.trim();
+    const trimmedTitle = resolveRoleTitleFromSelection(
+      editTitleSelection,
+      editTitleCustom,
+    );
     const updatePayload: {
       role: MemberRole;
       title: string | null;
@@ -1018,7 +1083,7 @@ export default function ClubMembersPage() {
     void loadOrgChartMembers();
     setFeedback({
       type: "success",
-      text: `Updated to ${formatRoleLabel(editRole)}${trimmedTitle ? ` · ${trimmedTitle}` : ""}.`,
+      text: `Updated to ${formatMemberDisplayRole(editRole, trimmedTitle)}.`,
     });
     setActionLoading(null);
   }
@@ -1885,7 +1950,10 @@ export default function ClubMembersPage() {
       ) : viewMode === "list" ? (
         <div>
           {filteredMembers.map((member) => {
-            const memberTitle = memberTitles[member.id] ?? null;
+            const displayRoleTitle = formatMemberDisplayRole(
+              member.role,
+              member.roleTitle ?? memberTitles[member.id],
+            );
             const normalizedRole = normalizeMemberRole(member.role);
             const isEditing = editingMemberId === member.id;
             const joinedLabel = new Date(member.joinedAt).toLocaleDateString("en-US", {
@@ -1918,14 +1986,9 @@ export default function ClubMembersPage() {
                     {member.fullName ?? "Unknown"}
                   </MemberNameLink>
                   <span style={roleBadgeStyle(normalizedRole)}>
-                    {formatRoleLabel(normalizedRole)}
+                    {displayRoleTitle}
                   </span>
                 </div>
-                {memberTitle ? (
-                  <p style={{ fontSize: "12px", color: "#555555", margin: "2px 0 0", fontStyle: "italic" }}>
-                    {memberTitle}
-                  </p>
-                ) : null}
                 <p style={{ fontSize: "12px", color: "#555555", marginTop: "2px", marginBottom: 0 }}>
                   {member.email}
                 </p>
@@ -1965,7 +2028,21 @@ export default function ClubMembersPage() {
                   >
                     Role
                   </p>
-                  <RoleSelector value={editRole} onChange={setEditRole} />
+                  <RoleSelector
+                    value={editRole}
+                    onChange={(nextRole) => {
+                      setEditRole(nextRole);
+                      const { selection, custom } = resolveRoleTitleSelection(
+                        nextRole,
+                        resolveRoleTitleFromSelection(
+                          editTitleSelection,
+                          editTitleCustom,
+                        ),
+                      );
+                      setEditTitleSelection(selection);
+                      setEditTitleCustom(custom);
+                    }}
+                  />
                   <label
                     htmlFor={`member-title-${member.id}`}
                     style={{
@@ -1976,24 +2053,14 @@ export default function ClubMembersPage() {
                       margin: "14px 0 8px",
                     }}
                   >
-                    Title
+                    Role Title
                   </label>
-                  <input
-                    id={`member-title-${member.id}`}
-                    type="text"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    placeholder="e.g. Marketing Manager, Events Lead"
-                    style={{
-                      width: "100%",
-                      background: "#111111",
-                      border: "1px solid #2a2a2a",
-                      borderRadius: "6px",
-                      padding: "8px 12px",
-                      color: "#ffffff",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
+                  <RoleTitleSelector
+                    role={editRole}
+                    selection={editTitleSelection}
+                    customValue={editTitleCustom}
+                    onSelectionChange={setEditTitleSelection}
+                    onCustomChange={setEditTitleCustom}
                   />
                   {isOwner &&
                   (editRole === "member" || editRole === "executive") ? (
@@ -2028,7 +2095,10 @@ export default function ClubMembersPage() {
                         {reportsToOptions.map((leader) => (
                           <option key={leader.userId} value={leader.userId}>
                             {leader.fullName ?? leader.email ?? "Unknown"} —{" "}
-                            {formatRoleLabel(normalizeMemberRole(leader.role))}
+                            {formatMemberDisplayRole(
+                              normalizeMemberRole(leader.role),
+                              leader.roleTitle ?? memberTitles[leader.id],
+                            )}
                           </option>
                         ))}
                       </select>

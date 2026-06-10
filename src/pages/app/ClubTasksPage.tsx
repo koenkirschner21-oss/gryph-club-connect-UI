@@ -17,6 +17,7 @@ import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
+import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import {
   formatTaskDate,
   getTaskDueUrgency,
@@ -1053,6 +1054,13 @@ export default function ClubTasksPage() {
     return member?.avatarUrl;
   }
 
+  function assigneeDisplayFor(task: Task): string {
+    const member = members.find((m) => m.userId === task.assignedTo);
+    const name = task.assigneeName ?? member?.fullName ?? "Unassigned";
+    if (!task.assignedTo) return "Unassigned";
+    return formatNameWithRoleTitle(name, member?.roleTitle);
+  }
+
   function renderTaskMenu(task: Task) {
     if (!isPrivileged) return null;
     return (
@@ -1144,7 +1152,7 @@ export default function ClubTasksPage() {
     const forwardTarget = nextStatus(task.status);
     const backLabel = kanbanBackLabel(task.status);
     const forwardLabel = kanbanForwardLabel(task.status);
-    const assigneeName = task.assigneeName ?? "Unassigned";
+    const assigneeName = assigneeDisplayFor(task);
     const commentCount = commentCounts[task.id] ?? 0;
     const isAnimating = statusAnimatingId === task.id;
 
@@ -1492,7 +1500,7 @@ export default function ClubTasksPage() {
     const canViewComments = isPrivileged || task.assignedTo === user?.id;
     const canComment = isPrivileged || task.assignedTo === user?.id;
     const next = nextStatus(task.status);
-    const assigneeName = task.assigneeName ?? "Unassigned";
+    const assigneeName = assigneeDisplayFor(task);
     const commentCount = commentCounts[task.id] ?? 0;
     const listAction = listQuickActionLabel(task.status);
     const showStatusAction = canChangeStatus && listAction && !isDone;
@@ -2097,7 +2105,7 @@ export default function ClubTasksPage() {
                 {
                   icon: User,
                   label: "Assignee",
-                  value: detailTask.assigneeName ?? "Unassigned",
+                  value: assigneeDisplayFor(detailTask),
                 },
                 {
                   icon: Calendar,

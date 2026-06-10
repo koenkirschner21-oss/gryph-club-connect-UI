@@ -117,6 +117,7 @@ export interface ClubMember {
   email?: string;
   avatarUrl?: string;
   program?: string;
+  roleTitle?: string;
 }
 
 // ---------------------------------------------------------------------------

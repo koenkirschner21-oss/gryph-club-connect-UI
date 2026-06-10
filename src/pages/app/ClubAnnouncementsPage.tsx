@@ -6,6 +6,7 @@ import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
+import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import Spinner from "../../components/ui/Spinner";
 import type { MemberRole, Post } from "../../types";
 
@@ -14,7 +15,6 @@ const CARD_BG = "#141414";
 const CARD_BORDER = "#242424";
 const MUTED = "#555555";
 const ACCENT_RED = "#E51937";
-const PIN_GOLD = "#FFC429";
 
 const ANNOUNCEMENT_FILTER_PILLS = [
   { value: "all", label: "All" },
@@ -51,6 +51,7 @@ type AuthorMeta = {
   name?: string;
   avatarUrl?: string;
   role?: MemberRole;
+  roleTitle?: string;
 };
 
 const pageStyle: CSSProperties = {
@@ -176,49 +177,6 @@ function initials(name: string): string {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
-}
-
-function roleBadgeStyle(role: MemberRole | undefined): CSSProperties {
-  if (role === "owner") {
-    return {
-      fontSize: "11px",
-      fontWeight: 600,
-      color: PIN_GOLD,
-      border: `1px solid ${PIN_GOLD}`,
-      background: "#1a1500",
-      borderRadius: "4px",
-      padding: "2px 8px",
-      textTransform: "uppercase",
-    };
-  }
-  if (role === "executive") {
-    return {
-      fontSize: "11px",
-      fontWeight: 600,
-      color: ACCENT_RED,
-      border: `1px solid ${ACCENT_RED}`,
-      background: "#1a0a0a",
-      borderRadius: "999px",
-      padding: "2px 8px",
-      textTransform: "uppercase",
-    };
-  }
-  return {
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "#888888",
-    border: "1px solid #333333",
-    background: "#151515",
-    borderRadius: "999px",
-    padding: "2px 8px",
-    textTransform: "uppercase",
-  };
-}
-
-function roleLabel(role: MemberRole | undefined): string {
-  if (role === "owner") return "President";
-  if (role === "executive") return "Executive";
-  return "Member";
 }
 
 const reactionButtonStyle: CSSProperties = {
@@ -513,7 +471,7 @@ export default function ClubAnnouncementsPage() {
         supabase.from("profiles").select("id, full_name, avatar_url").in("id", authorIds),
         supabase
           .from("club_members")
-          .select("user_id, role")
+          .select("user_id, role, title")
           .eq("club_id", clubId)
           .in("user_id", authorIds),
       ]);
@@ -567,8 +525,12 @@ export default function ClubAnnouncementsPage() {
         };
       }
       const roleById: Record<string, MemberRole> = {};
+      const roleTitleById: Record<string, string> = {};
       for (const row of rolesRes.data ?? []) {
-        roleById[row.user_id as string] = normalizeRole(row.role as string);
+        const userId = row.user_id as string;
+        roleById[userId] = normalizeRole(row.role as string);
+        const title = (row.title as string | null)?.trim();
+        if (title) roleTitleById[userId] = title;
       }
       const merged: Record<string, AuthorMeta> = {};
       for (const authorId of authorIds) {
@@ -576,6 +538,7 @@ export default function ClubAnnouncementsPage() {
           name: profileById[authorId]?.name,
           avatarUrl: profileById[authorId]?.avatarUrl,
           role: roleById[authorId],
+          roleTitle: roleTitleById[authorId],
         };
       }
       setAuthorMetaById(merged);
@@ -1183,7 +1146,10 @@ export default function ClubAnnouncementsPage() {
     const isExpanded = expanded[post.id] ?? false;
     const showReadMore = (post.content?.length ?? 0) > 300;
     const authorMeta = authorMetaById[post.authorId] ?? {};
-    const displayName = authorMeta.name ?? post.authorName ?? "Unknown";
+    const displayName = formatNameWithRoleTitle(
+      authorMeta.name ?? post.authorName ?? "Unknown",
+      authorMeta.roleTitle,
+    );
     const reactionCounts = reactionCountsByPost[post.id] ?? {
       heart: 0,
       thumbs_up: 0,
@@ -1281,7 +1247,6 @@ export default function ClubAnnouncementsPage() {
                 <p style={{ fontSize: "14px", fontWeight: 600, color: "#ffffff", margin: 0 }}>
                   {displayName}
                 </p>
-                <span style={roleBadgeStyle(authorMeta.role)}>{roleLabel(authorMeta.role)}</span>
               </div>
               <p style={{ fontSize: "12px", color: "#444444", margin: "3px 0 0" }}>
                 {formatPostDate(post.createdAt)}

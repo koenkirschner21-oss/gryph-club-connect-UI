@@ -18,6 +18,7 @@ function mapMemberRow(row: Record<string, unknown>): ClubMember {
     email: (profile.email as string) ?? undefined,
     avatarUrl: (profile.avatar_url as string) ?? undefined,
     program: (profile.program as string) ?? undefined,
+    roleTitle: (row.title as string | null)?.trim() || undefined,
   };
 }
 
@@ -69,6 +70,7 @@ export function useClubMembers(
           role,
           status,
           created_at,
+          title,
           member_profile:profiles!club_members_user_profile_fkey (
             full_name,
             email,
@@ -88,6 +90,7 @@ export function useClubMembers(
           role,
           status,
           created_at,
+          title,
           member_profile:profiles!club_members_user_profile_fkey (
             full_name,
             email,

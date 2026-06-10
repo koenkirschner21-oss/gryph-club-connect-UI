@@ -21,6 +21,7 @@ import {
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
+import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
 import { supabase } from "../../lib/supabaseClient";
 import type {
@@ -967,14 +968,19 @@ function ClubAnnouncementPreviewCard({
   post,
   clubName,
   announcementsPath,
+  authorRoleTitle,
   isPinned = false,
 }: {
   post: Post;
   clubName: string;
   announcementsPath: string;
+  authorRoleTitle?: string;
   isPinned?: boolean;
 }) {
   const preview = firstSentencePreview(post.content);
+  const authorLine = post.authorName
+    ? formatNameWithRoleTitle(post.authorName, authorRoleTitle)
+    : "";
 
   return (
     <article
@@ -1016,7 +1022,7 @@ function ClubAnnouncementPreviewCard({
         }}
       >
         {formatRelativeTime(post.createdAt)}
-        {post.authorName ? ` · ${post.authorName}` : ""}
+        {authorLine ? ` · ${authorLine}` : ""}
       </p>
       {preview ? (
         <p
@@ -1065,6 +1071,9 @@ export default function ClubHomePage() {
     (ClubEvent & { occurrenceDate: string }) | null
   >(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [authorRoleTitleById, setAuthorRoleTitleById] = useState<
+    Record<string, string>
+  >({});
   const [recurringColumnReady, setRecurringColumnReady] = useState(false);
   const [eventRecurring, setEventRecurring] = useState<
     Record<string, EventRecurringMeta>
@@ -1132,6 +1141,40 @@ export default function ClubHomePage() {
   const { events, loading: eventsLoading } = useClubEvents(clubId);
   const { posts, loading: postsLoading } = useClubPosts(clubId);
   const { tasks, loading: tasksLoading } = useClubTasks(clubId);
+
+  useEffect(() => {
+    if (!clubId || posts.length === 0) {
+      setAuthorRoleTitleById({});
+      return;
+    }
+
+    let cancelled = false;
+    const authorIds = Array.from(new Set(posts.map((post) => post.authorId)));
+
+    void supabase
+      .from("club_members")
+      .select("user_id, title")
+      .eq("club_id", clubId)
+      .in("user_id", authorIds)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load author role titles:", error.message);
+          setAuthorRoleTitleById({});
+          return;
+        }
+        const map: Record<string, string> = {};
+        for (const row of data ?? []) {
+          const title = (row.title as string | null)?.trim();
+          if (title) map[row.user_id as string] = title;
+        }
+        setAuthorRoleTitleById(map);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, posts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1774,6 +1817,7 @@ export default function ClubHomePage() {
                     post={post}
                     clubName={club.name}
                     announcementsPath={announcementsPath}
+                    authorRoleTitle={authorRoleTitleById[post.authorId]}
                     isPinned={isPostPinned(post)}
                   />
                 ))}
@@ -1803,7 +1847,11 @@ export default function ClubHomePage() {
             {selectedAnnouncement.title}
           </h2>
           <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 16px" }}>
-            {selectedAnnouncement.authorName ?? "Unknown"} ·{" "}
+            {formatNameWithRoleTitle(
+              selectedAnnouncement.authorName ?? "Unknown",
+              authorRoleTitleById[selectedAnnouncement.authorId],
+            )}{" "}
+            ·{" "}
             {new Date(selectedAnnouncement.createdAt).toLocaleDateString("en-US", {
               month: "short",
               day: "numeric",
