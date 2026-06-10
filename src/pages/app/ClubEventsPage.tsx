@@ -36,13 +36,11 @@ import {
 } from "../../lib/eventCategories";
 
 type EventVisibility = "public" | "members_only" | "featured";
-type EventFilter = "all" | "public" | "members_only" | "recurring" | "my_rsvps";
+type EventFilter = "all" | "public" | "my_rsvps";
 
 const EVENT_FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "public", label: "Public" },
-  { value: "members_only", label: "Members Only" },
-  { value: "recurring", label: "Recurring" },
   { value: "my_rsvps", label: "My RSVPs" },
 ];
 
@@ -81,17 +79,12 @@ function matchesEventFilter(
   event: ClubEvent,
   filter: EventFilter,
   myRsvps: Record<string, RsvpStatus>,
-  isRecurring: (eventId: string) => boolean,
 ): boolean {
   switch (filter) {
     case "all":
       return true;
     case "public":
       return isEventPublic(event);
-    case "members_only":
-      return event.visibility === "members_only";
-    case "recurring":
-      return isRecurring(event.id);
     case "my_rsvps": {
       const status = myRsvps[event.id];
       return status === "going" || status === "maybe";
@@ -924,7 +917,7 @@ const eventCardStyle: CSSProperties = {
 };
 
 const upcomingSectionHeadingStyle: CSSProperties = {
-  fontSize: "12px",
+  fontSize: "11px",
   fontWeight: 700,
   color: "#555555",
   textTransform: "uppercase",
@@ -1001,6 +994,52 @@ function cleanEventLocation(value: string): string | null {
   return raw;
 }
 
+function EventTimeLocationMeta({
+  timeLabel,
+  locationLabel,
+  marginBottom = "10px",
+  color = "#666666",
+  fontSize = "13px",
+}: {
+  timeLabel: string | null;
+  locationLabel: string | null;
+  marginBottom?: string | number;
+  color?: string;
+  fontSize?: string;
+}) {
+  if (!timeLabel && !locationLabel) return null;
+
+  return (
+    <div
+      style={{
+        fontSize,
+        color,
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        flexWrap: "wrap",
+        marginBottom,
+      }}
+    >
+      {timeLabel ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+          <Clock size={13} color="#555555" aria-hidden />
+          {timeLabel}
+        </span>
+      ) : null}
+      {timeLabel && locationLabel ? (
+        <span style={{ color: "#444444" }}>·</span>
+      ) : null}
+      {locationLabel ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+          <MapPin size={13} color="#555555" aria-hidden />
+          {locationLabel}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function CompactEventRow({
   event,
   myStatus,
@@ -1027,33 +1066,12 @@ function CompactEventRow({
       }}
     >
       <EventDateBlock date={event.date} />
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          fontSize: "13px",
-          color: "#666666",
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          flexWrap: "wrap",
-        }}
-      >
-        {timeLabel ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-            <Clock size={13} color="#555555" aria-hidden />
-            {timeLabel}
-          </span>
-        ) : null}
-        {timeLabel && locationLabel ? (
-          <span style={{ color: "#444444" }}>·</span>
-        ) : null}
-        {locationLabel ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-            <MapPin size={13} color="#555555" aria-hidden />
-            {locationLabel}
-          </span>
-        ) : null}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <EventTimeLocationMeta
+          timeLabel={timeLabel}
+          locationLabel={locationLabel}
+          marginBottom={0}
+        />
       </div>
       <SmartRsvpButton eventId={event.id} status={myStatus} onRsvp={onRsvp} />
     </div>
@@ -1128,25 +1146,23 @@ function EventCard({
       }}
     >
       <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
-        <EventDateBlock date={event.date} muted={past} />
-
         <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
               display: "flex",
-              alignItems: "flex-start",
-              gap: "10px",
-              marginBottom: "4px",
+              alignItems: "center",
+              gap: "16px",
             }}
           >
+            <EventDateBlock date={event.date} muted={past} />
             {clubLogoUrl ? (
               <img
                 src={clubLogoUrl}
                 alt=""
                 style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "50%",
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "6px",
                   objectFit: "cover",
                   flexShrink: 0,
                 }}
@@ -1154,12 +1170,12 @@ function EventCard({
             ) : (
               <div
                 style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "50%",
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "6px",
                   background: "#2a2a2a",
                   color: "#888888",
-                  fontSize: "11px",
+                  fontSize: "12px",
                   fontWeight: 600,
                   display: "flex",
                   alignItems: "center",
@@ -1172,6 +1188,8 @@ function EventCard({
             )}
             <h3
               style={{
+                flex: 1,
+                minWidth: 0,
                 fontSize: "16px",
                 fontWeight: 700,
                 color: "#ffffff",
@@ -1187,8 +1205,10 @@ function EventCard({
             style={{
               display: "flex",
               gap: "6px",
-              flexWrap: "wrap",
+              flexWrap: "nowrap",
+              marginTop: "8px",
               marginBottom: "8px",
+              overflowX: "auto",
             }}
           >
             <EventCardBadges
@@ -1198,35 +1218,11 @@ function EventCard({
             />
           </div>
 
-          {timeLabel || locationLabel ? (
-            <div
-              style={{
-                fontSize: "13px",
-                color: "#666666",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                flexWrap: "wrap",
-                marginBottom: "10px",
-              }}
-            >
-              {timeLabel ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  <Clock size={13} color="#555555" aria-hidden />
-                  {timeLabel}
-                </span>
-              ) : null}
-              {timeLabel && locationLabel ? (
-                <span style={{ color: "#444444" }}>·</span>
-              ) : null}
-              {locationLabel ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  <MapPin size={13} color="#555555" aria-hidden />
-                  {locationLabel}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
+          <EventTimeLocationMeta
+            timeLabel={timeLabel}
+            locationLabel={locationLabel}
+            color="#777777"
+          />
 
           {attendeeCountLabel ? (
             <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 8px" }}>
@@ -2732,14 +2728,9 @@ export default function ClubEventsPage() {
   const filteredUpcomingEvents = useMemo(
     () =>
       upcomingEvents.filter((event) =>
-        matchesEventFilter(
-          event,
-          eventFilter,
-          myRsvps,
-          (eventId) => eventRecurring[eventId]?.isRecurring ?? false,
-        ),
+        matchesEventFilter(event, eventFilter, myRsvps),
       ),
-    [upcomingEvents, eventFilter, myRsvps, eventRecurring],
+    [upcomingEvents, eventFilter, myRsvps],
   );
 
   const upcomingDisplayList = useMemo(
@@ -2747,21 +2738,17 @@ export default function ClubEventsPage() {
     [filteredUpcomingEvents, showAllRecurring],
   );
 
-  const eventFilterCounts = useMemo(() => {
-    const isRecurringFor = (eventId: string) =>
-      eventRecurring[eventId]?.isRecurring ?? false;
-    return {
+  const eventFilterCounts = useMemo(
+    () => ({
       all: upcomingEvents.length,
       public: upcomingEvents.filter((e) => isEventPublic(e)).length,
-      members_only: upcomingEvents.filter((e) => e.visibility === "members_only")
-        .length,
-      recurring: upcomingEvents.filter((e) => isRecurringFor(e.id)).length,
       my_rsvps: upcomingEvents.filter((e) => {
         const status = myRsvps[e.id];
         return status === "going" || status === "maybe";
       }).length,
-    } satisfies Record<EventFilter, number>;
-  }, [upcomingEvents, eventRecurring, myRsvps]);
+    }),
+    [upcomingEvents, myRsvps],
+  );
 
   const pastEvents = events
     .filter((e) => new Date(e.date) < now)
@@ -2866,6 +2853,17 @@ export default function ClubEventsPage() {
           );
         })}
       </div>
+
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#555555",
+          marginTop: 0,
+          marginBottom: "16px",
+        }}
+      >
+        Sorted by upcoming date
+      </p>
 
       {feedback ? (
         <div
