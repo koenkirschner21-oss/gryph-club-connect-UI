@@ -198,6 +198,235 @@ interface FormSnapshot {
   websiteUrl: string;
 }
 
+type RolePermissionColumn =
+  | "president"
+  | "managerial_executive"
+  | "executive"
+  | "member";
+
+const ROLE_PERMISSION_COLUMNS: {
+  key: RolePermissionColumn;
+  label: string;
+}[] = [
+  { key: "president", label: "President / Co-President" },
+  { key: "managerial_executive", label: "Managerial Executive" },
+  { key: "executive", label: "Executive" },
+  { key: "member", label: "General Member" },
+];
+
+const ROLE_PERMISSION_ROWS: {
+  id: string;
+  label: string;
+  allowed: Record<RolePermissionColumn, boolean>;
+}[] = [
+  {
+    id: "create_events",
+    label: "Create events",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: true,
+      member: false,
+    },
+  },
+  {
+    id: "post_announcements",
+    label: "Post announcements",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: true,
+      member: false,
+    },
+  },
+  {
+    id: "approve_members",
+    label: "Approve members",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: false,
+      member: false,
+    },
+  },
+  {
+    id: "manage_documents",
+    label: "Manage documents",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: false,
+      member: false,
+    },
+  },
+  {
+    id: "manage_hiring",
+    label: "Manage hiring",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: false,
+      member: false,
+    },
+  },
+  {
+    id: "invite_members",
+    label: "Invite members",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: true,
+      member: false,
+    },
+  },
+  {
+    id: "assign_tasks",
+    label: "Assign tasks",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: true,
+      member: false,
+    },
+  },
+  {
+    id: "manage_roles",
+    label: "Manage roles",
+    allowed: {
+      president: true,
+      managerial_executive: false,
+      executive: false,
+      member: false,
+    },
+  },
+  {
+    id: "edit_club_settings",
+    label: "Edit club settings",
+    allowed: {
+      president: true,
+      managerial_executive: true,
+      executive: false,
+      member: false,
+    },
+  },
+  {
+    id: "delete_club",
+    label: "Delete club",
+    allowed: {
+      president: true,
+      managerial_executive: false,
+      executive: false,
+      member: false,
+    },
+  },
+];
+
+function PermissionCell({ allowed }: { allowed: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "40px",
+      }}
+    >
+      {allowed ? (
+        <span
+          aria-label="Allowed"
+          style={{ color: ACCENT_GOLD, fontSize: "15px", fontWeight: 700 }}
+        >
+          ✓
+        </span>
+      ) : (
+        <span
+          aria-label="Not allowed"
+          style={{ color: "#555555", fontSize: "15px", fontWeight: 600 }}
+        >
+          ✕
+        </span>
+      )}
+    </div>
+  );
+}
+
+function RolesPermissionsTable() {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <div
+        style={{
+          background: CARD_BG,
+          border: `1px solid ${CARD_BORDER}`,
+          borderRadius: "10px",
+          overflow: "hidden",
+          minWidth: "640px",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(160px, 1.4fr) repeat(4, minmax(100px, 1fr))",
+            background: "#1a1a1a",
+            borderBottom: `1px solid ${CARD_BORDER}`,
+          }}
+        >
+          <div style={{ padding: "12px 16px" }} />
+          {ROLE_PERMISSION_COLUMNS.map((column) => (
+            <div
+              key={column.key}
+              style={{
+                padding: "12px 10px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#777777",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                textAlign: "center",
+                lineHeight: 1.35,
+              }}
+            >
+              {column.label}
+            </div>
+          ))}
+        </div>
+
+        {ROLE_PERMISSION_ROWS.map((row, index) => (
+          <div
+            key={row.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(160px, 1.4fr) repeat(4, minmax(100px, 1fr))",
+              background: index % 2 === 0 ? "#141414" : "#161616",
+              borderBottom:
+                index < ROLE_PERMISSION_ROWS.length - 1
+                  ? `1px solid ${CARD_BORDER}`
+                  : "none",
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 16px",
+                fontSize: "13px",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              {row.label}
+            </div>
+            {ROLE_PERMISSION_COLUMNS.map((column) => (
+              <PermissionCell
+                key={`${row.id}-${column.key}`}
+                allowed={row.allowed[column.key]}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsSection({
   title,
   subtitle,
@@ -1837,6 +2066,24 @@ export default function ClubSettingsPage() {
                 </button>
               </div>
             ) : null}
+          </SettingsSection>
+
+          <SettingsSection
+            title="Roles & Permissions"
+            subtitle="Control what each role can do inside your club workspace."
+          >
+            <RolesPermissionsTable />
+            <p
+              style={{
+                margin: "14px 0 0",
+                fontSize: "12px",
+                color: "#555555",
+                fontStyle: "italic",
+              }}
+            >
+              Advanced permission customization coming soon. Default permissions are
+              shown above.
+            </p>
           </SettingsSection>
           </>
         ) : null}
