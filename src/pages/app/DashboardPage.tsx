@@ -28,11 +28,13 @@ import {
   taskDueLeftBorder,
 } from "../../lib/taskDueUrgency";
 import { useIsMobile } from "../../hooks/useWindowWidth";
+import { useInbox } from "../../hooks/useInbox";
+import InboxTab from "../dashboard/InboxTab";
 
 // ---------------------------------------------------------------------------
 // Tab types
 // ---------------------------------------------------------------------------
-type DashboardTab = "overview" | "events" | "tasks" | "week" | "clubs";
+type DashboardTab = "overview" | "events" | "tasks" | "week" | "clubs" | "inbox";
 
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
@@ -54,6 +56,15 @@ export default function DashboardPage() {
   const { user, loading: authLoading } = useAuthContext();
   const { clubs, joinedClubs, savedClubs, loading, getUserRole } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const inbox = useInbox();
+
+  useEffect(() => {
+    const pendingTab = sessionStorage.getItem("dashboardTab");
+    if (pendingTab === "inbox") {
+      setActiveTab("inbox");
+      sessionStorage.removeItem("dashboardTab");
+    }
+  }, []);
   const [profile, setProfile] = useState<{
     fullName: string;
     program: string;
@@ -534,6 +545,12 @@ export default function DashboardPage() {
           badge={unreadNotificationCount > 0 ? unreadNotificationCount : undefined}
           onClick={() => setActiveTab("overview")}
         />
+        <TabButton
+          label="Inbox"
+          active={activeTab === "inbox"}
+          badge={inbox.unreadCount > 0 ? inbox.unreadCount : undefined}
+          onClick={() => setActiveTab("inbox")}
+        />
         <ThisWeekTabButton
           active={activeTab === "week"}
           onClick={() => setActiveTab("week")}
@@ -596,6 +613,7 @@ export default function DashboardPage() {
         />
       )}
       {activeTab === "tasks" && <TasksTab joinedClubs={joinedClubs} />}
+      {activeTab === "inbox" && <InboxTab {...inbox} />}
         </>
       )}
     </div>

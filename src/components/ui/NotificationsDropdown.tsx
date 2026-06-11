@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { MessageSquare } from "lucide-react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabaseClient";
@@ -356,7 +356,7 @@ export default function NotificationsDropdown() {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         className="relative cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--bg-2)] p-2 text-[var(--text-2)] transition-colors hover:bg-[var(--bg-3)] hover:text-[var(--text-1)]"
-        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+        aria-label={`Alerts${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
         aria-expanded={open}
         aria-haspopup="true"
       >
@@ -418,14 +418,30 @@ export default function NotificationsDropdown() {
         >
           <div
             style={{
-              fontWeight: 600,
-              fontSize: 14,
-              color: "#ffffff",
               padding: "14px 16px",
               borderBottom: "1px solid #222",
+              background: "linear-gradient(180deg, #1e1a12 0%, #1a1a1a 100%)",
             }}
           >
-            Notifications
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: 14,
+                color: "#FFC429",
+              }}
+            >
+              Alerts
+            </div>
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: 11,
+                color: "#555555",
+                lineHeight: 1.4,
+              }}
+            >
+              Quick club activity — full messages live in Dashboard Inbox
+            </p>
           </div>
 
           <div style={{ maxHeight: 360, overflowY: "auto" }}>
@@ -537,6 +553,31 @@ export default function NotificationsDropdown() {
                 );
               })
             )}
+          </div>
+
+          <div
+            style={{
+              borderTop: "1px solid #222",
+              padding: "10px 16px",
+              background: "#141414",
+            }}
+          >
+            <Link
+              to="/app"
+              onClick={() => {
+                sessionStorage.setItem("dashboardTab", "inbox");
+                setOpen(false);
+              }}
+              style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#E51937",
+                textDecoration: "none",
+              }}
+            >
+              Open Dashboard Inbox →
+            </Link>
           </div>
         </div>
       )}
