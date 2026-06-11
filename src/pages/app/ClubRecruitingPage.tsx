@@ -14,6 +14,7 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole } from "../../types";
 import Spinner from "../../components/ui/Spinner";
+import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import {
   POSITION_TYPES,
   PositionQuestionBuilder,
@@ -563,7 +564,8 @@ export default function ClubRecruitingPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const { user } = useAuthContext();
   const { getClubById } = useClubContext();
-  const clubName = getClubById(clubId ?? "")?.name ?? "Club";
+  const club = getClubById(clubId ?? "");
+  const clubName = club?.name ?? "Club";
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
@@ -573,6 +575,7 @@ export default function ClubRecruitingPage() {
   const [myApplications, setMyApplications] = useState<Record<string, boolean>>({});
 
   const [showPostModal, setShowPostModal] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [editingPosition, setEditingPosition] = useState<ClubPosition | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -1751,9 +1754,38 @@ export default function ClubRecruitingPage() {
             onClick={(e) => e.stopPropagation()}
             role="presentation"
           >
-            <h2 style={{ fontWeight: 700, fontSize: "18px", color: "#ffffff", margin: "0 0 16px" }}>
-              {editingPosition ? "Edit Position" : "Post Position"}
-            </h2>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                marginBottom: "16px",
+                flexWrap: "wrap",
+              }}
+            >
+              <h2 style={{ fontWeight: 700, fontSize: "18px", color: "#ffffff", margin: 0 }}>
+                {editingPosition ? "Edit Position" : "Post Position"}
+              </h2>
+              {!editingPosition ? (
+                <button
+                  type="button"
+                  onClick={() => setShowTemplatePicker(true)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #333333",
+                    color: "#cccccc",
+                    borderRadius: "8px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Use Template
+                </button>
+              ) : null}
+            </div>
 
             <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
               Position title *
@@ -1971,6 +2003,21 @@ export default function ClubRecruitingPage() {
           userId={user.id}
           onClose={() => setApplyPosition(null)}
           onSubmitted={() => void loadPositions()}
+        />
+      ) : null}
+
+      {showTemplatePicker ? (
+        <TemplatePickerModal
+          type="hiring"
+          clubName={clubName}
+          clubCategory={club?.category}
+          onClose={() => setShowTemplatePicker(false)}
+          onSelect={(template) => {
+            if ("description" in template) {
+              setTitle(template.title);
+              setDescription(template.description);
+            }
+          }}
         />
       ) : null}
     </div>

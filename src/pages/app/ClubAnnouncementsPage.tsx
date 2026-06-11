@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Bookmark, Download, Heart } from "lucide-react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubContext } from "../../context/useClubContext";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
@@ -10,6 +11,7 @@ import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
+import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import { filterByVisibility } from "../../lib/contentVisibility";
 import type { MemberRole, Post, Visibility } from "../../types";
 
@@ -18,6 +20,17 @@ const CARD_BG = "#141414";
 const CARD_BORDER = "#242424";
 const MUTED = "#555555";
 const ACCENT_RED = "#E51937";
+
+const useTemplateButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #333333",
+  color: "#cccccc",
+  borderRadius: "8px",
+  padding: "6px 12px",
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
 
 const ANNOUNCEMENT_FILTER_PILLS = [
   { value: "all", label: "All" },
@@ -378,8 +391,11 @@ function PostAttachment({
 export default function ClubAnnouncementsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
+  const { getClubById } = useClubContext();
+  const club = getClubById(clubId ?? "");
   const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
 
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
@@ -410,6 +426,7 @@ export default function ClubAnnouncementsPage() {
   const [postVisibility, setPostVisibility] = useState<Visibility>("members_only");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -654,11 +671,27 @@ export default function ClubAnnouncementsPage() {
     if (searchParams.get("create") !== "true" || !isPrivileged || loading || roleLoading) {
       return;
     }
+    const templateState = location.state as {
+      contentTemplate?: { title?: string; content?: string };
+    } | null;
     openCreateForm();
+    if (templateState?.contentTemplate?.title) {
+      setTitle(templateState.contentTemplate.title);
+    }
+    if (templateState?.contentTemplate?.content) {
+      setContent(templateState.contentTemplate.content);
+    }
     const next = new URLSearchParams(searchParams);
     next.delete("create");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading, roleLoading]);
+  }, [
+    searchParams,
+    setSearchParams,
+    isPrivileged,
+    loading,
+    roleLoading,
+    location.state,
+  ]);
 
   function openEditForm(post: Post) {
     setEditingPostId(post.id);
@@ -935,16 +968,36 @@ export default function ClubAnnouncementsPage() {
 
       {showForm && isPrivileged ? (
         <div style={{ ...formContainerStyle, marginBottom: "24px" }}>
-          <h3
+          <div
             style={{
-              fontWeight: 600,
-              fontSize: "16px",
-              color: "#ffffff",
-              margin: "0 0 20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              marginBottom: "20px",
+              flexWrap: "wrap",
             }}
           >
-            {editingPostId ? "Edit Announcement" : "Create Announcement"}
-          </h3>
+            <h3
+              style={{
+                fontWeight: 600,
+                fontSize: "16px",
+                color: "#ffffff",
+                margin: 0,
+              }}
+            >
+              {editingPostId ? "Edit Announcement" : "Create Announcement"}
+            </h3>
+            {!editingPostId ? (
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker(true)}
+                style={useTemplateButtonStyle}
+              >
+                Use Template
+              </button>
+            ) : null}
+          </div>
           <div className="space-y-4">
             <ThemedField
               id="postTitle"
@@ -1149,6 +1202,21 @@ export default function ClubAnnouncementsPage() {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {showTemplatePicker ? (
+        <TemplatePickerModal
+          type="announcement"
+          clubName={club?.name ?? "your club"}
+          clubCategory={club?.category}
+          onClose={() => setShowTemplatePicker(false)}
+          onSelect={(template) => {
+            if ("content" in template) {
+              setTitle(template.title);
+              setContent(template.content);
+            }
+          }}
+        />
       ) : null}
     </div>
   );

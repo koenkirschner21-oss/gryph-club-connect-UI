@@ -15,8 +15,9 @@ import {
   MoreHorizontal,
   RefreshCw,
 } from "lucide-react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
@@ -28,6 +29,7 @@ import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
+import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import {
   DEFAULT_EVENT_CATEGORY,
@@ -1660,10 +1662,15 @@ function FormQuestionBuilder({
   );
 }
 
+const useTemplateButtonClass =
+  "rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-[#cccccc] transition-colors hover:border-[#555555] hover:text-white";
+
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
+  const { getClubById } = useClubContext();
+  const club = getClubById(clubId ?? "");
   const { events, loading, createEvent, updateEvent, deleteEvent, refresh } =
     useClubEvents(clubId);
 
@@ -1724,7 +1731,9 @@ export default function ClubEventsPage() {
   const [expandedAttendees, setExpandedAttendees] = useState<string | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const routerLocation = useLocation();
   const [showForm, setShowForm] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -1958,9 +1967,18 @@ export default function ClubEventsPage() {
 
   useEffect(() => {
     if (searchParams.get("create") !== "true" || !isPrivileged || loading) return;
+    const templateState = routerLocation.state as {
+      contentTemplate?: { title?: string; description?: string };
+    } | null;
     setFormQuestions([]);
     setEditingId(null);
     setShowForm(true);
+    if (templateState?.contentTemplate?.title) {
+      setTitle(templateState.contentTemplate.title);
+    }
+    if (templateState?.contentTemplate?.description) {
+      setDescription(templateState.contentTemplate.description);
+    }
     const next = new URLSearchParams(searchParams);
     next.delete("create");
     setSearchParams(next, { replace: true });
@@ -1969,6 +1987,7 @@ export default function ClubEventsPage() {
     setSearchParams,
     isPrivileged,
     loading,
+    routerLocation.state,
   ]);
 
   async function saveEventCategory(
@@ -2691,9 +2710,20 @@ export default function ClubEventsPage() {
       {/* Create / edit form — admin/exec only */}
       {showForm && isPrivileged && (
         <Card className="mb-6 p-5">
-          <h3 className="mb-4 font-semibold text-white">
-            {editingId ? "Edit Event" : "Create New Event"}
-          </h3>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-semibold text-white">
+              {editingId ? "Edit Event" : "Create New Event"}
+            </h3>
+            {!editingId ? (
+              <button
+                type="button"
+                className={useTemplateButtonClass}
+                onClick={() => setShowTemplatePicker(true)}
+              >
+                Use Template
+              </button>
+            ) : null}
+          </div>
           <div className="space-y-3">
             <FormInput
               id="eventTitle"
@@ -3253,6 +3283,21 @@ export default function ClubEventsPage() {
             )}
           </div>
         </div>
+      ) : null}
+
+      {showTemplatePicker ? (
+        <TemplatePickerModal
+          type="event"
+          clubName={club?.name ?? "your club"}
+          clubCategory={club?.category}
+          onClose={() => setShowTemplatePicker(false)}
+          onSelect={(template) => {
+            if ("description" in template) {
+              setTitle(template.title);
+              setDescription(template.description);
+            }
+          }}
+        />
       ) : null}
     </div>
   );

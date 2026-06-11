@@ -28,6 +28,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
+import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 
 const statusLabels: Record<TaskStatus, string> = {
   todo: "To Do",
@@ -824,6 +825,7 @@ export default function ClubTasksPage() {
   const [activeFilter, setActiveFilter] = useState<TaskFilterChip>("all");
   const effectiveViewMode: ViewMode = isPrivileged ? viewMode : "list";
   const [showForm, setShowForm] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -1806,9 +1808,20 @@ export default function ClubTasksPage() {
 
       {showForm && isPrivileged ? (
         <Card className="mb-6 p-5">
-          <h3 className="mb-4 font-semibold text-white">
-            {editingId ? "Edit Task" : "Create New Task"}
-          </h3>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-semibold text-white">
+              {editingId ? "Edit Task" : "Create New Task"}
+            </h3>
+            {!editingId ? (
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker(true)}
+                className="rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-[#cccccc] transition-colors hover:border-[#555555] hover:text-white"
+              >
+                Use Template
+              </button>
+            ) : null}
+          </div>
           <div className="space-y-3">
             <FormInput
               id="taskTitle"
@@ -2212,6 +2225,21 @@ export default function ClubTasksPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {showTemplatePicker ? (
+        <TemplatePickerModal
+          type="task"
+          clubName={club?.name ?? "your club"}
+          clubCategory={club?.category}
+          onClose={() => setShowTemplatePicker(false)}
+          onSelect={(template) => {
+            if ("description" in template) {
+              setTitle(template.title);
+              setDescription(template.description);
+            }
+          }}
+        />
       ) : null}
     </div>
   );

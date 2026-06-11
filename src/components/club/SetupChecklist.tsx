@@ -1,7 +1,10 @@
-import { useMemo, useState, type CSSProperties } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Check } from "lucide-react";
 import type { Club } from "../../types";
+import TemplatePickerModal, {
+  type TemplatePickerSelection,
+} from "./TemplatePickerModal";
 
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
@@ -9,12 +12,14 @@ const GOLD = "#FFC429";
 const ACCENT_RED = "#E51937";
 
 type SectionKey = "profile" | "launch" | "live";
+type TemplateLaunchType = "announcement" | "event";
 
 interface ChecklistItem {
   id: string;
   label: string;
   complete: boolean;
   section: SectionKey;
+  templateType?: TemplateLaunchType;
 }
 
 const SECTION_LABELS: Record<SectionKey, string> = {
@@ -86,15 +91,17 @@ function buildChecklistItems(
     },
     {
       id: "announcement",
-      label: "First announcement created",
+      label: "Create welcome announcement",
       complete: hasAnnouncement,
       section: "launch",
+      templateType: "announcement",
     },
     {
       id: "event",
-      label: "First event created",
+      label: "Create first event",
       complete: hasEvent,
       section: "launch",
+      templateType: "event",
     },
   ];
 }
@@ -107,32 +114,43 @@ const checkRowStyle: CSSProperties = {
   lineHeight: 1.4,
 };
 
-function ChecklistRow({ item }: { item: ChecklistItem }) {
+function ChecklistRow({
+  item,
+  templateAction,
+}: {
+  item: ChecklistItem;
+  templateAction?: ReactNode;
+}) {
   return (
-    <div style={checkRowStyle}>
-      {item.complete ? (
-        <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
-      ) : (
+    <div>
+      <div style={checkRowStyle}>
+        {item.complete ? (
+          <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
+        ) : (
+          <span
+            aria-hidden
+            style={{
+              width: "16px",
+              height: "16px",
+              borderRadius: "50%",
+              border: "1px solid #444444",
+              flexShrink: 0,
+              boxSizing: "border-box",
+            }}
+          />
+        )}
         <span
-          aria-hidden
           style={{
-            width: "16px",
-            height: "16px",
-            borderRadius: "50%",
-            border: "1px solid #444444",
-            flexShrink: 0,
-            boxSizing: "border-box",
+            color: item.complete ? "#666666" : "#cccccc",
+            textDecoration: item.complete ? "line-through" : "none",
           }}
-        />
-      )}
-      <span
-        style={{
-          color: item.complete ? "#666666" : "#cccccc",
-          textDecoration: item.complete ? "line-through" : "none",
-        }}
-      >
-        {item.label}
-      </span>
+        >
+          {item.label}
+        </span>
+      </div>
+      {!item.complete && templateAction ? (
+        <div style={{ marginTop: "6px", marginLeft: "26px" }}>{templateAction}</div>
+      ) : null}
     </div>
   );
 }
@@ -152,8 +170,11 @@ export default function SetupChecklist({
   contentLoading = false,
   onPublish,
 }: SetupChecklistProps) {
+  const navigate = useNavigate();
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [templatePickerType, setTemplatePickerType] =
+    useState<TemplateLaunchType | null>(null);
 
   const items = useMemo(
     () => buildChecklistItems(club, hasAnnouncement, hasEvent),
@@ -178,6 +199,32 @@ export default function SetupChecklist({
     } finally {
       setPublishing(false);
     }
+  }
+
+  function handleTemplateSelect(template: TemplatePickerSelection) {
+    if (!templatePickerType) return;
+
+    if (templatePickerType === "announcement" && "content" in template) {
+      navigate(`/app/clubs/${club.id}/announcements?create=true`, {
+        state: {
+          contentTemplate: {
+            title: template.title,
+            content: template.content,
+          },
+        },
+      });
+    } else if ("description" in template) {
+      navigate(`/app/clubs/${club.id}/events?create=true`, {
+        state: {
+          contentTemplate: {
+            title: template.title,
+            description: template.description,
+          },
+        },
+      });
+    }
+
+    setTemplatePickerType(null);
   }
 
   const sections: SectionKey[] = ["profile", "launch", "live"];
@@ -275,7 +322,29 @@ export default function SetupChecklist({
                 {items
                   .filter((item) => item.section === section)
                   .map((item) => (
-                    <ChecklistRow key={item.id} item={item} />
+                    <ChecklistRow
+                      key={item.id}
+                      item={item}
+                      templateAction={
+                        item.templateType ? (
+                          <button
+                            type="button"
+                            onClick={() => setTemplatePickerType(item.templateType ?? null)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              color: ACCENT_RED,
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Use Template →
+                          </button>
+                        ) : undefined
+                      }
+                    />
                   ))}
               </div>
             )}
@@ -351,6 +420,16 @@ export default function SetupChecklist({
           </button>
         ) : null}
       </div>
+
+      {templatePickerType ? (
+        <TemplatePickerModal
+          type={templatePickerType}
+          clubName={club.name}
+          clubCategory={club.category}
+          onClose={() => setTemplatePickerType(null)}
+          onSelect={handleTemplateSelect}
+        />
+      ) : null}
     </div>
   );
 }
