@@ -68,6 +68,8 @@ interface AdminUserRow {
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  program: string | null;
+  year_of_study: string | null;
   created_at: string;
 }
 
@@ -423,6 +425,9 @@ export default function AdminPage() {
 
   const [rejectTarget, setRejectTarget] = useState<ClubRequestRow | null>(null);
   const [rejectNote, setRejectNote] = useState("");
+  const [moreInfoTarget, setMoreInfoTarget] = useState<ClubRequestRow | null>(null);
+  const [moreInfoNote, setMoreInfoNote] = useState("");
+  const [requestSearch, setRequestSearch] = useState("");
 
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -665,7 +670,7 @@ export default function AdminPage() {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, email, avatar_url, created_at")
+      .select("id, full_name, email, avatar_url, program, year_of_study, created_at")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -681,6 +686,8 @@ export default function AdminPage() {
         full_name: (row.full_name as string) ?? null,
         email: (row.email as string) ?? null,
         avatar_url: (row.avatar_url as string) ?? null,
+        program: (row.program as string) ?? null,
+        year_of_study: (row.year_of_study as string) ?? null,
         created_at: (row.created_at as string) ?? "",
       })),
     );
@@ -872,9 +879,24 @@ export default function AdminPage() {
   }, [bugReports, bugFilter]);
 
   const filteredRequests = useMemo(() => {
-    if (requestFilter === "all") return requests;
-    return requests.filter((request) => request.status === requestFilter);
-  }, [requests, requestFilter]);
+    const statusFiltered =
+      requestFilter === "all"
+        ? requests
+        : requests.filter((request) => request.status === requestFilter);
+    const query = requestSearch.trim().toLowerCase();
+    if (!query) return statusFiltered;
+
+    return statusFiltered.filter((request) => {
+      const clubName = request.name.toLowerCase();
+      const submitterName = request.submitterName.toLowerCase();
+      const submitterEmail = request.submitterEmail.toLowerCase();
+      return (
+        clubName.includes(query) ||
+        submitterName.includes(query) ||
+        submitterEmail.includes(query)
+      );
+    });
+  }, [requests, requestFilter, requestSearch]);
 
   const filteredUsers = useMemo(() => {
     const query = userSearch.trim().toLowerCase();
@@ -1205,6 +1227,45 @@ export default function AdminPage() {
     void loadRequests();
   }
 
+  async function handleRequestMoreInfo() {
+    if (!user?.id || !moreInfoTarget?.submitted_by) return;
+
+    const note = moreInfoNote.trim();
+    if (!note) {
+      setFeedback("Please enter a message for the submitter.");
+      return;
+    }
+
+    setActionLoadingId(moreInfoTarget.id);
+    setFeedback(null);
+
+    const { error: updateError } = await supabase
+      .from("club_requests")
+      .update({ review_note: note })
+      .eq("id", moreInfoTarget.id);
+
+    if (updateError) {
+      console.error("Failed to save more info request:", updateError.message);
+      setFeedback("Failed to save your message.");
+      setActionLoadingId(null);
+      return;
+    }
+
+    await notifyUsers([
+      {
+        user_id: moreInfoTarget.submitted_by,
+        type: "club_update",
+        message: `We need more information about your club request for "${moreInfoTarget.name}": ${note}`,
+        reference_id: moreInfoTarget.id,
+      },
+    ]);
+
+    setMoreInfoTarget(null);
+    setMoreInfoNote("");
+    setActionLoadingId(null);
+    void loadRequests();
+  }
+
   async function handleRemoveReportedPost(report: PostReportRow) {
     setReportActionLoadingId(report.id);
     setFeedback(null);
@@ -1488,6 +1549,23 @@ export default function AdminPage() {
 
       {activeTab === "requests" ? (
         <section>
+          <input
+            type="search"
+            placeholder="Search by club name or submitter…"
+            value={requestSearch}
+            onChange={(e) => setRequestSearch(e.target.value)}
+            style={{
+              width: "100%",
+              background: "#111111",
+              border: "1px solid #2a2a2a",
+              borderRadius: "8px",
+              padding: "10px 14px",
+              color: "#ffffff",
+              fontSize: "14px",
+              marginBottom: "16px",
+              boxSizing: "border-box",
+            }}
+          />
           <div
             style={{
               display: "flex",
@@ -1521,9 +1599,11 @@ export default function AdminPage() {
                 aria-hidden
               />
               <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                {requestFilter === "all"
-                  ? "No club requests yet"
-                  : emptyRequestMessage}
+                {requestSearch.trim()
+                  ? "No club requests match your search"
+                  : requestFilter === "all"
+                    ? "No club requests yet"
+                    : emptyRequestMessage}
               </p>
             </div>
           ) : (
@@ -1664,6 +1744,30 @@ export default function AdminPage() {
                         </p>
                       ) : null}
                     </div>
+                    <button
+                      type="button"
+                      disabled={actionLoadingId === request.id}
+                      onClick={() => {
+                        setMoreInfoTarget(request);
+                        setMoreInfoNote(request.review_note ?? "");
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #FFC429",
+                        color: "#FFC429",
+                        borderRadius: "6px",
+                        padding: "8px 20px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor:
+                          actionLoadingId === request.id
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity: actionLoadingId === request.id ? 0.6 : 1,
+                      }}
+                    >
+                      Request More Info
+                    </button>
                     <button
                       type="button"
                       disabled={actionLoadingId === request.id}
@@ -1906,18 +2010,48 @@ export default function AdminPage() {
                   <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
                     {row.email ?? "No email"}
                   </p>
+                  {row.program || row.year_of_study ? (
+                    <p style={{ fontSize: "12px", color: "#666666", margin: "4px 0 0" }}>
+                      {[row.program, row.year_of_study].filter(Boolean).join(" · ")}
+                    </p>
+                  ) : null}
                 </div>
-                <p
+                <div
                   style={{
-                    fontSize: "11px",
-                    color: "#555555",
-                    margin: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
+                    gap: "8px",
                     flexShrink: 0,
-                    textAlign: "right",
                   }}
                 >
-                  Joined {formatJoinedDate(row.created_at)}
-                </p>
+                  <p
+                    style={{
+                      fontSize: "11px",
+                      color: "#555555",
+                      margin: 0,
+                      textAlign: "right",
+                    }}
+                  >
+                    Joined {formatJoinedDate(row.created_at)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/app/profile/${row.id}`)}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid #333333",
+                      color: "#cccccc",
+                      borderRadius: "6px",
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    View Profile
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -1951,13 +2085,13 @@ export default function AdminPage() {
                 accentColor="#FFC429"
               />
               <AdminStatCard
-                label="Total Events"
-                value={stats.events}
+                label="Pending Claims"
+                value={pendingClaimRequests.length}
                 accentColor="#747676"
               />
               <AdminStatCard
-                label="Total Messages"
-                value={stats.messages}
+                label="Pending Club Requests"
+                value={pendingRequestCount}
                 accentColor="#6b7cff"
               />
             </div>
@@ -2519,6 +2653,111 @@ export default function AdminPage() {
         </section>
       ) : null}
       </div>
+
+      {moreInfoTarget ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: isMobile ? "#1a1a1a" : "rgba(0, 0, 0, 0.65)",
+            display: "flex",
+            alignItems: isMobile ? "stretch" : "center",
+            justifyContent: isMobile ? "stretch" : "center",
+            zIndex: 50,
+            padding: isMobile ? 0 : "16px",
+          }}
+          onClick={() => {
+            if (!actionLoadingId) setMoreInfoTarget(null);
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              background: "#1a1a1a",
+              border: isMobile ? "none" : "1px solid #242424",
+              borderRadius: isMobile ? 0 : "12px",
+              padding: isMobile ? "24px 16px" : "24px",
+              maxWidth: isMobile ? "none" : "420px",
+              width: "100%",
+              minHeight: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setMoreInfoTarget(null)}
+              disabled={Boolean(actionLoadingId)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+              }}
+            >
+              <X size={18} aria-hidden />
+            </button>
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 8px",
+              }}
+            >
+              Request more info for &ldquo;{moreInfoTarget.name}&rdquo;
+            </h3>
+            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px" }}>
+              Message for the submitter:
+            </p>
+            <textarea
+              value={moreInfoNote}
+              onChange={(e) => setMoreInfoNote(e.target.value)}
+              rows={4}
+              placeholder="What additional details do you need?"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                background: "#111111",
+                border: "1px solid #2a2a2a",
+                borderRadius: "6px",
+                padding: "10px 14px",
+                color: "#ffffff",
+                fontSize: "14px",
+                marginBottom: "16px",
+                resize: "vertical",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleRequestMoreInfo()}
+              disabled={Boolean(actionLoadingId)}
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "1px solid #FFC429",
+                color: "#FFC429",
+                borderRadius: "6px",
+                padding: "10px 24px",
+                fontWeight: 600,
+                fontSize: "14px",
+                cursor: actionLoadingId ? "not-allowed" : "pointer",
+                opacity: actionLoadingId ? 0.6 : 1,
+              }}
+            >
+              {actionLoadingId ? "Sending…" : "Send Request"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {rejectTarget ? (
         <div
