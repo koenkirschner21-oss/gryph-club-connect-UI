@@ -17,12 +17,15 @@ export type ClaimRequestStatus =
   | "rejected"
   | "more_info";
 
+export type JoinQuestionType = "short" | "long" | "multiple_choice";
+
 export interface JoinQuestion {
   id: string;
   question: string;
-  question_type: "short" | "long";
+  question_type: JoinQuestionType;
   required?: boolean;
   order_index: number;
+  options?: string[];
 }
 
 export interface JoinAnswer {
@@ -67,6 +70,7 @@ export interface Club {
   setupCompleted?: boolean;
   isPublished?: boolean;
   joinQuestions?: JoinQuestion[];
+  allowJoinFileUpload?: boolean;
   createdBy?: string;
   createdAt?: string;
 }
@@ -141,6 +145,8 @@ export interface ClubMember {
   program?: string;
   yearOfStudy?: string;
   roleTitle?: string;
+  joinAnswers?: JoinAnswer[];
+  joinMessage?: string;
 }
 
 // ---------------------------------------------------------------------------

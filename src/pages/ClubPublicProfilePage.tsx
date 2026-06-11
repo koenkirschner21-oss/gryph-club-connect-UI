@@ -9,6 +9,7 @@ import {
   normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
+import JoinRequestForm from "../components/club/JoinRequestForm";
 import { normalizeVisibility } from "../lib/contentVisibility";
 import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
@@ -26,7 +27,7 @@ import type {
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
-import { darkInputStyle, modalOverlayStyle } from "./app/HiringBoardPage";
+import { modalOverlayStyle } from "./app/HiringBoardPage";
 
 interface PublicClubProfile {
   id: string;
@@ -46,6 +47,7 @@ interface PublicClubProfile {
   membershipType: MembershipType;
   claimStatus: ClaimStatus;
   joinQuestions: JoinQuestion[];
+  allowJoinFileUpload?: boolean;
 }
 
 type JoinApplicationStatus = "pending" | "approved" | "rejected" | null;
@@ -534,6 +536,7 @@ export default function ClubPublicProfilePage() {
         membershipType: normalizeMembershipType(clubRow.membership_type),
         claimStatus: normalizeClaimStatus(clubRow.claim_status),
         joinQuestions: parseJoinQuestions(clubRow.join_questions),
+        allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
       };
 
       setProfile(loaded);
@@ -541,28 +544,15 @@ export default function ClubPublicProfilePage() {
       let isMember = false;
       let userApplicationStatus: JoinApplicationStatus = null;
       if (user?.id) {
-        const [{ data: membership }, { data: application }] = await Promise.all([
-          supabase
-            .from("club_members")
-            .select("id")
-            .eq("club_id", loaded.id)
-            .eq("user_id", user.id)
-            .eq("status", "active")
-            .maybeSingle(),
-          supabase
-            .from("club_join_applications")
-            .select("status")
-            .eq("club_id", loaded.id)
-            .eq("applicant_id", user.id)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        ]);
-        isMember = !!membership;
-        if (application?.status === "pending" ||
-            application?.status === "approved" ||
-            application?.status === "rejected") {
-          userApplicationStatus = application.status;
+        const { data: membership } = await supabase
+          .from("club_members")
+          .select("status")
+          .eq("club_id", loaded.id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        isMember = membership?.status === "active";
+        if (membership?.status === "pending") {
+          userApplicationStatus = "pending";
         }
       }
       setApplicationStatus(userApplicationStatus);
@@ -678,22 +668,32 @@ export default function ClubPublicProfilePage() {
     }
   }
 
-  async function handleSubmitJoinApplication(answers: JoinAnswer[]) {
+  async function handleSubmitJoinRequest(payload: {
+    answers: JoinAnswer[];
+    message: string;
+    attachmentUrl?: string | null;
+  }) {
     if (!clubId || !user?.id) return;
 
     setSubmittingApplication(true);
     setJoinError(false);
     setJoinNotice(null);
-    const { error } = await supabase.from("club_join_applications").insert({
-      club_id: clubId,
-      applicant_id: user.id,
-      answers,
-      status: "pending",
+
+    const answers = [...payload.answers];
+    if (payload.attachmentUrl) {
+      answers.push({
+        question: "Attachment",
+        answer: payload.attachmentUrl,
+      });
+    }
+
+    const joined = await joinClub(clubId, {
+      joinAnswers: answers,
+      joinMessage: payload.message || null,
     });
 
     setSubmittingApplication(false);
-    if (error) {
-      console.error("Failed to submit application:", error.message);
+    if (!joined) {
       setJoinError(true);
       return;
     }
@@ -701,11 +701,10 @@ export default function ClubPublicProfilePage() {
     setApplicationStatus("pending");
     setShowApplicationModal(false);
 
-    const name =
-      profile?.name ?? contextClub?.name ?? "your club";
+    const name = profile?.name ?? contextClub?.name ?? "your club";
     await notifyClubOwnerJoin(
       clubId,
-      `Someone has applied to join ${name}. Review it in your members page.`,
+      `Someone requested to join ${name}. Review it in your members page.`,
     );
   }
 
@@ -1063,13 +1062,44 @@ export default function ClubPublicProfilePage() {
         ) : null}
 
         {showApplicationModal ? (
-          <ClubJoinApplicationModal
-            clubName={club.name}
-            questions={joinQuestions}
-            submitting={submittingApplication}
-            onClose={() => setShowApplicationModal(false)}
-            onSubmit={(answers) => void handleSubmitJoinApplication(answers)}
-          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{ ...modalOverlayStyle, zIndex: 60 }}
+            onClick={() => setShowApplicationModal(false)}
+          >
+            <div
+              style={{
+                background: "#1a1a1a",
+                border: "1px solid #242424",
+                borderRadius: "12px",
+                padding: "28px",
+                maxWidth: "520px",
+                width: "100%",
+                maxHeight: "90vh",
+                overflowY: "auto",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2
+                style={{
+                  fontWeight: 700,
+                  fontSize: "18px",
+                  color: "#ffffff",
+                  margin: "0 0 20px",
+                }}
+              >
+                Request to Join {club.name}
+              </h2>
+              <JoinRequestForm
+                questions={joinQuestions}
+                allowFileUpload={profile?.allowJoinFileUpload}
+                submitting={submittingApplication}
+                pending={applicationStatus === "pending"}
+                onSubmit={(payload) => void handleSubmitJoinRequest(payload)}
+              />
+            </div>
+          </div>
         ) : null}
 
         <div
@@ -2035,7 +2065,7 @@ function ClubJoinAction({
             color: "#FFC429",
           })}
         >
-          Application Submitted
+          Request Pending
         </span>
       );
     }
@@ -2071,7 +2101,7 @@ function ClubJoinAction({
           boxSizing: "border-box",
         }}
       >
-        {submittingApplication ? "Submitting…" : "Apply to Join"}
+        {submittingApplication ? "Submitting…" : "Submit Request"}
       </button>
     );
   }
@@ -2117,159 +2147,5 @@ function ClubJoinAction({
           ? "Cancel Request"
           : "Join Club"}
     </button>
-  );
-}
-
-function ClubJoinApplicationModal({
-  clubName,
-  questions,
-  submitting,
-  onClose,
-  onSubmit,
-}: {
-  clubName: string;
-  questions: JoinQuestion[];
-  submitting: boolean;
-  onClose: () => void;
-  onSubmit: (answers: JoinAnswer[]) => void;
-}) {
-  const effectiveQuestions =
-    questions.length > 0
-      ? questions
-      : [
-          {
-            id: "default-why",
-            question: "Why do you want to join?",
-            question_type: "long" as const,
-            required: true,
-            order_index: 0,
-          },
-        ];
-
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  function validate(): boolean {
-    const next: Record<string, string> = {};
-    for (const q of effectiveQuestions) {
-      if (q.required && !(answers[q.id] ?? "").trim()) {
-        next[q.id] = "This field is required.";
-      }
-    }
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  }
-
-  function handleSubmit() {
-    if (!validate()) return;
-    const payload: JoinAnswer[] = effectiveQuestions
-      .map((q) => ({
-        id: q.id,
-        question: q.question,
-        answer: (answers[q.id] ?? "").trim(),
-      }))
-      .filter((row) => row.answer);
-    onSubmit(payload);
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{ ...modalOverlayStyle, zIndex: 60 }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "#1a1a1a",
-          border: "1px solid #242424",
-          borderRadius: "12px",
-          padding: "28px",
-          maxWidth: "520px",
-          width: "100%",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          style={{
-            fontWeight: 700,
-            fontSize: "18px",
-            color: "#ffffff",
-            margin: "0 0 20px",
-          }}
-        >
-          Apply to Join {clubName}
-        </h2>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {effectiveQuestions.map((q) => (
-            <div key={q.id}>
-              <label
-                htmlFor={`join-q-${q.id}`}
-                style={{
-                  display: "block",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: "#cccccc",
-                  marginBottom: "6px",
-                }}
-              >
-                {q.question}
-                {q.required ? " *" : ""}
-              </label>
-              {q.question_type === "long" ? (
-                <textarea
-                  id={`join-q-${q.id}`}
-                  rows={4}
-                  value={answers[q.id] ?? ""}
-                  onChange={(e) =>
-                    setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
-                  }
-                  style={{ ...darkInputStyle, width: "100%", resize: "vertical" }}
-                />
-              ) : (
-                <input
-                  id={`join-q-${q.id}`}
-                  type="text"
-                  value={answers[q.id] ?? ""}
-                  onChange={(e) =>
-                    setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
-                  }
-                  style={{ ...darkInputStyle, width: "100%" }}
-                />
-              )}
-              {errors[q.id] ? (
-                <p style={{ fontSize: "12px", color: "#E51937", margin: "4px 0 0" }}>
-                  {errors[q.id]}
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={handleSubmit}
-          style={{
-            width: "100%",
-            marginTop: "20px",
-            background: "#E51937",
-            color: "#ffffff",
-            border: "none",
-            borderRadius: "6px",
-            padding: "10px 16px",
-            fontSize: "14px",
-            fontWeight: 600,
-            cursor: submitting ? "wait" : "pointer",
-            opacity: submitting ? 0.7 : 1,
-          }}
-        >
-          {submitting ? "Submitting…" : "Submit Application"}
-        </button>
-      </div>
-    </div>
   );
 }

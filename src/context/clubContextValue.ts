@@ -1,5 +1,5 @@
 import { createContext } from "react";
-import type { Club, MemberRole } from "../types";
+import type { Club, MemberRole, JoinAnswer } from "../types";
 
 export interface ClubContextValue {
   /** All available clubs (fetched from Supabase or fallback data). */
@@ -19,7 +19,11 @@ export interface ClubContextValue {
   savedClubs: string[];
   joinClub: (
     clubId: string,
-    options?: { viaJoinCode?: boolean },
+    options?: {
+      viaJoinCode?: boolean;
+      joinAnswers?: JoinAnswer[];
+      joinMessage?: string | null;
+    },
   ) => Promise<boolean>;
   leaveClub: (clubId: string) => void;
   toggleSaveClub: (clubId: string) => void;

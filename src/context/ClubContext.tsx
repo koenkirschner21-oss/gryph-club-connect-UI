@@ -15,7 +15,7 @@ import {
 import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
-import type { Club, MemberRole } from "../types";
+import type { Club, MemberRole, JoinAnswer } from "../types";
 
 const ACTIVE_CLUB_STORAGE_KEY = "activeClubId";
 
@@ -72,6 +72,7 @@ function mapRow(row: Record<string, unknown>): Club {
     setupCompleted: (row.setup_completed as boolean) ?? false,
     isPublished: (row.is_published as boolean) ?? false,
     joinQuestions: parseJoinQuestions(row.join_questions),
+    allowJoinFileUpload: (row.allow_join_file_upload as boolean) ?? false,
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
   };
@@ -258,7 +259,11 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   const joinClub = useCallback(
     async (
       clubId: string,
-      options?: { viaJoinCode?: boolean },
+      options?: {
+        viaJoinCode?: boolean;
+        joinAnswers?: JoinAnswer[];
+        joinMessage?: string | null;
+      },
     ): Promise<boolean> => {
       if (!user) return false;
 
@@ -301,6 +306,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             user_id: user.id,
             role: "member",
             status,
+            join_answers: options?.joinAnswers ?? [],
+            join_message: options?.joinMessage?.trim() || null,
           },
           { onConflict: "club_id,user_id" },
         );

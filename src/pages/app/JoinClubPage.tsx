@@ -4,12 +4,23 @@ import { supabase } from "../../lib/supabaseClient";
 import {
   membershipRequiresApproval,
   normalizeMembershipType,
+  parseJoinQuestions,
 } from "../../lib/clubJoinUtils";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import { showToast } from "../../components/ui/Toast";
+import JoinRequestForm from "../../components/club/JoinRequestForm";
+import type { JoinQuestion, MembershipType } from "../../types";
+
+type LookupClub = {
+  id: string;
+  name: string;
+  membershipType: MembershipType;
+  joinQuestions: JoinQuestion[];
+  allowJoinFileUpload: boolean;
+};
 
 export default function JoinClubPage() {
   const navigate = useNavigate();
@@ -17,8 +28,10 @@ export default function JoinClubPage() {
   const { joinClub, isJoined, isPending } = useClubContext();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [lookupClub, setLookupClub] = useState<LookupClub | null>(null);
+  const [submittingRequest, setSubmittingRequest] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleCodeSubmit(e: FormEvent) {
     e.preventDefault();
     if (!code.trim()) {
       showToast("Please enter a join code", "error");
@@ -33,8 +46,6 @@ export default function JoinClubPage() {
     setLoading(true);
 
     try {
-      // Look up the club directly in Supabase by join_code (server-side,
-      // works even if the club hasn't been loaded into the local context yet).
       const { data: clubRow, error: lookupErr } = await supabase
         .from("clubs")
         .select("*")
@@ -66,16 +77,32 @@ export default function JoinClubPage() {
         return;
       }
 
-      // Check if already a member
       if (isJoined(clubId)) {
         showToast("You are already a member of this club.", "error");
         setLoading(false);
         return;
       }
 
-      // Check if already pending
       if (isPending(clubId)) {
-        showToast("You already have a pending request for this club.", "error");
+        setLookupClub({
+          id: clubId,
+          name: clubName,
+          membershipType,
+          joinQuestions: parseJoinQuestions(clubRow.join_questions),
+          allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (membershipRequiresApproval(membershipType)) {
+        setLookupClub({
+          id: clubId,
+          name: clubName,
+          membershipType,
+          joinQuestions: parseJoinQuestions(clubRow.join_questions),
+          allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
+        });
         setLoading(false);
         return;
       }
@@ -87,16 +114,8 @@ export default function JoinClubPage() {
         return;
       }
 
-      if (membershipRequiresApproval(membershipType)) {
-        showToast(
-          `Request sent to join "${clubName}". An admin will review your request.`,
-          "success",
-        );
-      } else {
-        showToast(`You have joined "${clubName}"!`, "success");
-        // Navigate to the club workspace after a short delay
-        setTimeout(() => navigate(`/app/clubs/${clubId}`), 1500);
-      }
+      showToast(`You have joined "${clubName}"!`, "success");
+      setTimeout(() => navigate(`/app/clubs/${clubId}`), 1500);
     } catch {
       showToast("Something went wrong. Please try again.", "error");
     } finally {
@@ -104,42 +123,116 @@ export default function JoinClubPage() {
     }
   }
 
+  async function handleSubmitJoinRequest(payload: {
+    answers: { id?: string; question: string; answer: string }[];
+    message: string;
+    attachmentUrl?: string | null;
+  }) {
+    if (!lookupClub) return;
+
+    setSubmittingRequest(true);
+
+    try {
+      const answers = [...payload.answers];
+      if (payload.attachmentUrl) {
+        answers.push({
+          question: "Attachment",
+          answer: payload.attachmentUrl,
+        });
+      }
+
+      const joined = await joinClub(lookupClub.id, {
+        viaJoinCode: true,
+        joinAnswers: answers,
+        joinMessage: payload.message || null,
+      });
+
+      if (!joined) {
+        showToast("Failed to submit request. Please try again.", "error");
+        return;
+      }
+
+      showToast(
+        `Request sent to join "${lookupClub.name}". An admin will review your request.`,
+        "success",
+      );
+    } catch {
+      showToast("Something went wrong. Please try again.", "error");
+    } finally {
+      setSubmittingRequest(false);
+    }
+  }
+
+  const requestPending = lookupClub ? isPending(lookupClub.id) : false;
+
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
       <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-sm">
-        <h1 className="mb-2 text-center text-2xl font-bold text-white">
-          Join a Club
-        </h1>
-        <p className="mb-6 text-center text-sm text-muted">
-          Enter the join code shared by your club&apos;s admin to access their
-          workspace.
-        </p>
+        {lookupClub ? (
+          <>
+            <h1 className="mb-2 text-center text-2xl font-bold text-white">
+              Request to Join
+            </h1>
+            <p className="mb-6 text-center text-sm text-muted">
+              Complete the form below to request membership in{" "}
+              <span className="font-medium text-white">{lookupClub.name}</span>.
+            </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <FormInput
-            id="joinCode"
-            label="Join Code"
-            required
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="e.g. ABC123"
-            autoComplete="off"
-          />
+            <JoinRequestForm
+              questions={lookupClub.joinQuestions}
+              allowFileUpload={lookupClub.allowJoinFileUpload}
+              submitting={submittingRequest}
+              pending={requestPending}
+              onSubmit={(payload) => void handleSubmitJoinRequest(payload)}
+            />
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Joining…" : "Join Club"}
-          </Button>
-        </form>
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setLookupClub(null)}
+                className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
+              >
+                Use a different join code
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 className="mb-2 text-center text-2xl font-bold text-white">
+              Join a Club
+            </h1>
+            <p className="mb-6 text-center text-sm text-muted">
+              Enter the join code shared by your club&apos;s admin to access their
+              workspace.
+            </p>
 
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => navigate("/explore")}
-            className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
-          >
-            Or browse clubs to discover
-          </button>
-        </div>
+            <form onSubmit={handleCodeSubmit} className="space-y-4" noValidate>
+              <FormInput
+                id="joinCode"
+                label="Join Code"
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="e.g. ABC123"
+                autoComplete="off"
+              />
+
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? "Looking up…" : "Continue"}
+              </Button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => navigate("/explore")}
+                className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
+              >
+                Or browse clubs to discover
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

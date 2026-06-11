@@ -14,12 +14,14 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
 import {
+  defaultJoinQuestions,
   normalizeMembershipType,
   parseJoinQuestions,
+  serializeJoinQuestions,
 } from "../../lib/clubJoinUtils";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
-import type { JoinQuestion, MemberRole, MembershipType } from "../../types";
+import type { JoinQuestion, JoinQuestionType, MemberRole, MembershipType } from "../../types";
 import ImageUpload from "../../components/ui/ImageUpload";
 import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
@@ -463,11 +465,26 @@ const MEMBERSHIP_TYPE_OPTIONS: {
 
 function JoinQuestionBuilder({
   questions,
+  allowFileUpload,
   onChange,
+  onAllowFileUploadChange,
 }: {
   questions: JoinQuestion[];
+  allowFileUpload: boolean;
   onChange: (questions: JoinQuestion[]) => void;
+  onAllowFileUploadChange: (value: boolean) => void;
 }) {
+  const inputStyle: CSSProperties = {
+    background: "#111111",
+    border: "1px solid #2a2a2a",
+    borderRadius: "6px",
+    padding: "8px 12px",
+    color: "#ffffff",
+    fontSize: "13px",
+    width: "100%",
+    boxSizing: "border-box",
+  };
+
   const update = (id: string, patch: Partial<JoinQuestion>) => {
     onChange(questions.map((q) => (q.id === id ? { ...q, ...patch } : q)));
   };
@@ -480,113 +497,221 @@ function JoinQuestionBuilder({
     );
   };
 
-  const add = (question_type: "short" | "long") => {
+  const addQuestion = () => {
     onChange([
       ...questions,
       {
         id: crypto.randomUUID(),
         question: "",
-        question_type,
+        question_type: "short",
         required: false,
         order_index: questions.length,
+        options: [],
       },
     ]);
   };
 
-  const inputStyle: CSSProperties = {
-    background: "#111111",
-    border: "1px solid #2a2a2a",
-    borderRadius: "6px",
-    padding: "8px 12px",
-    color: "#ffffff",
-    fontSize: "13px",
-    width: "100%",
-    boxSizing: "border-box",
+  const addOption = (questionId: string) => {
+    onChange(
+      questions.map((question) =>
+        question.id === questionId
+          ? {
+              ...question,
+              options: [...(question.options ?? []), ""],
+            }
+          : question,
+      ),
+    );
+  };
+
+  const updateOption = (questionId: string, index: number, value: string) => {
+    onChange(
+      questions.map((question) => {
+        if (question.id !== questionId) return question;
+        const options = [...(question.options ?? [])];
+        options[index] = value;
+        return { ...question, options };
+      }),
+    );
+  };
+
+  const removeOption = (questionId: string, index: number) => {
+    onChange(
+      questions.map((question) => {
+        if (question.id !== questionId) return question;
+        const options = [...(question.options ?? [])];
+        options.splice(index, 1);
+        return { ...question, options };
+      }),
+    );
   };
 
   return (
     <div>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        {questions.map((q) => (
+        {questions.map((question) => (
           <div
-            key={q.id}
+            key={question.id}
             style={{
               background: "#111111",
               border: "1px solid #2a2a2a",
               borderRadius: "8px",
-              padding: "12px",
+              padding: "14px",
             }}
           >
             <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
               <input
                 type="text"
-                value={q.question}
-                onChange={(e) => update(q.id, { question: e.target.value })}
+                value={question.question}
+                onChange={(e) => update(question.id, { question: e.target.value })}
                 placeholder="Question text"
                 style={{ ...inputStyle, flex: 1 }}
               />
               <select
-                value={q.question_type}
+                value={question.question_type}
                 onChange={(e) =>
-                  update(q.id, {
-                    question_type: e.target.value as "short" | "long",
+                  update(question.id, {
+                    question_type: e.target.value as JoinQuestionType,
+                    options:
+                      e.target.value === "multiple_choice"
+                        ? question.options?.length
+                          ? question.options
+                          : [""]
+                        : undefined,
                   })
                 }
-                style={{ ...inputStyle, width: "140px" }}
+                style={{ ...inputStyle, width: "160px" }}
               >
-                <option value="short">Short answer</option>
-                <option value="long">Long answer</option>
+                <option value="short">Short Answer</option>
+                <option value="long">Long Answer</option>
+                <option value="multiple_choice">Multiple Choice</option>
               </select>
               <button
                 type="button"
-                onClick={() => remove(q.id)}
+                onClick={() => remove(question.id)}
                 style={{
                   background: "transparent",
-                  border: "none",
+                  border: "1px solid #E51937",
                   color: "#E51937",
-                  cursor: "pointer",
+                  borderRadius: "6px",
+                  padding: "8px 10px",
                   fontSize: "12px",
-                  padding: "8px",
+                  cursor: "pointer",
                 }}
               >
-                Remove
+                Delete
               </button>
             </div>
+
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                marginTop: "10px",
+                fontSize: "12px",
+                color: "#888888",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(question.required)}
+                onChange={(e) => update(question.id, { required: e.target.checked })}
+              />
+              Required
+            </label>
+
+            {question.question_type === "multiple_choice" ? (
+              <div style={{ marginTop: "12px" }}>
+                {(question.options ?? []).map((option, index) => (
+                  <div
+                    key={`${question.id}-option-${index}`}
+                    style={{ display: "flex", gap: "8px", marginBottom: "8px" }}
+                  >
+                    <input
+                      type="text"
+                      value={option}
+                      onChange={(e) =>
+                        updateOption(question.id, index, e.target.value)
+                      }
+                      placeholder={`Option ${index + 1}`}
+                      style={inputStyle}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeOption(question.id, index)}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #333333",
+                        color: "#777777",
+                        borderRadius: "6px",
+                        padding: "8px 10px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => addOption(question.id)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #333333",
+                    color: "#cccccc",
+                    borderRadius: "6px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Add Option
+                </button>
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: "8px", marginTop: "12px", flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={() => add("short")}
-          style={{
-            background: "transparent",
-            border: "1px solid #333333",
-            color: "#cccccc",
-            borderRadius: "6px",
-            padding: "6px 14px",
-            fontSize: "12px",
-            cursor: "pointer",
-          }}
-        >
-          + Short answer
-        </button>
-        <button
-          type="button"
-          onClick={() => add("long")}
-          style={{
-            background: "transparent",
-            border: "1px solid #333333",
-            color: "#cccccc",
-            borderRadius: "6px",
-            padding: "6px 14px",
-            fontSize: "12px",
-            cursor: "pointer",
-          }}
-        >
-          + Long answer
-        </button>
-      </div>
+
+      <button
+        type="button"
+        onClick={addQuestion}
+        style={{
+          marginTop: "12px",
+          background: "transparent",
+          border: "1px solid #333333",
+          color: "#cccccc",
+          borderRadius: "6px",
+          padding: "8px 16px",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        Add Question
+      </button>
+
+      <label
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          marginTop: "16px",
+          fontSize: "13px",
+          color: "#cccccc",
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={allowFileUpload}
+          onChange={(e) => onAllowFileUploadChange(e.target.checked)}
+        />
+        Allow file upload
+      </label>
     </div>
   );
 }
@@ -658,6 +783,7 @@ export default function ClubSettingsPage() {
     club?.membershipType ?? "open",
   );
   const [joinQuestions, setJoinQuestions] = useState<JoinQuestion[]>([]);
+  const [allowJoinFileUpload, setAllowJoinFileUpload] = useState(false);
   const [savingJoinQuestions, setSavingJoinQuestions] = useState(false);
 
   const isOwner = userRole === "owner";
@@ -767,7 +893,11 @@ export default function ClubSettingsPage() {
         setTwitterUrl(loadedTwitter);
         setWebsiteUrl(loadedWebsite);
         setMembershipType(normalizeMembershipType(data.membership_type));
-        setJoinQuestions(parseJoinQuestions(data.join_questions));
+        const parsedQuestions = parseJoinQuestions(data.join_questions);
+        setJoinQuestions(
+          parsedQuestions.length > 0 ? parsedQuestions : defaultJoinQuestions(),
+        );
+        setAllowJoinFileUpload(Boolean(data.allow_join_file_upload));
         setSavedSnapshot((prev) =>
           prev
             ? {
@@ -1012,19 +1142,14 @@ export default function ClubSettingsPage() {
   async function handleSaveJoinQuestions() {
     if (!clubId) return;
     setSavingJoinQuestions(true);
-    const questions = joinQuestions
-      .filter((q) => q.question.trim())
-      .map((q, index) => ({
-        id: q.id,
-        question: q.question.trim(),
-        question_type: q.question_type,
-        required: q.required ?? false,
-        order_index: index,
-      }));
+    const questions = serializeJoinQuestions(joinQuestions);
 
     const { error } = await supabase
       .from("clubs")
-      .update({ join_questions: questions })
+      .update({
+        join_questions: questions,
+        allow_join_file_upload: allowJoinFileUpload,
+      })
       .eq("id", clubId);
 
     setSavingJoinQuestions(false);
@@ -1035,7 +1160,7 @@ export default function ClubSettingsPage() {
     }
 
     setJoinQuestions(parseJoinQuestions(questions));
-    showToast("Application questions saved", "success");
+    showToast("Join request form saved", "success");
   }
 
   if (!club) {
@@ -1679,11 +1804,17 @@ export default function ClubSettingsPage() {
                     margin: "0 0 12px",
                   }}
                 >
-                  Application Questions
+                  Join Request Form
                 </h3>
                 <JoinQuestionBuilder
-                  questions={joinQuestions}
+                  questions={
+                    joinQuestions.length > 0
+                      ? joinQuestions
+                      : defaultJoinQuestions()
+                  }
+                  allowFileUpload={allowJoinFileUpload}
                   onChange={setJoinQuestions}
+                  onAllowFileUploadChange={setAllowJoinFileUpload}
                 />
                 <button
                   type="button"
@@ -1702,7 +1833,7 @@ export default function ClubSettingsPage() {
                     opacity: savingJoinQuestions ? 0.7 : 1,
                   }}
                 >
-                  {savingJoinQuestions ? "Saving…" : "Save Questions"}
+                  {savingJoinQuestions ? "Saving…" : "Save Join Form"}
                 </button>
               </div>
             ) : null}

@@ -715,6 +715,7 @@ export default function ClubMembersPage() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [memberRoleFilter, setMemberRoleFilter] = useState<MemberRoleFilter>("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [viewRequestMember, setViewRequestMember] = useState<ClubMember | null>(null);
 
   const [applications, setApplications] = useState<JoinApplicationRow[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(false);
@@ -1115,6 +1116,7 @@ export default function ClubMembersPage() {
     setFeedback(null);
     const ok = await approveRequest(memberId);
     if (ok) {
+      setViewRequestMember(null);
       setFeedback({ type: "success", text: "Request approved." });
     } else {
       setFeedback({ type: "error", text: "Failed to approve request." });
@@ -1127,6 +1129,7 @@ export default function ClubMembersPage() {
     setFeedback(null);
     const ok = await rejectRequest(memberId);
     if (ok) {
+      setViewRequestMember(null);
       setFeedback({ type: "success", text: "Request declined." });
     } else {
       setFeedback({ type: "error", text: "Failed to decline request." });
@@ -1602,29 +1605,19 @@ export default function ClubMembersPage() {
                       <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
                         <button
                           type="button"
-                          disabled={actionLoading === member.id}
-                          onClick={() => void handleApprove(member.id)}
+                          onClick={() => setViewRequestMember(member)}
                           style={{
-                            ...approveOutlineButtonStyle,
-                            opacity: actionLoading === member.id ? 0.6 : 1,
-                            cursor:
-                              actionLoading === member.id ? "not-allowed" : "pointer",
+                            background: "transparent",
+                            border: "1px solid #333333",
+                            color: "#cccccc",
+                            borderRadius: "6px",
+                            padding: "7px 18px",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            cursor: "pointer",
                           }}
                         >
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actionLoading === member.id}
-                          onClick={() => void handleReject(member.id)}
-                          style={{
-                            ...declineOutlineButtonStyle,
-                            opacity: actionLoading === member.id ? 0.6 : 1,
-                            cursor:
-                              actionLoading === member.id ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          Decline
+                          View Request
                         </button>
                       </div>
                     </div>
@@ -2258,6 +2251,211 @@ export default function ClubMembersPage() {
           joinCode={club?.joinCode}
         />
       ) : null}
+
+      {viewRequestMember ? (
+        <PendingRequestModal
+          member={viewRequestMember}
+          actionLoading={actionLoading === viewRequestMember.id}
+          onClose={() => setViewRequestMember(null)}
+          onApprove={() => void handleApprove(viewRequestMember.id)}
+          onDecline={() => void handleReject(viewRequestMember.id)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+const modalOverlayStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0, 0, 0, 0.7)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "24px",
+  zIndex: 50,
+};
+
+function PendingRequestModal({
+  member,
+  actionLoading,
+  onClose,
+  onApprove,
+  onDecline,
+}: {
+  member: ClubMember;
+  actionLoading: boolean;
+  onClose: () => void;
+  onApprove: () => void;
+  onDecline: () => void;
+}) {
+  const requestedLabel = new Date(member.joinedAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const profileMeta = [member.program, member.yearOfStudy].filter(Boolean).join(" · ");
+  const answers = member.joinAnswers ?? [];
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pending-request-title"
+      style={modalOverlayStyle}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#1a1a1a",
+          border: "1px solid #2a2a2a",
+          borderRadius: "12px",
+          padding: "28px",
+          maxWidth: "520px",
+          width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="pending-request-title"
+          style={{
+            fontWeight: 700,
+            fontSize: "18px",
+            color: "#ffffff",
+            margin: "0 0 20px",
+          }}
+        >
+          Join Request
+        </h2>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
+          <div>
+            <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Name</p>
+            <p style={{ margin: "4px 0 0", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
+              {member.fullName ?? "Unknown"}
+            </p>
+          </div>
+          {member.email ? (
+            <div>
+              <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Email</p>
+              <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#cccccc" }}>
+                {member.email}
+              </p>
+            </div>
+          ) : null}
+          {profileMeta ? (
+            <div>
+              <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Program & year</p>
+              <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#cccccc" }}>
+                {profileMeta}
+              </p>
+            </div>
+          ) : null}
+          <div>
+            <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Date requested</p>
+            <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#cccccc" }}>
+              {requestedLabel}
+            </p>
+          </div>
+        </div>
+
+        {answers.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginBottom: "20px" }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#888888",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Answers
+            </p>
+            {answers.map((answer: JoinAnswer, index) => (
+              <div key={answer.id ?? `answer-${index}`}>
+                <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>
+                  {answer.question || "Question"}
+                </p>
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: "14px",
+                    color: "#cccccc",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {answer.answer}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {member.joinMessage ? (
+          <div style={{ marginBottom: "24px" }}>
+            <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>
+              Additional message
+            </p>
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: "14px",
+                color: "#cccccc",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {member.joinMessage}
+            </p>
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={actionLoading}
+            style={{
+              background: "transparent",
+              border: "1px solid #333333",
+              color: "#888888",
+              borderRadius: "6px",
+              padding: "8px 16px",
+              fontSize: "13px",
+              cursor: actionLoading ? "not-allowed" : "pointer",
+            }}
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            disabled={actionLoading}
+            onClick={onDecline}
+            style={{
+              ...declineOutlineButtonStyle,
+              opacity: actionLoading ? 0.6 : 1,
+              cursor: actionLoading ? "not-allowed" : "pointer",
+            }}
+          >
+            Decline
+          </button>
+          <button
+            type="button"
+            disabled={actionLoading}
+            onClick={onApprove}
+            style={{
+              ...approveOutlineButtonStyle,
+              opacity: actionLoading ? 0.6 : 1,
+              cursor: actionLoading ? "not-allowed" : "pointer",
+            }}
+          >
+            {actionLoading ? "Saving…" : "Approve"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

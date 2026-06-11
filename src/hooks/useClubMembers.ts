@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 import { notifyUsers } from "../lib/notifyUsers";
 import { normalizeMembershipType } from "../lib/clubJoinUtils";
 import type { ClubMember, MemberRole, MembershipType, AccessLevel } from "../types";
+import { parseJoinAnswers } from "../lib/clubJoinUtils";
 
 /** Map a joined club_members + profiles row to our ClubMember type. */
 function mapMemberRow(row: Record<string, unknown>): ClubMember {
@@ -29,6 +30,8 @@ function mapMemberRow(row: Record<string, unknown>): ClubMember {
     program: (profile.program as string) ?? undefined,
     yearOfStudy: (profile.year_of_study as string) ?? undefined,
     roleTitle: (row.title as string | null)?.trim() || undefined,
+    joinAnswers: parseJoinAnswers(row.join_answers),
+    joinMessage: (row.join_message as string | null)?.trim() || undefined,
   };
 }
 
@@ -86,6 +89,8 @@ export function useClubMembers(
           created_at,
           title,
           access_level,
+          join_answers,
+          join_message,
           member_profile:profiles!club_members_user_profile_fkey (
             full_name,
             email,
@@ -108,6 +113,8 @@ export function useClubMembers(
           created_at,
           title,
           access_level,
+          join_answers,
+          join_message,
           member_profile:profiles!club_members_user_profile_fkey (
             full_name,
             email,
