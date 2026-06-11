@@ -36,14 +36,6 @@ import {
 type ListingStatus = "open" | "filled" | "closed";
 type PositionFilter = "all" | "open" | "pending_review" | "filled" | "closed";
 
-const POSITION_FILTER_OPTIONS: { value: PositionFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "open", label: "Open" },
-  { value: "pending_review", label: "Pending Review" },
-  { value: "filled", label: "Filled" },
-  { value: "closed", label: "Closed" },
-];
-
 interface ClubPosition {
   id: string;
   title: string;
@@ -600,7 +592,7 @@ export default function ClubRecruitingPage() {
   const [applyPosition, setApplyPosition] = useState<ClubPosition | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
-  const [positionFilter, setPositionFilter] = useState<PositionFilter>("all");
+  const [positionFilter] = useState<PositionFilter>("all");
   const [applicantSearch, setApplicantSearch] = useState("");
   const [applicantStatusFilter, setApplicantStatusFilter] =
     useState<ApplicantStatusFilter>("all");

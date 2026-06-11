@@ -20,11 +20,17 @@ import {
   getUpcomingEventOccurrences,
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
+import { filterByVisibility } from "../../lib/contentVisibility";
+import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
-import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
+import {
+  accessLevelFromMember,
+  formatNameWithRoleTitle,
+} from "../../lib/memberRoleTitle";
 import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
 import { supabase } from "../../lib/supabaseClient";
 import type {
+  AccessLevel,
   ClubEvent,
   MemberRole,
   Post,
@@ -543,6 +549,83 @@ const detailModalPanel: CSSProperties = {
   overflowY: "auto",
 };
 
+function RoleIndicatorPill({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        marginTop: "8px",
+        fontSize: "11px",
+        fontWeight: 600,
+        color,
+        border: `1px solid ${color}`,
+        borderRadius: "20px",
+        padding: "3px 10px",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function MemberAnnouncementCard({
+  post,
+  onReadMore,
+}: {
+  post: Post;
+  onReadMore: () => void;
+}) {
+  const preview = firstSentencePreview(post.content);
+
+  return (
+    <article
+      style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: "8px",
+        padding: "14px 16px",
+      }}
+    >
+      <h3
+        style={{
+          fontSize: "14px",
+          fontWeight: 700,
+          color: "#ffffff",
+          margin: "0 0 8px",
+        }}
+      >
+        {post.title}
+      </h3>
+      {preview ? (
+        <p
+          style={{
+            fontSize: "13px",
+            color: "#aaaaaa",
+            margin: "0 0 10px",
+            lineHeight: 1.5,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {preview}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={onReadMore}
+        style={{
+          ...viewAllLink,
+          padding: 0,
+        }}
+      >
+        Read more →
+      </button>
+    </article>
+  );
+}
+
 function DashboardItemModal({
   onClose,
   children,
@@ -550,7 +633,7 @@ function DashboardItemModal({
 }: {
   onClose: () => void;
   children: ReactNode;
-  footerLink: { label: string; to: string };
+  footerLink?: { label: string; to: string };
 }) {
   const navigate = useNavigate();
   return (
@@ -581,24 +664,26 @@ function DashboardItemModal({
           <X size={18} aria-hidden />
         </button>
         {children}
-        <button
-          type="button"
-          onClick={() => navigate(footerLink.to)}
-          style={{
-            marginTop: "24px",
-            width: "100%",
-            background: "transparent",
-            border: "1px solid #333333",
-            color: "#E51937",
-            borderRadius: "6px",
-            padding: "10px 16px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {footerLink.label}
-        </button>
+        {footerLink ? (
+          <button
+            type="button"
+            onClick={() => navigate(footerLink.to)}
+            style={{
+              marginTop: "24px",
+              width: "100%",
+              background: "transparent",
+              border: "1px solid #333333",
+              color: "#E51937",
+              borderRadius: "6px",
+              padding: "10px 16px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {footerLink.label}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -1065,6 +1150,8 @@ export default function ClubHomePage() {
     : null;
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
+  const [userRoleTitle, setUserRoleTitle] = useState<string | null>(null);
+  const [userAccessLevel, setUserAccessLevel] = useState<AccessLevel>("member");
   const [profileFullName, setProfileFullName] = useState<string | null>(null);
   const [newEventHovered, setNewEventHovered] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
@@ -1118,25 +1205,42 @@ export default function ClubHomePage() {
     const previewRole = localStorage.getItem("previewRole");
     if (previewRole) {
       setUserRole(previewRole as MemberRole);
+      setUserRoleTitle(null);
+      setUserAccessLevel(
+        previewRole === "owner"
+          ? "president"
+          : previewRole === "executive"
+            ? "executive"
+            : "member",
+      );
       return;
     }
-    if (contextRole) {
-      setUserRole(normalizeUserRole(contextRole as MemberRole));
-      return;
-    }
-    const fetchRole = async () => {
+
+    const fetchMembership = async () => {
       if (!user?.id || !clubId) return;
       const { data } = await supabase
         .from("club_members")
-        .select("role")
+        .select("role, title, access_level")
         .eq("club_id", clubId)
         .eq("user_id", user.id)
         .single();
-      if (data?.role) {
-        setUserRole(normalizeUserRole(data.role as MemberRole));
-      }
+      if (!data?.role) return;
+
+      const role = normalizeUserRole(data.role as MemberRole);
+      setUserRole(role);
+      setUserRoleTitle((data.title as string | null)?.trim() || null);
+      setUserAccessLevel(
+        accessLevelFromMember({
+          role,
+          accessLevel: data.access_level as AccessLevel | null | undefined,
+        }),
+      );
     };
-    fetchRole();
+
+    if (contextRole) {
+      setUserRole(normalizeUserRole(contextRole as MemberRole));
+    }
+    void fetchMembership();
   }, [clubId, user?.id, contextRole]);
 
   const { events, loading: eventsLoading } = useClubEvents(clubId);
@@ -1407,11 +1511,36 @@ export default function ClubHomePage() {
         .slice(0, 4),
     [tasksForRole],
   );
+  const isPrivileged = isPrivilegedClubRole(userRole);
+  const visibilityContext = useMemo(
+    () => ({ isMember: true, isPrivileged }),
+    [isPrivileged],
+  );
+
   const previewPosts = posts.slice(0, 2);
   const previewUpcomingEvents = useMemo(
     () => deduplicateUpcomingEventsByTitle(upcomingOccurrences, 3),
     [upcomingOccurrences],
   );
+  const memberUpcomingEvents = useMemo(() => {
+    const visible = filterByVisibility(upcomingOccurrences, visibilityContext);
+    return deduplicateUpcomingEventsByTitle(visible, 3);
+  }, [upcomingOccurrences, visibilityContext]);
+  const memberAnnouncements = useMemo(
+    () => filterByVisibility(posts, visibilityContext).slice(0, 3),
+    [posts, visibilityContext],
+  );
+
+  const rolePillLabel = !isPrivileged
+    ? "Member"
+    : userAccessLevel === "president" || userRole === "owner"
+      ? userRoleTitle || "President"
+      : userRoleTitle || "Executive";
+  const rolePillColor = !isPrivileged
+    ? "#555555"
+    : userAccessLevel === "president" || userRole === "owner"
+      ? "#E51937"
+      : "#FFC429";
   const rsvpEventIds = useMemo(() => {
     const ids = new Set(previewUpcomingEvents.map((event) => event.id));
     if (nextEvent?.id) ids.add(nextEvent.id);
@@ -1516,9 +1645,10 @@ export default function ClubHomePage() {
           >
             Here&apos;s what&apos;s happening in {club.name}.
           </p>
+          <RoleIndicatorPill label={rolePillLabel} color={rolePillColor} />
         </div>
 
-        {userRole === "owner" || userRole === "executive" ? (
+        {isPrivileged ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
             <button
               type="button"
@@ -1556,12 +1686,12 @@ export default function ClubHomePage() {
         className={`grid items-stretch gap-4 ${
           isMobile
             ? "grid-cols-2"
-            : userRole === "member"
-              ? "grid-cols-1 sm:grid-cols-2"
-              : "grid-cols-1 sm:grid-cols-3"
+            : isPrivileged
+              ? "grid-cols-1 sm:grid-cols-3"
+              : "grid-cols-1 sm:grid-cols-2"
         }`}
       >
-        {userRole !== "member" ? (
+        {isPrivileged ? (
           <ClubStatCard
             label="Open Tasks"
             value={openTaskCount}
@@ -1580,6 +1710,85 @@ export default function ClubHomePage() {
         <NextMeetingStatCard display={nextMeetingDisplay} to={eventsPath} />
       </div>
 
+      {!isPrivileged ? (
+        <div style={{ ...dashboardColumnStack, marginTop: "28px" }}>
+          <div style={dashboardSectionBlockFixed}>
+            <div style={sectionBlockHeader}>
+              <h2 style={sectionHeading}>Upcoming Events</h2>
+            </div>
+            {eventsLoading ? (
+              <div className="flex justify-center py-6">
+                <Spinner label="Loading events…" />
+              </div>
+            ) : memberUpcomingEvents.length === 0 ? (
+              <div
+                style={{
+                  backgroundColor: CARD_BG,
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "8px",
+                  padding: "32px 24px",
+                  textAlign: "center",
+                }}
+              >
+                <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+                  No upcoming events scheduled.
+                </p>
+              </div>
+            ) : (
+              <div style={dashboardListStack}>
+                {memberUpcomingEvents.map((event) => (
+                  <UpcomingEventRow
+                    key={`${event.id}-${event.occurrenceDate}`}
+                    title={event.title}
+                    date={event.occurrenceDate}
+                    time={event.time}
+                    location={event.location}
+                    clubName={club.name}
+                    clubAbbreviation={club.abbreviation}
+                    clubLogoUrl={club.logoUrl}
+                    onOpen={() => setSelectedEvent(event)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={dashboardSectionBlockFixed}>
+            <div style={sectionBlockHeader}>
+              <h2 style={sectionHeading}>Recent Announcements</h2>
+            </div>
+            {postsLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner label="Loading announcements…" />
+              </div>
+            ) : memberAnnouncements.length === 0 ? (
+              <div
+                style={{
+                  backgroundColor: CARD_BG,
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "12px",
+                  padding: "32px 24px",
+                  textAlign: "center",
+                }}
+              >
+                <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+                  No announcements yet. Check back soon!
+                </p>
+              </div>
+            ) : (
+              <div style={dashboardListStack}>
+                {memberAnnouncements.map((post) => (
+                  <MemberAnnouncementCard
+                    key={post.id}
+                    post={post}
+                    onReadMore={() => setSelectedAnnouncement(post)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
       <div
         data-open-preview-count={openTasksPreview.length}
         style={{
@@ -1760,14 +1969,19 @@ export default function ClubHomePage() {
           </div>
         </div>
       </div>
+      )}
 
       {selectedAnnouncement ? (
         <DashboardItemModal
           onClose={() => setSelectedAnnouncement(null)}
-          footerLink={{
-            label: "View All Announcements →",
-            to: announcementsPath,
-          }}
+          footerLink={
+            isPrivileged
+              ? {
+                  label: "View All Announcements →",
+                  to: announcementsPath,
+                }
+              : undefined
+          }
         >
           <h2
             style={{
@@ -1781,11 +1995,12 @@ export default function ClubHomePage() {
             {selectedAnnouncement.title}
           </h2>
           <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 16px" }}>
-            {formatNameWithRoleTitle(
-              selectedAnnouncement.authorName ?? "Unknown",
-              authorRoleTitleById[selectedAnnouncement.authorId],
-            )}{" "}
-            ·{" "}
+            {isPrivileged
+              ? `${formatNameWithRoleTitle(
+                  selectedAnnouncement.authorName ?? "Unknown",
+                  authorRoleTitleById[selectedAnnouncement.authorId],
+                )} · `
+              : ""}
             {new Date(selectedAnnouncement.createdAt).toLocaleDateString("en-US", {
               month: "short",
               day: "numeric",
@@ -1809,7 +2024,11 @@ export default function ClubHomePage() {
       {selectedEvent ? (
         <DashboardItemModal
           onClose={() => setSelectedEvent(null)}
-          footerLink={{ label: "View All Events →", to: eventsPath }}
+          footerLink={
+            isPrivileged
+              ? { label: "View All Events →", to: eventsPath }
+              : undefined
+          }
         >
           <h2
             style={{
@@ -1853,14 +2072,16 @@ export default function ClubHomePage() {
               {selectedEvent.description}
             </p>
           ) : null}
-          <p style={{ fontSize: "13px", color: "#888888", margin: "16px 0 0" }}>
-            <span style={{ color: "#555555" }}>RSVPs: </span>
-            {(eventRsvpCounts[selectedEvent.id]?.going ?? 0)} going
-          </p>
+          {isPrivileged ? (
+            <p style={{ fontSize: "13px", color: "#888888", margin: "16px 0 0" }}>
+              <span style={{ color: "#555555" }}>RSVPs: </span>
+              {(eventRsvpCounts[selectedEvent.id]?.going ?? 0)} going
+            </p>
+          ) : null}
         </DashboardItemModal>
       ) : null}
 
-      {selectedTask ? (
+      {selectedTask && isPrivileged ? (
         <DashboardItemModal
           onClose={() => setSelectedTask(null)}
           footerLink={{ label: "View All Tasks →", to: tasksPath }}
