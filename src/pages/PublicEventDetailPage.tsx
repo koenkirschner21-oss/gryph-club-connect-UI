@@ -74,7 +74,7 @@ export default function PublicEventDetailPage() {
           )
         `)
         .eq("id", eventId)
-        .in("visibility", ["public", "featured"])
+        .in("visibility", ["public"])
         .maybeSingle();
 
       if (cancelled) return;

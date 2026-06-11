@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
-import type { Post } from "../types";
+import type { Post, Visibility } from "../types";
+import { normalizeVisibility } from "../lib/contentVisibility";
 
 const POST_SELECT = `
   id,
@@ -15,6 +16,7 @@ const POST_SELECT = `
   attachment_url,
   attachment_type,
   link_url,
+  visibility,
   author:profiles!posts_author_profile_fkey (
     full_name
   )
@@ -35,6 +37,7 @@ function mapPostRow(row: Record<string, unknown>): Post {
     attachmentUrl: (row.attachment_url as string | null) ?? null,
     attachmentType: (row.attachment_type as string | null) ?? null,
     linkUrl: (row.link_url as string | null) ?? null,
+    visibility: normalizeVisibility(row.visibility as string | null, "members_only"),
   };
 }
 
@@ -42,6 +45,7 @@ export type PostWriteFields = Pick<Post, "title" | "content"> & {
   attachmentUrl?: string | null;
   attachmentType?: string | null;
   linkUrl?: string | null;
+  visibility?: Visibility;
 };
 
 export interface UseClubPostsReturn {
@@ -107,6 +111,7 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           attachment_url: fields.attachmentUrl ?? null,
           attachment_type: fields.attachmentType ?? null,
           link_url: fields.linkUrl?.trim() || null,
+          visibility: fields.visibility ?? "members_only",
         })
         .select(POST_SELECT)
         .single();
@@ -160,6 +165,7 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           attachment_url: fields.attachmentUrl ?? null,
           attachment_type: fields.attachmentType ?? null,
           updated_at: new Date().toISOString(),
+          visibility: fields.visibility ?? "members_only",
         })
         .eq("id", postId)
         .select(POST_SELECT);

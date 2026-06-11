@@ -9,6 +9,7 @@ import {
   normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
+import { normalizeVisibility } from "../lib/contentVisibility";
 import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
@@ -399,10 +400,7 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
     date: (row.date as string) ?? "",
     time: (row.time as string) ?? "",
     location: (row.location as string) ?? "",
-    visibility:
-      row.visibility === "members_only" || row.visibility === "featured"
-        ? row.visibility
-        : "public",
+    visibility: normalizeVisibility(row.visibility as string | null, "public"),
   };
 }
 
@@ -632,7 +630,7 @@ export default function ClubPublicProfilePage() {
         isMember
           ? allEvents
           : allEvents.filter(
-              (e) => e.visibility === "public" || e.visibility === "featured",
+              (e) => e.visibility === "public",
             ),
       );
       setPageLoading(false);

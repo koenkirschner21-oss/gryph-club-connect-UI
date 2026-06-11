@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import { normalizeVisibility } from "../../lib/contentVisibility";
+import type { Visibility } from "../../types";
 
 type ViewMode = "list" | "calendar";
 
@@ -11,7 +13,7 @@ type CampusEvent = {
   date: string;
   time: string;
   location: string;
-  visibility: "public" | "members_only" | "featured";
+  visibility: Visibility;
   clubName: string;
 };
 
@@ -131,10 +133,7 @@ export default function UpcomingEventsSection() {
             Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
           ) as Record<string, unknown>;
           const rawVisibility = row.visibility as string;
-          const visibility: CampusEvent["visibility"] =
-            rawVisibility === "members_only" || rawVisibility === "featured"
-              ? rawVisibility
-              : "public";
+          const visibility = normalizeVisibility(rawVisibility, "public");
 
           return {
             id: row.id as string,
@@ -147,7 +146,7 @@ export default function UpcomingEventsSection() {
             clubName: (club.name as string) ?? "Club",
           } satisfies CampusEvent;
         })
-        .filter((ev) => ev.visibility === "featured");
+        .filter((ev) => ev.visibility === "public");
 
       setEvents(filtered);
       setLoading(false);

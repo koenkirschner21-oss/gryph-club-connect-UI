@@ -8,7 +8,10 @@ import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import Spinner from "../../components/ui/Spinner";
-import type { MemberRole, Post } from "../../types";
+import VisibilitySelector from "../../components/club/VisibilitySelector";
+import VisibilityBadge from "../../components/club/VisibilityBadge";
+import { filterByVisibility } from "../../lib/contentVisibility";
+import type { MemberRole, Post, Visibility } from "../../types";
 
 const PAGE_BG = "#0f0f0f";
 const CARD_BG = "#141414";
@@ -404,6 +407,7 @@ export default function ClubAnnouncementsPage() {
   const [reportSuccessMessage, setReportSuccessMessage] = useState<string | null>(null);
   const [announcementFilter, setAnnouncementFilter] =
     useState<AnnouncementFilter>("all");
+  const [postVisibility, setPostVisibility] = useState<Visibility>("members_only");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
 
@@ -560,6 +564,7 @@ export default function ClubAnnouncementsPage() {
 
   const isPrivileged = isPrivilegedRole(userRole);
   const isMemberRole = userRole === "member";
+  const isMember = userRole !== null;
 
   function openReportModal(postId: string) {
     setMenuOpenPostId(null);
@@ -594,7 +599,7 @@ export default function ClubAnnouncementsPage() {
   }
 
   const displayPosts = useMemo(() => {
-    let list = [...posts];
+    let list = filterByVisibility(posts, { isMember, isPrivileged });
 
     if (announcementFilter === "pinned") {
       list = list.filter((post) => pinnedById[post.id] ?? false);
@@ -617,12 +622,13 @@ export default function ClubAnnouncementsPage() {
     }
 
     return list;
-  }, [posts, pinnedById, announcementFilter]);
+  }, [posts, pinnedById, announcementFilter, isMember, isPrivileged]);
 
   function resetForm() {
     setTitle("");
     setContent("");
     setLinkUrl("");
+    setPostVisibility("members_only");
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -636,6 +642,7 @@ export default function ClubAnnouncementsPage() {
     setTitle("");
     setContent("");
     setLinkUrl("");
+    setPostVisibility("members_only");
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -658,6 +665,7 @@ export default function ClubAnnouncementsPage() {
     setTitle(post.title);
     setContent(post.content);
     setLinkUrl(post.linkUrl ?? "");
+    setPostVisibility(post.visibility ?? "members_only");
     setSelectedFile(null);
     setExistingAttachmentUrl(post.attachmentUrl ?? null);
     setExistingAttachmentType(post.attachmentType ?? null);
@@ -723,6 +731,7 @@ export default function ClubAnnouncementsPage() {
       attachmentUrl,
       attachmentType,
       linkUrl: linkUrl.trim() || null,
+      visibility: postVisibility,
     };
 
     const isEditing = Boolean(editingPostId);
@@ -960,6 +969,10 @@ export default function ClubAnnouncementsPage() {
               value={linkUrl}
               onChange={setLinkUrl}
               placeholder="https://..."
+            />
+            <VisibilitySelector
+              value={postVisibility}
+              onChange={setPostVisibility}
             />
             <div>
               <label htmlFor="postAttachment" style={labelStyle}>
@@ -1211,6 +1224,7 @@ export default function ClubAnnouncementsPage() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+            <VisibilityBadge visibility={post.visibility} />
             {authorMeta.avatarUrl ? (
               <img
                 src={authorMeta.avatarUrl}

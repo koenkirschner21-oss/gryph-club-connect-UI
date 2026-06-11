@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import type { ClubEvent } from "../types";
+import { normalizeVisibility } from "../lib/contentVisibility";
 
 /** Map a Supabase `events` row to our ClubEvent type. */
 function mapEventRow(row: Record<string, unknown>): ClubEvent {
@@ -20,10 +21,7 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
     creatorName: (creator?.full_name as string) ?? undefined,
     creatorAvatar: (creator?.avatar_url as string) ?? undefined,
     createdAt: (row.created_at as string) ?? "",
-    visibility:
-      row.visibility === "members_only" || row.visibility === "featured"
-        ? row.visibility
-        : "public",
+    visibility: normalizeVisibility(row.visibility as string | null, "public"),
   };
 }
 

@@ -12,7 +12,10 @@ import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
-import type { MemberRole } from "../../types";
+import VisibilitySelector from "../../components/club/VisibilitySelector";
+import VisibilityBadge from "../../components/club/VisibilityBadge";
+import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
+import type { MemberRole, Visibility } from "../../types";
 
 const STORAGE_BUCKET = "club-documents";
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -38,6 +41,7 @@ interface ClubDocument {
   file_size: number | null;
   category: string;
   created_at: string;
+  visibility?: Visibility;
   uploaderName?: string;
 }
 
@@ -727,7 +731,8 @@ function DocumentCard({
         </p>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+        <VisibilityBadge visibility={doc.visibility} />
         <span style={categoryBadgeStyle()}>{categoryLabel(doc.category, categories)}</span>
         <span style={fileTypeBadgeStyle()}>{fileTypeLabel(doc.name, doc.file_type)}</span>
       </div>
@@ -793,6 +798,7 @@ export default function ClubDocumentsPage() {
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
+  const isMember = userRole !== null;
 
   const [documents, setDocuments] = useState<ClubDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -807,6 +813,7 @@ export default function ClubDocumentsPage() {
   const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [uploadCategory, setUploadCategory] = useState("general");
+  const [uploadVisibility, setUploadVisibility] = useState<Visibility>("members_only");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [feedback, setFeedback] = useState<{
@@ -927,6 +934,7 @@ export default function ClubDocumentsPage() {
     setDocuments(
       rows.map((row) => ({
         ...row,
+        visibility: normalizeVisibility(row.visibility, "members_only"),
         uploaderName: row.uploaded_by
           ? profileMap[row.uploaded_by] ?? "Unknown"
           : "Unknown",
@@ -946,7 +954,7 @@ export default function ClubDocumentsPage() {
   }, [feedback]);
 
   const filteredDocuments = useMemo(() => {
-    let result = documents;
+    let result = filterByVisibility(documents, { isMember, isPrivileged });
     if (filterCategory !== "all") {
       result = result.filter((doc) => doc.category === filterCategory);
     }
@@ -962,7 +970,7 @@ export default function ClubDocumentsPage() {
       });
     }
     return result;
-  }, [documents, filterCategory, searchQuery, allCategories]);
+  }, [documents, filterCategory, searchQuery, allCategories, isMember, isPrivileged]);
 
   const searchActive = searchQuery.trim().length > 0;
   const categoryFiltered = filterCategory !== "all";
@@ -972,6 +980,7 @@ export default function ClubDocumentsPage() {
     setDocName("");
     setDocDescription("");
     setUploadCategory("general");
+    setUploadVisibility("members_only");
     setUploadProgress(0);
   }
 
@@ -1145,6 +1154,7 @@ export default function ClubDocumentsPage() {
       file_type: selectedFile.type || null,
       file_size: selectedFile.size,
       category: uploadCategory,
+      visibility: uploadVisibility,
     });
 
     setUploading(false);
@@ -1795,6 +1805,13 @@ export default function ClubDocumentsPage() {
               onChange={setUploadCategory}
               categories={allCategories}
             />
+
+            <Box style={{ marginTop: "16px" }}>
+              <VisibilitySelector
+                value={uploadVisibility}
+                onChange={setUploadVisibility}
+              />
+            </Box>
 
             {uploading ? (
               <Box style={{ marginTop: "16px" }}>

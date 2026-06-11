@@ -934,7 +934,7 @@ function HomeUpcomingEventsBlock() {
           visibility,
           clubs:club_id ( name, logo_url, abbreviation, slug )
         `)
-        .in("visibility", ["public", "featured"])
+        .in("visibility", ["public"])
         .gte("date", todayStr)
         .order("date", { ascending: true })
         .limit(20);

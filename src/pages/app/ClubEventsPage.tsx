@@ -4,7 +4,6 @@ import {
   useState,
   useMemo,
   type CSSProperties,
-  type ReactNode,
 } from "react";
 import {
   Calendar,
@@ -22,11 +21,14 @@ import { useClubEvents } from "../../hooks/useClubEvents";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { supabase } from "../../lib/supabaseClient";
-import type { ClubEvent, MemberRole, RsvpStatus } from "../../types";
+import type { ClubEvent, MemberRole, RsvpStatus, Visibility } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
+import VisibilitySelector from "../../components/club/VisibilitySelector";
+import VisibilityBadge from "../../components/club/VisibilityBadge";
+import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import {
   DEFAULT_EVENT_CATEGORY,
   EVENT_CATEGORIES,
@@ -35,7 +37,6 @@ import {
   type EventCategory,
 } from "../../lib/eventCategories";
 
-type EventVisibility = "public" | "members_only" | "featured";
 type EventFilter = "all" | "public" | "my_rsvps";
 
 const EVENT_FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
@@ -58,21 +59,8 @@ function categoryBadgeStyle(): CSSProperties {
   };
 }
 
-function visibilityBadgeStyle(): CSSProperties {
-  return {
-    background: "transparent",
-    border: "1px solid #555555",
-    color: "#777777",
-    borderRadius: "20px",
-    padding: "3px 10px",
-    fontSize: "11px",
-    display: "inline-block",
-    flexShrink: 0,
-  };
-}
-
 function isEventPublic(event: ClubEvent): boolean {
-  return event.visibility !== "members_only";
+  return normalizeVisibility(event.visibility, "public") === "public";
 }
 
 function matchesEventFilter(
@@ -313,36 +301,16 @@ function EventCardBadges({
   isRecurring: boolean;
 }) {
   const categoryLabel = eventCategoryLabel(category);
-  const visibilityLabel =
-    event.visibility === "members_only" ? "Members Only" : "Public Event";
-  const badges: { key: string; label: string }[] = [];
-
-  if (categoryLabel !== visibilityLabel) {
-    badges.push({ key: "category", label: categoryLabel });
-  }
-  badges.push({ key: "visibility", label: visibilityLabel });
-  if (isRecurring) {
-    badges.push({ key: "recurring", label: "Recurring" });
-  }
 
   return (
     <>
-      {badges.map((badge) =>
-        badge.key === "recurring" ? (
-          <EventRecurringBadge key={badge.key} />
-        ) : (
-          <span
-            key={badge.key}
-            style={
-              badge.key === "category"
-                ? categoryBadgeStyle()
-                : visibilityBadgeStyle()
-            }
-          >
-            {badge.label}
-          </span>
-        ),
-      )}
+      <VisibilityBadge visibility={event.visibility} />
+      {categoryLabel ? (
+        <span key="category" style={categoryBadgeStyle()}>
+          {categoryLabel}
+        </span>
+      ) : null}
+      {isRecurring ? <EventRecurringBadge key="recurring" /> : null}
     </>
   );
 }
@@ -582,171 +550,6 @@ function EventRecurringBadge() {
     </span>
   );
 }
-
-const VISIBILITY_OPTIONS: {
-  value: EventVisibility;
-  label: string;
-  description: string;
-  Icon: () => ReactNode;
-}[] = [
-  {
-    value: "members_only",
-    label: "Members Only",
-    description: "Only visible to club members",
-    Icon: LockIcon,
-  },
-  {
-    value: "public",
-    label: "Public",
-    description: "Anyone can attend, not shown on campus feed",
-    Icon: GlobeIcon,
-  },
-  {
-    value: "featured",
-    label: "Featured on Campus",
-    description: "Promoted on the home page for all students",
-    Icon: StarIcon,
-  },
-];
-
-function GlobeIcon() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#E51937"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-      <path d="M2 12h20" />
-    </svg>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#E51937"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
-function StarIcon() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#E51937"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  );
-}
-
-const visibilityCardBase: CSSProperties = {
-  background: "#111111",
-  border: "1px solid #2a2a2a",
-  borderRadius: 8,
-  padding: "12px 16px",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  width: "100%",
-};
-
-function visibilityCardSelected(base: CSSProperties): CSSProperties {
-  return {
-    ...base,
-    border: "1px solid #E51937",
-    background: "#1f0a0a",
-  };
-}
-
-function VisibilitySelector({
-  value,
-  onChange,
-}: {
-  value: EventVisibility;
-  onChange: (value: EventVisibility) => void;
-}) {
-  return (
-    <div>
-      <p
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: "#ffffff",
-          marginBottom: 10,
-        }}
-      >
-        Who can see this event?
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {VISIBILITY_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            style={
-              value === option.value
-                ? visibilityCardSelected(visibilityCardBase)
-                : visibilityCardBase
-            }
-          >
-            <option.Icon />
-            <span style={{ textAlign: "left" }}>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#ffffff",
-                }}
-              >
-                {option.label}
-              </span>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: 11,
-                  color: "#555555",
-                  marginTop: 2,
-                }}
-              >
-                {option.description}
-              </span>
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 
 function EventDateBlock({ date, muted }: { date: string; muted?: boolean }) {
   const parsedDate = new Date(date);
@@ -1866,6 +1669,12 @@ export default function ClubEventsPage() {
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
+  const isMember = userRole !== null;
+
+  const visibleEvents = useMemo(
+    () => filterByVisibility(events, { isMember, isPrivileged }),
+    [events, isMember, isPrivileged],
+  );
   const [clubBrand, setClubBrand] = useState<{
     logoUrl?: string;
     abbreviation?: string;
@@ -1909,7 +1718,7 @@ export default function ClubEventsPage() {
     void fetchClubBrand();
   }, [clubId]);
 
-  const eventIds = useMemo(() => events.map((e) => e.id), [events]);
+  const eventIds = useMemo(() => visibleEvents.map((e) => e.id), [visibleEvents]);
   const { myRsvps, counts, attendees, setRsvp, removeRsvp, loadAttendees } =
     useEventRsvps(eventIds);
   const [expandedAttendees, setExpandedAttendees] = useState<string | null>(null);
@@ -1926,7 +1735,7 @@ export default function ClubEventsPage() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
-  const [visibility, setVisibility] = useState<EventVisibility>("public");
+  const [visibility, setVisibility] = useState<Visibility>("public");
   const [category, setCategory] = useState<EventCategory>(DEFAULT_EVENT_CATEGORY);
   const [categoryColumnReady, setCategoryColumnReady] = useState(false);
   const [eventCategories, setEventCategories] = useState<
@@ -2232,7 +2041,7 @@ export default function ClubEventsPage() {
       date: string;
       time: string;
       location: string;
-      visibility: EventVisibility;
+      visibility: Visibility;
     },
     instanceDates: string[],
     recurring: {
@@ -2348,13 +2157,7 @@ export default function ClubEventsPage() {
     setDate(current.date);
     setTime(current.time);
     setLocation(current.location);
-    if (current.visibility === "members_only") {
-      setVisibility("members_only");
-    } else if (current.visibility === "featured") {
-      setVisibility("featured");
-    } else {
-      setVisibility("public");
-    }
+    setVisibility(normalizeVisibility(current.visibility, "public"));
     setCategory(
       eventCategories[current.id] ?? DEFAULT_EVENT_CATEGORY,
     );
@@ -2721,7 +2524,7 @@ export default function ClubEventsPage() {
   }
 
   const now = new Date();
-  const upcomingEvents = events
+  const upcomingEvents = visibleEvents
     .filter((e) => new Date(e.date) >= now)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -2750,7 +2553,7 @@ export default function ClubEventsPage() {
     [upcomingEvents, myRsvps],
   );
 
-  const pastEvents = events
+  const pastEvents = visibleEvents
     .filter((e) => new Date(e.date) < now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -2933,6 +2736,7 @@ export default function ClubEventsPage() {
               key={editingId ?? "create"}
               value={visibility}
               onChange={setVisibility}
+              label="Who can see this event?"
             />
             <div
               style={{

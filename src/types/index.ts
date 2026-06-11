@@ -72,6 +72,11 @@ export interface Club {
 }
 
 // ---------------------------------------------------------------------------
+// Content visibility
+// ---------------------------------------------------------------------------
+export type Visibility = "public" | "members_only" | "executives_only";
+
+// ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
 export interface ClubEvent {
@@ -84,7 +89,7 @@ export interface ClubEvent {
   startAt?: string;
   endAt?: string;
   location: string;
-  visibility?: "public" | "members_only" | "featured";
+  visibility?: Visibility;
   /** Event author (auth user id). */
   createdBy?: string;
   createdAt?: string;
@@ -216,6 +221,25 @@ export interface Post {
   attachmentUrl?: string | null;
   attachmentType?: string | null;
   linkUrl?: string | null;
+  visibility?: Visibility;
+}
+
+// ---------------------------------------------------------------------------
+// Documents
+// ---------------------------------------------------------------------------
+export interface ClubDocument {
+  id: string;
+  clubId: string;
+  uploadedBy?: string | null;
+  name: string;
+  description?: string | null;
+  fileUrl: string;
+  fileType?: string | null;
+  fileSize?: number | null;
+  category: string;
+  createdAt: string;
+  visibility?: Visibility;
+  uploaderName?: string;
 }
 
 // ---------------------------------------------------------------------------
