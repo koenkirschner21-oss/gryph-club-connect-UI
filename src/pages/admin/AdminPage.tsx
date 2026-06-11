@@ -13,7 +13,7 @@ import { notifyUsers } from "../../lib/notifyUsers";
 import Spinner from "../../components/ui/Spinner";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 
-type AdminTab = "requests" | "users" | "moderation" | "stats" | "bugs";
+type AdminTab = "requests" | "claims" | "users" | "moderation" | "stats" | "bugs";
 type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
 type ReportStatusFilter = "all" | "unreviewed" | "resolved";
 type BugStatusFilter = "all" | "open" | "in_progress" | "resolved";
@@ -30,6 +30,22 @@ interface PostReportRow {
   postTitle: string;
   postContent: string;
   reporterName: string;
+}
+
+interface ClubClaimRequestRow {
+  id: string;
+  club_id: string;
+  submitted_by: string;
+  role_in_club: string;
+  message: string | null;
+  proof_url: string | null;
+  contact_email: string | null;
+  status: "pending" | "approved" | "rejected" | "more_info";
+  created_at: string;
+  clubName: string;
+  clubSlug: string;
+  submitterName: string;
+  submitterEmail: string;
 }
 
 interface ClubRequestRow {
@@ -395,6 +411,9 @@ export default function AdminPage() {
 
   const [requests, setRequests] = useState<ClubRequestRow[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
+  const [claimRequests, setClaimRequests] = useState<ClubClaimRequestRow[]>([]);
+  const [claimRequestsLoading, setClaimRequestsLoading] = useState(true);
+  const [claimActionLoadingId, setClaimActionLoadingId] = useState<string | null>(null);
   const [requestFilter, setRequestFilter] = useState<RequestStatusFilter>("all");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [approvalErrors, setApprovalErrors] = useState<Record<string, string>>(
@@ -553,6 +572,92 @@ export default function AdminPage() {
       }),
     );
     setRequestsLoading(false);
+  }, []);
+
+  const loadClaimRequests = useCallback(async () => {
+    setClaimRequestsLoading(true);
+
+    const { data, error } = await supabase
+      .from("club_claim_requests")
+      .select(
+        `
+        id,
+        club_id,
+        submitted_by,
+        role_in_club,
+        message,
+        proof_url,
+        contact_email,
+        status,
+        created_at,
+        clubs ( name, slug )
+      `,
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load club claim requests:", error.message);
+      setClaimRequests([]);
+      setClaimRequestsLoading(false);
+      return;
+    }
+
+    const rows = data ?? [];
+    const submitterIds = [
+      ...new Set(
+        rows
+          .map((row) => row.submitted_by as string | null)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+
+    const profileMap = new Map<
+      string,
+      { full_name: string | null; email: string | null }
+    >();
+
+    if (submitterIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", submitterIds);
+
+      (profiles ?? []).forEach((profile) => {
+        profileMap.set(profile.id as string, {
+          full_name: (profile.full_name as string) ?? null,
+          email: (profile.email as string) ?? null,
+        });
+      });
+    }
+
+    setClaimRequests(
+      rows.map((row) => {
+        const record = row as Record<string, unknown>;
+        const clubRaw = record.clubs as unknown;
+        const club = (
+          Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
+        ) as Record<string, unknown>;
+        const submitterId = record.submitted_by as string;
+        const profile = profileMap.get(submitterId);
+        return {
+          id: record.id as string,
+          club_id: record.club_id as string,
+          submitted_by: submitterId,
+          role_in_club: (record.role_in_club as string) ?? "",
+          message: (record.message as string) ?? null,
+          proof_url: (record.proof_url as string) ?? null,
+          contact_email: (record.contact_email as string) ?? null,
+          status:
+            (record.status as ClubClaimRequestRow["status"]) ?? "pending",
+          created_at: (record.created_at as string) ?? "",
+          clubName: (club.name as string) ?? "Unknown club",
+          clubSlug: (club.slug as string) ?? "",
+          submitterName: profile?.full_name?.trim() || "Unknown",
+          submitterEmail: profile?.email?.trim() || "",
+        };
+      }),
+    );
+    setClaimRequestsLoading(false);
   }, []);
 
   const loadUsers = useCallback(async () => {
@@ -723,7 +828,12 @@ export default function AdminPage() {
 
   useEffect(() => {
     void loadRequests();
-  }, [loadRequests]);
+    void loadClaimRequests();
+  }, [loadRequests, loadClaimRequests]);
+
+  useEffect(() => {
+    if (activeTab === "claims") void loadClaimRequests();
+  }, [activeTab, loadClaimRequests]);
 
   useEffect(() => {
     if (activeTab === "users") void loadUsers();
@@ -782,6 +892,155 @@ export default function AdminPage() {
     if (requestFilter === "rejected") return "No rejected requests";
     return "No club requests";
   }, [requestFilter]);
+
+  const pendingClaimRequests = useMemo(
+    () => claimRequests.filter((request) => request.status === "pending"),
+    [claimRequests],
+  );
+
+  async function handleApproveClaim(request: ClubClaimRequestRow) {
+    if (!user?.id) return;
+
+    setClaimActionLoadingId(request.id);
+    setFeedback(null);
+
+    const { error: memberError } = await supabase.from("club_members").upsert(
+      {
+        club_id: request.club_id,
+        user_id: request.submitted_by,
+        role: "owner",
+        status: "active",
+        title: request.role_in_club,
+      },
+      { onConflict: "club_id,user_id" },
+    );
+
+    if (memberError) {
+      console.error("Failed to create owner membership:", memberError.message);
+      setFeedback("Failed to approve claim — could not add owner membership.");
+      setClaimActionLoadingId(null);
+      return;
+    }
+
+    const { error: clubError } = await supabase
+      .from("clubs")
+      .update({ claim_status: "claimed" })
+      .eq("id", request.club_id);
+
+    if (clubError) {
+      console.error("Failed to update club claim status:", clubError.message);
+      setFeedback("Owner added but club status could not be updated.");
+      setClaimActionLoadingId(null);
+      return;
+    }
+
+    const { error: requestError } = await supabase
+      .from("club_claim_requests")
+      .update({
+        status: "approved",
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", request.id);
+
+    if (requestError) {
+      console.error("Failed to update claim request:", requestError.message);
+      setFeedback("Claim approved but request status could not be saved.");
+      setClaimActionLoadingId(null);
+      return;
+    }
+
+    await notifyUsers([
+      {
+        user_id: request.submitted_by,
+        type: "club_update",
+        message: `Your claim for "${request.clubName}" has been approved!`,
+        club_id: request.club_id,
+        reference_id: request.id,
+      },
+    ]);
+
+    setClaimActionLoadingId(null);
+    await loadClaimRequests();
+  }
+
+  async function handleRejectClaim(request: ClubClaimRequestRow) {
+    if (!user?.id) return;
+
+    setClaimActionLoadingId(request.id);
+    setFeedback(null);
+
+    const { error: requestError } = await supabase
+      .from("club_claim_requests")
+      .update({
+        status: "rejected",
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", request.id);
+
+    if (requestError) {
+      console.error("Failed to reject claim request:", requestError.message);
+      setFeedback("Failed to reject claim request.");
+      setClaimActionLoadingId(null);
+      return;
+    }
+
+    await supabase
+      .from("clubs")
+      .update({ claim_status: "unclaimed" })
+      .eq("id", request.club_id)
+      .eq("claim_status", "claim_pending");
+
+    await notifyUsers([
+      {
+        user_id: request.submitted_by,
+        type: "club_update",
+        message: `Your claim for "${request.clubName}" was not approved.`,
+        club_id: request.club_id,
+        reference_id: request.id,
+      },
+    ]);
+
+    setClaimActionLoadingId(null);
+    await loadClaimRequests();
+  }
+
+  async function handleMoreInfoClaim(request: ClubClaimRequestRow) {
+    if (!user?.id) return;
+
+    setClaimActionLoadingId(request.id);
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("club_claim_requests")
+      .update({
+        status: "more_info",
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", request.id);
+
+    if (error) {
+      console.error("Failed to request more info:", error.message);
+      setFeedback("Failed to update claim request.");
+      setClaimActionLoadingId(null);
+      return;
+    }
+
+    await notifyUsers([
+      {
+        user_id: request.submitted_by,
+        type: "club_update",
+        message: `We need more information about your claim for "${request.clubName}".`,
+        club_id: request.club_id,
+        reference_id: request.id,
+      },
+    ]);
+
+    setClaimActionLoadingId(null);
+    await loadClaimRequests();
+  }
 
   async function handleApprove(request: ClubRequestRow) {
     if (!user?.id) return;
@@ -1184,6 +1443,11 @@ export default function AdminPage() {
           label="Club Requests"
           active={activeTab === "requests"}
           onClick={() => setActiveTab("requests")}
+        />
+        <AdminTabButton
+          label="Club Claims"
+          active={activeTab === "claims"}
+          onClick={() => setActiveTab("claims")}
         />
         <AdminTabButton
           label="Users"
@@ -1944,6 +2208,156 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        </section>
+      ) : null}
+
+      {activeTab === "claims" ? (
+        <section>
+          {claimRequestsLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner label="Loading club claims…" />
+            </div>
+          ) : pendingClaimRequests.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 16px" }}>
+              <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                No pending club claims
+              </p>
+            </div>
+          ) : (
+            pendingClaimRequests.map((request) => (
+              <article
+                key={request.id}
+                style={{
+                  background: "#1a1a1a",
+                  border: "1px solid #242424",
+                  borderLeft: "3px solid #FFC429",
+                  borderRadius: "10px",
+                  padding: "20px",
+                  marginBottom: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h3
+                      style={{
+                        fontSize: "16px",
+                        fontWeight: 700,
+                        color: "#ffffff",
+                        margin: "0 0 6px",
+                      }}
+                    >
+                      {request.clubName}
+                    </h3>
+                    <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 4px" }}>
+                      Submitted by {request.submitterName}
+                      {request.submitterEmail ? ` · ${request.submitterEmail}` : ""}
+                    </p>
+                    <p style={{ fontSize: "13px", color: "#aaaaaa", margin: "0 0 4px" }}>
+                      Role: {request.role_in_club}
+                    </p>
+                    <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+                      {new Date(request.created_at).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </p>
+                    {request.message ? (
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "#cccccc",
+                          margin: "12px 0 0",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {request.message}
+                      </p>
+                    ) : null}
+                    {request.proof_url ? (
+                      <p style={{ fontSize: "12px", color: "#777777", margin: "8px 0 0" }}>
+                        Proof:{" "}
+                        <a
+                          href={request.proof_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: "#E51937" }}
+                        >
+                          {request.proof_url}
+                        </a>
+                      </p>
+                    ) : null}
+                    {request.contact_email ? (
+                      <p style={{ fontSize: "12px", color: "#777777", margin: "4px 0 0" }}>
+                        Contact: {request.contact_email}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    <button
+                      type="button"
+                      disabled={claimActionLoadingId === request.id}
+                      onClick={() => void handleApproveClaim(request)}
+                      style={{
+                        background: "#E51937",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "8px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={claimActionLoadingId === request.id}
+                      onClick={() => void handleRejectClaim(request)}
+                      style={{
+                        background: "transparent",
+                        color: "#cccccc",
+                        border: "1px solid #333333",
+                        borderRadius: "6px",
+                        padding: "8px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={claimActionLoadingId === request.id}
+                      onClick={() => void handleMoreInfoClaim(request)}
+                      style={{
+                        background: "transparent",
+                        color: "#FFC429",
+                        border: "1px solid #FFC429",
+                        borderRadius: "6px",
+                        padding: "8px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Request More Info
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))
+          )}
         </section>
       ) : null}
 

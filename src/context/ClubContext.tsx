@@ -12,6 +12,7 @@ import {
   normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
+import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club, MemberRole } from "../types";
@@ -67,6 +68,7 @@ function mapRow(row: Record<string, unknown>): Club {
     requiresApproval: (row.requires_approval as boolean) ?? false,
     joinType: ((row.join_type as string) ?? "open") as Club["joinType"],
     membershipType: normalizeMembershipType(row.membership_type),
+    claimStatus: normalizeClaimStatus(row.claim_status),
     joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,

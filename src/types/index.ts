@@ -9,6 +9,14 @@ export type MembershipType =
   | "invite_only"
   | "no_membership";
 
+export type ClaimStatus = "unclaimed" | "claim_pending" | "claimed" | "active";
+
+export type ClaimRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "more_info";
+
 export interface JoinQuestion {
   id: string;
   question: string;
@@ -55,6 +63,7 @@ export interface Club {
   requiresApproval?: boolean;
   joinType?: ClubJoinType;
   membershipType?: MembershipType;
+  claimStatus?: ClaimStatus;
   joinQuestions?: JoinQuestion[];
   createdBy?: string;
   createdAt?: string;
@@ -236,13 +245,16 @@ export interface UserInterest {
 // ---------------------------------------------------------------------------
 // Club claim requests
 // ---------------------------------------------------------------------------
-export type ClaimStatus = "pending" | "approved" | "rejected";
-
 export interface ClubClaimRequest {
   id: string;
   clubId: string;
-  userId: string;
-  message: string;
-  status: ClaimStatus;
+  submittedBy: string;
+  roleInClub: string;
+  message?: string;
+  proofUrl?: string;
+  contactEmail?: string;
+  status: ClaimRequestStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
   createdAt: string;
 }

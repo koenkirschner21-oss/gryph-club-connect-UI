@@ -9,11 +9,13 @@ import {
   normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
+import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
 import { notifyUsers } from "../lib/notifyUsers";
 import type {
+  ClaimStatus,
   Club,
   ClubEvent,
   JoinAnswer,
@@ -41,6 +43,7 @@ interface PublicClubProfile {
   websiteUrl?: string;
   createdAt?: string;
   membershipType: MembershipType;
+  claimStatus: ClaimStatus;
   joinQuestions: JoinQuestion[];
 }
 
@@ -531,6 +534,7 @@ export default function ClubPublicProfilePage() {
         websiteUrl: (clubRow.website_url as string) ?? undefined,
         createdAt: (clubRow.created_at as string) ?? undefined,
         membershipType: normalizeMembershipType(clubRow.membership_type),
+        claimStatus: normalizeClaimStatus(clubRow.claim_status),
         joinQuestions: parseJoinQuestions(clubRow.join_questions),
       };
 
@@ -751,10 +755,12 @@ export default function ClubPublicProfilePage() {
     category: contextClub!.category,
     createdAt: contextClub!.createdAt,
     membershipType: contextClub!.membershipType ?? "open",
+    claimStatus: contextClub!.claimStatus ?? "unclaimed",
     joinQuestions: contextClub!.joinQuestions ?? [],
   };
 
   const membershipType = club.membershipType ?? "open";
+  const claimStatus = club.claimStatus ?? "unclaimed";
   const joinQuestions = club.joinQuestions ?? [];
   const joinBadgeStyle = membershipBadgeStyle(membershipType);
   const joinBadgeLabel = membershipBadgeLabel(membershipType);
@@ -976,6 +982,47 @@ export default function ClubPublicProfilePage() {
                     {joining ? "Leaving…" : "Leave Club"}
                   </button>
                 </>
+              ) : claimStatus === "unclaimed" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/clubs/${club.slug}/claim`)}
+                    style={{
+                      background: "#E51937",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "10px 24px",
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      width: isMobile ? "100%" : undefined,
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    Claim This Club
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSaveClub(club.id)}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid #333333",
+                      color: "#cccccc",
+                      borderRadius: "8px",
+                      padding: "10px 20px",
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      width: isMobile ? "100%" : undefined,
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    Save Club
+                  </button>
+                </>
               ) : (
                 <ClubJoinAction
                   membershipType={membershipType}
@@ -991,6 +1038,20 @@ export default function ClubPublicProfilePage() {
             </div>
           </div>
         </div>
+
+        {claimStatus === "unclaimed" && !joined ? (
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#777777",
+              marginTop: "12px",
+              padding: headerPadding,
+              lineHeight: 1.5,
+            }}
+          >
+            Are you a President or executive? Claim this club to manage events, announcements, and members.
+          </p>
+        ) : null}
 
         {joinNotice ? (
           <p className="mt-2 text-sm text-[#FFC429]" role="status" style={{ padding: headerPadding }}>

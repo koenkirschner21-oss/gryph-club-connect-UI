@@ -26,6 +26,7 @@ import { NotificationsProvider } from "./context/NotificationsProvider";
 import Home from "./pages/Home";
 import Explore from "./pages/Explore";
 import ClubPublicProfilePage from "./pages/ClubPublicProfilePage";
+import ClubClaimPage from "./pages/ClubClaimPage";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -282,6 +283,7 @@ export default function App() {
                 <Route path="/events" element={<PublicEventsPage />} />
                 <Route path="/events/:eventId" element={<PublicEventDetailPage />} />
                 <Route path="/clubs/:slug" element={<ClubPublicProfilePage />} />
+                <Route path="/clubs/:slug/claim" element={<ClubClaimPage />} />
                 <Route path="/hiring" element={<HiringBoardPage />} />
               </Route>
               <Route element={<AppShell />}>
