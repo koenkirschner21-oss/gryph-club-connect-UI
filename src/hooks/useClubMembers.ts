@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { notifyUsers } from "../lib/notifyUsers";
 import { normalizeMembershipType } from "../lib/clubJoinUtils";
 import type { ClubMember, MemberRole, MembershipType, AccessLevel } from "../types";
 import { parseJoinAnswers } from "../lib/clubJoinUtils";
@@ -241,26 +240,6 @@ export function useClubMembers(
       if (approved) {
         const approvedMember = approved;
         setMembers((active) => [...active, { ...approvedMember, status: "active" }]);
-
-        // Notify the user that their request was approved (fire-and-forget)
-        if (clubId) {
-          Promise.resolve(
-            notifyUsers([
-              {
-                user_id: approved.userId,
-                type: "join_approved",
-                message: "Your join request has been approved!",
-                club_id: clubId,
-              },
-            ]).then((ok) => {
-              if (!ok) {
-                console.error("Failed to send approval notification.");
-              }
-            }),
-          ).catch((err: unknown) => {
-            console.error("Failed to send approval notification:", err);
-          });
-        }
       }
       return true;
     },

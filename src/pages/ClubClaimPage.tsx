@@ -9,7 +9,10 @@ import {
   normalizeClaimStatus,
   type ClaimRoleOption,
 } from "../lib/clubClaimUtils";
-import { notifyUsers } from "../lib/notifyUsers";
+import {
+  notifyClaimRequestSubmitted,
+  resolveStudentDisplayName,
+} from "../lib/notifications";
 import Spinner from "../components/ui/Spinner";
 import { darkInputStyle } from "./app/HiringBoardPage";
 
@@ -170,20 +173,18 @@ export default function ClubClaimPage() {
       console.error("Failed to update club claim status:", clubError.message);
     }
 
-    const { data: admins } = await supabase
-      .from("platform_admins")
-      .select("user_id");
+    const submitterName = resolveStudentDisplayName(
+      typeof user.user_metadata?.full_name === "string"
+        ? user.user_metadata.full_name
+        : null,
+      user.email,
+    );
 
-    if (admins?.length) {
-      await notifyUsers(
-        admins.map((admin) => ({
-          user_id: admin.user_id as string,
-          type: "club_update",
-          message: `New claim request for ${club.name}`,
-          club_id: club.id,
-        })),
-      );
-    }
+    void notifyClaimRequestSubmitted(supabase, {
+      clubId: club.id,
+      clubName: club.name,
+      submitterName,
+    });
 
     setSubmitted(true);
     setSubmitting(false);

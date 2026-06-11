@@ -24,7 +24,19 @@ export function parseNotificationDisplay(
     return { title: "Event", body: trimmed };
   }
   if (type === "join_approved" || type === "member_joined") {
-    return { title: "Club", body: trimmed };
+    return { title: "Membership Approved", body: trimmed };
+  }
+  if (type === "join_request_submitted") {
+    return { title: "Join Request Sent", body: trimmed };
+  }
+  if (type === "new_join_request") {
+    return { title: "New Join Request", body: trimmed };
+  }
+  if (type === "join_rejected") {
+    return { title: "Join Request Update", body: trimmed };
+  }
+  if (type === "new_claim_request") {
+    return { title: "Club Claim Request", body: trimmed };
   }
 
   return { title: "Update", body: trimmed };

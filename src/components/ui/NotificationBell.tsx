@@ -7,6 +7,10 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   new_event: "📅",
   announcement: "📢",
   join_approved: "✅",
+  join_request_submitted: "📨",
+  new_join_request: "👤",
+  join_rejected: "✕",
+  new_claim_request: "🏛️",
   club_update: "🔔",
 };
 

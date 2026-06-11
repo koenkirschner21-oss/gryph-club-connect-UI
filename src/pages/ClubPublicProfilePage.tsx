@@ -15,7 +15,10 @@ import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
-import { notifyUsers } from "../lib/notifyUsers";
+import {
+  notifyJoinRequestSubmitted,
+  resolveStudentDisplayName,
+} from "../lib/notifications";
 import type {
   ClaimStatus,
   Club,
@@ -648,26 +651,6 @@ export default function ClubPublicProfilePage() {
     setJoining(false);
   }
 
-  async function notifyClubOwnerJoin(targetClubId: string, message: string) {
-    const { data: owner } = await supabase
-      .from("club_members")
-      .select("user_id")
-      .eq("club_id", targetClubId)
-      .eq("role", "owner")
-      .maybeSingle();
-
-    if (owner?.user_id) {
-      await notifyUsers([
-        {
-          user_id: owner.user_id as string,
-          type: "club_update",
-          message,
-          club_id: targetClubId,
-        },
-      ]);
-    }
-  }
-
   async function handleSubmitJoinRequest(payload: {
     answers: JoinAnswer[];
     message: string;
@@ -701,11 +684,20 @@ export default function ClubPublicProfilePage() {
     setApplicationStatus("pending");
     setShowApplicationModal(false);
 
-    const name = profile?.name ?? contextClub?.name ?? "your club";
-    await notifyClubOwnerJoin(
-      clubId,
-      `Someone requested to join ${name}. Review it in your members page.`,
+    const clubName = profile?.name ?? contextClub?.name ?? "this club";
+    const studentName = resolveStudentDisplayName(
+      typeof user.user_metadata?.full_name === "string"
+        ? user.user_metadata.full_name
+        : profile?.name ?? null,
+      user.email,
     );
+
+    void notifyJoinRequestSubmitted(supabase, {
+      clubId,
+      clubName,
+      studentUserId: user.id,
+      studentName,
+    });
   }
 
   function openApplicationFlow() {

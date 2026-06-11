@@ -22,6 +22,10 @@ import {
   roleTitleOptionsForAccessLevel,
 } from "../../lib/memberRoleTitle";
 import { notifyUsers } from "../../lib/notifyUsers";
+import {
+  notifyJoinRequestApproved,
+  notifyJoinRequestRejected,
+} from "../../lib/notifications";
 import type { ClubMember, JoinAnswer, MemberRole, AccessLevel } from "../../types";
 import {
   isPrivilegedClubRole,
@@ -1114,8 +1118,18 @@ export default function ClubMembersPage() {
   async function handleApprove(memberId: string) {
     setActionLoading(memberId);
     setFeedback(null);
+    const pendingMember =
+      pendingMembers.find((member) => member.id === memberId) ??
+      (viewRequestMember?.id === memberId ? viewRequestMember : null);
     const ok = await approveRequest(memberId);
     if (ok) {
+      if (pendingMember && clubId && club?.name) {
+        void notifyJoinRequestApproved(supabase, {
+          clubId,
+          clubName: club.name,
+          studentUserId: pendingMember.userId,
+        });
+      }
       setViewRequestMember(null);
       setFeedback({ type: "success", text: "Request approved." });
     } else {
@@ -1127,8 +1141,18 @@ export default function ClubMembersPage() {
   async function handleReject(memberId: string) {
     setActionLoading(memberId);
     setFeedback(null);
+    const pendingMember =
+      pendingMembers.find((member) => member.id === memberId) ??
+      (viewRequestMember?.id === memberId ? viewRequestMember : null);
     const ok = await rejectRequest(memberId);
     if (ok) {
+      if (pendingMember && clubId && club?.name) {
+        void notifyJoinRequestRejected(supabase, {
+          clubId,
+          clubName: club.name,
+          studentUserId: pendingMember.userId,
+        });
+      }
       setViewRequestMember(null);
       setFeedback({ type: "success", text: "Request declined." });
     } else {

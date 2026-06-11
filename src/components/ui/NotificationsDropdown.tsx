@@ -63,6 +63,8 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "task_assigned":
     case "task":
       return `${base}/tasks`;
+    case "new_join_request":
+      return `${base}/members`;
     case "direct_message":
       return `${base}/chat`;
     default:
@@ -82,7 +84,15 @@ function notificationIconColor(type: string): string {
       return "#747676";
     case "member_joined":
     case "join_approved":
-      return "#4ade80";
+      return "#FFC429";
+    case "new_join_request":
+      return "#E51937";
+    case "join_rejected":
+      return "#777777";
+    case "join_request_submitted":
+      return "#747676";
+    case "new_claim_request":
+      return "#E51937";
     default:
       return "#747676";
   }

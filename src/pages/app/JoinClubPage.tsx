@@ -12,6 +12,10 @@ import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import { showToast } from "../../components/ui/Toast";
 import JoinRequestForm from "../../components/club/JoinRequestForm";
+import {
+  notifyJoinRequestSubmitted,
+  resolveStudentDisplayName,
+} from "../../lib/notifications";
 import type { JoinQuestion, MembershipType } from "../../types";
 
 type LookupClub = {
@@ -128,7 +132,7 @@ export default function JoinClubPage() {
     message: string;
     attachmentUrl?: string | null;
   }) {
-    if (!lookupClub) return;
+    if (!lookupClub || !user?.id) return;
 
     setSubmittingRequest(true);
 
@@ -151,6 +155,20 @@ export default function JoinClubPage() {
         showToast("Failed to submit request. Please try again.", "error");
         return;
       }
+
+      const studentName = resolveStudentDisplayName(
+        typeof user.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name
+          : null,
+        user.email,
+      );
+
+      void notifyJoinRequestSubmitted(supabase, {
+        clubId: lookupClub.id,
+        clubName: lookupClub.name,
+        studentUserId: user.id,
+        studentName,
+      });
 
       showToast(
         `Request sent to join "${lookupClub.name}". An admin will review your request.`,

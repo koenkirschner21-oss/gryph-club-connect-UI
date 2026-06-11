@@ -5,7 +5,11 @@ type NotificationType =
   | "club_update"
   | "announcement"
   | "task_assigned"
-  | "join_approved";
+  | "join_approved"
+  | "join_request_submitted"
+  | "new_join_request"
+  | "join_rejected"
+  | "new_claim_request";
 
 type NotificationInput = {
   user_id: string;
