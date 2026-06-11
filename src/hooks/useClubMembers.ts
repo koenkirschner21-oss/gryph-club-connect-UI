@@ -2,22 +2,32 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { notifyUsers } from "../lib/notifyUsers";
 import { normalizeMembershipType } from "../lib/clubJoinUtils";
-import type { ClubMember, MemberRole, MembershipType } from "../types";
+import type { ClubMember, MemberRole, MembershipType, AccessLevel } from "../types";
 
 /** Map a joined club_members + profiles row to our ClubMember type. */
 function mapMemberRow(row: Record<string, unknown>): ClubMember {
   const profile = (row.member_profile ?? {}) as Record<string, unknown>;
+  const rawAccessLevel = row.access_level as string | null | undefined;
+  const accessLevel =
+    rawAccessLevel === "president" ||
+    rawAccessLevel === "managerial_executive" ||
+    rawAccessLevel === "executive" ||
+    rawAccessLevel === "member"
+      ? rawAccessLevel
+      : undefined;
   return {
     id: row.id as string,
     clubId: row.club_id as string,
     userId: row.user_id as string,
     role: (row.role as MemberRole) ?? "member",
+    accessLevel,
     status: (row.status as ClubMember["status"]) ?? "active",
     joinedAt: (row.created_at as string) ?? new Date().toISOString(),
     fullName: (profile.full_name as string) ?? undefined,
     email: (profile.email as string) ?? undefined,
     avatarUrl: (profile.avatar_url as string) ?? undefined,
     program: (profile.program as string) ?? undefined,
+    yearOfStudy: (profile.year_of_study as string) ?? undefined,
     roleTitle: (row.title as string | null)?.trim() || undefined,
   };
 }
@@ -28,7 +38,11 @@ export interface UseClubMembersReturn {
   membershipType: MembershipType;
   loading: boolean;
   error: string | null;
-  updateRole: (memberId: string, newRole: MemberRole) => Promise<boolean>;
+  updateRole: (
+    memberId: string,
+    newRole: MemberRole,
+    options?: { accessLevel?: AccessLevel; title?: string | null },
+  ) => Promise<boolean>;
   removeMember: (memberId: string) => Promise<boolean>;
   approveRequest: (memberId: string) => Promise<boolean>;
   rejectRequest: (memberId: string) => Promise<boolean>;
@@ -71,11 +85,13 @@ export function useClubMembers(
           status,
           created_at,
           title,
+          access_level,
           member_profile:profiles!club_members_user_profile_fkey (
             full_name,
             email,
             avatar_url,
-            program
+            program,
+            year_of_study
           )
         `)
         .eq("club_id", clubId)
@@ -91,11 +107,13 @@ export function useClubMembers(
           status,
           created_at,
           title,
+          access_level,
           member_profile:profiles!club_members_user_profile_fkey (
             full_name,
             email,
             avatar_url,
-            program
+            program,
+            year_of_study
           )
         `)
         .eq("club_id", clubId)
@@ -132,10 +150,22 @@ export function useClubMembers(
 
   /** Change a member's role (e.g. member → exec, exec → member). */
   const updateRole = useCallback(
-    async (memberId: string, newRole: MemberRole): Promise<boolean> => {
+    async (
+      memberId: string,
+      newRole: MemberRole,
+      options?: { accessLevel?: AccessLevel; title?: string | null },
+    ): Promise<boolean> => {
+      const payload: Record<string, unknown> = { role: newRole };
+      if (options?.accessLevel !== undefined) {
+        payload.access_level = options.accessLevel;
+      }
+      if (options?.title !== undefined) {
+        payload.title = options.title;
+      }
+
       const { error: err } = await supabase
         .from("club_members")
-        .update({ role: newRole })
+        .update(payload)
         .eq("id", memberId);
 
       if (err) {
@@ -144,7 +174,19 @@ export function useClubMembers(
       }
 
       setMembers((prev) =>
-        prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m)),
+        prev.map((m) =>
+          m.id === memberId
+            ? {
+                ...m,
+                role: newRole,
+                accessLevel: options?.accessLevel ?? m.accessLevel,
+                roleTitle:
+                  options?.title !== undefined
+                    ? options.title || undefined
+                    : m.roleTitle,
+              }
+            : m,
+        ),
       );
       return true;
     },

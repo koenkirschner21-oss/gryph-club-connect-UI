@@ -116,18 +116,25 @@ export interface RsvpCounts {
 // ---------------------------------------------------------------------------
 export type MemberRole = "owner" | "executive" | "member";
 export type MemberStatus = "active" | "pending";
+export type AccessLevel =
+  | "president"
+  | "managerial_executive"
+  | "executive"
+  | "member";
 
 export interface ClubMember {
   id: string;
   clubId: string;
   userId: string;
   role: MemberRole;
+  accessLevel?: AccessLevel;
   status: MemberStatus;
   joinedAt: string;
   fullName?: string;
   email?: string;
   avatarUrl?: string;
   program?: string;
+  yearOfStudy?: string;
   roleTitle?: string;
 }
 

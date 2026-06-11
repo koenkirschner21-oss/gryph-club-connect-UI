@@ -8,19 +8,25 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { membershipUsesApplicationQueue } from "../../lib/clubJoinUtils";
 import {
+  ACCESS_LEVEL_OPTIONS,
   ROLE_TITLE_CUSTOM,
+  ROLE_TITLE_GROUPS,
+  accessLevelBadgeColor,
+  accessLevelBadgeLabel,
+  accessLevelFromMember,
   formatMemberDisplayRole,
   resolveRoleTitleFromSelection,
-  resolveRoleTitleSelection,
-  roleTitleOptionsForRole,
+  resolveRoleTitleSelectionForAccessLevel,
+  roleFromAccessLevel,
+  roleTitleGroupForAccessLevel,
+  roleTitleOptionsForAccessLevel,
 } from "../../lib/memberRoleTitle";
 import { notifyUsers } from "../../lib/notifyUsers";
-import type { ClubMember, JoinAnswer, MemberRole } from "../../types";
+import type { ClubMember, JoinAnswer, MemberRole, AccessLevel } from "../../types";
 import {
   isPrivilegedClubRole,
   isTopClubModeratorRole,
 } from "../../lib/clubRoles";
-import Button from "../../components/ui/Button";
 import ClubInviteModal from "../../components/club/ClubInviteModal";
 import Spinner from "../../components/ui/Spinner";
 
@@ -87,39 +93,53 @@ function avatarFallbackBackground(name: string): string {
   return palette[code % palette.length];
 }
 
-function roleBadgeStyle(role: MemberRole | string): CSSProperties {
-  const base: CSSProperties = {
+function accessLevelBadgeStyle(level: AccessLevel): CSSProperties {
+  const color = accessLevelBadgeColor(level);
+  return {
     borderRadius: "4px",
     padding: "2px 8px",
     fontSize: "11px",
     fontWeight: 600,
     flexShrink: 0,
     display: "inline-block",
+    background: "#1a1a1a",
+    border: `1px solid ${color}`,
+    color,
   };
-  switch (role) {
-    case "owner":
-      return {
-        ...base,
-        background: "#1a1200",
-        border: "1px solid #FFC429",
-        color: "#FFC429",
-      };
-    case "executive":
-      return {
-        ...base,
-        background: "#1a0505",
-        border: "1px solid #E51937",
-        color: "#E51937",
-      };
-    default:
-      return {
-        ...base,
-        background: "#1a1a1a",
-        border: "1px solid #333333",
-        color: "#555555",
-      };
-  }
 }
+
+const accessLevelSelectStyle: CSSProperties = {
+  width: "100%",
+  background: "#111111",
+  border: "1px solid #2a2a2a",
+  borderRadius: "6px",
+  padding: "8px 12px",
+  color: "#ffffff",
+  fontSize: "13px",
+  boxSizing: "border-box",
+};
+
+const approveOutlineButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #FFC429",
+  color: "#FFC429",
+  borderRadius: "6px",
+  padding: "7px 18px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const declineOutlineButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #E51937",
+  color: "#E51937",
+  borderRadius: "6px",
+  padding: "7px 18px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
 
 function StatCard({
   label,
@@ -202,47 +222,23 @@ function normalizeMemberRole(role: string): MemberRole {
   return "member";
 }
 
-const ROLE_OPTIONS: { value: MemberRole; label: string }[] = [
-  { value: "owner", label: "President" },
-  { value: "executive", label: "Executive" },
-  { value: "member", label: "Member" },
-];
-
-const roleOptionCardBase: CSSProperties = {
-  background: "#111111",
-  border: "1px solid #2a2a2a",
-  borderRadius: "8px",
-  padding: "10px 14px",
-  cursor: "pointer",
-  width: "100%",
-  textAlign: "left",
-  fontSize: "13px",
-  fontWeight: 600,
-  color: "#ffffff",
-};
-
-function roleOptionCardSelected(base: CSSProperties): CSSProperties {
-  return {
-    ...base,
-    border: "1px solid #E51937",
-    background: "#1f0a0a",
-  };
-}
-
 function RoleTitleSelector({
-  role,
+  accessLevel,
   selection,
   customValue,
   onSelectionChange,
   onCustomChange,
 }: {
-  role: MemberRole;
+  accessLevel: AccessLevel;
   selection: string;
   customValue: string;
   onSelectionChange: (value: string) => void;
   onCustomChange: (value: string) => void;
 }) {
-  const options = roleTitleOptionsForRole(role);
+  const options = roleTitleOptionsForAccessLevel(accessLevel);
+  const group = ROLE_TITLE_GROUPS.find(
+    (entry) => entry.label === roleTitleGroupForAccessLevel(accessLevel),
+  );
   const inputStyle: CSSProperties = {
     width: "100%",
     background: "#111111",
@@ -262,11 +258,21 @@ function RoleTitleSelector({
         style={inputStyle}
       >
         <option value="">No title</option>
-        {options.map((title) => (
-          <option key={title} value={title}>
-            {title}
-          </option>
-        ))}
+        {group ? (
+          <optgroup label={group.label}>
+            {options.map((title) => (
+              <option key={title} value={title}>
+                {title}
+              </option>
+            ))}
+          </optgroup>
+        ) : (
+          options.map((title) => (
+            <option key={title} value={title}>
+              {title}
+            </option>
+          ))
+        )}
         <option value={ROLE_TITLE_CUSTOM}>Custom</option>
       </select>
       {selection === ROLE_TITLE_CUSTOM ? (
@@ -282,30 +288,25 @@ function RoleTitleSelector({
   );
 }
 
-function RoleSelector({
+function AccessLevelSelector({
   value,
   onChange,
 }: {
-  value: MemberRole;
-  onChange: (value: MemberRole) => void;
+  value: AccessLevel;
+  onChange: (value: AccessLevel) => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      {ROLE_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          style={
-            value === option.value
-              ? roleOptionCardSelected(roleOptionCardBase)
-              : roleOptionCardBase
-          }
-        >
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as AccessLevel)}
+      style={accessLevelSelectStyle}
+    >
+      {ACCESS_LEVEL_OPTIONS.map((option) => (
+        <option key={option.value} value={option.value}>
           {option.label}
-        </button>
+        </option>
       ))}
-    </div>
+    </select>
   );
 }
 
@@ -354,7 +355,7 @@ function MemberAvatar({
   );
 }
 
-type ViewMode = "list" | "orgChart" | "applications";
+type ViewMode = "list" | "orgChart" | "applications" | "pendingRequests";
 type ApplicationFilter = "pending" | "approved" | "rejected";
 
 interface JoinApplicationRow {
@@ -426,7 +427,9 @@ function OrgChartCard({
         >
           {displayName}
         </MemberNameLink>
-        <span style={{ ...roleBadgeStyle("owner"), marginTop: "6px" }}>President</span>
+        <span style={{ ...accessLevelBadgeStyle("president"), marginTop: "6px" }}>
+          President
+        </span>
         {member.title ? (
           <p
             style={{
@@ -461,7 +464,9 @@ function OrgChartCard({
         >
           {displayName}
         </MemberNameLink>
-        <span style={{ ...roleBadgeStyle("executive"), marginTop: "6px" }}>Executive</span>
+        <span style={{ ...accessLevelBadgeStyle("executive"), marginTop: "6px" }}>
+          Executive
+        </span>
         {member.title ? (
           <p
             style={{
@@ -696,7 +701,7 @@ export default function ClubMembersPage() {
     Record<string, string | null>
   >({});
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
-  const [editRole, setEditRole] = useState<MemberRole>("member");
+  const [editAccessLevel, setEditAccessLevel] = useState<AccessLevel>("member");
   const [editTitleSelection, setEditTitleSelection] = useState("");
   const [editTitleCustom, setEditTitleCustom] = useState("");
   const [editReportsTo, setEditReportsTo] = useState("");
@@ -1014,10 +1019,10 @@ export default function ClubMembersPage() {
 
   function openEditRole(member: ClubMember) {
     setEditingMemberId(member.id);
-    const normalizedRole = normalizeMemberRole(member.role);
-    setEditRole(normalizedRole);
-    const { selection, custom } = resolveRoleTitleSelection(
-      normalizedRole,
+    const accessLevel = accessLevelFromMember(member);
+    setEditAccessLevel(accessLevel);
+    const { selection, custom } = resolveRoleTitleSelectionForAccessLevel(
+      accessLevel,
       member.roleTitle ?? memberTitles[member.id],
     );
     setEditTitleSelection(selection);
@@ -1027,6 +1032,7 @@ export default function ClubMembersPage() {
 
   function closeEditRole() {
     setEditingMemberId(null);
+    setEditAccessLevel("member");
     setEditTitleSelection("");
     setEditTitleCustom("");
     setEditReportsTo("");
@@ -1040,18 +1046,21 @@ export default function ClubMembersPage() {
       editTitleSelection,
       editTitleCustom,
     );
+    const mappedRole = roleFromAccessLevel(editAccessLevel);
     const updatePayload: {
       role: MemberRole;
+      access_level: AccessLevel;
       title: string | null;
       reports_to?: string | null;
     } = {
-      role: editRole,
+      role: mappedRole,
+      access_level: editAccessLevel,
       title: trimmedTitle || null,
     };
 
     if (
       isOwner &&
-      (editRole === "member" || editRole === "executive")
+      (mappedRole === "member" || mappedRole === "executive")
     ) {
       updatePayload.reports_to = editReportsTo.trim() || null;
     }
@@ -1072,7 +1081,7 @@ export default function ClubMembersPage() {
       ...prev,
       [memberId]: trimmedTitle || null,
     }));
-    if (isOwner && (editRole === "member" || editRole === "executive")) {
+    if (isOwner && (mappedRole === "member" || mappedRole === "executive")) {
       setMemberReportsTo((prev) => ({
         ...prev,
         [memberId]: editReportsTo.trim() || null,
@@ -1083,7 +1092,7 @@ export default function ClubMembersPage() {
     void loadOrgChartMembers();
     setFeedback({
       type: "success",
-      text: `Updated to ${formatMemberDisplayRole(editRole, trimmedTitle)}.`,
+      text: `Updated to ${formatMemberDisplayRole(mappedRole, trimmedTitle)}.`,
     });
     setActionLoading(null);
   }
@@ -1114,14 +1123,13 @@ export default function ClubMembersPage() {
   }
 
   async function handleReject(memberId: string) {
-    if (!window.confirm("Reject this join request?")) return;
     setActionLoading(memberId);
     setFeedback(null);
     const ok = await rejectRequest(memberId);
     if (ok) {
-      setFeedback({ type: "success", text: "Request rejected." });
+      setFeedback({ type: "success", text: "Request declined." });
     } else {
-      setFeedback({ type: "error", text: "Failed to reject request." });
+      setFeedback({ type: "error", text: "Failed to decline request." });
     }
     setActionLoading(null);
   }
@@ -1322,6 +1330,14 @@ export default function ClubMembersPage() {
           ) : null}
           {viewToggleButton("list", "List")}
           {viewToggleButton("orgChart", "Org Chart")}
+          {canUseMembershipQueue
+            ? viewToggleButton(
+                "pendingRequests",
+                pendingMembers.length > 0
+                  ? `Pending Requests (${pendingMembers.length})`
+                  : "Pending Requests",
+              )
+            : null}
           {canUseMembershipQueue &&
           membershipUsesApplicationQueue(membershipType)
             ? viewToggleButton("applications", "Applications")
@@ -1489,74 +1505,136 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
-      {/* Pending requests section — admin/exec only */}
-      {canUseMembershipQueue && pendingMembers.length > 0 && (
-        <div className="mb-6">
-          <h2
-            className="mb-3"
-            style={{
-              fontWeight: 600,
-              fontSize: "15px",
-              color: "#ffffff",
-            }}
-          >
-            Pending Requests ({pendingMembers.length})
-          </h2>
-          <div className="space-y-2">
-            {pendingMembers.map((member) => (
-              <div key={member.id} style={memberCardStyle}>
-                <div className="flex items-center gap-3">
-                  <MemberAvatar
-                    avatarUrl={member.avatarUrl}
-                    name={member.fullName ?? member.email ?? "U"}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span
-                      className="block truncate"
+      {viewMode === "pendingRequests" && canUseMembershipQueue ? (
+        <div>
+          {pendingMembers.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "48px 24px",
+                background: "#141414",
+                border: "1px solid #2a2a2a",
+                borderRadius: "10px",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  color: "#555555",
+                  margin: 0,
+                }}
+              >
+                No pending requests
+              </p>
+              <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
+                New join requests will appear here for review.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {pendingMembers.map((member) => {
+                const requestedLabel = new Date(member.joinedAt).toLocaleDateString(
+                  "en-US",
+                  { month: "short", day: "numeric", year: "numeric" },
+                );
+                const profileMeta = [member.program, member.yearOfStudy]
+                  .filter(Boolean)
+                  .join(" · ");
+
+                return (
+                  <div key={member.id} style={memberCardStyle}>
+                    <div
                       style={{
-                        fontWeight: 600,
-                        fontSize: "14px",
-                        color: "#ffffff",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "16px",
+                        flexWrap: "wrap",
                       }}
                     >
-                      {member.fullName ?? "Unknown"}
-                    </span>
-                    {member.program && (
-                      <p
-                        className="truncate"
-                        style={{
-                          fontSize: "12px",
-                          color: "#747676",
-                        }}
-                      >
-                        {member.program}
-                      </p>
-                    )}
+                      <MemberAvatar
+                        avatarUrl={member.avatarUrl}
+                        name={member.fullName ?? member.email ?? "U"}
+                      />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontWeight: 600,
+                            fontSize: "14px",
+                            color: "#ffffff",
+                          }}
+                        >
+                          {member.fullName ?? "Unknown"}
+                        </p>
+                        {member.email ? (
+                          <p
+                            style={{
+                              margin: "2px 0 0",
+                              fontSize: "12px",
+                              color: "#777777",
+                            }}
+                          >
+                            {member.email}
+                          </p>
+                        ) : null}
+                        {profileMeta ? (
+                          <p
+                            style={{
+                              margin: "2px 0 0",
+                              fontSize: "12px",
+                              color: "#666666",
+                            }}
+                          >
+                            {profileMeta}
+                          </p>
+                        ) : null}
+                        <p
+                          style={{
+                            margin: "4px 0 0",
+                            fontSize: "11px",
+                            color: "#555555",
+                          }}
+                        >
+                          Requested {requestedLabel}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          disabled={actionLoading === member.id}
+                          onClick={() => void handleApprove(member.id)}
+                          style={{
+                            ...approveOutlineButtonStyle,
+                            opacity: actionLoading === member.id ? 0.6 : 1,
+                            cursor:
+                              actionLoading === member.id ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actionLoading === member.id}
+                          onClick={() => void handleReject(member.id)}
+                          style={{
+                            ...declineOutlineButtonStyle,
+                            opacity: actionLoading === member.id ? 0.6 : 1,
+                            cursor:
+                              actionLoading === member.id ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex flex-shrink-0 gap-2">
-                    <Button
-                      size="sm"
-                      disabled={actionLoading === member.id}
-                      onClick={() => handleApprove(member.id)}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={actionLoading === member.id}
-                      className="text-red-400 hover:text-red-300"
-                      onClick={() => handleReject(member.id)}
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      ) : null}
 
       {viewMode === "list" ? (
         <div
@@ -1950,17 +2028,21 @@ export default function ClubMembersPage() {
       ) : viewMode === "list" ? (
         <div>
           {filteredMembers.map((member) => {
-            const displayRoleTitle = formatMemberDisplayRole(
-              member.role,
-              member.roleTitle ?? memberTitles[member.id],
-            );
-            const normalizedRole = normalizeMemberRole(member.role);
+            const memberAccessLevel = accessLevelFromMember(member);
+            const mappedRole = roleFromAccessLevel(memberAccessLevel);
             const isEditing = editingMemberId === member.id;
             const joinedLabel = new Date(member.joinedAt).toLocaleDateString("en-US", {
               month: "short",
               day: "numeric",
               year: "numeric",
             });
+            const selectedTitle = resolveRoleTitleFromSelection(
+              editTitleSelection,
+              editTitleCustom,
+            );
+            const accessLevelHelperLabel =
+              ACCESS_LEVEL_OPTIONS.find((option) => option.value === editAccessLevel)
+                ?.workspaceLabel ?? "General Member";
 
             return (
             <div key={member.id}>
@@ -1985,8 +2067,8 @@ export default function ClubMembersPage() {
                   >
                     {member.fullName ?? "Unknown"}
                   </MemberNameLink>
-                  <span style={roleBadgeStyle(normalizedRole)}>
-                    {displayRoleTitle}
+                  <span style={accessLevelBadgeStyle(memberAccessLevel)}>
+                    {accessLevelBadgeLabel(memberAccessLevel)}
                   </span>
                 </div>
                 <p style={{ fontSize: "12px", color: "#555555", marginTop: "2px", marginBottom: 0 }}>
@@ -2018,22 +2100,24 @@ export default function ClubMembersPage() {
                     borderRadius: "0 0 10px 10px",
                   }}
                 >
-                  <p
+                  <label
+                    htmlFor={`member-access-${member.id}`}
                     style={{
+                      display: "block",
                       fontSize: "12px",
                       fontWeight: 600,
                       color: "#ffffff",
-                      margin: "0 0 10px",
+                      margin: "0 0 8px",
                     }}
                   >
-                    Role
-                  </p>
-                  <RoleSelector
-                    value={editRole}
-                    onChange={(nextRole) => {
-                      setEditRole(nextRole);
-                      const { selection, custom } = resolveRoleTitleSelection(
-                        nextRole,
+                    Access Level
+                  </label>
+                  <AccessLevelSelector
+                    value={editAccessLevel}
+                    onChange={(nextLevel) => {
+                      setEditAccessLevel(nextLevel);
+                      const { selection, custom } = resolveRoleTitleSelectionForAccessLevel(
+                        nextLevel,
                         resolveRoleTitleFromSelection(
                           editTitleSelection,
                           editTitleCustom,
@@ -2056,14 +2140,26 @@ export default function ClubMembersPage() {
                     Role Title
                   </label>
                   <RoleTitleSelector
-                    role={editRole}
+                    accessLevel={editAccessLevel}
                     selection={editTitleSelection}
                     customValue={editTitleCustom}
                     onSelectionChange={setEditTitleSelection}
                     onCustomChange={setEditTitleCustom}
                   />
+                  <p
+                    style={{
+                      margin: "12px 0 0",
+                      fontSize: "12px",
+                      color: "#777777",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    This member will appear as{" "}
+                    {selectedTitle || "Member"} and receive {accessLevelHelperLabel}{" "}
+                    workspace access.
+                  </p>
                   {isOwner &&
-                  (editRole === "member" || editRole === "executive") ? (
+                  (mappedRole === "member" || mappedRole === "executive") ? (
                     <>
                       <label
                         htmlFor={`member-reports-to-${member.id}`}
