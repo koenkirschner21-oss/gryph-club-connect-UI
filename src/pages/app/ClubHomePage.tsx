@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { X, Check } from "lucide-react";
+import { X } from "lucide-react";
 import { Megaphone, Calendar } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -33,6 +33,7 @@ import type {
   TaskStatus,
 } from "../../types";
 import Spinner from "../../components/ui/Spinner";
+import SetupChecklist from "../../components/club/SetupChecklist";
 
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
@@ -1051,7 +1052,7 @@ export default function ClubHomePage() {
   const { clubId } = useParams<{ clubId: string }>();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { getClubById, getUserRole, userRoles } = useClubContext();
+  const { getClubById, getUserRole, userRoles, updateClub } = useClubContext();
   const club = getClubById(clubId ?? "");
 
   const clubBasePath = clubId ? `/app/clubs/${clubId}` : "";
@@ -1436,13 +1437,21 @@ export default function ClubHomePage() {
     );
   }
 
-  const settingsPath = `${clubBasePath}/settings`;
+  const showSetupChecklist =
+    club.claimStatus === "claimed" && !club.setupCompleted;
 
-  const hasLogo = Boolean(club.logoUrl);
-  const hasDescription = Boolean(club.description?.trim());
-  const hasExtraMembers = club.memberCount > 1;
-  const showSetupBanner =
-    userRole === "owner" && !hasLogo && !hasDescription && !hasExtraMembers;
+  async function handlePublishClub() {
+    if (!clubId) return;
+    const success = await updateClub(clubId, {
+      claimStatus: "active",
+      isPublished: true,
+      setupCompleted: true,
+    });
+    if (!success) {
+      throw new Error("Publish failed");
+    }
+  }
+
   const isMobile = useIsMobile();
   const userMeta = user?.user_metadata as Record<string, unknown> | undefined;
   const fullNameSource =
@@ -1466,89 +1475,14 @@ export default function ClubHomePage() {
         boxSizing: "border-box",
       }}
     >
-      {showSetupBanner ? (
-        <div
-          style={{
-            background: "linear-gradient(135deg, #1a1500, #2a2000)",
-            border: "1px solid #3a2f00",
-            borderRadius: "10px",
-            padding: "16px 20px",
-            marginBottom: "20px",
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "12px",
-          }}
-        >
-          <div>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#FFC429",
-                margin: "0 0 10px",
-                fontWeight: 600,
-              }}
-            >
-              Complete your club setup to start attracting members
-            </p>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "16px",
-                alignItems: "center",
-              }}
-            >
-              {[
-                { done: hasLogo, label: "Add a logo" },
-                { done: hasDescription, label: "Write a description" },
-                { done: hasExtraMembers, label: "Invite your first member" },
-              ].map((item) => (
-                <span
-                  key={item.label}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "12px",
-                    color: item.done ? "#cccccc" : "#777777",
-                  }}
-                >
-                  {item.done ? (
-                    <Check size={12} color="#E51937" aria-hidden />
-                  ) : (
-                    <span
-                      style={{
-                        width: "6px",
-                        height: "6px",
-                        borderRadius: "50%",
-                        background: "#555555",
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
-                  {item.label}
-                </span>
-              ))}
-            </div>
-          </div>
-          <Link
-            to={settingsPath}
-            style={{
-              background: "#FFC429",
-              color: "#000000",
-              borderRadius: "6px",
-              padding: "6px 14px",
-              fontSize: "12px",
-              fontWeight: 600,
-              textDecoration: "none",
-              flexShrink: 0,
-            }}
-          >
-            Go to Settings
-          </Link>
-        </div>
+      {showSetupChecklist ? (
+        <SetupChecklist
+          club={club}
+          hasAnnouncement={posts.length > 0}
+          hasEvent={events.length > 0}
+          contentLoading={postsLoading || eventsLoading}
+          onPublish={handlePublishClub}
+        />
       ) : null}
 
       <div

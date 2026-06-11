@@ -69,6 +69,8 @@ function mapRow(row: Record<string, unknown>): Club {
     joinType: ((row.join_type as string) ?? "open") as Club["joinType"],
     membershipType: normalizeMembershipType(row.membership_type),
     claimStatus: normalizeClaimStatus(row.claim_status),
+    setupCompleted: (row.setup_completed as boolean) ?? false,
+    isPublished: (row.is_published as boolean) ?? false,
     joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
@@ -477,6 +479,14 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.membershipType !== undefined)
         row.membership_type = fields.membershipType;
       if (fields.joinCode !== undefined) row.join_code = fields.joinCode;
+      if (fields.contactEmail !== undefined) row.contact_email = fields.contactEmail;
+      if (fields.meetingSchedule !== undefined)
+        row.meeting_schedule = fields.meetingSchedule;
+      if (fields.socialLinks !== undefined) row.social_links = fields.socialLinks;
+      if (fields.claimStatus !== undefined) row.claim_status = fields.claimStatus;
+      if (fields.setupCompleted !== undefined)
+        row.setup_completed = fields.setupCompleted;
+      if (fields.isPublished !== undefined) row.is_published = fields.isPublished;
 
       const { data, error } = await supabase
         .from("clubs")

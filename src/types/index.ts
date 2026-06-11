@@ -64,6 +64,8 @@ export interface Club {
   joinType?: ClubJoinType;
   membershipType?: MembershipType;
   claimStatus?: ClaimStatus;
+  setupCompleted?: boolean;
+  isPublished?: boolean;
   joinQuestions?: JoinQuestion[];
   createdBy?: string;
   createdAt?: string;
