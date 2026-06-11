@@ -90,7 +90,7 @@ function notificationIconColor(type: string): string {
     case "join_rejected":
       return "#777777";
     case "join_request_submitted":
-      return "#747676";
+      return "#777777";
     case "new_claim_request":
       return "#E51937";
     default:
