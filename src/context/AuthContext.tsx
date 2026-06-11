@@ -11,7 +11,6 @@ import { supabase } from "../lib/supabaseClient";
 import { AuthContext, type AuthContextValue } from "./authContextValue";
 
 const ALLOWED_EMAIL_DOMAIN = "uoguelph.ca";
-const NEW_USER_WINDOW_MS = 2 * 60 * 1000;
 
 let notifyOnboardingCompletedRef: (() => void) | null = null;
 
@@ -20,13 +19,8 @@ export function notifyOnboardingCompleted() {
   notifyOnboardingCompletedRef?.();
 }
 
-function isNewUser(user: User): boolean {
-  return new Date(user.created_at) > new Date(Date.now() - NEW_USER_WINDOW_MS);
-}
-
 /**
- * Returns true when the user should skip onboarding (treat as completed).
- * Query failures and non-new accounts always skip onboarding.
+ * Returns true when onboarding is complete (or should be skipped on query failure).
  */
 async function resolveOnboardingCompleted(user: User): Promise<boolean> {
   const { data, error } = await supabase
@@ -40,15 +34,7 @@ async function resolveOnboardingCompleted(user: User): Promise<boolean> {
     return true;
   }
 
-  if (data?.onboarding_completed === true) {
-    return true;
-  }
-
-  if (isNewUser(user) && !data?.onboarding_completed) {
-    return false;
-  }
-
-  return true;
+  return data?.onboarding_completed === true;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -117,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (isNewUser(user) && onboardingCompleted === false) {
+    if (onboardingCompleted === false) {
       navigate("/onboarding", { replace: true });
     } else {
       navigate("/app", { replace: true });
@@ -133,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const postAuthRedirectPath = useMemo(() => {
     if (!user || onboardingCompleted !== false) return "/app";
-    return isNewUser(user) ? "/onboarding" : "/app";
+    return "/onboarding";
   }, [user, onboardingCompleted]);
 
   const signUp = useCallback(async (email: string, password: string) => {

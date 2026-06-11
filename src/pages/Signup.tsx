@@ -344,7 +344,7 @@ export default function Signup() {
         setPendingConfirmationEmail(normalizedEmail);
         return;
       }
-      navigate("/app/onboarding");
+      navigate("/onboarding");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Sign up failed", "error");
     } finally {

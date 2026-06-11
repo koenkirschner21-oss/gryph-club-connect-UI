@@ -66,9 +66,11 @@ function measureExploreDescription(
 export default function ExploreClubCard({
   club,
   joined,
+  highlightUnclaimed = false,
 }: {
   club: Club;
   joined: boolean;
+  highlightUnclaimed?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [descriptionPreview, setDescriptionPreview] = useState<{
@@ -133,7 +135,13 @@ export default function ExploreClubCard({
           flexDirection: "column",
           overflow: "hidden",
           background: "#1a1a1a",
-          border: `1px solid ${hovered ? "#333333" : "#242424"}`,
+          border: `1px solid ${
+            highlightUnclaimed && club.claimStatus === "unclaimed"
+              ? "#E51937"
+              : hovered
+                ? "#333333"
+                : "#242424"
+          }`,
           borderRadius: "12px",
           transition: "all 0.15s ease",
           transform: hovered ? "translateY(-2px)" : undefined,
@@ -261,6 +269,25 @@ export default function ExploreClubCard({
               No description available
             </p>
           )}
+
+          {highlightUnclaimed && club.claimStatus === "unclaimed" ? (
+            <div style={{ marginTop: "10px" }}>
+              <span
+                style={{
+                  background: "#1a0505",
+                  border: "1px solid #E51937",
+                  color: "#E51937",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  display: "inline-block",
+                }}
+              >
+                Available to claim
+              </span>
+            </div>
+          ) : null}
 
           {club.category ? (
             <div style={{ marginTop: "10px" }}>

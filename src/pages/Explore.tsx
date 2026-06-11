@@ -1,17 +1,12 @@
-import {
-  useState,
-  useMemo,
-  useCallback,
-  useEffect,
-  useRef,
-  type CSSProperties,
-} from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, type CSSProperties } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import {
   normalizeJoinType,
   normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
+import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
@@ -244,9 +239,11 @@ function CategoryFilterDropdown({
 function HorizontalClubRow({
   clubs,
   joinedByClubId,
+  highlightUnclaimed = false,
 }: {
   clubs: Club[];
   joinedByClubId: (clubId: string) => boolean;
+  highlightUnclaimed?: boolean;
 }) {
   return (
     <div
@@ -261,7 +258,11 @@ function HorizontalClubRow({
     >
       {clubs.map((club) => (
         <div key={club.id} style={{ width: "min(240px, 72vw)", flexShrink: 0 }}>
-          <ExploreClubCard club={club} joined={joinedByClubId(club.id)} />
+          <ExploreClubCard
+            club={club}
+            joined={joinedByClubId(club.id)}
+            highlightUnclaimed={highlightUnclaimed}
+          />
         </div>
       ))}
     </div>
@@ -300,6 +301,7 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
     requiresApproval: (row.requires_approval as boolean) ?? false,
     joinType: normalizeJoinType(row.join_type),
     membershipType: normalizeMembershipType(row.membership_type),
+    claimStatus: normalizeClaimStatus(row.claim_status),
     joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
@@ -309,6 +311,8 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
 // ─── Main Explore page ──────────────────────────────────────────────────────
 export default function Explore() {
   const isMobile = useIsMobile();
+  const [searchParams] = useSearchParams();
+  const claimMode = searchParams.get("claim") === "true";
   const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined } =
     useClubContext();
   const { user } = useAuthContext();
@@ -412,6 +416,17 @@ export default function Explore() {
     return sortClubsByMemberActivity(filtered);
   }, [clubs, search, activeCategory]);
 
+  const displayClubs = useMemo(() => {
+    if (!claimMode) return filteredClubs;
+    const unclaimed = filteredClubs.filter(
+      (club) => club.claimStatus === "unclaimed",
+    );
+    const claimed = filteredClubs.filter(
+      (club) => club.claimStatus !== "unclaimed",
+    );
+    return [...unclaimed, ...claimed];
+  }, [filteredClubs, claimMode]);
+
   const emptyStateMessage = useMemo(() => {
     if (search && activeCategory !== "All") {
       return {
@@ -507,6 +522,40 @@ export default function Explore() {
           />
         </div>
 
+        {claimMode ? (
+          <div
+            style={{
+              marginBottom: "24px",
+              background: "#141414",
+              border: "1px solid #E51937",
+              borderRadius: "10px",
+              padding: "16px 20px",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "#ffffff",
+              }}
+            >
+              Claim a club profile
+            </p>
+            <p
+              style={{
+                margin: "6px 0 0",
+                fontSize: "13px",
+                color: "#777777",
+                lineHeight: 1.5,
+              }}
+            >
+              Clubs highlighted in red are available to claim. Open a club and tap
+              &quot;Claim This Club&quot; if you are a president or executive.
+            </p>
+          </div>
+        ) : null}
+
         {/* Discovery rows */}
         {!loading && !hasActiveFilters ? (
           <>
@@ -538,7 +587,11 @@ export default function Explore() {
             {featuredCategoryRows.map((row) => (
               <section key={row.category} className="mb-12" style={{ backgroundColor: PAGE_BG }}>
                 <h2 style={{ ...sectionHeadingStyle, marginBottom: "14px" }}>{row.category}</h2>
-                <HorizontalClubRow clubs={row.clubs} joinedByClubId={isClubJoined} />
+                <HorizontalClubRow
+                  clubs={row.clubs}
+                  joinedByClubId={isClubJoined}
+                  highlightUnclaimed={claimMode}
+                />
               </section>
             ))}
           </>
@@ -571,7 +624,9 @@ export default function Explore() {
             <>
               <div className="mb-8 flex items-start justify-between gap-4">
                 <div>
-                  <h2 style={sectionHeadingStyle}>All Clubs</h2>
+                  <h2 style={sectionHeadingStyle}>
+                    {claimMode ? "Clubs to Explore" : "All Clubs"}
+                  </h2>
                   <p style={sectionSubheadingStyle}>
                     Showing{" "}
                     <span style={{ fontWeight: 600, color: "#ffffff" }}>260+</span> clubs
@@ -603,11 +658,12 @@ export default function Explore() {
                   width: "100%",
                 }}
               >
-                {filteredClubs.map((club) => (
+                {displayClubs.map((club) => (
                   <ExploreClubCard
                     key={club.id}
                     club={club}
                     joined={isClubJoined(club.id)}
+                    highlightUnclaimed={claimMode}
                   />
                 ))}
               </div>

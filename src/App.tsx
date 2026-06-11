@@ -46,7 +46,7 @@ import ClubSettingsPage from "./pages/app/ClubSettingsPage";
 import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
 import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
 import ClubDocumentsPage from "./pages/app/ClubDocumentsPage";
-import OnboardingPage from "./pages/onboarding/OnboardingPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import InvitePage from "./pages/InvitePage";
 import ProfilePage from "./pages/app/ProfilePage";
 import PersonalSettingsPage from "./pages/app/PersonalSettingsPage";
