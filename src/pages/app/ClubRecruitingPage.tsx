@@ -15,6 +15,18 @@ import { supabase } from "../../lib/supabaseClient";
 import type { MemberRole } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
+import CandidateReviewPanel, {
+  type CandidateReviewPatch,
+} from "../../components/club/CandidateReviewPanel";
+import {
+  APPLICANT_PIPELINE_FILTER_OPTIONS,
+  matchesApplicantPipelineFilter,
+  normalizeSubStatus,
+  parseInterviewTimes,
+  subStatusLabel,
+  subStatusPillStyle,
+  type ApplicantPipelineFilter,
+} from "../../lib/hiringPipelineUtils";
 import {
   POSITION_TYPES,
   PositionQuestionBuilder,
@@ -113,30 +125,18 @@ interface HiringApplicationRow {
   listingId: string;
   applicantId: string;
   status: string;
+  subStatus: string;
   createdAt: string;
   answers: HiringApplicationAnswer[];
   profile: HiringApplicationProfile | null;
+  interviewTimes: string[];
+  interviewType?: string;
+  meetingLocation?: string;
+  meetingLink?: string;
+  offeredAccessLevel?: string;
+  offeredRoleTitle?: string;
+  positionHandling?: string;
 }
-
-const HIRING_APPLICATION_STATUSES = [
-  "pending",
-  "reviewed",
-  "accepted",
-  "rejected",
-] as const;
-
-type ApplicantStatusFilter = "all" | (typeof HIRING_APPLICATION_STATUSES)[number];
-
-const APPLICANT_STATUS_FILTER_OPTIONS: {
-  value: ApplicantStatusFilter;
-  label: string;
-}[] = [
-  { value: "all", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "reviewed", label: "Reviewed" },
-  { value: "accepted", label: "Accepted" },
-  { value: "rejected", label: "Rejected" },
-];
 
 function parseHiringAnswers(raw: unknown): HiringApplicationAnswer[] {
   if (Array.isArray(raw)) {
@@ -287,37 +287,6 @@ function matchesPositionFilter(
     default:
       return true;
   }
-}
-
-function applicationStatusColor(status: string): string {
-  if (status === "accepted") return "#FFC429";
-  if (status === "reviewed" || status === "shortlisted") return "#FFC429";
-  if (status === "rejected") return "#E51937";
-  return "#747676";
-}
-
-function applicationStatusLabel(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function applicationStatusPillStyle(status: string): CSSProperties {
-  const color = applicationStatusColor(status);
-  return {
-    borderRadius: "20px",
-    padding: "3px 10px",
-    fontSize: "11px",
-    fontWeight: 600,
-    flexShrink: 0,
-    background:
-      status === "accepted"
-        ? "#1a1200"
-        : status === "rejected"
-          ? "#1a0505"
-          : "#1a1a1a",
-    color,
-    border: `1px solid ${color}`,
-    display: "inline-block",
-  };
 }
 
 function daysAgoLabel(iso: string): string {
@@ -598,7 +567,7 @@ export default function ClubRecruitingPage() {
   const [positionFilter] = useState<PositionFilter>("all");
   const [applicantSearch, setApplicantSearch] = useState("");
   const [applicantStatusFilter, setApplicantStatusFilter] =
-    useState<ApplicantStatusFilter>("all");
+    useState<ApplicantPipelineFilter>("all");
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(
     null,
   );
@@ -729,7 +698,13 @@ export default function ClubRecruitingPage() {
   const filteredApplications = useMemo(() => {
     let list = applications;
     if (applicantStatusFilter !== "all") {
-      list = list.filter((app) => app.status === applicantStatusFilter);
+      list = list.filter((app) =>
+        matchesApplicantPipelineFilter(
+          app.status,
+          app.subStatus,
+          applicantStatusFilter,
+        ),
+      );
     }
     const query = applicantSearch.trim().toLowerCase();
     if (query) {
@@ -890,7 +865,9 @@ export default function ClubRecruitingPage() {
 
     const { data: applicationRows, error } = await supabase
       .from("hiring_applications")
-      .select("id, listing_id, applicant_id, answers, status, created_at")
+      .select(
+        "id, listing_id, applicant_id, answers, status, created_at, sub_status, interview_times, interview_type, meeting_location, meeting_link, offered_access_level, offered_role_title, position_handling",
+      )
       .eq("listing_id", listingId)
       .order("created_at", { ascending: false });
 
@@ -932,10 +909,19 @@ export default function ClubRecruitingPage() {
         listingId: app.listing_id as string,
         applicantId: app.applicant_id as string,
         status: (app.status as string) ?? "pending",
+        subStatus: normalizeSubStatus(app.sub_status as string | null),
         createdAt: app.created_at as string,
         answers: parseHiringAnswers(app.answers),
         profile:
           profileRows.find((p) => p.id === app.applicant_id) ?? null,
+        interviewTimes: parseInterviewTimes(app.interview_times),
+        interviewType: (app.interview_type as string | null) ?? undefined,
+        meetingLocation: (app.meeting_location as string | null) ?? undefined,
+        meetingLink: (app.meeting_link as string | null) ?? undefined,
+        offeredAccessLevel:
+          (app.offered_access_level as string | null) ?? undefined,
+        offeredRoleTitle: (app.offered_role_title as string | null) ?? undefined,
+        positionHandling: (app.position_handling as string | null) ?? undefined,
       })),
     );
     setAppsLoading(false);
@@ -963,18 +949,14 @@ export default function ClubRecruitingPage() {
     void toggleApplications(positions[0]);
   }, [isPrivileged, loading, positions]);
 
-  async function updateApplicationStatus(applicationId: string, status: string) {
-    const { error } = await supabase
-      .from("hiring_applications")
-      .update({ status })
-      .eq("id", applicationId);
-
-    if (!error) {
-      setApplications((prev) =>
-        prev.map((a) => (a.id === applicationId ? { ...a, status } : a)),
-      );
-      void loadPositions();
-    }
+  function patchApplication(applicationId: string, patch: CandidateReviewPatch) {
+    setApplications((prev) =>
+      prev.map((application) =>
+        application.id === applicationId
+          ? { ...application, ...patch }
+          : application,
+      ),
+    );
   }
 
   function renderPositionsList(): ReactNode {
@@ -1500,7 +1482,7 @@ export default function ClubRecruitingPage() {
                       overflowX: "auto",
                     }}
                   >
-                    {APPLICANT_STATUS_FILTER_OPTIONS.map((option) => {
+                    {APPLICANT_PIPELINE_FILTER_OPTIONS.map((option) => {
                       const active = applicantStatusFilter === option.value;
                       return (
                         <button
@@ -1622,12 +1604,12 @@ export default function ClubRecruitingPage() {
                                   {daysAgoLabel(app.createdAt)}
                                 </p>
                               </div>
-                              <span style={applicationStatusPillStyle(app.status)}>
-                                {applicationStatusLabel(app.status)}
+                              <span style={subStatusPillStyle(app.subStatus)}>
+                                {subStatusLabel(app.subStatus)}
                               </span>
                             </button>
 
-                            {isSelected && selectedPosition ? (
+                            {isSelected && selectedPosition && clubId && user?.id ? (
                               <div
                                 style={{
                                   background: "#1a1a1a",
@@ -1637,83 +1619,26 @@ export default function ClubRecruitingPage() {
                                   padding: "12px 16px 16px",
                                 }}
                               >
-                                {app.profile?.email ? (
-                                  <p
-                                    style={{
-                                      fontSize: "13px",
-                                      color: "#555555",
-                                      margin: "0 0 12px",
-                                    }}
-                                  >
-                                    {app.profile.email}
-                                  </p>
-                                ) : null}
-
-                                {app.answers.length === 0 ? (
-                                  <p
-                                    style={{
-                                      fontSize: "13px",
-                                      color: "#cccccc",
-                                      margin: "0 0 12px",
-                                    }}
-                                  >
-                                    —
-                                  </p>
-                                ) : (
-                                  app.answers.map((ans) => (
-                                    <div
-                                      key={ans.question_id}
-                                      style={{ marginBottom: "12px" }}
-                                    >
-                                      <p
-                                        style={{
-                                          fontSize: "12px",
-                                          fontWeight: 700,
-                                          color: "#ffffff",
-                                          margin: "0 0 4px",
-                                        }}
-                                      >
-                                        {answerLabel(
-                                          ans.question_id,
-                                          listingQuestionsForApply(
-                                            selectedPosition.questions,
-                                          ),
-                                        )}
-                                      </p>
-                                      <p
-                                        style={{
-                                          fontSize: "13px",
-                                          color: "#cccccc",
-                                          margin: 0,
-                                        }}
-                                      >
-                                        {ans.answer}
-                                      </p>
-                                    </div>
-                                  ))
-                                )}
-
-                                <select
-                                  value={app.status}
-                                  onChange={(e) =>
-                                    void updateApplicationStatus(
-                                      app.id,
-                                      e.target.value,
+                                <CandidateReviewPanel
+                                  application={app}
+                                  positionTitle={selectedPosition.title}
+                                  positionId={selectedPosition.id}
+                                  clubId={clubId}
+                                  clubName={clubName}
+                                  userId={user.id}
+                                  answerLabel={(questionId) =>
+                                    answerLabel(
+                                      questionId,
+                                      listingQuestionsForApply(
+                                        selectedPosition.questions,
+                                      ),
                                     )
                                   }
-                                  style={{
-                                    ...darkInputStyle,
-                                    color: applicationStatusColor(app.status),
-                                    fontSize: "12px",
-                                    width: "auto",
-                                  }}
-                                >
-                                  {HIRING_APPLICATION_STATUSES.map((s) => (
-                                    <option key={s} value={s}>
-                                      {applicationStatusLabel(s)}
-                                    </option>
-                                  ))}
-                                </select>
+                                  onApplicationUpdated={(patch) =>
+                                    patchApplication(app.id, patch)
+                                  }
+                                  onStatusChanged={() => void loadPositions()}
+                                />
                               </div>
                             ) : null}
                           </div>
