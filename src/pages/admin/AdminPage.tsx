@@ -10,12 +10,19 @@ import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
+import {
+  clubReportReasonLabel,
+  clubReportStatusBadgeStyle,
+  clubReportStatusLabel,
+  type ClubReportStatus,
+} from "../../lib/clubReportUtils";
 import Spinner from "../../components/ui/Spinner";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 
 type AdminTab = "requests" | "claims" | "users" | "moderation" | "stats" | "bugs";
 type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
 type ReportStatusFilter = "all" | "unreviewed" | "resolved";
+type ClubReportStatusFilter = "all" | ClubReportStatus;
 type BugStatusFilter = "all" | "open" | "in_progress" | "resolved";
 type ActivityStatus = "active" | "quiet" | "inactive";
 
@@ -30,6 +37,20 @@ interface PostReportRow {
   postTitle: string;
   postContent: string;
   reporterName: string;
+}
+
+interface ClubReportRow {
+  id: string;
+  club_id: string;
+  club_name: string | null;
+  reporter_id: string;
+  reason: string;
+  description: string | null;
+  current_url: string | null;
+  status: ClubReportStatus;
+  created_at: string;
+  reporterName: string;
+  clubSlug: string | null;
 }
 
 interface ClubClaimRequestRow {
@@ -446,6 +467,14 @@ export default function AdminPage() {
   const [reportFilter, setReportFilter] = useState<ReportStatusFilter>("all");
   const [reportActionLoadingId, setReportActionLoadingId] = useState<string | null>(null);
 
+  const [clubReports, setClubReports] = useState<ClubReportRow[]>([]);
+  const [clubReportsLoading, setClubReportsLoading] = useState(true);
+  const [clubReportFilter, setClubReportFilter] =
+    useState<ClubReportStatusFilter>("all");
+  const [clubReportActionLoadingId, setClubReportActionLoadingId] = useState<
+    string | null
+  >(null);
+
   const [showApprovalChecklist, setShowApprovalChecklist] = useState(false);
 
   const [bugReports, setBugReports] = useState<BugReportRow[]>([]);
@@ -509,6 +538,75 @@ export default function AdminPage() {
       }),
     );
     setReportsLoading(false);
+  }, []);
+
+  const loadClubReports = useCallback(async () => {
+    setClubReportsLoading(true);
+
+    const { data, error } = await supabase
+      .from("club_reports")
+      .select("id, club_id, club_name, reporter_id, reason, description, current_url, status, created_at")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load club reports:", error.message);
+      setClubReports([]);
+      setClubReportsLoading(false);
+      return;
+    }
+
+    const rows = data ?? [];
+    const reporterIds = Array.from(
+      new Set(rows.map((row) => row.reporter_id as string).filter(Boolean)),
+    );
+    const clubIds = Array.from(
+      new Set(rows.map((row) => row.club_id as string).filter(Boolean)),
+    );
+
+    const profileMap = new Map<string, string>();
+    const slugMap = new Map<string, string>();
+
+    if (reporterIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", reporterIds);
+
+      (profiles ?? []).forEach((profile) => {
+        profileMap.set(
+          profile.id as string,
+          (profile.full_name as string | null)?.trim() || "Unknown",
+        );
+      });
+    }
+
+    if (clubIds.length > 0) {
+      const { data: clubs } = await supabase
+        .from("clubs")
+        .select("id, slug")
+        .in("id", clubIds);
+
+      (clubs ?? []).forEach((club) => {
+        slugMap.set(club.id as string, (club.slug as string) ?? "");
+      });
+    }
+
+    setClubReports(
+      rows.map((row) => ({
+        id: row.id as string,
+        club_id: row.club_id as string,
+        club_name: (row.club_name as string | null) ?? null,
+        reporter_id: row.reporter_id as string,
+        reason: (row.reason as string) ?? "",
+        description: (row.description as string | null) ?? null,
+        current_url: (row.current_url as string | null) ?? null,
+        status: (row.status as ClubReportStatus) ?? "open",
+        created_at: (row.created_at as string) ?? "",
+        reporterName: profileMap.get(row.reporter_id as string) ?? "Unknown",
+        clubSlug: slugMap.get(row.club_id as string) ?? null,
+      })),
+    );
+    setClubReportsLoading(false);
   }, []);
 
   const loadRequests = useCallback(async () => {
@@ -854,8 +952,11 @@ export default function AdminPage() {
   }, [activeTab, loadStats, loadClubActivity]);
 
   useEffect(() => {
-    if (activeTab === "moderation") void loadReports();
-  }, [activeTab, loadReports]);
+    if (activeTab === "moderation") {
+      void loadReports();
+      void loadClubReports();
+    }
+  }, [activeTab, loadReports, loadClubReports]);
 
   useEffect(() => {
     if (activeTab === "bugs") void loadBugReports();
@@ -872,6 +973,11 @@ export default function AdminPage() {
     }
     return reports;
   }, [reports, reportFilter]);
+
+  const filteredClubReports = useMemo(() => {
+    if (clubReportFilter === "all") return clubReports;
+    return clubReports.filter((report) => report.status === clubReportFilter);
+  }, [clubReports, clubReportFilter]);
 
   const filteredBugReports = useMemo(() => {
     if (bugFilter === "all") return bugReports;
@@ -1316,6 +1422,35 @@ export default function AdminPage() {
     void loadReports();
   }
 
+  async function handleClubReportStatusUpdate(
+    report: ClubReportRow,
+    status: ClubReportStatus,
+  ) {
+    if (!user?.id) return;
+
+    setClubReportActionLoadingId(report.id);
+    setFeedback(null);
+
+    const { error } = await supabase
+      .from("club_reports")
+      .update({
+        status,
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", report.id);
+
+    if (error) {
+      console.error("Failed to update club report:", error.message);
+      setFeedback("Failed to update club report status.");
+      setClubReportActionLoadingId(null);
+      return;
+    }
+
+    setClubReportActionLoadingId(null);
+    void loadClubReports();
+  }
+
   async function handleBugStatusUpdate(
     reportId: string,
     status: BugReportRow["status"],
@@ -1344,6 +1479,15 @@ export default function AdminPage() {
     { value: "unreviewed", label: "Unreviewed" },
     { value: "resolved", label: "Resolved" },
   ];
+
+  const clubReportFilterPills: { value: ClubReportStatusFilter; label: string }[] =
+    [
+      { value: "all", label: "All" },
+      { value: "open", label: "Open" },
+      { value: "in_review", label: "In Review" },
+      { value: "resolved", label: "Resolved" },
+      { value: "dismissed", label: "Dismissed" },
+    ];
 
   const requestFilterPills: { value: RequestStatusFilter; label: string }[] = [
     { value: "all", label: "All" },
@@ -1802,6 +1946,272 @@ export default function AdminPage() {
 
       {activeTab === "moderation" ? (
         <section>
+          <h2
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: "0 0 12px",
+            }}
+          >
+            Club Reports
+          </h2>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginBottom: "20px",
+            }}
+          >
+            {clubReportFilterPills.map((pill) => (
+              <button
+                key={pill.value}
+                type="button"
+                onClick={() => setClubReportFilter(pill.value)}
+                style={pillButtonStyle(clubReportFilter === pill.value)}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+
+          {clubReportsLoading ? (
+            <div className="flex justify-center py-10">
+              <Spinner label="Loading club reports…" />
+            </div>
+          ) : filteredClubReports.length === 0 ? (
+            <p
+              style={{
+                textAlign: "center",
+                color: "#555555",
+                fontSize: "14px",
+                padding: "32px 0",
+                margin: "0 0 32px",
+              }}
+            >
+              No reports to review
+            </p>
+          ) : (
+            <div style={{ marginBottom: "36px" }}>
+              {filteredClubReports.map((report) => {
+                const badge = clubReportStatusBadgeStyle(report.status);
+                const isActionable =
+                  report.status === "open" || report.status === "in_review";
+
+                return (
+                  <article
+                    key={report.id}
+                    style={{
+                      background: "#1a1a1a",
+                      border: "1px solid #242424",
+                      borderLeft: `4px solid ${
+                        report.status === "open" ? "#E51937" : "#333333"
+                      }`,
+                      borderRadius: "10px",
+                      padding: "20px",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        alignItems: "flex-start",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <div>
+                        <p
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#777777",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            margin: "0 0 6px",
+                          }}
+                        >
+                          Club Report
+                        </p>
+                        <h3
+                          style={{
+                            fontSize: "15px",
+                            fontWeight: 700,
+                            color: "#ffffff",
+                            margin: 0,
+                          }}
+                        >
+                          {report.club_name ?? "Unknown club"}
+                        </h3>
+                      </div>
+                      <span
+                        style={{
+                          ...badge,
+                          borderRadius: "20px",
+                          padding: "4px 10px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {clubReportStatusLabel(report.status)}
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: "13px", color: "#cccccc", margin: "0 0 8px" }}>
+                      Reason: {clubReportReasonLabel(report.reason)}
+                    </p>
+
+                    {report.description ? (
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          color: "#777777",
+                          margin: "0 0 10px",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {report.description}
+                      </p>
+                    ) : null}
+
+                    <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 4px" }}>
+                      Reported by {report.reporterName}
+                    </p>
+                    <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 14px" }}>
+                      {formatRequestDate(report.created_at)}
+                    </p>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                      {report.clubSlug ? (
+                        <a
+                          href={`/clubs/${report.clubSlug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            background: "transparent",
+                            color: "#cccccc",
+                            border: "1px solid #333333",
+                            borderRadius: "6px",
+                            padding: "8px 16px",
+                            fontSize: "13px",
+                            fontWeight: 500,
+                            textDecoration: "none",
+                          }}
+                        >
+                          View Club
+                        </a>
+                      ) : null}
+                      {isActionable ? (
+                        <>
+                          {report.status === "open" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleClubReportStatusUpdate(
+                                  report,
+                                  "in_review",
+                                )
+                              }
+                              disabled={clubReportActionLoadingId === report.id}
+                              style={{
+                                background: "#FFC429",
+                                color: "#111111",
+                                border: "none",
+                                borderRadius: "6px",
+                                padding: "8px 16px",
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                cursor:
+                                  clubReportActionLoadingId === report.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                                opacity:
+                                  clubReportActionLoadingId === report.id
+                                    ? 0.6
+                                    : 1,
+                              }}
+                            >
+                              Mark In Review
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleClubReportStatusUpdate(
+                                report,
+                                "resolved",
+                              )
+                            }
+                            disabled={clubReportActionLoadingId === report.id}
+                            style={{
+                              background: "#E51937",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "6px",
+                              padding: "8px 16px",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              cursor:
+                                clubReportActionLoadingId === report.id
+                                  ? "not-allowed"
+                                  : "pointer",
+                              opacity:
+                                clubReportActionLoadingId === report.id ? 0.6 : 1,
+                            }}
+                          >
+                            Mark Resolved
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleClubReportStatusUpdate(
+                                report,
+                                "dismissed",
+                              )
+                            }
+                            disabled={clubReportActionLoadingId === report.id}
+                            style={{
+                              background: "transparent",
+                              color: "#cccccc",
+                              border: "1px solid #333333",
+                              borderRadius: "6px",
+                              padding: "8px 16px",
+                              fontSize: "13px",
+                              fontWeight: 500,
+                              cursor:
+                                clubReportActionLoadingId === report.id
+                                  ? "not-allowed"
+                                  : "pointer",
+                              opacity:
+                                clubReportActionLoadingId === report.id ? 0.6 : 1,
+                            }}
+                          >
+                            Dismiss
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          <h2
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: "0 0 12px",
+            }}
+          >
+            Post Reports
+          </h2>
+
           <div
             style={{
               display: "flex",

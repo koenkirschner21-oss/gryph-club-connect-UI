@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Globe, Users, X } from "lucide-react";
+import { Globe, Users, X, MoreHorizontal } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { getClubInitials } from "../lib/clubUtils";
 import {
@@ -10,6 +10,7 @@ import {
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
 import JoinRequestForm from "../components/club/JoinRequestForm";
+import ReportClubModal from "../components/club/ReportClubModal";
 import { normalizeVisibility } from "../lib/contentVisibility";
 import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
@@ -483,11 +484,34 @@ export default function ClubPublicProfilePage() {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
   const [leaveHovered, setLeaveHovered] = useState(false);
+  const [showReportMenu, setShowReportMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportConfirmation, setReportConfirmation] = useState<string | null>(null);
 
   const clubId = profile?.id ?? contextClub?.id;
   const joined = clubId ? isJoined(clubId) : false;
   const pending = clubId ? isPending(clubId) : false;
   const saved = clubId ? isSaved(clubId) : false;
+
+  useEffect(() => {
+    if (!showReportMenu) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-report-menu]")) {
+        setShowReportMenu(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showReportMenu]);
+
+  useEffect(() => {
+    if (!reportConfirmation) return;
+    const timer = window.setTimeout(() => setReportConfirmation(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [reportConfirmation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -706,6 +730,15 @@ export default function ClubPublicProfilePage() {
       return;
     }
     setShowApplicationModal(true);
+  }
+
+  function handleOpenReportClub() {
+    setShowReportMenu(false);
+    if (!user?.id) {
+      navigate(`/signup?redirect=${encodeURIComponent(window.location.pathname)}`);
+      return;
+    }
+    setShowReportModal(true);
   }
 
   const loading = user ? contextLoading || pageLoading : pageLoading;
@@ -1024,6 +1057,61 @@ export default function ClubPublicProfilePage() {
                   fullWidth={isMobile}
                 />
               )}
+              <div style={{ position: "relative" }} data-report-menu>
+                <button
+                  type="button"
+                  aria-label="More options"
+                  aria-expanded={showReportMenu}
+                  onClick={() => setShowReportMenu((open) => !open)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #333333",
+                    borderRadius: "8px",
+                    color: "#777777",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "10px 12px",
+                    alignSelf: isMobile ? "flex-start" : undefined,
+                  }}
+                >
+                  <MoreHorizontal size={18} aria-hidden />
+                </button>
+                {showReportMenu ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: "calc(100% + 6px)",
+                      minWidth: "160px",
+                      background: "#151515",
+                      border: "1px solid #2a2a2a",
+                      borderRadius: "8px",
+                      overflow: "hidden",
+                      zIndex: 30,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleOpenReportClub}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        background: "transparent",
+                        border: "none",
+                        color: "#cccccc",
+                        padding: "10px 14px",
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Report Club
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -1050,6 +1138,15 @@ export default function ClubPublicProfilePage() {
         {joinError ? (
           <p className="mt-2 text-sm text-primary" role="alert" style={{ padding: headerPadding }}>
             Something went wrong. Please try again.
+          </p>
+        ) : null}
+        {reportConfirmation ? (
+          <p
+            className="mt-2 text-sm"
+            role="status"
+            style={{ padding: headerPadding, color: "#4ade80" }}
+          >
+            {reportConfirmation}
           </p>
         ) : null}
 
@@ -1232,6 +1329,19 @@ export default function ClubPublicProfilePage() {
           clubSlug={club.slug}
           onClose={() => setSelectedEvent(null)}
           onJoinClub={handleEventJoinAction}
+        />
+      ) : null}
+
+      {showReportModal && user?.id ? (
+        <ReportClubModal
+          clubId={club.id}
+          clubName={club.name}
+          reporterId={user.id}
+          onClose={() => setShowReportModal(false)}
+          onSubmitted={() => {
+            setShowReportModal(false);
+            setReportConfirmation("Thanks for your report. Our team will review it.");
+          }}
         />
       ) : null}
     </div>
