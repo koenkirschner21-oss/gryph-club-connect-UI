@@ -785,7 +785,6 @@ function ScheduleInterviewModal({
       >
         <option value="online">Online</option>
         <option value="in_person">In Person</option>
-        <option value="phone">Phone</option>
       </select>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
@@ -829,7 +828,7 @@ function ScheduleInterviewModal({
                 next[index] = e.target.value;
                 setTimeSlots(next);
               }}
-              placeholder={`Time slot ${index + 1}`}
+              placeholder={`Option ${index + 1}: Date and time`}
               style={{ ...darkInputStyle, width: "100%", marginBottom: "8px" }}
             />
           ))}
@@ -846,25 +845,39 @@ function ScheduleInterviewModal({
         style={{ ...darkInputStyle, width: "100%", marginBottom: "14px", resize: "vertical" }}
       />
 
-      <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
-        Optional location
-      </label>
-      <input
-        type="text"
-        value={meetingLocation}
-        onChange={(e) => setMeetingLocation(e.target.value)}
-        style={{ ...darkInputStyle, width: "100%", marginBottom: "14px" }}
-      />
+      {interviewType === "in_person" ? (
+        <>
+          <label
+            style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}
+          >
+            Location
+          </label>
+          <input
+            type="text"
+            value={meetingLocation}
+            onChange={(e) => setMeetingLocation(e.target.value)}
+            placeholder="University Centre Room 103"
+            style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
+          />
+        </>
+      ) : null}
 
-      <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
-        Optional meeting link
-      </label>
-      <input
-        type="url"
-        value={meetingLink}
-        onChange={(e) => setMeetingLink(e.target.value)}
-        style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
-      />
+      {interviewType === "online" ? (
+        <>
+          <label
+            style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}
+          >
+            Meeting Link
+          </label>
+          <input
+            type="url"
+            value={meetingLink}
+            onChange={(e) => setMeetingLink(e.target.value)}
+            placeholder="Paste Teams, Zoom, Google Meet, or other meeting link"
+            style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
+          />
+        </>
+      ) : null}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
         <button type="button" style={actionButtonStyle} onClick={onClose}>

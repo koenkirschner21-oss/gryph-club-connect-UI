@@ -3,6 +3,14 @@ import { X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 
+const UOFG_EMAIL_PATTERN = /@uoguelph\.ca$/i;
+const UOFG_EMAIL_ERROR =
+  "Please enter a valid UofG email address ending in @uoguelph.ca.";
+
+function isValidUofGEmail(email: string): boolean {
+  return UOFG_EMAIL_PATTERN.test(email.trim());
+}
+
 type ClubInviteModalProps = {
   open: boolean;
   onClose: () => void;
@@ -21,6 +29,9 @@ export default function ClubInviteModal({
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [emailValidationError, setEmailValidationError] = useState<string | null>(
+    null,
+  );
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
 
@@ -29,6 +40,7 @@ export default function ClubInviteModal({
   function handleClose() {
     setInviteEmail("");
     setInviteError(null);
+    setEmailValidationError(null);
     setInviteLink(null);
     setInviteLinkCopied(false);
     setInviteCopied(false);
@@ -57,8 +69,20 @@ export default function ClubInviteModal({
     );
   }
 
+  function handleInviteEmailChange(value: string) {
+    setInviteEmail(value);
+    const trimmed = value.trim();
+    if (!trimmed || isValidUofGEmail(trimmed)) {
+      setEmailValidationError(null);
+      return;
+    }
+    setEmailValidationError(UOFG_EMAIL_ERROR);
+  }
+
+  const inviteEmailValid = isValidUofGEmail(inviteEmail);
+
   async function handleSendInvite() {
-    if (!clubId || !user?.id || !inviteEmail.trim()) return;
+    if (!clubId || !user?.id || !inviteEmailValid) return;
     setInviteSending(true);
     setInviteError(null);
     setInviteLink(null);
@@ -213,7 +237,7 @@ export default function ClubInviteModal({
           <input
             type="email"
             value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
+            onChange={(e) => handleInviteEmailChange(e.target.value)}
             placeholder="Enter UofG email address"
             disabled={inviteSending}
             style={{
@@ -225,9 +249,14 @@ export default function ClubInviteModal({
               padding: "10px 14px",
               color: "#ffffff",
               fontSize: "14px",
-              marginBottom: "12px",
+              marginBottom: emailValidationError || inviteError ? "8px" : "12px",
             }}
           />
+          {emailValidationError ? (
+            <p style={{ fontSize: "12px", color: "#E51937", margin: "0 0 12px" }}>
+              {emailValidationError}
+            </p>
+          ) : null}
           {inviteError ? (
             <p style={{ fontSize: "12px", color: "#E51937", margin: "0 0 12px" }}>
               {inviteError}
@@ -275,7 +304,7 @@ export default function ClubInviteModal({
           <button
             type="button"
             onClick={() => void handleSendInvite()}
-            disabled={inviteSending || !inviteEmail.trim()}
+            disabled={inviteSending || !inviteEmailValid}
             style={{
               width: "100%",
               background: "#E51937",
@@ -286,8 +315,8 @@ export default function ClubInviteModal({
               fontSize: "13px",
               fontWeight: 500,
               cursor:
-                inviteSending || !inviteEmail.trim() ? "not-allowed" : "pointer",
-              opacity: inviteSending || !inviteEmail.trim() ? 0.6 : 1,
+                inviteSending || !inviteEmailValid ? "not-allowed" : "pointer",
+              opacity: inviteSending || !inviteEmailValid ? 0.6 : 1,
             }}
           >
             {inviteSending ? "Sending…" : "Send Invite"}
