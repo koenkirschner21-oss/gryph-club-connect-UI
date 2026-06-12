@@ -233,14 +233,10 @@ const periodNavPillStyle = (active: boolean): CSSProperties => ({
 
 function PeriodNavLinks({
   pageView,
-  weekCount: _weekCount,
-  monthCount: _monthCount,
   onWeek,
   onMonth,
 }: {
   pageView: EventsPageView;
-  weekCount: number;
-  monthCount: number;
   onWeek: () => void;
   onMonth: () => void;
 }) {
@@ -1281,28 +1277,6 @@ export default function PublicEventsPage() {
     );
   }, [groupedEvents]);
 
-  const thisWeekCount = useMemo(() => {
-    const now = new Date();
-    const weekEnd = new Date();
-    weekEnd.setDate(now.getDate() + 7);
-    return eventsWithStartTime.filter((e) => {
-      const d = new Date(e.start_time);
-      return d >= now && d <= weekEnd;
-    }).length;
-  }, [eventsWithStartTime]);
-
-  const thisMonthCount = useMemo(() => {
-    const now = new Date();
-    return eventsWithStartTime.filter((e) => {
-      const d = new Date(e.start_time);
-      return (
-        d.getMonth() === now.getMonth() &&
-        d.getFullYear() === now.getFullYear() &&
-        d >= now
-      );
-    }).length;
-  }, [eventsWithStartTime]);
-
   function openWeekView() {
     setPageView("week");
     setTimeFilter("week");
@@ -1393,8 +1367,6 @@ export default function PublicEventsPage() {
             </p>
             <PeriodNavLinks
               pageView={pageView}
-              weekCount={thisWeekCount}
-              monthCount={thisMonthCount}
               onWeek={openWeekView}
               onMonth={openMonthView}
             />
@@ -1434,8 +1406,6 @@ export default function PublicEventsPage() {
             <div style={{ marginBottom: "16px" }}>
               <PeriodNavLinks
                 pageView={pageView}
-                weekCount={thisWeekCount}
-                monthCount={thisMonthCount}
                 onWeek={openWeekView}
                 onMonth={openMonthView}
               />

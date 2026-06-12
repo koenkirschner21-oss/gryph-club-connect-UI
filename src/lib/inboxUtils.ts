@@ -121,7 +121,7 @@ export function filterInboxMessages(
   }
 }
 
-export function inboxEmptyMessage(_filter: InboxFilter): string {
+export function inboxEmptyMessage(): string {
   return "No messages here yet";
 }
 

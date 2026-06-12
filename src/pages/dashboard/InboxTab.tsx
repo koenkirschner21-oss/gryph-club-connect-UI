@@ -14,7 +14,7 @@ const FILTER_CHIPS: { id: InboxFilter; label: string }[] = [
   { id: "admin", label: "Admin/Support" },
 ];
 
-interface InboxTabProps extends UseInboxReturn {}
+type InboxTabProps = UseInboxReturn;
 
 export default function InboxTab({
   loading,
@@ -117,7 +117,7 @@ export default function InboxTab({
             padding: "48px 16px",
           }}
         >
-          {inboxEmptyMessage(activeFilter)}
+          {inboxEmptyMessage()}
         </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
