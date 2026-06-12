@@ -49,8 +49,9 @@ const workspaceLinks: {
     Icon: Megaphone,
     badgeKey: "announcements",
   },
-  { to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
   { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare, badgeKey: "tasks" },
+  { to: "events", label: "Events", end: false, Icon: Calendar },
+  { to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
   {
     to: "documents",
     label: "Documents",
@@ -59,7 +60,7 @@ const workspaceLinks: {
       <FileText size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
     ),
   },
-  { to: "events", label: "Events", end: false, Icon: Calendar },
+  { to: "members", label: "Members", end: false, Icon: Users },
   {
     to: "recruiting",
     label: "Hiring",
@@ -68,14 +69,18 @@ const workspaceLinks: {
       <Briefcase size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
     ),
   },
-  { to: "members", label: "Members", end: false, Icon: Users },
-  { to: "settings", label: "Settings", end: false, Icon: Settings },
 ];
 
 const analyticsLink = {
   to: "analytics",
   label: "Analytics",
   Icon: BarChart2,
+} as const;
+
+const settingsLink = {
+  to: "settings",
+  label: "Settings",
+  Icon: Settings,
 } as const;
 
 const badgeStyle: CSSProperties = {
@@ -506,6 +511,14 @@ export default function WorkspaceLayout() {
             {analyticsLink.label}
           </NavLink>
         ) : null}
+        <NavLink
+          to={settingsLink.to}
+          className={({ isActive }) => workspaceNavClass(isActive)}
+          onClick={closeDrawer}
+        >
+          <settingsLink.Icon size={16} strokeWidth={2} aria-hidden />
+          {settingsLink.label}
+        </NavLink>
       </nav>
 
       <div className="border-t p-3" style={{ borderColor: "#1e1e1e" }}>

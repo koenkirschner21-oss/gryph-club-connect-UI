@@ -545,15 +545,15 @@ export default function DashboardPage() {
           badge={unreadNotificationCount > 0 ? unreadNotificationCount : undefined}
           onClick={() => setActiveTab("overview")}
         />
+        <ThisWeekTabButton
+          active={activeTab === "week"}
+          onClick={() => setActiveTab("week")}
+        />
         <TabButton
           label="Inbox"
           active={activeTab === "inbox"}
           badge={inbox.unreadCount > 0 ? inbox.unreadCount : undefined}
           onClick={() => setActiveTab("inbox")}
-        />
-        <ThisWeekTabButton
-          active={activeTab === "week"}
-          onClick={() => setActiveTab("week")}
         />
         <TabButton
           label="My Clubs"
@@ -561,14 +561,14 @@ export default function DashboardPage() {
           onClick={() => setActiveTab("clubs")}
         />
         <TabButton
-          label="Events"
-          active={activeTab === "events"}
-          onClick={() => setActiveTab("events")}
-        />
-        <TabButton
           label="Tasks"
           active={activeTab === "tasks"}
           onClick={() => setActiveTab("tasks")}
+        />
+        <TabButton
+          label="Events"
+          active={activeTab === "events"}
+          onClick={() => setActiveTab("events")}
         />
       </div>
 

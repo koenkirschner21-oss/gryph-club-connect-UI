@@ -23,7 +23,7 @@ type AdminTab = "requests" | "claims" | "users" | "moderation" | "stats" | "bugs
 type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
 type ReportStatusFilter = "all" | "unreviewed" | "resolved";
 type ClubReportStatusFilter = "all" | ClubReportStatus;
-type BugStatusFilter = "all" | "open" | "in_progress" | "resolved";
+type BugStatusFilter = "active" | "resolved";
 type ActivityStatus = "active" | "quiet" | "inactive";
 
 interface PostReportRow {
@@ -256,6 +256,43 @@ function bugSeverityBorderColor(severity: BugReportRow["severity"]): string {
   return "#333333";
 }
 
+function bugStatusBadgeStyle(
+  status: BugReportRow["status"],
+): CSSProperties {
+  const base: CSSProperties = {
+    borderRadius: "20px",
+    padding: "2px 8px",
+    fontSize: "10px",
+    fontWeight: 600,
+    textTransform: "capitalize",
+  };
+
+  if (status === "in_progress") {
+    return {
+      ...base,
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+      background: "transparent",
+    };
+  }
+
+  if (status === "resolved") {
+    return {
+      ...base,
+      border: "1px solid #555",
+      color: "#555",
+      background: "transparent",
+    };
+  }
+
+  return {
+    ...base,
+    background: "#111111",
+    border: "1px solid #333333",
+    color: "#777777",
+  };
+}
+
 function parseRequestMeta(longDescription: string | null): {
   slug?: string;
   contact_email?: string;
@@ -479,7 +516,7 @@ export default function AdminPage() {
 
   const [bugReports, setBugReports] = useState<BugReportRow[]>([]);
   const [bugReportsLoading, setBugReportsLoading] = useState(true);
-  const [bugFilter, setBugFilter] = useState<BugStatusFilter>("all");
+  const [bugFilter, setBugFilter] = useState<BugStatusFilter>("active");
   const [bugActionLoadingId, setBugActionLoadingId] = useState<string | null>(null);
 
   const [clubActivity, setClubActivity] = useState<ClubActivityRow[]>([]);
@@ -980,8 +1017,10 @@ export default function AdminPage() {
   }, [clubReports, clubReportFilter]);
 
   const filteredBugReports = useMemo(() => {
-    if (bugFilter === "all") return bugReports;
-    return bugReports.filter((report) => report.status === bugFilter);
+    if (bugFilter === "resolved") {
+      return bugReports.filter((report) => report.status === "resolved");
+    }
+    return bugReports.filter((report) => report.status !== "resolved");
   }, [bugReports, bugFilter]);
 
   const filteredRequests = useMemo(() => {
@@ -1497,9 +1536,7 @@ export default function AdminPage() {
   ];
 
   const bugFilterPills: { value: BugStatusFilter; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "open", label: "Open" },
-    { value: "in_progress", label: "In Progress" },
+    { value: "active", label: "Active" },
     { value: "resolved", label: "Resolved" },
   ];
 
@@ -2934,7 +2971,9 @@ export default function AdminPage() {
           ) : filteredBugReports.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 16px" }}>
               <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-                No bug reports yet
+                {bugFilter === "resolved"
+                  ? "No resolved bug reports yet"
+                  : "No active bug reports"}
               </p>
             </div>
           ) : (
@@ -2982,18 +3021,7 @@ export default function AdminPage() {
                     >
                       {report.severity}
                     </span>
-                    <span
-                      style={{
-                        background: "#111111",
-                        border: "1px solid #333333",
-                        color: "#777777",
-                        borderRadius: "20px",
-                        padding: "2px 8px",
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        textTransform: "capitalize",
-                      }}
-                    >
+                    <span style={bugStatusBadgeStyle(report.status)}>
                       {report.status.replace("_", " ")}
                     </span>
                   </div>

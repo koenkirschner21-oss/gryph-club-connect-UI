@@ -7,12 +7,20 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { FileText, Globe, MoreHorizontal, Search, X } from "lucide-react";
+import {
+  FileText,
+  Globe,
+  Lock,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Users,
+  X,
+} from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
-import VisibilitySelector from "../../components/club/VisibilitySelector";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import type { MemberRole, Visibility } from "../../types";
@@ -168,6 +176,105 @@ function saveCustomCategories(clubId: string, categories: CategoryOption[]) {
   localStorage.setItem(
     customCategoriesStorageKey(clubId),
     JSON.stringify(categories),
+  );
+}
+
+const DOCUMENT_VISIBILITY_OPTIONS: {
+  value: Visibility;
+  label: string;
+  description: string;
+  Icon: typeof Globe;
+}[] = [
+  {
+    value: "public",
+    label: "Public",
+    description: "Anyone can see this",
+    Icon: Globe,
+  },
+  {
+    value: "members_only",
+    label: "Members Only",
+    description: "Only club members",
+    Icon: Users,
+  },
+  {
+    value: "executives_only",
+    label: "Executives Only",
+    description: "Only executives and above",
+    Icon: Lock,
+  },
+];
+
+function DocumentsVisibilitySelector({
+  value,
+  onChange,
+}: {
+  value: Visibility;
+  onChange: (value: Visibility) => void;
+}) {
+  return (
+    <div>
+      <p
+        style={{
+          fontSize: "12px",
+          fontWeight: 600,
+          color: "#888888",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          margin: "0 0 10px",
+        }}
+      >
+        Who can see this?
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {DOCUMENT_VISIBILITY_OPTIONS.map((option) => {
+          const active = value === option.value;
+          const Icon = option.Icon;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              style={{
+                borderRadius: "20px",
+                padding: "8px 14px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                textAlign: "left",
+                flex: "1 1 140px",
+                minWidth: 0,
+                background: active ? "#E51937" : "transparent",
+                border: active ? "1px solid #E51937" : "1px solid #333333",
+                color: active ? "#ffffff" : "#999999",
+              }}
+            >
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <Icon size={14} aria-hidden />
+                {option.label}
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  marginTop: "2px",
+                  color: active ? "#ffffff" : "#777777",
+                }}
+              >
+                {option.description}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -382,7 +489,7 @@ function ResourceLinkRow({
             transition: "border-color 0.15s ease, color 0.15s ease",
           }}
         >
-          Open →
+          Open
         </button>
         {canManage ? (
           <div style={{ position: "relative" }}>
@@ -516,7 +623,7 @@ function CategoryPills({
                   padding: "0 2px",
                 }}
               >
-                ×
+                <X size={14} aria-hidden />
               </button>
             ) : null}
           </span>
@@ -539,7 +646,10 @@ function CategoryPills({
             cursor: "pointer",
           }}
         >
-          + Category
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <Plus size={14} aria-hidden />
+            Category
+          </span>
         </button>
       ) : null}
     </div>
@@ -1455,7 +1565,10 @@ export default function ClubDocumentsPage() {
                 e.currentTarget.style.color = "#777777";
               }}
             >
-              + Add Link
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <Plus size={14} aria-hidden />
+                Add Link
+              </span>
             </button>
           ) : null}
         </Box>
@@ -1546,7 +1659,7 @@ export default function ClubDocumentsPage() {
                 marginTop: "12px",
               }}
             >
-              Upload your first document →
+              Upload your first document
             </button>
           ) : null}
         </div>
@@ -1807,7 +1920,7 @@ export default function ClubDocumentsPage() {
             />
 
             <Box style={{ marginTop: "16px" }}>
-              <VisibilitySelector
+              <DocumentsVisibilitySelector
                 value={uploadVisibility}
                 onChange={setUploadVisibility}
               />
