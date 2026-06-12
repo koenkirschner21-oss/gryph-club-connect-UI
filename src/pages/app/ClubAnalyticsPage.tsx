@@ -115,6 +115,16 @@ const pageStyle = (isMobile: boolean): CSSProperties => ({
   padding: isMobile ? "16px" : "24px",
 });
 
+const chartEmptyStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: "100%",
+  fontSize: "13px",
+  color: "#555555",
+  textAlign: "center",
+};
+
 const chartCardStyle: CSSProperties = {
   background: CARD_BG,
   borderTop: `1px solid ${CARD_BORDER}`,
@@ -603,7 +613,12 @@ export default function ClubAnalyticsPage() {
       if (tasksRes.error) failures.push("tasks");
       if (postsRes.error) failures.push("posts");
       if (eventsRes.error) failures.push("events");
-      if (conversationsRes.error) failures.push("conversations");
+      if (conversationsRes.error) {
+        console.error(
+          "Failed to load conversations for analytics:",
+          conversationsRes.error.message,
+        );
+      }
 
       const eventRows = (eventsRes.data ?? []) as EventRow[];
       const eventIds = eventRows.map((e) => e.id);
@@ -631,7 +646,7 @@ export default function ClubAnalyticsPage() {
           .select("created_at")
           .in("conversation_id", conversationIds);
         if (dmRes.error) {
-          failures.push("messages");
+          console.error("Failed to load messages for analytics:", dmRes.error.message);
         } else {
           dmRows = (dmRes.data ?? []) as DirectMessageRow[];
         }
@@ -917,43 +932,38 @@ export default function ClubAnalyticsPage() {
       >
         <div style={chartCardStyle}>
           <h3 style={chartTitleStyle}>Member Growth</h3>
-          <div style={{ width: "100%", height: "200px" }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={memberGrowth}
-                margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis dataKey="label" {...chartAxisProps} />
-                <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
-                <Tooltip {...tooltipStyle} />
-                <Line
-                  type="monotone"
-                  dataKey="count"
-                  stroke={ACCENT_RED}
-                  strokeWidth={2}
-                  dot={{ fill: ACCENT_RED, r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+            {totalMembers === 0 ? (
+              <div style={chartEmptyStyle}>No data yet</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={memberGrowth}
+                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid stroke={GRID} vertical={false} />
+                  <XAxis dataKey="label" {...chartAxisProps} />
+                  <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                  <Tooltip {...tooltipStyle} />
+                  <Line
+                    type="monotone"
+                    dataKey="count"
+                    stroke={ACCENT_RED}
+                    strokeWidth={2}
+                    dot={{ fill: ACCENT_RED, r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div style={chartCardStyle}>
           <h3 style={chartTitleStyle}>Event Attendance</h3>
-          <div style={{ width: "100%", height: "200px" }}>
+          <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
             {eventAttendance.length === 0 ? (
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: MUTED,
-                  textAlign: "center",
-                  marginTop: "80px",
-                }}
-              >
-                No events yet
-              </p>
+              <div style={chartEmptyStyle}>No data yet</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -997,18 +1007,11 @@ export default function ClubAnalyticsPage() {
       >
         <div style={chartCardStyle}>
           <h3 style={chartTitleStyle}>Task Breakdown</h3>
-          <div style={{ width: "100%", height: "200px", position: "relative" }}>
+          <div
+            style={{ width: "100%", minWidth: 0, height: "200px", position: "relative" }}
+          >
             {totalTasks === 0 ? (
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: MUTED,
-                  textAlign: "center",
-                  marginTop: "80px",
-                }}
-              >
-                No tasks yet
-              </p>
+              <div style={chartEmptyStyle}>No data yet</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -1047,18 +1050,15 @@ export default function ClubAnalyticsPage() {
 
         <div style={chartCardStyle}>
           <h3 style={chartTitleStyle}>Event Types</h3>
-          <div style={{ width: "100%", height: Math.max(200, eventCategories.length * 36) }}>
+          <div
+            style={{
+              width: "100%",
+              minWidth: 0,
+              height: Math.max(200, eventCategories.length * 36),
+            }}
+          >
             {eventCategories.length === 0 ? (
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: MUTED,
-                  textAlign: "center",
-                  marginTop: "80px",
-                }}
-              >
-                No events yet
-              </p>
+              <div style={chartEmptyStyle}>No data yet</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart

@@ -158,52 +158,57 @@ export default function WorkspaceLayout() {
       return;
     }
 
-    const { data: memberships, error: membershipsError } = await supabase
-      .from("conversation_members")
-      .select("conversation_id")
-      .eq("user_id", user.id);
+    try {
+      const { data: memberships, error: membershipsError } = await supabase
+        .from("conversation_members")
+        .select("conversation_id")
+        .eq("user_id", user.id);
 
-    if (membershipsError) {
-      console.error("Failed to load chat memberships for badges:", membershipsError.message);
-      setChatUnread(0);
-    } else {
-      const membershipIds = (memberships ?? []).map((row) => row.conversation_id as string);
-      if (membershipIds.length === 0) {
+      if (membershipsError) {
+        console.error("Failed to load chat memberships for badges:", membershipsError.message);
         setChatUnread(0);
       } else {
-        const { data: clubConvos, error: convosError } = await supabase
-          .from("conversations")
-          .select("id")
-          .eq("club_id", resolvedClubId)
-          .in("id", membershipIds);
-
-        if (convosError) {
-          console.error("Failed to load club conversations for badges:", convosError.message);
+        const membershipIds = (memberships ?? []).map((row) => row.conversation_id as string);
+        if (membershipIds.length === 0) {
           setChatUnread(0);
         } else {
-          const clubConversationIds = (clubConvos ?? []).map((row) => row.id as string);
-          if (clubConversationIds.length === 0) {
+          const { data: clubConvos, error: convosError } = await supabase
+            .from("conversations")
+            .select("id")
+            .eq("club_id", resolvedClubId)
+            .in("id", membershipIds);
+
+          if (convosError) {
+            console.error("Failed to load club conversations for badges:", convosError.message);
             setChatUnread(0);
           } else {
-            const { data: unreadMessages, error: messagesError } = await supabase
-              .from("direct_messages")
-              .select("id, read_by, sender_id")
-              .in("conversation_id", clubConversationIds)
-              .neq("sender_id", user.id);
-
-            if (messagesError) {
-              console.error("Failed to load chat unread for badges:", messagesError.message);
+            const clubConversationIds = (clubConvos ?? []).map((row) => row.id as string);
+            if (clubConversationIds.length === 0) {
               setChatUnread(0);
             } else {
-              setChatUnread(
-                (unreadMessages ?? []).filter(
-                  (row) => !(row.read_by ?? []).includes(user.id),
-                ).length,
-              );
+              const { data: unreadMessages, error: messagesError } = await supabase
+                .from("direct_messages")
+                .select("id, read_by, sender_id")
+                .in("conversation_id", clubConversationIds)
+                .neq("sender_id", user.id);
+
+              if (messagesError) {
+                console.error("Failed to load chat unread for badges:", messagesError.message);
+                setChatUnread(0);
+              } else {
+                setChatUnread(
+                  (unreadMessages ?? []).filter(
+                    (row) => !(row.read_by ?? []).includes(user.id),
+                  ).length,
+                );
+              }
             }
           }
         }
       }
+    } catch (err) {
+      console.error("Failed to load chat badge count:", err);
+      setChatUnread(0);
     }
 
     const lastTasksVisited = visitedTimestampForQuery(
