@@ -32,6 +32,12 @@ import VisibilityBadge from "../../components/club/VisibilityBadge";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import {
+  filterRsvpQuestionsForLoggedInUser,
+  formatGoingCount,
+  getEventRsvpAccess,
+  type RsvpAccessResult,
+} from "../../lib/eventRsvpUtils";
+import {
   DEFAULT_EVENT_CATEGORY,
   EVENT_CATEGORIES,
   eventCategoryLabel,
@@ -605,11 +611,7 @@ function formatAttendeeCounts(counts: {
   maybe: number;
   not_going: number;
 }): string | null {
-  const parts: string[] = [];
-  if (counts.going > 0) parts.push(`${counts.going} going`);
-  if (counts.maybe > 0) parts.push(`${counts.maybe} maybe`);
-  if (counts.not_going > 0) parts.push(`${counts.not_going} not going`);
-  return parts.length > 0 ? parts.join(" · ") : null;
+  return formatGoingCount(counts.going);
 }
 
 function SmartRsvpButton({
@@ -848,10 +850,12 @@ function EventTimeLocationMeta({
 function CompactEventRow({
   event,
   myStatus,
+  rsvpAccess,
   onRsvp,
 }: {
   event: ClubEvent;
   myStatus?: RsvpStatus;
+  rsvpAccess: RsvpAccessResult;
   onRsvp: (eventId: string, status: RsvpStatus) => void;
 }) {
   const timeLabel = formatEventTime(event.time);
@@ -878,7 +882,13 @@ function CompactEventRow({
           marginBottom={0}
         />
       </div>
-      <SmartRsvpButton eventId={event.id} status={myStatus} onRsvp={onRsvp} />
+      {rsvpAccess.showRsvpButton ? (
+        <SmartRsvpButton eventId={event.id} status={myStatus} onRsvp={onRsvp} />
+      ) : rsvpAccess.blockedMessage ? (
+        <span style={{ fontSize: "11px", color: "#777777", maxWidth: "120px", textAlign: "right" }}>
+          {rsvpAccess.blockedMessage}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -890,6 +900,7 @@ function EventCard({
   clubAbbreviation,
   isRecurring,
   isPrivileged,
+  rsvpAccess,
   past = false,
   myStatus,
   counts,
@@ -911,6 +922,7 @@ function EventCard({
   clubAbbreviation?: string;
   isRecurring: boolean;
   isPrivileged: boolean;
+  rsvpAccess: RsvpAccessResult;
   past?: boolean;
   myStatus?: RsvpStatus;
   counts: { going: number; maybe: number; not_going: number };
@@ -1305,11 +1317,25 @@ function EventCard({
             ) : null}
 
             {!past ? (
-              <SmartRsvpButton
-                eventId={event.id}
-                status={myStatus}
-                onRsvp={onRsvp}
-              />
+              rsvpAccess.showRsvpButton ? (
+                <SmartRsvpButton
+                  eventId={event.id}
+                  status={myStatus}
+                  onRsvp={onRsvp}
+                />
+              ) : rsvpAccess.blockedMessage ? (
+                <p
+                  style={{
+                    fontSize: "11px",
+                    color: "#777777",
+                    margin: 0,
+                    textAlign: "right",
+                    maxWidth: "140px",
+                  }}
+                >
+                  {rsvpAccess.blockedMessage}
+                </p>
+              ) : null
             ) : null}
           </div>
         </div>
@@ -1669,18 +1695,24 @@ export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
-  const { getClubById } = useClubContext();
+  const { getClubById, isJoined } = useClubContext();
   const club = getClubById(clubId ?? "");
   const { events, loading, createEvent, updateEvent, deleteEvent, refresh } =
     useClubEvents(clubId);
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
-  const isMember = userRole !== null;
+  const isActiveMember = clubId ? isJoined(clubId) : false;
 
   const visibleEvents = useMemo(
-    () => filterByVisibility(events, { isMember, isPrivileged }),
-    [events, isMember, isPrivileged],
+    () => filterByVisibility(events, { isMember: isActiveMember, isPrivileged }),
+    [events, isActiveMember, isPrivileged],
+  );
+
+  const getRsvpAccessForEvent = useCallback(
+    (event: ClubEvent) =>
+      getEventRsvpAccess(event.visibility, { isActiveMember, isPrivileged }),
+    [isActiveMember, isPrivileged],
   );
   const [clubBrand, setClubBrand] = useState<{
     logoUrl?: string;
@@ -2348,6 +2380,12 @@ export default function ClubEventsPage() {
   }
 
   async function handleRsvp(eventId: string, status: RsvpStatus) {
+    const event = events.find((entry) => entry.id === eventId);
+    if (event) {
+      const access = getRsvpAccessForEvent(event);
+      if (!access.canRsvp) return;
+    }
+
     if (myRsvps[eventId] === status) {
       await removeRsvp(eventId);
       return;
@@ -2373,10 +2411,12 @@ export default function ClubEventsPage() {
     }
 
     if (status === "going") {
-      const questions = eventQuestionsMap[eventId] ?? [];
+      const questions = filterRsvpQuestionsForLoggedInUser(
+        eventQuestionsMap[eventId] ?? [],
+      );
       if (questions.length > 0) {
-        const event = events.find((e) => e.id === eventId) ?? null;
-        setRsvpModalEvent(event);
+        const matchedEvent = events.find((e) => e.id === eventId) ?? null;
+        setRsvpModalEvent(matchedEvent);
         setRsvpAnswers({});
         return;
       }
@@ -2404,7 +2444,9 @@ export default function ClubEventsPage() {
       return;
     }
 
-    const questions = eventQuestionsMap[rsvpModalEvent.id] ?? [];
+    const questions = filterRsvpQuestionsForLoggedInUser(
+      eventQuestionsMap[rsvpModalEvent.id] ?? [],
+    );
     for (const q of questions) {
       if (q.required && !rsvpAnswers[q.id]?.trim()) {
         setFeedback({
@@ -2923,6 +2965,7 @@ export default function ClubEventsPage() {
                   key={event.id}
                   event={event}
                   myStatus={myRsvps[event.id]}
+                  rsvpAccess={getRsvpAccessForEvent(event)}
                   onRsvp={handleRsvp}
                 />
               );
@@ -2940,6 +2983,7 @@ export default function ClubEventsPage() {
                 clubAbbreviation={clubBrand.abbreviation}
                 isRecurring={isEventRecurring(event.id)}
                 isPrivileged={isPrivileged}
+                rsvpAccess={getRsvpAccessForEvent(event)}
                 myStatus={myStatus}
                 counts={c}
                 copiedEventId={copiedEventId}
@@ -2975,6 +3019,7 @@ export default function ClubEventsPage() {
                 clubAbbreviation={clubBrand.abbreviation}
                 isRecurring={isEventRecurring(event.id)}
                 isPrivileged={isPrivileged}
+                rsvpAccess={getRsvpAccessForEvent(event)}
                 past
                 counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}
                 copiedEventId={copiedEventId}
@@ -3028,7 +3073,30 @@ export default function ClubEventsPage() {
               RSVP to this event
             </p>
 
-            {(eventQuestionsMap[rsvpModalEvent.id] ?? []).map((q) => (
+            <button
+              type="button"
+              disabled={rsvpSubmitting}
+              onClick={() => void submitRsvpWithForm()}
+              style={{
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "12px 24px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: rsvpSubmitting ? "not-allowed" : "pointer",
+                opacity: rsvpSubmitting ? 0.7 : 1,
+                marginBottom: "20px",
+              }}
+            >
+              {rsvpSubmitting ? "Submitting…" : "Confirm RSVP"}
+            </button>
+
+            {filterRsvpQuestionsForLoggedInUser(
+              eventQuestionsMap[rsvpModalEvent.id] ?? [],
+            ).map((q) => (
               <div key={q.id} style={{ marginBottom: "16px" }}>
                 <label
                   style={{
@@ -3117,23 +3185,6 @@ export default function ClubEventsPage() {
                 }}
               >
                 Cancel
-              </button>
-              <button
-                type="button"
-                disabled={rsvpSubmitting}
-                onClick={() => void submitRsvpWithForm()}
-                style={{
-                  background: "#E51937",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "10px 24px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                {rsvpSubmitting ? "Submitting…" : "Confirm RSVP"}
               </button>
             </div>
           </div>

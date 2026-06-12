@@ -1,7 +1,16 @@
-import { useEffect, useState, type CSSProperties } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubContext } from "../../context/useClubContext";
+import { membershipRequiresApproval } from "../../lib/clubJoinUtils";
+import {
+  filterRsvpQuestionsForLoggedInUser,
+  getEventRsvpAccess,
+  isSystemRsvpQuestion,
+} from "../../lib/eventRsvpUtils";
+import { normalizeVisibility } from "../../lib/contentVisibility";
 import { supabase } from "../../lib/supabaseClient";
+import type { MembershipType, Visibility } from "../../types";
 
 type QuestionType = "text" | "multiple_choice" | "yes_no";
 
@@ -23,6 +32,7 @@ interface PublicEvent {
   time: string;
   location: string;
   category: string;
+  visibility: Visibility;
   bannerUrl?: string;
 }
 
@@ -195,12 +205,18 @@ function CheckIcon() {
 
 export default function EventRSVPPage() {
   const { eventId } = useParams<{ eventId: string }>();
+  const navigate = useNavigate();
   const { user } = useAuthContext();
+  const { isJoined, isSaved, toggleSaveClub } = useClubContext();
   const [loading, setLoading] = useState(true);
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [event, setEvent] = useState<PublicEvent | null>(null);
   const [clubName, setClubName] = useState("");
+  const [clubSlug, setClubSlug] = useState("");
+  const [membershipType, setMembershipType] = useState<MembershipType>("open");
+  const [isActiveMember, setIsActiveMember] = useState(false);
+  const [isPrivileged, setIsPrivileged] = useState(false);
   const [questions, setQuestions] = useState<FormQuestion[]>([]);
 
   const [name, setName] = useState("");
@@ -209,6 +225,21 @@ export default function EventRSVPPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showPostRsvpCta, setShowPostRsvpCta] = useState(false);
+
+  const customQuestions = useMemo(() => {
+    if (user?.id) {
+      return filterRsvpQuestionsForLoggedInUser(questions);
+    }
+    return questions.filter((question) => !isSystemRsvpQuestion(question.question));
+  }, [questions, user?.id]);
+
+  const rsvpAccess = useMemo(() => {
+    if (!event) {
+      return { canRsvp: false, showRsvpButton: false };
+    }
+    return getEventRsvpAccess(event.visibility, { isActiveMember, isPrivileged });
+  }, [event, isActiveMember, isPrivileged]);
 
   useEffect(() => {
     if (!eventId) {
@@ -225,7 +256,7 @@ export default function EventRSVPPage() {
 
       const { data: eventRow, error: eventError } = await supabase
         .from("events")
-        .select("id, club_id, title, description, date, time, location, category")
+        .select("id, club_id, title, description, date, time, location, category, visibility")
         .eq("id", eventId)
         .maybeSingle();
 
@@ -247,18 +278,53 @@ export default function EventRSVPPage() {
         time: (eventRow.time as string) ?? "",
         location: (eventRow.location as string) ?? "",
         category: (eventRow.category as string) ?? "general",
+        visibility: normalizeVisibility(eventRow.visibility as string | null, "public"),
       };
 
       setEvent(loadedEvent);
 
       const { data: clubRow } = await supabase
         .from("clubs")
-        .select("*")
+        .select("name, slug, membership_type")
         .eq("id", loadedEvent.clubId)
         .maybeSingle();
 
       if (!cancelled) {
         setClubName((clubRow?.name as string) ?? "");
+        setClubSlug((clubRow?.slug as string) ?? "");
+        setMembershipType(
+          (clubRow?.membership_type as MembershipType) ?? "open",
+        );
+      }
+
+      if (user?.id && !cancelled) {
+        const { data: membership } = await supabase
+          .from("club_members")
+          .select("role, status")
+          .eq("club_id", loadedEvent.clubId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (!cancelled) {
+          const role = (membership?.role as string) ?? "";
+          const status = (membership?.status as string) ?? "";
+          setIsActiveMember(status === "active");
+          setIsPrivileged(
+            status === "active" &&
+              (role === "owner" || role === "executive" || role === "exec"),
+          );
+        }
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!cancelled) {
+          setName((profile?.full_name as string) ?? "");
+          setEmail((profile?.email as string) ?? user.email ?? "");
+        }
       }
 
       const { data: questionRows } = await supabase
@@ -303,14 +369,17 @@ export default function EventRSVPPage() {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!name.trim()) next.name = "Full name is required.";
-    if (!email.trim()) {
-      next.email = "Email address is required.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      next.email = "Enter a valid email address.";
+
+    if (!user?.id) {
+      if (!name.trim()) next.name = "Full name is required.";
+      if (!email.trim()) {
+        next.email = "Email address is required.";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        next.email = "Enter a valid email address.";
+      }
     }
 
-    for (const q of questions) {
+    for (const q of customQuestions) {
       if (q.required && !(answers[q.id] ?? "").trim()) {
         next[q.id] = "This question is required.";
       }
@@ -320,13 +389,40 @@ export default function EventRSVPPage() {
     return Object.keys(next).length === 0;
   }
 
+  async function saveCustomResponses(
+    targetEventId: string,
+    targetUserId: string,
+  ): Promise<boolean> {
+    if (customQuestions.length === 0) return true;
+
+    const rows = customQuestions.map((question) => ({
+      event_id: targetEventId,
+      user_id: targetUserId,
+      question_id: question.id,
+      answer: answers[question.id]?.trim() ?? "",
+    }));
+
+    await supabase
+      .from("event_form_responses")
+      .delete()
+      .eq("event_id", targetEventId)
+      .eq("user_id", targetUserId);
+
+    const { error } = await supabase.from("event_form_responses").insert(rows);
+    if (error) {
+      console.error("Failed to save RSVP responses:", error.message);
+      return false;
+    }
+    return true;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!event || !eventId || !validate()) return;
 
     setSubmitting(true);
     const answersPayload: Record<string, string> = {};
-    for (const q of questions) {
+    for (const q of customQuestions) {
       const value = (answers[q.id] ?? "").trim();
       if (value) answersPayload[q.id] = value;
     }
@@ -342,6 +438,13 @@ export default function EventRSVPPage() {
       if (existing) {
         setSubmitting(false);
         setAlreadyRegistered(true);
+        return;
+      }
+
+      const responsesSaved = await saveCustomResponses(eventId, user.id);
+      if (!responsesSaved) {
+        setSubmitting(false);
+        setErrors({ form: "Failed to save your responses. Please try again." });
         return;
       }
 
@@ -369,6 +472,13 @@ export default function EventRSVPPage() {
       });
 
       setSubmitted(true);
+      if (
+        event.visibility === "public" &&
+        !isActiveMember &&
+        !isJoined(event.clubId)
+      ) {
+        setShowPostRsvpCta(true);
+      }
       return;
     }
 
@@ -567,6 +677,91 @@ export default function EventRSVPPage() {
               <p style={{ fontSize: "14px", color: "#747676", margin: 0 }}>
                 We&apos;ll see you at {event.title}
               </p>
+              {showPostRsvpCta ? (
+                <div style={{ marginTop: "24px", textAlign: "left" }}>
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      color: "#cccccc",
+                      margin: "0 0 16px",
+                      textAlign: "center",
+                    }}
+                  >
+                    Want to stay connected with {clubName}?
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (membershipRequiresApproval(membershipType)) {
+                          navigate("/app/join");
+                          return;
+                        }
+                        if (clubSlug) {
+                          navigate(`/clubs/${clubSlug}`);
+                        } else {
+                          navigate(`/app/join`);
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        background: "#E51937",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "11px 20px",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {membershipRequiresApproval(membershipType)
+                        ? "Request to Join"
+                        : "Join Club"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleSaveClub(event.clubId)}
+                      style={{
+                        width: "100%",
+                        background: "transparent",
+                        color: "#ffffff",
+                        border: "1px solid #333333",
+                        borderRadius: "6px",
+                        padding: "11px 20px",
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {isSaved(event.clubId) ? "Club Saved ✓" : "Save Club"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPostRsvpCta(false)}
+                      style={{
+                        width: "100%",
+                        background: "transparent",
+                        color: "#777777",
+                        border: "none",
+                        padding: "8px",
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Not Now
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : !rsvpAccess.canRsvp ? (
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <p style={{ fontSize: "15px", color: "#cccccc", margin: 0 }}>
+                {rsvpAccess.blockedMessage ??
+                  "You do not have access to RSVP for this event."}
+              </p>
             </div>
           ) : (
             <>
@@ -582,45 +777,71 @@ export default function EventRSVPPage() {
               </h2>
 
               <form onSubmit={(e) => void handleSubmit(e)}>
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={labelStyle} htmlFor="rsvp-name">
-                    Full Name
-                  </label>
-                  <input
-                    id="rsvp-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    style={inputStyle}
-                    autoComplete="name"
-                  />
-                  {errors.name ? (
-                    <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
-                      {errors.name}
-                    </p>
-                  ) : null}
-                </div>
+                {!user?.id ? (
+                  <>
+                    <div style={{ marginBottom: "16px" }}>
+                      <label style={labelStyle} htmlFor="rsvp-name">
+                        Full Name
+                      </label>
+                      <input
+                        id="rsvp-name"
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        style={inputStyle}
+                        autoComplete="name"
+                      />
+                      {errors.name ? (
+                        <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
+                          {errors.name}
+                        </p>
+                      ) : null}
+                    </div>
 
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={labelStyle} htmlFor="rsvp-email">
-                    Email Address
-                  </label>
-                  <input
-                    id="rsvp-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    style={inputStyle}
-                    autoComplete="email"
-                  />
-                  {errors.email ? (
-                    <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
-                      {errors.email}
-                    </p>
-                  ) : null}
-                </div>
+                    <div style={{ marginBottom: "16px" }}>
+                      <label style={labelStyle} htmlFor="rsvp-email">
+                        Email Address
+                      </label>
+                      <input
+                        id="rsvp-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        style={inputStyle}
+                        autoComplete="email"
+                      />
+                      {errors.email ? (
+                        <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
+                          {errors.email}
+                        </p>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
 
-                {questions.map((q) => (
+                {user?.id ? (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    style={{
+                      width: "100%",
+                      background: "#E51937",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "12px",
+                      fontWeight: 600,
+                      fontSize: "15px",
+                      marginBottom: customQuestions.length > 0 ? "20px" : "0",
+                      cursor: submitting ? "not-allowed" : "pointer",
+                      opacity: submitting ? 0.7 : 1,
+                    }}
+                  >
+                    {submitting ? "Submitting…" : "Confirm RSVP"}
+                  </button>
+                ) : null}
+
+                {customQuestions.map((q) => (
                   <div key={q.id} style={{ marginBottom: "16px" }}>
                     <label
                       style={{
@@ -699,25 +920,27 @@ export default function EventRSVPPage() {
                   </p>
                 ) : null}
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  style={{
-                    width: "100%",
-                    background: "#E51937",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "6px",
-                    padding: "12px",
-                    fontWeight: 600,
-                    fontSize: "15px",
-                    marginTop: "20px",
-                    cursor: submitting ? "not-allowed" : "pointer",
-                    opacity: submitting ? 0.7 : 1,
-                  }}
-                >
-                  {submitting ? "Submitting…" : "Confirm RSVP"}
-                </button>
+                {!user?.id ? (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    style={{
+                      width: "100%",
+                      background: "#E51937",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "12px",
+                      fontWeight: 600,
+                      fontSize: "15px",
+                      marginTop: "20px",
+                      cursor: submitting ? "not-allowed" : "pointer",
+                      opacity: submitting ? 0.7 : 1,
+                    }}
+                  >
+                    {submitting ? "Submitting…" : "Confirm RSVP"}
+                  </button>
+                ) : null}
 
                 <p
                   style={{

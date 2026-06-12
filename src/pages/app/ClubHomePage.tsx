@@ -2072,10 +2072,10 @@ export default function ClubHomePage() {
               {selectedEvent.description}
             </p>
           ) : null}
-          {isPrivileged ? (
+          {(eventRsvpCounts[selectedEvent.id]?.going ?? 0) > 0 ? (
             <p style={{ fontSize: "13px", color: "#888888", margin: "16px 0 0" }}>
               <span style={{ color: "#555555" }}>RSVPs: </span>
-              {(eventRsvpCounts[selectedEvent.id]?.going ?? 0)} going
+              {eventRsvpCounts[selectedEvent.id]?.going} going
             </p>
           ) : null}
         </DashboardItemModal>

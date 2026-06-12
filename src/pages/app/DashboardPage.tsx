@@ -3328,7 +3328,6 @@ function EventCard({
   moreDatesCount?: number;
 }) {
   const goingCount = counts?.going ?? 0;
-  const maybeCount = counts?.maybe ?? 0;
 
   const dateLine = hasEventLocation(event.location)
     ? `${formatEventDateShort(event.date)} · ${event.location.trim()}`
@@ -3339,8 +3338,8 @@ function EventCard({
     rsvpLine = "Going";
   } else if (rsvpStatus === "maybe") {
     rsvpLine = "Maybe";
-  } else if (goingCount > 0 || maybeCount > 0) {
-    rsvpLine = `${goingCount} going${maybeCount > 0 ? ` · ${maybeCount} maybe` : ""}`;
+  } else if (goingCount > 0) {
+    rsvpLine = `${goingCount} going`;
   } else if (!rsvpStatus) {
     rsvpLine = "Open to all students";
   }
