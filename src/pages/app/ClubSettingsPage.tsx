@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { Users, ClipboardList, Link2, Bookmark, Camera, Globe } from "lucide-react";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
@@ -442,14 +442,19 @@ function SettingsSection({
   subtitle,
   children,
   style,
+  sectionId,
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
   style?: CSSProperties;
+  sectionId?: string;
 }) {
   return (
-    <section style={{ ...sectionCardStyle, ...style }}>
+    <section
+      id={sectionId}
+      style={{ ...sectionCardStyle, scrollMarginTop: "88px", ...style }}
+    >
       <h2
         style={{
           fontSize: "14px",
@@ -958,6 +963,7 @@ function JoinQuestionBuilder({
 export default function ClubSettingsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuthContext();
   const { getClubById, updateClub, leaveClub } = useClubContext();
   const { members } = useClubMembers(clubId);
@@ -1117,6 +1123,28 @@ export default function ClubSettingsPage() {
       cancelled = true;
     };
   }, [clubId, user?.id]);
+
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (!section || roleLoading) return;
+
+    const sectionIdMap: Record<string, string> = {
+      profile: "club-profile",
+      branding: "branding",
+      social: "social-links",
+      membership: "membership",
+    };
+
+    const targetId = sectionIdMap[section];
+    if (!targetId) return;
+
+    window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [searchParams, roleLoading]);
 
   useEffect(() => {
     if (!clubId || !user?.id || !isOwner) {
@@ -1730,6 +1758,7 @@ export default function ClubSettingsPage() {
         <SettingsSection
           title="Club Profile"
           subtitle="Basic information members see on your club page."
+          sectionId="club-profile"
         >
           <SettingsField id="club-name" label="Club Name" required>
             <SettingsTextInput
@@ -1808,6 +1837,7 @@ export default function ClubSettingsPage() {
           <SettingsSection
             title="Branding"
             subtitle="Logo, banner, and accent color for your club."
+            sectionId="branding"
           >
             <SettingsField label="Club Logo">
               <div
@@ -2022,6 +2052,7 @@ export default function ClubSettingsPage() {
           <SettingsSection
             title="Social Links"
             subtitle="Connect your club's social profiles and website."
+            sectionId="social-links"
           >
             <SocialLinkField
               id="instagram-url"
@@ -2064,6 +2095,7 @@ export default function ClubSettingsPage() {
           <SettingsSection
             title="Membership"
             subtitle="Control how new members join your club."
+            sectionId="membership"
           >
             <div
               style={{

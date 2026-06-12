@@ -693,6 +693,21 @@ export default function ClubAnnouncementsPage() {
     location.state,
   ]);
 
+  useEffect(() => {
+    if (
+      searchParams.get("openTemplate") !== "true" ||
+      !isPrivileged ||
+      loading ||
+      roleLoading
+    ) {
+      return;
+    }
+    setShowTemplatePicker(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("openTemplate");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading, roleLoading]);
+
   function openEditForm(post: Post) {
     setEditingPostId(post.id);
     setTitle(post.title);
@@ -1211,6 +1226,8 @@ export default function ClubAnnouncementsPage() {
           clubCategory={club?.category}
           onClose={() => setShowTemplatePicker(false)}
           onSelect={(template) => {
+            setShowTemplatePicker(false);
+            openCreateForm();
             if ("content" in template) {
               setTitle(template.title);
               setContent(template.content);

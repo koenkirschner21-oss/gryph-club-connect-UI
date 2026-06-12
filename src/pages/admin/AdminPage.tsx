@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
+import { createInboxMessage } from "../../lib/inboxUtils";
 import {
   clubReportReasonLabel,
   clubReportStatusBadgeStyle,
@@ -1060,8 +1061,11 @@ export default function AdminPage() {
     return "No club requests";
   }, [requestFilter]);
 
-  const pendingClaimRequests = useMemo(
-    () => claimRequests.filter((request) => request.status === "pending"),
+  const activeClaimRequests = useMemo(
+    () =>
+      claimRequests.filter(
+        (request) => request.status === "pending" || request.status === "more_info",
+      ),
     [claimRequests],
   );
 
@@ -1194,6 +1198,16 @@ export default function AdminPage() {
       setClaimActionLoadingId(null);
       return;
     }
+
+    await createInboxMessage(supabase, {
+      recipientId: request.submitted_by,
+      type: "admin_message",
+      title: "More Information Needed",
+      message: `The admin team has reviewed your claim request for ${request.clubName} and needs more information. Please check your email or resubmit with additional details.`,
+      clubId: request.club_id,
+      referenceId: request.id,
+      referenceType: "club_claim_request",
+    });
 
     await notifyUsers([
       {
@@ -2533,7 +2547,7 @@ export default function AdminPage() {
               />
               <AdminStatCard
                 label="Pending Claims"
-                value={pendingClaimRequests.length}
+                value={activeClaimRequests.length}
                 accentColor="#747676"
               />
               <AdminStatCard
@@ -2798,14 +2812,14 @@ export default function AdminPage() {
             <div className="flex justify-center py-16">
               <Spinner label="Loading club claims…" />
             </div>
-          ) : pendingClaimRequests.length === 0 ? (
+          ) : activeClaimRequests.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 16px" }}>
               <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                No pending club claims
+                No active club claims
               </p>
             </div>
           ) : (
-            pendingClaimRequests.map((request) => (
+            activeClaimRequests.map((request) => (
               <article
                 key={request.id}
                 style={{
@@ -2837,6 +2851,24 @@ export default function AdminPage() {
                     >
                       {request.clubName}
                     </h3>
+                    {request.status === "more_info" ? (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          marginBottom: "8px",
+                          border: "1px solid #FFC429",
+                          color: "#FFC429",
+                          background: "transparent",
+                          borderRadius: "20px",
+                          padding: "2px 8px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        More info requested
+                      </span>
+                    ) : null}
                     <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 4px" }}>
                       Submitted by {request.submitterName}
                       {request.submitterEmail ? ` · ${request.submitterEmail}` : ""}

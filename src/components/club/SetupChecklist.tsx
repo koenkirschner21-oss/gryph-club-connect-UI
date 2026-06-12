@@ -1,10 +1,7 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check } from "lucide-react";
 import type { Club } from "../../types";
-import TemplatePickerModal, {
-  type TemplatePickerSelection,
-} from "./TemplatePickerModal";
 
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
@@ -19,6 +16,7 @@ interface ChecklistItem {
   label: string;
   complete: boolean;
   section: SectionKey;
+  setupPath?: string;
   templateType?: TemplateLaunchType;
 }
 
@@ -30,9 +28,7 @@ const SECTION_LABELS: Record<SectionKey, string> = {
 
 function hasSocialLinks(links: Club["socialLinks"]): boolean {
   if (!links) return false;
-  return Boolean(
-    links.website?.trim() || links.instagram?.trim() || links.discord?.trim(),
-  );
+  return Object.values(links).some((value) => Boolean(value && value.trim() !== ""));
 }
 
 function buildChecklistItems(
@@ -40,60 +36,71 @@ function buildChecklistItems(
   hasAnnouncement: boolean,
   hasEvent: boolean,
 ): ChecklistItem[] {
+  const settingsBase = `/app/clubs/${club.id}/settings`;
+
   return [
     {
       id: "name",
       label: "Club name added",
-      complete: Boolean(club.name?.trim()),
+      complete: Boolean(club.name && club.name.trim() !== ""),
       section: "profile",
+      setupPath: `${settingsBase}?section=profile`,
     },
     {
       id: "short-description",
       label: "Short description added",
-      complete: Boolean(club.shortDescription?.trim()),
+      complete: Boolean(club.shortDescription && club.shortDescription.trim() !== ""),
       section: "profile",
+      setupPath: `${settingsBase}?section=profile`,
     },
     {
       id: "logo",
       label: "Logo uploaded",
-      complete: Boolean(club.logoUrl?.trim()),
+      complete: Boolean(club.logoUrl && club.logoUrl.trim() !== ""),
       section: "profile",
+      setupPath: `${settingsBase}?section=branding`,
     },
     {
       id: "banner",
       label: "Banner uploaded",
-      complete: Boolean(club.bannerUrl?.trim()),
+      complete: Boolean(club.bannerUrl && club.bannerUrl.trim() !== ""),
       section: "profile",
+      setupPath: `${settingsBase}?section=branding`,
     },
     {
       id: "contact-email",
       label: "Contact email added",
-      complete: Boolean(club.contactEmail?.trim()),
+      complete: Boolean(club.contactEmail && club.contactEmail.trim() !== ""),
       section: "profile",
+      setupPath: `${settingsBase}?section=profile`,
     },
     {
       id: "meeting-schedule",
       label: "Meeting schedule set",
-      complete: Boolean(club.meetingSchedule?.trim()),
+      complete: Boolean(club.meetingSchedule && club.meetingSchedule.trim() !== ""),
       section: "profile",
+      setupPath: `${settingsBase}?section=profile`,
     },
     {
       id: "social-links",
       label: "Social links added",
       complete: hasSocialLinks(club.socialLinks),
       section: "profile",
+      setupPath: `${settingsBase}?section=social`,
     },
     {
       id: "membership-type",
       label: "Membership type configured",
       complete: true,
       section: "profile",
+      setupPath: `${settingsBase}?section=membership`,
     },
     {
       id: "announcement",
       label: "Create welcome announcement",
       complete: hasAnnouncement,
       section: "launch",
+      setupPath: `/app/clubs/${club.id}/announcements?create=true`,
       templateType: "announcement",
     },
     {
@@ -101,6 +108,7 @@ function buildChecklistItems(
       label: "Create first event",
       complete: hasEvent,
       section: "launch",
+      setupPath: `/app/clubs/${club.id}/events?create=true`,
       templateType: "event",
     },
   ];
@@ -109,6 +117,7 @@ function buildChecklistItems(
 const checkRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
+  justifyContent: "space-between",
   gap: "10px",
   fontSize: "14px",
   lineHeight: 1.4,
@@ -116,40 +125,79 @@ const checkRowStyle: CSSProperties = {
 
 function ChecklistRow({
   item,
-  templateAction,
+  onUseTemplate,
 }: {
   item: ChecklistItem;
-  templateAction?: ReactNode;
+  onUseTemplate: (type: TemplateLaunchType) => void;
 }) {
+  const navigate = useNavigate();
+
   return (
     <div>
       <div style={checkRowStyle}>
-        {item.complete ? (
-          <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
-        ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          {item.complete ? (
+            <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
+          ) : (
+            <span
+              aria-hidden
+              style={{
+                width: "16px",
+                height: "16px",
+                borderRadius: "50%",
+                border: "1px solid #444444",
+                flexShrink: 0,
+                boxSizing: "border-box",
+              }}
+            />
+          )}
           <span
-            aria-hidden
             style={{
-              width: "16px",
-              height: "16px",
-              borderRadius: "50%",
-              border: "1px solid #444444",
-              flexShrink: 0,
-              boxSizing: "border-box",
+              color: item.complete ? "#666666" : "#cccccc",
+              textDecoration: item.complete ? "line-through" : "none",
             }}
-          />
-        )}
-        <span
-          style={{
-            color: item.complete ? "#666666" : "#cccccc",
-            textDecoration: item.complete ? "line-through" : "none",
-          }}
-        >
-          {item.label}
-        </span>
+          >
+            {item.label}
+          </span>
+        </div>
+        {!item.complete && item.setupPath ? (
+          <button
+            type="button"
+            onClick={() => navigate(item.setupPath!)}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: ACCENT_RED,
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            → Set up
+          </button>
+        ) : null}
       </div>
-      {!item.complete && templateAction ? (
-        <div style={{ marginTop: "6px", marginLeft: "26px" }}>{templateAction}</div>
+      {!item.complete && item.templateType ? (
+        <div style={{ marginTop: "6px", marginLeft: "26px" }}>
+          <button
+            type="button"
+            onClick={() => onUseTemplate(item.templateType!)}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: ACCENT_RED,
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Use Template →
+          </button>
+        </div>
       ) : null}
     </div>
   );
@@ -173,8 +221,6 @@ export default function SetupChecklist({
   const navigate = useNavigate();
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-  const [templatePickerType, setTemplatePickerType] =
-    useState<TemplateLaunchType | null>(null);
 
   const items = useMemo(
     () => buildChecklistItems(club, hasAnnouncement, hasEvent),
@@ -201,30 +247,12 @@ export default function SetupChecklist({
     }
   }
 
-  function handleTemplateSelect(template: TemplatePickerSelection) {
-    if (!templatePickerType) return;
-
-    if (templatePickerType === "announcement" && "content" in template) {
-      navigate(`/app/clubs/${club.id}/announcements?create=true`, {
-        state: {
-          contentTemplate: {
-            title: template.title,
-            content: template.content,
-          },
-        },
-      });
-    } else if ("description" in template) {
-      navigate(`/app/clubs/${club.id}/events?create=true`, {
-        state: {
-          contentTemplate: {
-            title: template.title,
-            description: template.description,
-          },
-        },
-      });
+  function handleUseTemplate(type: TemplateLaunchType) {
+    if (type === "announcement") {
+      navigate(`/app/clubs/${club.id}/announcements?openTemplate=true`);
+      return;
     }
-
-    setTemplatePickerType(null);
+    navigate(`/app/clubs/${club.id}/events?openTemplate=true`);
   }
 
   const sections: SectionKey[] = ["profile", "launch", "live"];
@@ -325,25 +353,7 @@ export default function SetupChecklist({
                     <ChecklistRow
                       key={item.id}
                       item={item}
-                      templateAction={
-                        item.templateType ? (
-                          <button
-                            type="button"
-                            onClick={() => setTemplatePickerType(item.templateType ?? null)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              color: ACCENT_RED,
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Use Template →
-                          </button>
-                        ) : undefined
-                      }
+                      onUseTemplate={handleUseTemplate}
                     />
                   ))}
               </div>
@@ -420,16 +430,6 @@ export default function SetupChecklist({
           </button>
         ) : null}
       </div>
-
-      {templatePickerType ? (
-        <TemplatePickerModal
-          type={templatePickerType}
-          clubName={club.name}
-          clubCategory={club.category}
-          onClose={() => setTemplatePickerType(null)}
-          onSelect={handleTemplateSelect}
-        />
-      ) : null}
     </div>
   );
 }

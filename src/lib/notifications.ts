@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyUsers } from "./notifyUsers";
+import { createInboxMessage } from "./inboxUtils";
 import { accessLevelBadgeLabel } from "./memberRoleTitle";
 import type { AccessLevel, NotificationType } from "../types";
 
@@ -162,15 +163,25 @@ export async function notifyJoinRequestApproved(
     studentUserId: string;
   },
 ): Promise<void> {
+  const message = `You've been approved to join ${params.clubName}! Welcome aboard.`;
+
   const ok = await createNotification(supabase, {
     userId: params.studentUserId,
     type: "join_approved",
-    message: `You've been approved to join ${params.clubName}! Welcome aboard.`,
+    message,
     clubId: params.clubId,
   });
   if (!ok) {
     console.error("Failed to send join approval notification.");
   }
+
+  await createInboxMessage(supabase, {
+    recipientId: params.studentUserId,
+    type: "join_approved",
+    title: "Join Request Approved",
+    message,
+    clubId: params.clubId,
+  });
 }
 
 export async function notifyExecutiveInviteRequest(

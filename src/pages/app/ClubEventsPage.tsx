@@ -2022,6 +2022,16 @@ export default function ClubEventsPage() {
     routerLocation.state,
   ]);
 
+  useEffect(() => {
+    if (searchParams.get("openTemplate") !== "true" || !isPrivileged || loading) {
+      return;
+    }
+    setShowTemplatePicker(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("openTemplate");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading]);
+
   async function saveEventCategory(
     eventId: string,
     nextCategory: EventCategory,
@@ -3343,6 +3353,10 @@ export default function ClubEventsPage() {
           clubCategory={club?.category}
           onClose={() => setShowTemplatePicker(false)}
           onSelect={(template) => {
+            setShowTemplatePicker(false);
+            setFormQuestions([]);
+            setEditingId(null);
+            setShowForm(true);
             if ("description" in template) {
               setTitle(template.title);
               setDescription(template.description);

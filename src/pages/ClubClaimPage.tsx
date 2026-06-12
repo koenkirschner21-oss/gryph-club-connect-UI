@@ -187,6 +187,9 @@ export default function ClubClaimPage() {
     });
 
     setSubmitted(true);
+    setClub((prev) =>
+      prev ? { ...prev, claimStatus: "claim_pending" } : prev,
+    );
     setSubmitting(false);
   }
 

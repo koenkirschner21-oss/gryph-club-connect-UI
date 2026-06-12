@@ -545,7 +545,7 @@ export default function ClubPublicProfilePage() {
         return;
       }
 
-      const loaded: PublicClubProfile = {
+      let loaded: PublicClubProfile = {
         id: clubRow.id as string,
         name: (clubRow.name as string) ?? "",
         slug: (clubRow.slug as string) ?? slug ?? "",
@@ -566,22 +566,54 @@ export default function ClubPublicProfilePage() {
         allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
       };
 
-      setProfile(loaded);
+      if (loaded.claimStatus === "unclaimed") {
+        const { count: pendingClaimCount } = await supabase
+          .from("club_claim_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("club_id", loaded.id)
+          .in("status", ["pending", "more_info"]);
+
+        if ((pendingClaimCount ?? 0) > 0) {
+          loaded = { ...loaded, claimStatus: "claim_pending" };
+        }
+      }
 
       let isMember = false;
       let userApplicationStatus: JoinApplicationStatus = null;
       if (user?.id) {
-        const { data: membership } = await supabase
-          .from("club_members")
-          .select("status")
-          .eq("club_id", loaded.id)
-          .eq("user_id", user.id)
-          .maybeSingle();
+        const [{ data: membership }, { data: pendingClaim }] = await Promise.all([
+          supabase
+            .from("club_members")
+            .select("status")
+            .eq("club_id", loaded.id)
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("club_claim_requests")
+            .select("id, status")
+            .eq("club_id", loaded.id)
+            .eq("submitted_by", user.id)
+            .in("status", ["pending", "more_info"])
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
+
         isMember = membership?.status === "active";
         if (membership?.status === "pending") {
           userApplicationStatus = "pending";
         }
+
+        if (
+          pendingClaim &&
+          loaded.claimStatus !== "claimed" &&
+          loaded.claimStatus !== "active"
+        ) {
+          loaded = { ...loaded, claimStatus: "claim_pending" };
+        }
       }
+
+      setProfile(loaded);
       setApplicationStatus(userApplicationStatus);
 
       const [{ count: members }, { count: positions }, eventsRes, ownersRes] =
@@ -783,6 +815,7 @@ export default function ClubPublicProfilePage() {
 
   const membershipType = club.membershipType ?? "open";
   const claimStatus = club.claimStatus ?? "unclaimed";
+  const claimPending = claimStatus === "claim_pending";
   const joinQuestions = club.joinQuestions ?? [];
   const joinBadgeStyle = membershipBadgeStyle(membershipType);
   const joinBadgeLabel = membershipBadgeLabel(membershipType);
@@ -1045,6 +1078,26 @@ export default function ClubPublicProfilePage() {
                     Save Club
                   </button>
                 </>
+              ) : claimPending ? (
+                <button
+                  type="button"
+                  onClick={() => toggleSaveClub(club.id)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #333333",
+                    color: "#cccccc",
+                    borderRadius: "8px",
+                    padding: "10px 20px",
+                    fontWeight: 600,
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    width: isMobile ? "100%" : undefined,
+                    boxSizing: "border-box",
+                  }}
+                >
+                  Save Club
+                </button>
               ) : (
                 <ClubJoinAction
                   membershipType={membershipType}
@@ -1116,7 +1169,19 @@ export default function ClubPublicProfilePage() {
           </div>
         </div>
 
-        {claimStatus === "unclaimed" && !joined ? (
+        {claimPending ? (
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#FFC429",
+              marginTop: "12px",
+              padding: headerPadding,
+              lineHeight: 1.5,
+            }}
+          >
+            A claim request is pending review for this club.
+          </p>
+        ) : claimStatus === "unclaimed" && !joined ? (
           <p
             style={{
               fontSize: "13px",
