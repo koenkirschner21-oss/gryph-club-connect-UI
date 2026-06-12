@@ -1,6 +1,9 @@
 // ---------------------------------------------------------------------------
 // Public-facing Club (used for discovery / explore)
 // ---------------------------------------------------------------------------
+import type { ClubPermissions } from "../lib/clubPermissions";
+
+export type { ClubPermissions };
 export type ClubJoinType = "open" | "application" | "vote";
 
 export type MembershipType =
@@ -73,6 +76,7 @@ export interface Club {
   allowJoinFileUpload?: boolean;
   createdBy?: string;
   createdAt?: string;
+  customPermissions?: ClubPermissions;
 }
 
 // ---------------------------------------------------------------------------

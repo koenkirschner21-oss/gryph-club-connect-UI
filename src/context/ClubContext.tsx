@@ -13,6 +13,7 @@ import {
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
 import { normalizeClaimStatus } from "../lib/clubClaimUtils";
+import { parseClubPermissions } from "../lib/clubPermissions";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club, MemberRole, JoinAnswer } from "../types";
@@ -75,6 +76,7 @@ function mapRow(row: Record<string, unknown>): Club {
     allowJoinFileUpload: (row.allow_join_file_upload as boolean) ?? false,
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
+    customPermissions: parseClubPermissions(row.custom_permissions),
   };
 }
 
@@ -495,6 +497,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.setupCompleted !== undefined)
         row.setup_completed = fields.setupCompleted;
       if (fields.isPublished !== undefined) row.is_published = fields.isPublished;
+      if (fields.customPermissions !== undefined)
+        row.custom_permissions = fields.customPermissions;
 
       const { data, error } = await supabase
         .from("clubs")

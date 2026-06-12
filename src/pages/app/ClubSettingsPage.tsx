@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useParams, useNavigate, Navigate, useSearchParams } from "react-router-dom";
-import { Users, ClipboardList, Link2, Bookmark, Camera, Globe } from "lucide-react";
+import { Users, ClipboardList, Link2, Bookmark, Camera, Globe, Check, Lock, X } from "lucide-react";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
@@ -22,6 +22,18 @@ import {
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import type { JoinQuestion, JoinQuestionType, MemberRole, MembershipType } from "../../types";
+import {
+  cloneDefaultPermissions,
+  isPermissionCellChanged,
+  normalizeClubPermissions,
+  parseClubPermissions,
+  PERMISSION_ROLE_COLUMNS,
+  PERMISSION_ROW_DEFINITIONS,
+  permissionsEqual,
+  type ClubPermissions,
+  type PermissionKey,
+  type PermissionRole,
+} from "../../lib/clubPermissions";
 import ImageUpload from "../../components/ui/ImageUpload";
 import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
@@ -208,231 +220,166 @@ interface FormSnapshot {
   websiteUrl: string;
 }
 
-type RolePermissionColumn =
-  | "president"
-  | "managerial_executive"
-  | "executive"
-  | "member";
+function PermissionCell({
+  allowed,
+  locked,
+  changed,
+  onToggle,
+}: {
+  allowed: boolean;
+  locked: boolean;
+  changed: boolean;
+  onToggle?: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
 
-const ROLE_PERMISSION_COLUMNS: {
-  key: RolePermissionColumn;
-  label: string;
-}[] = [
-  { key: "president", label: "President / Co-President" },
-  { key: "managerial_executive", label: "Managerial Executive" },
-  { key: "executive", label: "Executive" },
-  { key: "member", label: "General Member" },
-];
-
-const ROLE_PERMISSION_ROWS: {
-  id: string;
-  label: string;
-  allowed: Record<RolePermissionColumn, boolean>;
-}[] = [
-  {
-    id: "create_events",
-    label: "Create events",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: true,
-      member: false,
-    },
-  },
-  {
-    id: "post_announcements",
-    label: "Post announcements",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: true,
-      member: false,
-    },
-  },
-  {
-    id: "approve_members",
-    label: "Approve members",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: false,
-      member: false,
-    },
-  },
-  {
-    id: "manage_documents",
-    label: "Manage documents",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: false,
-      member: false,
-    },
-  },
-  {
-    id: "manage_hiring",
-    label: "Manage hiring",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: false,
-      member: false,
-    },
-  },
-  {
-    id: "invite_members",
-    label: "Invite members",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: true,
-      member: false,
-    },
-  },
-  {
-    id: "assign_tasks",
-    label: "Assign tasks",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: true,
-      member: false,
-    },
-  },
-  {
-    id: "manage_roles",
-    label: "Manage roles",
-    allowed: {
-      president: true,
-      managerial_executive: false,
-      executive: false,
-      member: false,
-    },
-  },
-  {
-    id: "edit_club_settings",
-    label: "Edit club settings",
-    allowed: {
-      president: true,
-      managerial_executive: true,
-      executive: false,
-      member: false,
-    },
-  },
-  {
-    id: "delete_club",
-    label: "Delete club",
-    allowed: {
-      president: true,
-      managerial_executive: false,
-      executive: false,
-      member: false,
-    },
-  },
-];
-
-function PermissionCell({ allowed }: { allowed: boolean }) {
   return (
-    <div
+    <button
+      type="button"
+      disabled={locked}
+      aria-label={allowed ? "Allowed" : "Not allowed"}
+      onClick={locked ? undefined : onToggle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         minHeight: "40px",
+        width: "100%",
+        border: "none",
+        background: changed ? "rgba(255, 196, 41, 0.1)" : "transparent",
+        cursor: locked ? "default" : "pointer",
+        padding: 0,
       }}
     >
-      {allowed ? (
-        <span
-          aria-label="Allowed"
-          style={{ color: ACCENT_GOLD, fontSize: "15px", fontWeight: 700 }}
-        >
-          ✓
-        </span>
+      {locked && hovered ? (
+        <Lock size={14} color="#555555" aria-hidden />
+      ) : allowed ? (
+        <Check size={16} color="#FFC429" strokeWidth={2.5} aria-hidden />
       ) : (
-        <span
-          aria-label="Not allowed"
-          style={{ color: "#555555", fontSize: "15px", fontWeight: 600 }}
-        >
-          ✕
-        </span>
+        <X size={16} color="#555555" strokeWidth={2} aria-hidden />
       )}
-    </div>
+    </button>
   );
 }
 
-function RolesPermissionsTable() {
+function RolesPermissionsTable({
+  permissions,
+  savedPermissions,
+  onToggle,
+  onReset,
+  resetting,
+}: {
+  permissions: ClubPermissions;
+  savedPermissions: ClubPermissions;
+  onToggle: (actionId: PermissionKey, role: PermissionRole) => void;
+  onReset: () => void;
+  resetting: boolean;
+}) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <div
-        style={{
-          background: CARD_BG,
-          border: `1px solid ${CARD_BORDER}`,
-          borderRadius: "10px",
-          overflow: "hidden",
-          minWidth: "640px",
-        }}
-      >
+    <div>
+      <div style={{ overflowX: "auto" }}>
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(160px, 1.4fr) repeat(4, minmax(100px, 1fr))",
-            background: "#1a1a1a",
-            borderBottom: `1px solid ${CARD_BORDER}`,
+            background: CARD_BG,
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: "10px",
+            overflow: "hidden",
+            minWidth: "640px",
           }}
         >
-          <div style={{ padding: "12px 16px" }} />
-          {ROLE_PERMISSION_COLUMNS.map((column) => (
-            <div
-              key={column.key}
-              style={{
-                padding: "12px 10px",
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#777777",
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                textAlign: "center",
-                lineHeight: 1.35,
-              }}
-            >
-              {column.label}
-            </div>
-          ))}
-        </div>
-
-        {ROLE_PERMISSION_ROWS.map((row, index) => (
           <div
-            key={row.id}
             style={{
               display: "grid",
               gridTemplateColumns: "minmax(160px, 1.4fr) repeat(4, minmax(100px, 1fr))",
-              background: index % 2 === 0 ? "#141414" : "#161616",
-              borderBottom:
-                index < ROLE_PERMISSION_ROWS.length - 1
-                  ? `1px solid ${CARD_BORDER}`
-                  : "none",
+              background: "#1a1a1a",
+              borderBottom: `1px solid ${CARD_BORDER}`,
             }}
           >
-            <div
-              style={{
-                padding: "12px 16px",
-                fontSize: "13px",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              {row.label}
-            </div>
-            {ROLE_PERMISSION_COLUMNS.map((column) => (
-              <PermissionCell
-                key={`${row.id}-${column.key}`}
-                allowed={row.allowed[column.key]}
-              />
+            <div style={{ padding: "12px 16px" }} />
+            {PERMISSION_ROLE_COLUMNS.map((column) => (
+              <div
+                key={column.key}
+                style={{
+                  padding: "12px 10px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#777777",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  textAlign: "center",
+                  lineHeight: 1.35,
+                }}
+              >
+                {column.label}
+              </div>
             ))}
           </div>
-        ))}
+
+          {PERMISSION_ROW_DEFINITIONS.map((row, index) => (
+            <div
+              key={row.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(160px, 1.4fr) repeat(4, minmax(100px, 1fr))",
+                background: index % 2 === 0 ? "#141414" : "#161616",
+                borderBottom:
+                  index < PERMISSION_ROW_DEFINITIONS.length - 1
+                    ? `1px solid ${CARD_BORDER}`
+                    : "none",
+              }}
+            >
+              <div
+                style={{
+                  padding: "12px 16px",
+                  fontSize: "13px",
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                {row.label}
+              </div>
+              {PERMISSION_ROLE_COLUMNS.map((column) => (
+                <PermissionCell
+                  key={`${row.id}-${column.key}`}
+                  allowed={permissions[row.id][column.key]}
+                  locked={column.locked}
+                  changed={isPermissionCellChanged(
+                    permissions,
+                    savedPermissions,
+                    row.id,
+                    column.key,
+                  )}
+                  onToggle={
+                    column.locked
+                      ? undefined
+                      : () => onToggle(row.id, column.key)
+                  }
+                />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
+      <button
+        type="button"
+        onClick={onReset}
+        disabled={resetting}
+        style={{
+          marginTop: "12px",
+          background: "none",
+          border: "none",
+          padding: 0,
+          color: "#555555",
+          fontSize: "12px",
+          cursor: resetting ? "wait" : "pointer",
+          textDecoration: "underline",
+        }}
+      >
+        Reset to defaults
+      </button>
     </div>
   );
 }
@@ -1037,6 +984,13 @@ export default function ClubSettingsPage() {
   const [joinQuestions, setJoinQuestions] = useState<JoinQuestion[]>([]);
   const [allowJoinFileUpload, setAllowJoinFileUpload] = useState(false);
   const [savingJoinQuestions, setSavingJoinQuestions] = useState(false);
+  const [permissions, setPermissions] = useState<ClubPermissions>(() =>
+    cloneDefaultPermissions(),
+  );
+  const [savedPermissions, setSavedPermissions] = useState<ClubPermissions>(() =>
+    cloneDefaultPermissions(),
+  );
+  const [resettingPermissions, setResettingPermissions] = useState(false);
 
   const isOwner = userRole === "owner";
 
@@ -1083,8 +1037,16 @@ export default function ClubSettingsPage() {
     if (savedSnapshot) {
       applySnapshot(savedSnapshot);
     }
+    setPermissions(savedPermissions);
     setHasUnsavedChanges(false);
-  }, [applySnapshot, savedSnapshot]);
+  }, [applySnapshot, savedSnapshot, savedPermissions]);
+
+  useEffect(() => {
+    if (!club) return;
+    const parsed = parseClubPermissions(club.customPermissions);
+    setPermissions(parsed);
+    setSavedPermissions(parsed);
+  }, [club?.id, club?.customPermissions]);
 
   useEffect(() => {
     if (!club) return;
@@ -1206,6 +1168,9 @@ export default function ClubSettingsPage() {
           parsedQuestions.length > 0 ? parsedQuestions : defaultJoinQuestions(),
         );
         setAllowJoinFileUpload(Boolean(data.allow_join_file_upload));
+        const loadedPermissions = parseClubPermissions(data.custom_permissions);
+        setPermissions(loadedPermissions);
+        setSavedPermissions(loadedPermissions);
         setSavedSnapshot((prev) =>
           prev
             ? {
@@ -1256,6 +1221,46 @@ export default function ClubSettingsPage() {
     setUploadingBanner(false);
   }
 
+  function handleTogglePermission(actionId: PermissionKey, role: PermissionRole) {
+    if (role !== "managerial_executive" && role !== "executive") return;
+
+    setPermissions((prev) =>
+      normalizeClubPermissions({
+        ...prev,
+        [actionId]: {
+          ...prev[actionId],
+          [role]: !prev[actionId][role],
+        },
+      }),
+    );
+    markDirty();
+  }
+
+  async function handleResetPermissions() {
+    if (!clubId) return;
+    if (!window.confirm("Reset all permissions to default?")) return;
+
+    setResettingPermissions(true);
+    const defaults = cloneDefaultPermissions();
+
+    const { error } = await supabase
+      .from("clubs")
+      .update({ custom_permissions: defaults })
+      .eq("id", clubId);
+
+    setResettingPermissions(false);
+
+    if (error) {
+      showToast("Failed to reset permissions.", "error");
+      return;
+    }
+
+    setPermissions(defaults);
+    setSavedPermissions(defaults);
+    void updateClub(clubId, { customPermissions: defaults });
+    showToast("Permissions saved", "success");
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -1267,6 +1272,7 @@ export default function ClubSettingsPage() {
     }
 
     setSaving(true);
+    const permissionsDirty = !permissionsEqual(permissions, savedPermissions);
 
     const ok = await updateClub(
       clubId!,
@@ -1305,6 +1311,25 @@ export default function ClubSettingsPage() {
         setSaving(false);
         setError("Failed to save social links. Please try again.");
         return;
+      }
+
+      if (permissionsDirty) {
+        const normalizedPermissions = normalizeClubPermissions(permissions);
+        const { error: permissionsError } = await supabase
+          .from("clubs")
+          .update({ custom_permissions: normalizedPermissions })
+          .eq("id", clubId);
+
+        if (permissionsError) {
+          setSaving(false);
+          setError("Failed to save permissions. Please try again.");
+          return;
+        }
+
+        setPermissions(normalizedPermissions);
+        setSavedPermissions(normalizedPermissions);
+        void updateClub(clubId!, { customPermissions: normalizedPermissions });
+        showToast("Permissions saved", "success");
       }
     }
 
@@ -2206,18 +2231,13 @@ export default function ClubSettingsPage() {
             title="Roles & Permissions"
             subtitle="Control what each role can do inside your club workspace."
           >
-            <RolesPermissionsTable />
-            <p
-              style={{
-                margin: "14px 0 0",
-                fontSize: "12px",
-                color: "#555555",
-                fontStyle: "italic",
-              }}
-            >
-              Advanced permission customization coming soon. Default permissions are
-              shown above.
-            </p>
+            <RolesPermissionsTable
+              permissions={permissions}
+              savedPermissions={savedPermissions}
+              onToggle={handleTogglePermission}
+              onReset={() => void handleResetPermissions()}
+              resetting={resettingPermissions}
+            />
           </SettingsSection>
           </>
         ) : null}
