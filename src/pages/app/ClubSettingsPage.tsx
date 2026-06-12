@@ -25,6 +25,16 @@ import type { JoinQuestion, JoinQuestionType, MemberRole, MembershipType } from 
 import ImageUpload from "../../components/ui/ImageUpload";
 import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
+import {
+  cancelOwnershipTransfer,
+  isPresidentMember,
+  mapOwnershipTransferRow,
+  ownershipRoleLabel,
+  resendOwnershipTransferReminder,
+  sendOwnershipTransferInvite,
+  type OwnershipTransferRole,
+  type OwnershipTransferRow,
+} from "../../lib/ownershipTransferUtils";
 
 function SocialInstagramIcon({
   size = 15,
@@ -993,8 +1003,15 @@ export default function ClubSettingsPage() {
   const formRef = useRef<HTMLFormElement>(null);
 
   const [transferTargetId, setTransferTargetId] = useState("");
+  const [transferNewRole, setTransferNewRole] =
+    useState<OwnershipTransferRole>("owner");
+  const [transferMessage, setTransferMessage] = useState("");
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState<OwnershipTransferRow | null>(
+    null,
+  );
+  const [transferActionLoading, setTransferActionLoading] = useState(false);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
@@ -1100,6 +1117,40 @@ export default function ClubSettingsPage() {
       cancelled = true;
     };
   }, [clubId, user?.id]);
+
+  useEffect(() => {
+    if (!clubId || !user?.id || !isOwner) {
+      setPendingTransfer(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    supabase
+      .from("ownership_transfers")
+      .select("*")
+      .eq("club_id", clubId)
+      .eq("from_user_id", user.id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load pending ownership transfer:", error.message);
+          setPendingTransfer(null);
+          return;
+        }
+        setPendingTransfer(
+          data ? mapOwnershipTransferRow(data as Record<string, unknown>) : null,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, isOwner, user?.id]);
 
   useEffect(() => {
     if (!clubId || !isOwner) return;
@@ -1299,40 +1350,69 @@ export default function ClubSettingsPage() {
     );
   }
 
-  async function handleConfirmTransfer() {
-    if (!clubId || !user?.id || !transferTargetId) return;
+  async function handleSendTransferRequest() {
+    if (!clubId || !user?.id || !transferTargetId || !club) return;
     setTransferring(true);
     setError(null);
 
-    const { error: ownerError } = await supabase
-      .from("club_members")
-      .update({ role: "owner" })
-      .eq("club_id", clubId)
-      .eq("user_id", transferTargetId);
-
-    if (ownerError) {
-      setError("Failed to transfer ownership. Please try again.");
-      setTransferring(false);
-      setShowTransferModal(false);
-      return;
-    }
-
-    const { error: execError } = await supabase
-      .from("club_members")
-      .update({ role: "executive" })
-      .eq("club_id", clubId)
-      .eq("user_id", user.id);
+    const transfer = await sendOwnershipTransferInvite(supabase, {
+      clubId,
+      clubName: club.name,
+      fromUserId: user.id,
+      toUserId: transferTargetId,
+      newRole: transferNewRole,
+      optionalMessage: transferMessage,
+    });
 
     setTransferring(false);
     setShowTransferModal(false);
 
-    if (execError) {
-      setError("Ownership transferred but your role could not be updated.");
+    if (!transfer) {
+      setError("Failed to send transfer request. Please try again.");
       return;
     }
 
-    setUserRole("executive");
+    setPendingTransfer(transfer);
     setTransferTargetId("");
+    setTransferMessage("");
+    setTransferNewRole("owner");
+    setSuccess(true);
+  }
+
+  async function handleCancelTransferRequest() {
+    if (!pendingTransfer) return;
+    setTransferActionLoading(true);
+    setError(null);
+
+    const ok = await cancelOwnershipTransfer(supabase, pendingTransfer.id);
+    setTransferActionLoading(false);
+
+    if (!ok) {
+      setError("Failed to cancel transfer request.");
+      return;
+    }
+
+    setPendingTransfer(null);
+    setSuccess(true);
+  }
+
+  async function handleResendTransferReminder() {
+    if (!pendingTransfer || !club) return;
+    setTransferActionLoading(true);
+    setError(null);
+
+    const ok = await resendOwnershipTransferReminder(
+      supabase,
+      pendingTransfer,
+      club.name,
+    );
+    setTransferActionLoading(false);
+
+    if (!ok) {
+      setError("Failed to resend reminder.");
+      return;
+    }
+
     setSuccess(true);
   }
 
@@ -1411,6 +1491,28 @@ export default function ClubSettingsPage() {
   const transferCandidates = members.filter(
     (m) => m.userId !== user?.id && m.status === "active",
   );
+
+  const presidentMembers = members.filter(
+    (m) => m.status === "active" && isPresidentMember(m),
+  );
+  const isOnlyPresident =
+    isOwner &&
+    presidentMembers.length === 1 &&
+    presidentMembers[0]?.userId === user?.id;
+  const canSendTransfer =
+    transferCandidates.length > 0 && !pendingTransfer && Boolean(transferTargetId);
+
+  const pendingTransferRecipient = pendingTransfer
+    ? members.find((m) => m.userId === pendingTransfer.toUserId)
+    : undefined;
+
+  function formatTransferSentDate(iso: string): string {
+    return new Date(iso).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
 
   if (userRole === "member") {
     return (
@@ -2228,58 +2330,168 @@ export default function ClubSettingsPage() {
 
           <SettingsSection
             title="Ownership"
-            subtitle="Transfer your president role to another member."
+            subtitle="Invite another member to become President or Co-President. Ownership will only transfer after they accept."
           >
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#555555",
-                margin: "0 0 16px",
-              }}
-            >
-              You will become an Executive after transfer.
-            </p>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
-                gap: "12px",
-                alignItems: isMobile ? "stretch" : "center",
-              }}
-            >
-              <SettingsSelect
-                id="transfer-target"
-                value={transferTargetId}
-                onChange={setTransferTargetId}
-              >
-                <option value="">Select a member…</option>
-                {transferCandidates.map((m) => (
-                  <option key={m.id} value={m.userId}>
-                    {m.fullName || m.email || "Unknown"} —{" "}
-                    {formatSettingsRoleLabel(m.role)}
-                  </option>
-                ))}
-              </SettingsSelect>
-              <button
-                type="button"
-                disabled={!transferTargetId}
-                onClick={() => setShowTransferModal(true)}
+            {isOnlyPresident ? (
+              <p
                 style={{
-                  background: "transparent",
-                  border: `1px solid ${ACCENT_GOLD}`,
+                  fontSize: "13px",
                   color: ACCENT_GOLD,
+                  margin: "0 0 16px",
+                  lineHeight: 1.5,
+                  background: "#1a1500",
+                  border: "1px solid #3a2f00",
                   borderRadius: "8px",
-                  padding: "10px 24px",
-                  fontSize: "14px",
-                  fontWeight: 500,
-                  cursor: transferTargetId ? "pointer" : "not-allowed",
-                  opacity: transferTargetId ? 1 : 0.5,
-                  flexShrink: 0,
+                  padding: "12px 14px",
                 }}
               >
-                Transfer
-              </button>
-            </div>
+                This club must have at least one President or Co-President. Transfer
+                ownership before leaving or changing your role.
+              </p>
+            ) : null}
+
+            {pendingTransfer ? (
+              <div
+                style={{
+                  background: "#111111",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "10px",
+                  padding: "16px",
+                  marginBottom: "16px",
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#ffffff",
+                    margin: "0 0 6px",
+                  }}
+                >
+                  {pendingTransferRecipient?.fullName ||
+                    pendingTransferRecipient?.email ||
+                    "Member"}{" "}
+                  has been invited to become{" "}
+                  {ownershipRoleLabel(pendingTransfer.newRole)}
+                </p>
+                <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 14px" }}>
+                  Sent {formatTransferSentDate(pendingTransfer.createdAt)} · Pending
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                  <button
+                    type="button"
+                    disabled={transferActionLoading}
+                    onClick={() => void handleResendTransferReminder()}
+                    style={{
+                      background: "transparent",
+                      border: `1px solid ${ACCENT_GOLD}`,
+                      color: ACCENT_GOLD,
+                      borderRadius: "8px",
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      cursor: transferActionLoading ? "wait" : "pointer",
+                      opacity: transferActionLoading ? 0.6 : 1,
+                    }}
+                  >
+                    Resend Reminder
+                  </button>
+                  <button
+                    type="button"
+                    disabled={transferActionLoading}
+                    onClick={() => void handleCancelTransferRequest()}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid #333333",
+                      color: "#aaaaaa",
+                      borderRadius: "8px",
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      cursor: transferActionLoading ? "wait" : "pointer",
+                      opacity: transferActionLoading ? 0.6 : 1,
+                    }}
+                  >
+                    Cancel Request
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <div>
+                    <label htmlFor="transfer-target" style={fieldLabelStyle}>
+                      Member
+                    </label>
+                    <SettingsSelect
+                      id="transfer-target"
+                      value={transferTargetId}
+                      onChange={setTransferTargetId}
+                    >
+                      <option value="">Select a member…</option>
+                      {transferCandidates.map((m) => (
+                        <option key={m.id} value={m.userId}>
+                          {m.fullName || m.email || "Unknown"} —{" "}
+                          {formatSettingsRoleLabel(m.role)}
+                        </option>
+                      ))}
+                    </SettingsSelect>
+                  </div>
+                  <div>
+                    <label htmlFor="transfer-new-role" style={fieldLabelStyle}>
+                      New owner role
+                    </label>
+                    <SettingsSelect
+                      id="transfer-new-role"
+                      value={transferNewRole}
+                      onChange={(value) =>
+                        setTransferNewRole(value as OwnershipTransferRole)
+                      }
+                    >
+                      <option value="owner">President</option>
+                      <option value="co_president">Co-President</option>
+                    </SettingsSelect>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={!canSendTransfer}
+                  onClick={() => setShowTransferModal(true)}
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${ACCENT_GOLD}`,
+                    color: ACCENT_GOLD,
+                    borderRadius: "8px",
+                    padding: "10px 24px",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    cursor: canSendTransfer ? "pointer" : "not-allowed",
+                    opacity: canSendTransfer ? 1 : 0.5,
+                    flexShrink: 0,
+                  }}
+                >
+                  Send Transfer Request
+                </button>
+                {transferCandidates.length === 0 ? (
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "#555555",
+                      margin: "10px 0 0",
+                    }}
+                  >
+                    Add another active member before sending a transfer request.
+                  </p>
+                ) : null}
+              </>
+            )}
           </SettingsSection>
 
           <section style={dangerSectionCardStyle}>
@@ -2406,17 +2618,33 @@ export default function ClubSettingsPage() {
                 margin: "0 0 12px",
               }}
             >
-              Are you sure?
+              Send Transfer Request
             </h3>
             <p
               style={{
                 fontSize: "13px",
                 color: "#555555",
-                margin: "0 0 20px",
+                margin: "0 0 16px",
+                lineHeight: 1.5,
               }}
             >
-              You will lose president access.
+              {transferCandidates.find((m) => m.userId === transferTargetId)
+                ?.fullName || "This member"}{" "}
+              will be invited to become {ownershipRoleLabel(transferNewRole)}.
+              Ownership transfers only after they accept.
             </p>
+            <label htmlFor="transfer-optional-message" style={fieldLabelStyle}>
+              Optional message
+            </label>
+            <div style={{ marginBottom: "20px" }}>
+              <SettingsTextarea
+                id="transfer-optional-message"
+                value={transferMessage}
+                onChange={setTransferMessage}
+                minHeight={100}
+                placeholder="Add a personal note with this invitation…"
+              />
+            </div>
             <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
               <button
                 type="button"
@@ -2436,7 +2664,7 @@ export default function ClubSettingsPage() {
               <button
                 type="button"
                 disabled={transferring}
-                onClick={() => void handleConfirmTransfer()}
+                onClick={() => void handleSendTransferRequest()}
                 style={{
                   background: "transparent",
                   border: "1px solid #FFC429",
@@ -2446,7 +2674,7 @@ export default function ClubSettingsPage() {
                   cursor: "pointer",
                 }}
               >
-                {transferring ? "Transferring…" : "Confirm"}
+                {transferring ? "Sending…" : "Send Transfer Request"}
               </button>
             </div>
           </div>

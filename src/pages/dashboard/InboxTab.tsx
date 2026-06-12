@@ -1,13 +1,8 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import Spinner from "../../components/ui/Spinner";
-import {
-  inboxEmptyMessage,
-  resolveInboxLink,
-  type InboxFilter,
-  type InboxMessage,
-} from "../../lib/inboxUtils";
+import { inboxEmptyMessage, type InboxFilter } from "../../lib/inboxUtils";
 import type { UseInboxReturn } from "../../hooks/useInbox";
+import InboxMessageCard from "../../components/inbox/InboxMessageCard";
 
 const FILTER_CHIPS: { id: InboxFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -19,19 +14,6 @@ const FILTER_CHIPS: { id: InboxFilter; label: string }[] = [
   { id: "admin", label: "Admin/Support" },
 ];
 
-function formatInboxTimestamp(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
-  return new Date(dateStr).toLocaleDateString();
-}
-
 interface InboxTabProps extends UseInboxReturn {}
 
 export default function InboxTab({
@@ -40,21 +22,14 @@ export default function InboxTab({
   markAllAsRead,
   filterMessages,
   unreadCount,
+  refresh,
 }: InboxTabProps) {
-  const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState<InboxFilter>("all");
 
   const visibleMessages = useMemo(
     () => filterMessages(activeFilter),
     [activeFilter, filterMessages],
   );
-
-  const handleMessageClick = async (message: InboxMessage) => {
-    if (!message.read) {
-      await markAsRead(message.id);
-    }
-    navigate(resolveInboxLink(message));
-  };
 
   return (
     <div>
@@ -147,95 +122,12 @@ export default function InboxTab({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {visibleMessages.map((message) => (
-            <button
+            <InboxMessageCard
               key={message.id}
-              type="button"
-              onClick={() => void handleMessageClick(message)}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                cursor: "pointer",
-                borderRadius: "8px",
-                padding: "14px 16px",
-                background: message.read ? "#111111" : "#161616",
-                border: "1px solid #2a2a2a",
-                borderLeft: message.read
-                  ? "3px solid #2a2a2a"
-                  : "3px solid #E51937",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                }}
-              >
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    color: "#ffffff",
-                    lineHeight: 1.4,
-                    flex: 1,
-                  }}
-                >
-                  {message.title}
-                </p>
-                {message.actionRequired && !message.actionCompleted ? (
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      fontSize: "10px",
-                      fontWeight: 600,
-                      color: "#FFC429",
-                      border: "1px solid #3a2f00",
-                      background: "#1a1500",
-                      borderRadius: "4px",
-                      padding: "2px 6px",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.04em",
-                    }}
-                  >
-                    Action Required
-                  </span>
-                ) : null}
-              </div>
-
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: "13px",
-                  color: "#999999",
-                  lineHeight: 1.5,
-                }}
-              >
-                {message.message}
-              </p>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "8px",
-                  marginTop: "8px",
-                }}
-              >
-                {message.clubName ? (
-                  <span style={{ fontSize: "11px", color: "#E51937" }}>
-                    {message.clubName}
-                  </span>
-                ) : (
-                  <span />
-                )}
-                <span style={{ fontSize: "11px", color: "#555555" }}>
-                  {formatInboxTimestamp(message.createdAt)}
-                </span>
-              </div>
-            </button>
+              message={message}
+              onMarkAsRead={markAsRead}
+              onRefresh={refresh}
+            />
           ))}
         </div>
       )}
