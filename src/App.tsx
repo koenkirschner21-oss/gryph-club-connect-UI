@@ -48,6 +48,7 @@ import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
 import ClubDocumentsPage from "./pages/app/ClubDocumentsPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import InvitePage from "./pages/InvitePage";
+import ExecutiveInvitePage from "./pages/ExecutiveInvitePage";
 import ProfilePage from "./pages/app/ProfilePage";
 import PersonalSettingsPage from "./pages/app/PersonalSettingsPage";
 import MemberProfilePage from "./pages/app/MemberProfilePage";
@@ -277,6 +278,7 @@ export default function App() {
             <Routes>
               <Route path="/events/:eventId/rsvp" element={<EventRSVPPage />} />
               <Route path="/invite/:token" element={<InvitePage />} />
+              <Route path="/executive-invite/:token" element={<ExecutiveInvitePage />} />
               {/* Public browsing — no auth guard */}
               <Route element={<AppShell />}>
                 <Route path="/explore" element={<Explore />} />

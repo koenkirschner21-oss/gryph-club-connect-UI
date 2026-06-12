@@ -9,6 +9,10 @@ import {
   FORMER_OWNER_CHOICE_OPTIONS,
   type FormerOwnerChoice,
 } from "../../lib/ownershipTransferUtils";
+import {
+  acceptExecutiveInvite,
+  declineExecutiveInvite,
+} from "../../lib/executiveInviteUtils";
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
 
@@ -63,12 +67,26 @@ export default function InboxMessageCard({
     message.actionRequired &&
     !message.actionCompleted &&
     (message.actionType === "ownership_transfer_response" ||
-      message.actionType === "former_owner_role_choice");
+      message.actionType === "former_owner_role_choice" ||
+      message.actionType === "executive_invite_response");
 
   const transferId =
     typeof message.actionData.transferId === "string"
       ? message.actionData.transferId
       : message.referenceId;
+
+  const inviteId =
+    typeof message.actionData.inviteId === "string"
+      ? message.actionData.inviteId
+      : message.referenceId;
+
+  const inviteToken =
+    typeof message.actionData.token === "string" ? message.actionData.token : "";
+
+  const inviterUserId =
+    typeof message.actionData.invitedBy === "string"
+      ? message.actionData.invitedBy
+      : message.senderId;
 
   async function handleNavigate() {
     if (!message.read) {
@@ -113,6 +131,55 @@ export default function InboxMessageCard({
     setActing(false);
     if (!result.ok) {
       setActionError(result.error ?? "Failed to decline ownership.");
+      return;
+    }
+
+    onRefresh();
+  }
+
+  async function handleAcceptExecutiveInvite() {
+    if (!user?.id || !inviteToken) return;
+    setActing(true);
+    setActionError(null);
+
+    const result = await acceptExecutiveInvite(supabase, {
+      token: inviteToken,
+      recipientUserId: user.id,
+      inboxMessageId: message.id,
+      clubName: message.clubName ?? "the club",
+      inviterUserId,
+    });
+
+    setActing(false);
+    if (!result.ok) {
+      setActionError(result.error ?? "Failed to accept invite.");
+      return;
+    }
+
+    if (result.clubId) {
+      window.location.assign(`/app/clubs/${result.clubId}`);
+      return;
+    }
+
+    onRefresh();
+  }
+
+  async function handleDeclineExecutiveInvite() {
+    if (!user?.id || !inviteId) return;
+    setActing(true);
+    setActionError(null);
+
+    const result = await declineExecutiveInvite(supabase, {
+      inviteId,
+      recipientUserId: user.id,
+      inboxMessageId: message.id,
+      clubName: message.clubName ?? "the club",
+      inviterUserId,
+    });
+
+    setActing(false);
+    if (!result.ok) {
+      setActionError(result.error ?? "Failed to decline invite.");
       return;
     }
 
@@ -231,6 +298,36 @@ export default function InboxMessageCard({
 
       {actionError ? (
         <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#E51937" }}>{actionError}</p>
+      ) : null}
+
+      {hasPendingActions && message.actionType === "executive_invite_response" ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "12px",
+            paddingTop: "12px",
+            borderTop: "1px solid #2a2a2a",
+          }}
+        >
+          <button
+            type="button"
+            disabled={acting}
+            style={primaryActionStyle}
+            onClick={() => void handleAcceptExecutiveInvite()}
+          >
+            {acting ? "Working…" : "Accept"}
+          </button>
+          <button
+            type="button"
+            disabled={acting}
+            style={actionButtonStyle}
+            onClick={() => void handleDeclineExecutiveInvite()}
+          >
+            Decline
+          </button>
+        </div>
       ) : null}
 
       {hasPendingActions && message.actionType === "ownership_transfer_response" ? (

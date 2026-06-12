@@ -32,7 +32,17 @@ import {
   isTopClubModeratorRole,
 } from "../../lib/clubRoles";
 import ClubInviteModal from "../../components/club/ClubInviteModal";
+import InviteExecutiveModal from "../../components/club/InviteExecutiveModal";
 import Spinner from "../../components/ui/Spinner";
+import {
+  cancelExecutiveInvite,
+  executiveInviteRoleSummary,
+  executiveInviteStatusLabel,
+  executiveInviteStatusStyle,
+  mapExecutiveInviteRow,
+  resendExecutiveInvite,
+  type ExecutiveInviteRow,
+} from "../../lib/executiveInviteUtils";
 
 const memberProfileLinkStyle: CSSProperties = {
   fontWeight: 600,
@@ -359,7 +369,7 @@ function MemberAvatar({
   );
 }
 
-type ViewMode = "list" | "orgChart" | "applications" | "pendingRequests";
+type ViewMode = "list" | "orgChart" | "applications" | "pendingRequests" | "invites";
 type ApplicationFilter = "pending" | "approved" | "rejected";
 
 interface JoinApplicationRow {
@@ -719,7 +729,13 @@ export default function ClubMembersPage() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [memberRoleFilter, setMemberRoleFilter] = useState<MemberRoleFilter>("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showExecutiveInviteModal, setShowExecutiveInviteModal] = useState(false);
   const [viewRequestMember, setViewRequestMember] = useState<ClubMember | null>(null);
+  const [executiveInvites, setExecutiveInvites] = useState<ExecutiveInviteRow[]>([]);
+  const [executiveInvitesLoading, setExecutiveInvitesLoading] = useState(false);
+  const [executiveInviteActionId, setExecutiveInviteActionId] = useState<string | null>(
+    null,
+  );
 
   const [applications, setApplications] = useState<JoinApplicationRow[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(false);
@@ -793,23 +809,90 @@ export default function ClubMembersPage() {
     setMemberReportsTo(reportsMap);
   }, [clubId]);
 
+  const loadExecutiveInvites = useCallback(async () => {
+    if (!clubId) return;
+    setExecutiveInvitesLoading(true);
+
+    const { data, error } = await supabase
+      .from("executive_invites")
+      .select("*")
+      .eq("club_id", clubId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to load executive invites:", error.message);
+      setExecutiveInvites([]);
+      setExecutiveInvitesLoading(false);
+      return;
+    }
+
+    const rows = data ?? [];
+    const emails = Array.from(
+      new Set(rows.map((row) => (row.invited_email as string).trim().toLowerCase())),
+    );
+
+    let profileByEmail: Record<string, string> = {};
+    if (emails.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("email, full_name")
+        .in("email", emails);
+
+      profileByEmail = Object.fromEntries(
+        (profiles ?? []).map((profile) => [
+          ((profile.email as string) ?? "").trim().toLowerCase(),
+          ((profile.full_name as string) ?? "").trim(),
+        ]),
+      );
+    }
+
+    setExecutiveInvites(
+      rows.map((row) => {
+        const mapped = mapExecutiveInviteRow(row as Record<string, unknown>);
+        const emailKey = mapped.invitedEmail.trim().toLowerCase();
+        return {
+          ...mapped,
+          inviteeName: profileByEmail[emailKey] || undefined,
+        };
+      }),
+    );
+    setExecutiveInvitesLoading(false);
+  }, [clubId]);
+
   useEffect(() => {
     if (!clubId) return;
     void (async () => {
-      const { count, error } = await supabase
-        .from("club_invites")
-        .select("id", { count: "exact", head: true })
-        .eq("club_id", clubId)
-        .eq("status", "pending");
+      const [{ count: clubInviteCount, error: clubInviteError }, { count: execInviteCount, error: execInviteError }] =
+        await Promise.all([
+          supabase
+            .from("club_invites")
+            .select("id", { count: "exact", head: true })
+            .eq("club_id", clubId)
+            .eq("status", "pending"),
+          supabase
+            .from("executive_invites")
+            .select("id", { count: "exact", head: true })
+            .eq("club_id", clubId)
+            .eq("status", "pending"),
+        ]);
 
-      if (error) {
-        console.error("Failed to load pending invites:", error.message);
+      if (clubInviteError || execInviteError) {
+        console.error(
+          "Failed to load pending invites:",
+          clubInviteError?.message ?? execInviteError?.message,
+        );
         setPendingInviteCount(0);
         return;
       }
-      setPendingInviteCount(count ?? 0);
+      setPendingInviteCount((clubInviteCount ?? 0) + (execInviteCount ?? 0));
     })();
-  }, [clubId, showInviteModal]);
+  }, [clubId, showInviteModal, showExecutiveInviteModal]);
+
+  useEffect(() => {
+    if (viewMode === "invites" && canUseMembershipQueue) {
+      void loadExecutiveInvites();
+    }
+  }, [canUseMembershipQueue, loadExecutiveInvites, viewMode]);
 
   const loadApplications = useCallback(async () => {
     if (!clubId) return;
@@ -1115,6 +1198,32 @@ export default function ClubMembersPage() {
     setActionLoading(null);
   }
 
+  async function handleResendExecutiveInvite(invite: ExecutiveInviteRow) {
+    if (!club?.name) return;
+    setExecutiveInviteActionId(invite.id);
+    setFeedback(null);
+    const ok = await resendExecutiveInvite(supabase, invite, club.name);
+    setExecutiveInviteActionId(null);
+    setFeedback(
+      ok
+        ? { type: "success", text: "Reminder sent." }
+        : { type: "error", text: "Failed to resend invite." },
+    );
+  }
+
+  async function handleCancelExecutiveInvite(inviteId: string) {
+    setExecutiveInviteActionId(inviteId);
+    setFeedback(null);
+    const ok = await cancelExecutiveInvite(supabase, inviteId);
+    setExecutiveInviteActionId(null);
+    if (ok) {
+      setFeedback({ type: "success", text: "Invite canceled." });
+      void loadExecutiveInvites();
+    } else {
+      setFeedback({ type: "error", text: "Failed to cancel invite." });
+    }
+  }
+
   async function handleApprove(memberId: string) {
     setActionLoading(memberId);
     setFeedback(null);
@@ -1355,6 +1464,24 @@ export default function ClubMembersPage() {
               Invite Member
             </button>
           ) : null}
+          {canUseMembershipQueue ? (
+            <button
+              type="button"
+              onClick={() => setShowExecutiveInviteModal(true)}
+              style={{
+                background: "transparent",
+                color: "#E51937",
+                border: "1px solid #E51937",
+                borderRadius: "6px",
+                padding: "9px 20px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Invite Executive
+            </button>
+          ) : null}
           {viewToggleButton("list", "List")}
           {viewToggleButton("orgChart", "Org Chart")}
           {canUseMembershipQueue
@@ -1369,6 +1496,7 @@ export default function ClubMembersPage() {
           membershipUsesApplicationQueue(membershipType)
             ? viewToggleButton("applications", "Applications")
             : null}
+          {canUseMembershipQueue ? viewToggleButton("invites", "Invites") : null}
         </div>
       </div>
 
@@ -2019,6 +2147,143 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
+      {viewMode === "invites" && canUseMembershipQueue ? (
+        <div>
+          {executiveInvitesLoading ? (
+            <div className="flex min-h-[200px] items-center justify-center">
+              <Spinner label="Loading invites…" />
+            </div>
+          ) : executiveInvites.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "48px 16px",
+                background: "#1a1a1a",
+                border: "1px solid #242424",
+                borderRadius: "10px",
+              }}
+            >
+              <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+                No executive invites sent yet
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {executiveInvites.map((invite) => {
+                const badge = executiveInviteStatusStyle(invite.status);
+                const displayName = invite.inviteeName || invite.invitedEmail;
+                const sentDate = new Date(invite.createdAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                });
+                const statusLabel =
+                  invite.status === "accepted"
+                    ? "Accepted ✓"
+                    : executiveInviteStatusLabel(invite.status);
+
+                return (
+                  <article
+                    key={invite.id}
+                    style={{
+                      background: "#1a1a1a",
+                      border: "1px solid #242424",
+                      borderRadius: "10px",
+                      padding: "18px 20px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        alignItems: "flex-start",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <div>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: "15px",
+                            fontWeight: 700,
+                            color: "#ffffff",
+                          }}
+                        >
+                          {displayName}
+                        </p>
+                        <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#555555" }}>
+                          {invite.invitedEmail}
+                        </p>
+                      </div>
+                      <span
+                        style={{
+                          ...badge,
+                          borderRadius: "20px",
+                          padding: "4px 10px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {statusLabel}
+                      </span>
+                    </div>
+                    <p style={{ margin: "0 0 4px", fontSize: "13px", color: "#cccccc" }}>
+                      {accessLevelBadgeLabel(invite.accessLevel)}
+                      {invite.roleTitle || executiveInviteRoleSummary(invite)
+                        ? ` · ${executiveInviteRoleSummary(invite)}`
+                        : ""}
+                    </p>
+                    <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#555555" }}>
+                      Sent {sentDate}
+                    </p>
+                    {invite.status === "pending" ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                        <button
+                          type="button"
+                          disabled={executiveInviteActionId === invite.id}
+                          onClick={() => void handleResendExecutiveInvite(invite)}
+                          style={{
+                            background: "transparent",
+                            border: "1px solid #FFC429",
+                            color: "#FFC429",
+                            borderRadius: "6px",
+                            padding: "7px 16px",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Resend
+                        </button>
+                        <button
+                          type="button"
+                          disabled={executiveInviteActionId === invite.id}
+                          onClick={() => void handleCancelExecutiveInvite(invite.id)}
+                          style={{
+                            background: "transparent",
+                            border: "1px solid #333333",
+                            color: "#aaaaaa",
+                            borderRadius: "6px",
+                            padding: "7px 16px",
+                            fontSize: "13px",
+                            fontWeight: 500,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {viewMode === "list" && sortedMembers.length === 0 ? (
         <div
           style={{
@@ -2273,6 +2538,22 @@ export default function ClubMembersPage() {
           onClose={() => setShowInviteModal(false)}
           clubId={clubId}
           joinCode={club?.joinCode}
+        />
+      ) : null}
+
+      {clubId && club ? (
+        <InviteExecutiveModal
+          open={showExecutiveInviteModal}
+          onClose={() => setShowExecutiveInviteModal(false)}
+          clubId={clubId}
+          clubName={club.name}
+          onSubmitted={() => {
+            setFeedback({ type: "success", text: "Executive invite(s) sent." });
+            void loadExecutiveInvites();
+            if (viewMode !== "invites") {
+              setViewMode("invites");
+            }
+          }}
         />
       ) : null}
 
