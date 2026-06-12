@@ -305,6 +305,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             club_id: clubId,
             user_id: user.id,
             role: "member",
+            access_level: "member",
             status,
             join_answers: options?.joinAnswers ?? [],
             join_message: options?.joinMessage?.trim() || null,

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyUsers } from "./notifyUsers";
-import type { NotificationType } from "../types";
+import { accessLevelBadgeLabel } from "./memberRoleTitle";
+import type { AccessLevel, NotificationType } from "../types";
 
 export interface CreateNotificationInput {
   userId: string;
@@ -58,6 +59,31 @@ async function fetchClubMemberRowId(
     .maybeSingle();
 
   return (data?.id as string | undefined) ?? undefined;
+}
+
+async function fetchClubOwnerUserIds(
+  supabase: SupabaseClient,
+  clubId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("club_members")
+    .select("user_id")
+    .eq("club_id", clubId)
+    .eq("role", "owner")
+    .eq("status", "active");
+
+  if (error) {
+    console.error("Failed to load club owners for notifications:", error.message);
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.user_id as string)
+        .filter((id) => Boolean(id)),
+    ),
+  );
 }
 
 async function fetchClubExecutiveUserIds(
@@ -144,6 +170,44 @@ export async function notifyJoinRequestApproved(
   });
   if (!ok) {
     console.error("Failed to send join approval notification.");
+  }
+}
+
+export async function notifyExecutiveInviteRequest(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    requesterUserId: string;
+    requesterName: string;
+    accessLevel: AccessLevel;
+    roleTitle: string;
+    message?: string;
+  },
+): Promise<void> {
+  const accessLabel = accessLevelBadgeLabel(params.accessLevel);
+  const rolePart = params.roleTitle.trim()
+    ? `${accessLabel} (${params.roleTitle.trim()})`
+    : accessLabel;
+  const messageSuffix = params.message?.trim()
+    ? ` Message: "${params.message.trim()}"`
+    : "";
+
+  const ownerIds = await fetchClubOwnerUserIds(supabase, params.clubId);
+  if (ownerIds.length === 0) return;
+
+  const notifications: CreateNotificationInput[] = ownerIds
+    .filter((ownerId) => ownerId !== params.requesterUserId)
+    .map((ownerId) => ({
+      userId: ownerId,
+      type: "club_update",
+      message: `${params.requesterName} requested an executive invite to ${params.clubName} as ${rolePart}.${messageSuffix}`,
+      clubId: params.clubId,
+    }));
+
+  const ok = await createNotifications(supabase, notifications);
+  if (!ok) {
+    console.error("Failed to send executive invite request notifications.");
   }
 }
 

@@ -12,15 +12,20 @@ import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import { showToast } from "../../components/ui/Toast";
 import JoinRequestForm from "../../components/club/JoinRequestForm";
+import ClubJoinAccessConfirmation from "../../components/club/ClubJoinAccessConfirmation";
 import {
+  notifyExecutiveInviteRequest,
   notifyJoinRequestSubmitted,
   resolveStudentDisplayName,
 } from "../../lib/notifications";
-import type { JoinQuestion, MembershipType } from "../../types";
+import type { AccessLevel, JoinQuestion, MembershipType } from "../../types";
+
+type JoinStep = "enter_code" | "confirm" | "request_form";
 
 type LookupClub = {
   id: string;
   name: string;
+  logoUrl?: string;
   membershipType: MembershipType;
   joinQuestions: JoinQuestion[];
   allowJoinFileUpload: boolean;
@@ -33,7 +38,16 @@ export default function JoinClubPage() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [lookupClub, setLookupClub] = useState<LookupClub | null>(null);
+  const [step, setStep] = useState<JoinStep>("enter_code");
+  const [joining, setJoining] = useState(false);
   const [submittingRequest, setSubmittingRequest] = useState(false);
+
+  function resetFlow() {
+    setLookupClub(null);
+    setStep("enter_code");
+    setJoining(false);
+    setSubmittingRequest(false);
+  }
 
   async function handleCodeSubmit(e: FormEvent) {
     e.preventDefault();
@@ -87,43 +101,47 @@ export default function JoinClubPage() {
         return;
       }
 
-      if (isPending(clubId)) {
-        setLookupClub({
-          id: clubId,
-          name: clubName,
-          membershipType,
-          joinQuestions: parseJoinQuestions(clubRow.join_questions),
-          allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
-        });
-        setLoading(false);
-        return;
-      }
+      setLookupClub({
+        id: clubId,
+        name: clubName,
+        logoUrl: (clubRow.logo_url as string | null) ?? undefined,
+        membershipType,
+        joinQuestions: parseJoinQuestions(clubRow.join_questions),
+        allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
+      });
+      setStep("confirm");
+    } catch {
+      showToast("Something went wrong. Please try again.", "error");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      if (membershipRequiresApproval(membershipType)) {
-        setLookupClub({
-          id: clubId,
-          name: clubName,
-          membershipType,
-          joinQuestions: parseJoinQuestions(clubRow.join_questions),
-          allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
-        });
-        setLoading(false);
-        return;
-      }
+  async function completeGeneralMemberJoin() {
+    if (!lookupClub) return;
 
-      const joined = await joinClub(clubId, { viaJoinCode: true });
+    if (
+      membershipRequiresApproval(lookupClub.membershipType) ||
+      isPending(lookupClub.id)
+    ) {
+      setStep("request_form");
+      return;
+    }
 
+    setJoining(true);
+    try {
+      const joined = await joinClub(lookupClub.id, { viaJoinCode: true });
       if (!joined) {
         showToast("Failed to join club. Please try again.", "error");
         return;
       }
 
-      showToast(`You have joined "${clubName}"!`, "success");
-      setTimeout(() => navigate(`/app/clubs/${clubId}`), 1500);
+      showToast(`You have joined "${lookupClub.name}"!`, "success");
+      setTimeout(() => navigate(`/app/clubs/${lookupClub.id}`), 1500);
     } catch {
       showToast("Something went wrong. Please try again.", "error");
     } finally {
-      setLoading(false);
+      setJoining(false);
     }
   }
 
@@ -181,19 +199,55 @@ export default function JoinClubPage() {
     }
   }
 
+  async function handleRequestExecutiveInvite(payload: {
+    accessLevel: AccessLevel;
+    roleTitle: string;
+    message?: string;
+  }) {
+    if (!lookupClub || !user?.id) return;
+
+    const requesterName = resolveStudentDisplayName(
+      typeof user.user_metadata?.full_name === "string"
+        ? user.user_metadata.full_name
+        : null,
+      user.email,
+    );
+
+    await notifyExecutiveInviteRequest(supabase, {
+      clubId: lookupClub.id,
+      clubName: lookupClub.name,
+      requesterUserId: user.id,
+      requesterName,
+      accessLevel: payload.accessLevel,
+      roleTitle: payload.roleTitle,
+      message: payload.message,
+    });
+  }
+
   const requestPending = lookupClub ? isPending(lookupClub.id) : false;
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
       <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-sm">
-        {lookupClub ? (
+        {lookupClub && step === "confirm" ? (
+          <ClubJoinAccessConfirmation
+            clubName={lookupClub.name}
+            logoUrl={lookupClub.logoUrl}
+            joining={joining}
+            submittingRequest={submittingRequest}
+            onJoinAsGeneralMember={() => void completeGeneralMemberJoin()}
+            onRequestExecutiveInvite={handleRequestExecutiveInvite}
+            onBack={resetFlow}
+          />
+        ) : lookupClub && step === "request_form" ? (
           <>
             <h1 className="mb-2 text-center text-2xl font-bold text-white">
               Request to Join
             </h1>
             <p className="mb-6 text-center text-sm text-muted">
               Complete the form below to request membership in{" "}
-              <span className="font-medium text-white">{lookupClub.name}</span>.
+              <span className="font-medium text-white">{lookupClub.name}</span> as a
+              General Member.
             </p>
 
             <JoinRequestForm
@@ -207,10 +261,10 @@ export default function JoinClubPage() {
             <div className="mt-6 text-center">
               <button
                 type="button"
-                onClick={() => setLookupClub(null)}
+                onClick={() => setStep("confirm")}
                 className="text-sm font-medium text-primary transition-colors hover:text-primary-dark cursor-pointer"
               >
-                Use a different join code
+                Back
               </button>
             </div>
           </>

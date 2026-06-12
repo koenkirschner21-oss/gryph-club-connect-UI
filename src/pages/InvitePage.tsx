@@ -3,6 +3,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { useClubContext } from "../context/useClubContext";
 import { supabase } from "../lib/supabaseClient";
+import ClubJoinAccessConfirmation from "../components/club/ClubJoinAccessConfirmation";
+import {
+  notifyExecutiveInviteRequest,
+  resolveStudentDisplayName,
+} from "../lib/notifications";
+import type { AccessLevel } from "../types";
 import Spinner from "../components/ui/Spinner";
 
 interface InviteRow {
@@ -69,6 +75,7 @@ export default function InvitePage() {
 
   const [invite, setInvite] = useState<InviteRow | null>(null);
   const [clubName, setClubName] = useState<string | null>(null);
+  const [clubLogoUrl, setClubLogoUrl] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
   const [invalid, setInvalid] = useState(false);
   const [expired, setExpired] = useState(false);
@@ -120,12 +127,13 @@ export default function InvitePage() {
 
       const { data: clubData } = await supabase
         .from("clubs")
-        .select("name")
+        .select("name, logo_url")
         .eq("id", row.club_id)
         .maybeSingle();
 
       if (!cancelled) {
         setClubName((clubData?.name as string) ?? "this club");
+        setClubLogoUrl((clubData?.logo_url as string | null) ?? undefined);
         setLoading(false);
       }
     }
@@ -152,7 +160,7 @@ export default function InvitePage() {
     setError(null);
 
     try {
-      const joined = await joinClub(invite.club_id);
+      const joined = await joinClub(invite.club_id, { viaJoinCode: true });
       if (!joined) {
         setError("Could not join the club. You may already be a member.");
         setAccepting(false);
@@ -174,6 +182,34 @@ export default function InvitePage() {
       setAccepting(false);
     }
   }, [emailMismatch, invite, joinClub, navigate, user?.id]);
+
+  const handleRequestExecutiveInvite = useCallback(
+    async (payload: {
+      accessLevel: AccessLevel;
+      roleTitle: string;
+      message?: string;
+    }) => {
+      if (!user?.id || !invite || !clubName) return;
+
+      const requesterName = resolveStudentDisplayName(
+        typeof user.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name
+          : null,
+        user.email,
+      );
+
+      await notifyExecutiveInviteRequest(supabase, {
+        clubId: invite.club_id,
+        clubName,
+        requesterUserId: user.id,
+        requesterName,
+        accessLevel: payload.accessLevel,
+        roleTitle: payload.roleTitle,
+        message: payload.message,
+      });
+    },
+    [clubName, invite, user],
+  );
 
   async function handleSignOut() {
     try {
@@ -265,22 +301,7 @@ export default function InvitePage() {
 
   return (
     <div style={pageStyle}>
-      <div style={cardStyle}>
-        <h1
-          style={{
-            fontSize: "22px",
-            fontWeight: 700,
-            color: "#ffffff",
-            margin: "0 0 12px",
-          }}
-        >
-          Club invitation
-        </h1>
-        <p style={{ fontSize: "15px", color: "#888888", margin: "0 0 24px" }}>
-          You&apos;ve been invited to join{" "}
-          <strong style={{ color: "#ffffff" }}>{clubName}</strong>!
-        </p>
-
+      <div style={{ ...cardStyle, textAlign: "left" }}>
         {error ? (
           <p
             role="alert"
@@ -288,6 +309,7 @@ export default function InvitePage() {
               fontSize: "13px",
               color: "#E51937",
               marginBottom: "16px",
+              textAlign: "center",
             }}
           >
             {error}
@@ -295,7 +317,17 @@ export default function InvitePage() {
         ) : null}
 
         {user && emailMismatch ? (
-          <>
+          <div style={{ textAlign: "center" }}>
+            <h1
+              style={{
+                fontSize: "22px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 12px",
+              }}
+            >
+              Club invitation
+            </h1>
             <p
               role="alert"
               style={{
@@ -323,29 +355,31 @@ export default function InvitePage() {
             >
               Sign out
             </button>
-          </>
+          </div>
         ) : user ? (
-          <button
-            type="button"
-            onClick={() => void handleAccept()}
-            disabled={accepting}
-            style={{
-              width: "100%",
-              background: "#E51937",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "6px",
-              padding: "12px 24px",
-              fontSize: "15px",
-              fontWeight: 600,
-              cursor: accepting ? "not-allowed" : "pointer",
-              opacity: accepting ? 0.7 : 1,
-            }}
-          >
-            {accepting ? "Joining…" : "Accept Invite"}
-          </button>
+          <ClubJoinAccessConfirmation
+            clubName={clubName ?? "this club"}
+            logoUrl={clubLogoUrl}
+            joining={accepting}
+            onJoinAsGeneralMember={() => void handleAccept()}
+            onRequestExecutiveInvite={handleRequestExecutiveInvite}
+          />
         ) : (
-          <>
+          <div style={{ textAlign: "center" }}>
+            <h1
+              style={{
+                fontSize: "22px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 12px",
+              }}
+            >
+              Club invitation
+            </h1>
+            <p style={{ fontSize: "15px", color: "#888888", margin: "0 0 24px" }}>
+              You&apos;ve been invited to join{" "}
+              <strong style={{ color: "#ffffff" }}>{clubName}</strong>!
+            </p>
             <Link
               to={loginHref}
               style={{
@@ -366,7 +400,7 @@ export default function InvitePage() {
             <Link to={signupHref} style={secondaryButtonStyle}>
               Sign Up
             </Link>
-          </>
+          </div>
         )}
       </div>
     </div>
