@@ -40,6 +40,7 @@ import type {
 } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 import SetupChecklist from "../../components/club/SetupChecklist";
+import ClubCommandCenter from "./ClubCommandCenter";
 
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
@@ -1512,6 +1513,8 @@ export default function ClubHomePage() {
     [tasksForRole],
   );
   const isPrivileged = isPrivilegedClubRole(userRole);
+  const isPresidentCommandCenter =
+    userRole === "owner" || userAccessLevel === "president";
   const visibilityContext = useMemo(
     () => ({ isMember: true, isPrivileged }),
     [isPrivileged],
@@ -1614,6 +1617,23 @@ export default function ClubHomePage() {
         />
       ) : null}
 
+      {isPresidentCommandCenter ? (
+        <ClubCommandCenter
+          club={club}
+          clubId={clubId!}
+          tasks={tasks}
+          tasksLoading={tasksLoading}
+          posts={posts}
+          postsLoading={postsLoading}
+          upcomingOccurrences={upcomingOccurrences}
+          eventsLoading={eventsLoading}
+          eventRsvpCounts={eventRsvpCounts}
+          isMobile={isMobile}
+          onOpenEvent={setSelectedEvent}
+          onOpenTask={setSelectedTask}
+        />
+      ) : (
+        <>
       <div
         style={{
           display: "flex",
@@ -1821,7 +1841,7 @@ export default function ClubHomePage() {
                 }}
               >
                 <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
-                  {userRole === "owner"
+                  {isPrivileged
                     ? "No open tasks in this club."
                     : "No open tasks assigned to you."}
                 </p>
@@ -1969,6 +1989,8 @@ export default function ClubHomePage() {
           </div>
         </div>
       </div>
+      )}
+        </>
       )}
 
       {selectedAnnouncement ? (
