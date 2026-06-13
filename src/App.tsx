@@ -41,6 +41,7 @@ import ClubHomePage from "./pages/app/ClubHomePage";
 import ClubChatPage from "./pages/app/ClubChatPage";
 import ClubTasksPage from "./pages/app/ClubTasksPage";
 import ClubEventsPage from "./pages/app/ClubEventsPage";
+import ClubMeetingsPage from "./pages/app/ClubMeetingsPage";
 import ClubMembersPage from "./pages/app/ClubMembersPage";
 import ClubSettingsPage from "./pages/app/ClubSettingsPage";
 import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
@@ -427,6 +428,8 @@ export default function App() {
                   <Route path="tasks" element={<ClubTasksPage />} />
                   <Route path="documents" element={<ClubDocumentsPage />} />
                   <Route path="events" element={<ClubEventsPage />} />
+                  <Route path="meetings" element={<ClubMeetingsPage />} />
+                  <Route path="meetings/:meetingId" element={<ClubMeetingsPage />} />
                   <Route path="recruiting" element={<ClubRecruitingPage />} />
                   <Route path="members" element={<ClubMembersPage />} />
                   <Route path="analytics" element={<ClubAnalyticsPage />} />

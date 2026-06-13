@@ -26,7 +26,7 @@ import {
   ExternalLink,
   type IconProps,
 } from "../icons/WorkspaceIcons";
-import { Briefcase, FileText, Menu, X } from "lucide-react";
+import { Briefcase, Calendar as LucideCalendar, FileText, Menu, X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useClubContext } from "../../context/useClubContext";
@@ -51,6 +51,14 @@ const workspaceLinks: {
   },
   { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare, badgeKey: "tasks" },
   { to: "events", label: "Events", end: false, Icon: Calendar },
+  {
+    to: "meetings",
+    label: "Meetings",
+    end: false,
+    Icon: ({ size = 16, strokeWidth = 2, "aria-hidden": ariaHidden = true }) => (
+      <LucideCalendar size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
+    ),
+  },
   { to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
   {
     to: "documents",
