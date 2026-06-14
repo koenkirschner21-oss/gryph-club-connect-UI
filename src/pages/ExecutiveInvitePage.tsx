@@ -7,8 +7,8 @@ import {
   acceptExecutiveInvite,
   declineExecutiveInvite,
   executiveInviteRoleSummary,
+  fetchExecutiveInviteByToken,
   isExecutiveInviteExpired,
-  mapExecutiveInviteRow,
   type ExecutiveInviteRow,
 } from "../lib/executiveInviteUtils";
 import Spinner from "../components/ui/Spinner";
@@ -56,22 +56,18 @@ export default function ExecutiveInvitePage() {
 
     let cancelled = false;
 
+    const inviteToken = token;
+
     async function load() {
-      const { data, error: fetchErr } = await supabase
-        .from("executive_invites")
-        .select("*")
-        .eq("token", token)
-        .maybeSingle();
+      const row = await fetchExecutiveInviteByToken(supabase, inviteToken);
 
       if (cancelled) return;
 
-      if (fetchErr || !data) {
+      if (!row) {
         setInvalid(true);
         setLoading(false);
         return;
       }
-
-      const row = mapExecutiveInviteRow(data as Record<string, unknown>);
 
       if (row.status !== "pending") {
         setInvalid(true);
@@ -123,6 +119,7 @@ export default function ExecutiveInvitePage() {
     const result = await acceptExecutiveInvite(supabase, {
       token,
       recipientUserId: user.id,
+      recipientEmail: user.email ?? "",
       clubName: clubName ?? "the club",
       inviterUserId: invite.invitedBy,
     });
@@ -148,8 +145,10 @@ export default function ExecutiveInvitePage() {
     const result = await declineExecutiveInvite(supabase, {
       inviteId: invite.id,
       recipientUserId: user.id,
+      recipientEmail: user.email ?? "",
       clubName: clubName ?? "the club",
       inviterUserId: invite.invitedBy,
+      clubId: invite.clubId,
     });
 
     setActing(false);
@@ -253,7 +252,7 @@ export default function ExecutiveInvitePage() {
             Wrong account
           </h1>
           <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-            This invite was sent to a specific user and cannot be used by this account.
+            This invite was sent to a specific email and cannot be used by this account.
           </p>
           <button
             type="button"

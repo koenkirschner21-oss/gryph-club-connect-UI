@@ -138,13 +138,14 @@ export default function InboxMessageCard({
   }
 
   async function handleAcceptExecutiveInvite() {
-    if (!user?.id || !inviteToken) return;
+    if (!user?.id || !inviteToken || !user.email) return;
     setActing(true);
     setActionError(null);
 
     const result = await acceptExecutiveInvite(supabase, {
       token: inviteToken,
       recipientUserId: user.id,
+      recipientEmail: user.email,
       inboxMessageId: message.id,
       clubName: message.clubName ?? "the club",
       inviterUserId,
@@ -165,16 +166,18 @@ export default function InboxMessageCard({
   }
 
   async function handleDeclineExecutiveInvite() {
-    if (!user?.id || !inviteId) return;
+    if (!user?.id || !inviteId || !user.email) return;
     setActing(true);
     setActionError(null);
 
     const result = await declineExecutiveInvite(supabase, {
       inviteId,
       recipientUserId: user.id,
+      recipientEmail: user.email,
       inboxMessageId: message.id,
       clubName: message.clubName ?? "the club",
       inviterUserId,
+      clubId: message.clubId,
     });
 
     setActing(false);

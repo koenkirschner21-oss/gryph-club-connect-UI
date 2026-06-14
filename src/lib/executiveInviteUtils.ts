@@ -85,6 +85,64 @@ export function isExecutiveInviteExpired(invite: ExecutiveInviteRow): boolean {
   return new Date(invite.expiresAt).getTime() < Date.now();
 }
 
+const WRONG_USER_ERROR =
+  "This invite was sent to a specific email and cannot be used by this account.";
+
+const EXPIRED_ERROR =
+  "This invite has expired. Please ask your club President to send a new invite.";
+
+export async function fetchExecutiveInviteByToken(
+  supabase: SupabaseClient,
+  token: string,
+): Promise<ExecutiveInviteRow | null> {
+  const { data, error } = await supabase.rpc("get_executive_invite_by_token", {
+    p_token: token,
+  });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return mapExecutiveInviteRow(data as Record<string, unknown>);
+}
+
+export function validateExecutiveInviteForRecipient(
+  invite: ExecutiveInviteRow,
+  recipientUserId: string,
+  recipientEmail: string,
+): { ok: true } | { ok: false; error: string } {
+  if (invite.status !== "pending") {
+    return { ok: false, error: "This invite is no longer available." };
+  }
+
+  if (isExecutiveInviteExpired(invite)) {
+    return { ok: false, error: EXPIRED_ERROR };
+  }
+
+  if (invite.invitedUserId && invite.invitedUserId !== recipientUserId) {
+    return { ok: false, error: WRONG_USER_ERROR };
+  }
+
+  const invitedEmail = invite.invitedEmail.trim().toLowerCase();
+  const currentEmail = recipientEmail.trim().toLowerCase();
+  if (!currentEmail || invitedEmail !== currentEmail) {
+    return { ok: false, error: WRONG_USER_ERROR };
+  }
+
+  return { ok: true };
+}
+
+async function markExecutiveInviteExpired(
+  supabase: SupabaseClient,
+  inviteId: string,
+): Promise<void> {
+  await supabase
+    .from("executive_invites")
+    .update({ status: "expired" })
+    .eq("id", inviteId)
+    .eq("status", "pending");
+}
+
 async function lookupUserIdByEmail(
   supabase: SupabaseClient,
   email: string,
@@ -284,10 +342,29 @@ export async function acceptExecutiveInvite(
     token: string;
     inboxMessageId?: string;
     recipientUserId: string;
+    recipientEmail: string;
     clubName: string;
     inviterUserId?: string;
   },
 ): Promise<{ ok: boolean; clubId?: string; error?: string }> {
+  const invite = await fetchExecutiveInviteByToken(supabase, params.token);
+
+  if (!invite) {
+    return { ok: false, error: "This invite is no longer available." };
+  }
+
+  const validation = validateExecutiveInviteForRecipient(
+    invite,
+    params.recipientUserId,
+    params.recipientEmail,
+  );
+  if (!validation.ok) {
+    if (validation.error === EXPIRED_ERROR) {
+      await markExecutiveInviteExpired(supabase, invite.id);
+    }
+    return { ok: false, error: validation.error };
+  }
+
   const { data, error } = await supabase.rpc("accept_executive_invite", {
     p_token: params.token,
   });
@@ -295,18 +372,10 @@ export async function acceptExecutiveInvite(
   if (error) {
     const message = error.message ?? "";
     if (message.includes("invite_expired")) {
-      return {
-        ok: false,
-        error:
-          "This invite has expired. Please ask your club President to send a new invite.",
-      };
+      return { ok: false, error: EXPIRED_ERROR };
     }
     if (message.includes("invite_wrong_user")) {
-      return {
-        ok: false,
-        error:
-          "This invite was sent to a specific user and cannot be used by this account.",
-      };
+      return { ok: false, error: WRONG_USER_ERROR };
     }
     console.error("Failed to accept executive invite:", message);
     return { ok: false, error: "Could not accept this invite. Please try again." };
@@ -323,12 +392,23 @@ export async function acceptExecutiveInvite(
   }
 
   if (params.inviterUserId) {
+    await createInboxMessage(supabase, {
+      recipientId: params.inviterUserId,
+      senderId: params.recipientUserId,
+      type: "invite_accepted",
+      title: `Executive invite accepted — ${params.clubName}`,
+      message: `Your executive invite for ${params.clubName} was accepted.`,
+      clubId,
+      referenceId: invite.id,
+      referenceType: "executive_invite",
+    });
+
     await createNotification(supabase, {
       userId: params.inviterUserId,
       type: "club_update",
       message: `Your executive invite to ${params.clubName} was accepted.`,
       clubId,
-      referenceId: params.token,
+      referenceId: invite.id,
     });
   }
 
@@ -340,11 +420,37 @@ export async function declineExecutiveInvite(
   params: {
     inviteId: string;
     recipientUserId: string;
+    recipientEmail: string;
     inboxMessageId?: string;
     clubName: string;
     inviterUserId?: string;
+    clubId?: string;
   },
 ): Promise<{ ok: boolean; error?: string }> {
+  const { data: inviteRow, error: fetchError } = await supabase
+    .from("executive_invites")
+    .select("*")
+    .eq("id", params.inviteId)
+    .maybeSingle();
+
+  if (fetchError || !inviteRow) {
+    return { ok: false, error: "This invite is no longer available." };
+  }
+
+  const invite = mapExecutiveInviteRow(inviteRow as Record<string, unknown>);
+  const validation = validateExecutiveInviteForRecipient(
+    invite,
+    params.recipientUserId,
+    params.recipientEmail,
+  );
+
+  if (!validation.ok) {
+    if (validation.error === EXPIRED_ERROR) {
+      await markExecutiveInviteExpired(supabase, invite.id);
+    }
+    return { ok: false, error: validation.error };
+  }
+
   const { error } = await supabase
     .from("executive_invites")
     .update({ status: "declined", invited_user_id: params.recipientUserId })
@@ -365,11 +471,22 @@ export async function declineExecutiveInvite(
   }
 
   if (params.inviterUserId) {
+    await createInboxMessage(supabase, {
+      recipientId: params.inviterUserId,
+      senderId: params.recipientUserId,
+      type: "invite_declined",
+      title: `Executive invite declined — ${params.clubName}`,
+      message: `Your executive invite for ${params.clubName} was declined.`,
+      clubId: params.clubId ?? invite.clubId,
+      referenceId: params.inviteId,
+      referenceType: "executive_invite",
+    });
+
     await createNotification(supabase, {
       userId: params.inviterUserId,
       type: "club_update",
       message: `Your executive invite to ${params.clubName} was declined.`,
-      clubId: undefined,
+      clubId: params.clubId ?? invite.clubId,
       referenceId: params.inviteId,
     });
   }
