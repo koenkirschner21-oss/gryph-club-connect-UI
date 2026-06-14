@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Search, Users } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -708,6 +708,7 @@ export default function ClubMembersPage() {
   const isMobile = useIsMobile();
 
   const [viewMode, setViewMode] = useState<ViewMode>("orgChart");
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orgChartMembers, setOrgChartMembers] = useState<OrgChartMember[]>([]);
   const [orgChartLoading, setOrgChartLoading] = useState(true);
   const [memberTitles, setMemberTitles] = useState<Record<string, string | null>>({});
@@ -963,6 +964,14 @@ export default function ClubMembersPage() {
       void loadApplications();
     }
   }, [viewMode, membershipType, loadApplications]);
+
+  useEffect(() => {
+    if (searchParams.get("tab") !== "pending" || !canUseMembershipQueue) return;
+    setViewMode("pendingRequests");
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, canUseMembershipQueue]);
 
   const filteredApplications = applications.filter(
     (app) => app.status === applicationFilter,

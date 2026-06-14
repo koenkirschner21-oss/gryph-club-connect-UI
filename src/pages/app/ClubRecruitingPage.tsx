@@ -2,12 +2,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
 import { Briefcase, Clipboard, MoreHorizontal } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -531,6 +532,7 @@ const menuItemStyle: CSSProperties = {
 
 export default function ClubRecruitingPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
   const { getClubById } = useClubContext();
   const club = getClubById(clubId ?? "");
@@ -571,6 +573,7 @@ export default function ClubRecruitingPage() {
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(
     null,
   );
+  const skipApplicantFilterResetRef = useRef(false);
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -718,8 +721,39 @@ export default function ClubRecruitingPage() {
   useEffect(() => {
     setSelectedApplicantId(null);
     setApplicantSearch("");
-    setApplicantStatusFilter("all");
+    if (skipApplicantFilterResetRef.current) {
+      skipApplicantFilterResetRef.current = false;
+    } else {
+      setApplicantStatusFilter("all");
+    }
   }, [expandedPositionId]);
+
+  useEffect(() => {
+    if (searchParams.get("openCreate") !== "true" || !isPrivileged || loading) return;
+    openCreateModal();
+    const next = new URLSearchParams(searchParams);
+    next.delete("openCreate");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading]);
+
+  useEffect(() => {
+    if (searchParams.get("tab") !== "applications" || !isPrivileged || loading || positions.length === 0) {
+      return;
+    }
+
+    const target =
+      positions.find((position) => position.pendingCount > 0) ?? positions[0];
+
+    skipApplicantFilterResetRef.current = true;
+    setExpandedPositionId(target.id);
+    void loadApplicationsForPosition(target.id).then(() => {
+      setApplicantStatusFilter("pending");
+    });
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading, positions]);
 
   function resetPostForm() {
     setTitle("");

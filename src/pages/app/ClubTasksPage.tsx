@@ -9,7 +9,7 @@ import {
   Circle,
   CheckCircle,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
@@ -775,6 +775,7 @@ function ViewToggle({
 
 export default function ClubTasksPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
   const { getClubById } = useClubContext();
   const {
@@ -956,6 +957,26 @@ export default function ClubTasksPage() {
     setShowForm(true);
     setOpenMenuTaskId(null);
   }
+
+  useEffect(() => {
+    const shouldOpenCreate =
+      searchParams.get("openCreate") === "true" ||
+      searchParams.get("create") === "true";
+    if (!shouldOpenCreate || !isPrivileged || loading) return;
+
+    setEditingId(null);
+    setTitle("");
+    setDescription("");
+    setHighImportance(false);
+    setAssignedTo("");
+    setDueDate("");
+    setShowForm(true);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("openCreate");
+    next.delete("create");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading]);
 
   async function handleSubmit() {
     if (!title.trim()) return;

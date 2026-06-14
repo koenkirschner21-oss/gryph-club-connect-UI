@@ -668,7 +668,10 @@ export default function ClubAnnouncementsPage() {
   }
 
   useEffect(() => {
-    if (searchParams.get("create") !== "true" || !isPrivileged || loading || roleLoading) {
+    const shouldOpenCreate =
+      searchParams.get("openCreate") === "true" ||
+      searchParams.get("create") === "true";
+    if (!shouldOpenCreate || !isPrivileged || loading || roleLoading) {
       return;
     }
     const templateState = location.state as {
@@ -682,6 +685,7 @@ export default function ClubAnnouncementsPage() {
       setContent(templateState.contentTemplate.content);
     }
     const next = new URLSearchParams(searchParams);
+    next.delete("openCreate");
     next.delete("create");
     setSearchParams(next, { replace: true });
   }, [

@@ -1998,7 +1998,10 @@ export default function ClubEventsPage() {
   }, [loading, events, recurringColumnReady, loadEventRecurring]);
 
   useEffect(() => {
-    if (searchParams.get("create") !== "true" || !isPrivileged || loading) return;
+    const shouldOpenCreate =
+      searchParams.get("openCreate") === "true" ||
+      searchParams.get("create") === "true";
+    if (!shouldOpenCreate || !isPrivileged || loading) return;
     const templateState = routerLocation.state as {
       contentTemplate?: { title?: string; description?: string };
     } | null;
@@ -2012,6 +2015,7 @@ export default function ClubEventsPage() {
       setDescription(templateState.contentTemplate.description);
     }
     const next = new URLSearchParams(searchParams);
+    next.delete("openCreate");
     next.delete("create");
     setSearchParams(next, { replace: true });
   }, [
@@ -2021,6 +2025,33 @@ export default function ClubEventsPage() {
     loading,
     routerLocation.state,
   ]);
+
+  useEffect(() => {
+    const eventId = searchParams.get("manageEvent");
+    if (!eventId || !isPrivileged || loading) return;
+
+    const event = visibleEvents.find((item) => item.id === eventId);
+    if (!event) return;
+
+    startEdit(event);
+    const next = new URLSearchParams(searchParams);
+    next.delete("manageEvent");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading, visibleEvents]);
+
+  useEffect(() => {
+    const eventId = searchParams.get("viewRsvps");
+    if (!eventId || !isPrivileged || loading) return;
+
+    void (async () => {
+      await loadAttendees(eventId);
+      setExpandedAttendees(eventId);
+    })();
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("viewRsvps");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading, loadAttendees]);
 
   useEffect(() => {
     if (searchParams.get("openTemplate") !== "true" || !isPrivileged || loading) {

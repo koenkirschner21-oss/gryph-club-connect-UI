@@ -312,7 +312,6 @@ export interface ClubCommandCenterProps {
   eventsLoading: boolean;
   eventRsvpCounts: Record<string, RsvpCounts>;
   isMobile: boolean;
-  onOpenEvent: (event: ClubEvent & { occurrenceDate: string }) => void;
   onOpenTask: (task: Task) => void;
 }
 
@@ -327,7 +326,6 @@ export default function ClubCommandCenter({
   eventsLoading,
   eventRsvpCounts,
   isMobile,
-  onOpenEvent,
   onOpenTask,
 }: ClubCommandCenterProps) {
   const navigate = useNavigate();
@@ -677,7 +675,7 @@ export default function ClubCommandCenter({
         title: "Pending Join Requests",
         value: String(pendingJoinCount),
         actionLabel: "Review Requests",
-        onAction: () => navigate(membersPath),
+        onAction: () => navigate(`${membersPath}?tab=pending`),
       });
     }
 
@@ -687,7 +685,7 @@ export default function ClubCommandCenter({
         title: "Pending Applications",
         value: String(pendingApplicationCount),
         actionLabel: "Review Applications",
-        onAction: () => navigate(recruitingPath),
+        onAction: () => navigate(`${recruitingPath}?tab=applications`),
       });
     }
 
@@ -697,7 +695,7 @@ export default function ClubCommandCenter({
         title: "Profile Completion",
         value: `${profileCompletion}%`,
         actionLabel: "Improve Profile",
-        onAction: () => navigate(settingsPath),
+        onAction: () => navigate(`${settingsPath}?section=profile`),
       });
     }
 
@@ -726,7 +724,7 @@ export default function ClubCommandCenter({
         title: "Review join requests",
         reason: `${pendingJoinCount} student${pendingJoinCount === 1 ? "" : "s"} waiting for approval.`,
         actionLabel: `Review (${pendingJoinCount})`,
-        onAction: () => navigate(membersPath),
+        onAction: () => navigate(`${membersPath}?tab=pending`),
       });
     }
 
@@ -738,7 +736,7 @@ export default function ClubCommandCenter({
         title: "Review applications",
         reason: `${pendingApplicationCount} hiring application${pendingApplicationCount === 1 ? "" : "s"} need review.`,
         actionLabel: `Review (${pendingApplicationCount})`,
-        onAction: () => navigate(recruitingPath),
+        onAction: () => navigate(`${recruitingPath}?tab=applications`),
       });
     }
 
@@ -770,7 +768,7 @@ export default function ClubCommandCenter({
         title: "Create your first event",
         reason: "No upcoming events are scheduled for your club yet.",
         actionLabel: "Create Event",
-        onAction: () => navigate(`${eventsPath}?create=true`),
+        onAction: () => navigate(`${eventsPath}?openCreate=true`),
       });
     }
 
@@ -789,7 +787,7 @@ export default function ClubCommandCenter({
           ? "It has been more than 14 days since your last announcement."
           : "Keep members informed with a welcome or weekly update.",
         actionLabel: "Post Announcement",
-        onAction: () => navigate(`${announcementsPath}?create=true`),
+        onAction: () => navigate(`${announcementsPath}?openCreate=true`),
       });
     }
 
@@ -848,10 +846,10 @@ export default function ClubCommandCenter({
   ]);
 
   const createOptions = [
-    { label: "Event", onClick: () => navigate(`${eventsPath}?create=true`) },
-    { label: "Announcement", onClick: () => navigate(`${announcementsPath}?create=true`) },
-    { label: "Task", onClick: () => navigate(tasksPath) },
-    { label: "Hiring Role", onClick: () => navigate(recruitingPath) },
+    { label: "Event", onClick: () => navigate(`${eventsPath}?openCreate=true`) },
+    { label: "Announcement", onClick: () => navigate(`${announcementsPath}?openCreate=true`) },
+    { label: "Task", onClick: () => navigate(`${tasksPath}?openCreate=true`) },
+    { label: "Hiring Role", onClick: () => navigate(`${recruitingPath}?openCreate=true`) },
   ];
 
   return (
@@ -1026,7 +1024,7 @@ export default function ClubCommandCenter({
                     <button
                       type="button"
                       style={outlineButtonStyle}
-                      onClick={() => navigate(eventsPath)}
+                      onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
                     >
                       Manage Event
                     </button>
@@ -1117,7 +1115,7 @@ export default function ClubCommandCenter({
             <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
               Pending join requests: <strong style={{ color: "#ffffff" }}>{pendingJoinCount}</strong>
             </p>
-            <button type="button" style={outlineButtonStyle} onClick={() => navigate(membersPath)}>
+            <button type="button" style={outlineButtonStyle} onClick={() => navigate(`${membersPath}?tab=pending`)}>
               Review
             </button>
           </div>
@@ -1138,7 +1136,7 @@ export default function ClubCommandCenter({
               Pending applications:{" "}
               <strong style={{ color: "#ffffff" }}>{pendingApplicationCount}</strong>
             </p>
-            <button type="button" style={outlineButtonStyle} onClick={() => navigate(recruitingPath)}>
+            <button type="button" style={outlineButtonStyle} onClick={() => navigate(`${recruitingPath}?tab=applications`)}>
               Review
             </button>
           </div>
@@ -1213,14 +1211,14 @@ export default function ClubCommandCenter({
                     <button
                       type="button"
                       style={outlineButtonStyle}
-                      onClick={() => navigate(eventsPath)}
+                      onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
                     >
                       Manage Event
                     </button>
                     <button
                       type="button"
                       style={actionButtonStyle}
-                      onClick={() => onOpenEvent(event)}
+                      onClick={() => navigate(`${eventsPath}?viewRsvps=${event.id}`)}
                     >
                       View RSVPs
                     </button>
@@ -1271,7 +1269,7 @@ export default function ClubCommandCenter({
               <button type="button" style={outlineButtonStyle} onClick={() => navigate(recruitingPath)}>
                 View Hiring
               </button>
-              <button type="button" style={actionButtonStyle} onClick={() => navigate(recruitingPath)}>
+              <button type="button" style={actionButtonStyle} onClick={() => navigate(`${recruitingPath}?openCreate=true`)}>
                 Create Role
               </button>
             </div>

@@ -1629,7 +1629,6 @@ export default function ClubHomePage() {
           eventsLoading={eventsLoading}
           eventRsvpCounts={eventRsvpCounts}
           isMobile={isMobile}
-          onOpenEvent={setSelectedEvent}
           onOpenTask={setSelectedTask}
         />
       ) : (
