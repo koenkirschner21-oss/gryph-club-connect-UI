@@ -31,6 +31,7 @@ import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
 import { supabase } from "../../lib/supabaseClient";
 import type {
   AccessLevel,
+  Club,
   ClubEvent,
   MemberRole,
   Post,
@@ -1244,9 +1245,41 @@ export default function ClubHomePage() {
     void fetchMembership();
   }, [clubId, user?.id, contextRole]);
 
-  const { events, loading: eventsLoading } = useClubEvents(clubId);
-  const { posts, loading: postsLoading } = useClubPosts(clubId);
+  const { events, loading: eventsLoading, refresh: refreshEvents } = useClubEvents(clubId);
+  const { posts, loading: postsLoading, refresh: refreshPosts } = useClubPosts(clubId);
   const { tasks, loading: tasksLoading } = useClubTasks(clubId);
+  const [checklistClub, setChecklistClub] = useState<Club | null>(null);
+
+  useEffect(() => {
+    if (club) setChecklistClub(club);
+  }, [club]);
+
+  const refetchClubData = useCallback(async () => {
+    if (!clubId || !club) return;
+    refreshPosts();
+    refreshEvents();
+
+    const { data } = await supabase
+      .from("clubs")
+      .select(
+        "name, short_description, logo_url, banner_url, contact_email, meeting_schedule, social_links, membership_type",
+      )
+      .eq("id", clubId)
+      .maybeSingle();
+
+    if (!data) return;
+
+    setChecklistClub({
+      ...club,
+      name: (data.name as string) ?? club.name,
+      shortDescription: (data.short_description as string) ?? club.shortDescription,
+      logoUrl: (data.logo_url as string) ?? club.logoUrl,
+      bannerUrl: (data.banner_url as string) ?? club.bannerUrl,
+      contactEmail: (data.contact_email as string) ?? club.contactEmail,
+      meetingSchedule: (data.meeting_schedule as string) ?? club.meetingSchedule,
+      socialLinks: (data.social_links as typeof club.socialLinks) ?? club.socialLinks,
+    });
+  }, [club, clubId, refreshEvents, refreshPosts]);
 
   useEffect(() => {
     if (!clubId || posts.length === 0) {
@@ -1607,13 +1640,14 @@ export default function ClubHomePage() {
         boxSizing: "border-box",
       }}
     >
-      {showSetupChecklist ? (
+      {showSetupChecklist && checklistClub ? (
         <SetupChecklist
-          club={club}
-          hasAnnouncement={posts.length > 0}
-          hasEvent={events.length > 0}
+          club={checklistClub}
+          postsCount={posts.length}
+          eventsCount={events.length}
           contentLoading={postsLoading || eventsLoading}
           onPublish={handlePublishClub}
+          onRefetch={refetchClubData}
         />
       ) : null}
 

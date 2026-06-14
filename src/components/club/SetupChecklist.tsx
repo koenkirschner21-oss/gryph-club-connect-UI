@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check } from "lucide-react";
 import type { Club } from "../../types";
@@ -16,7 +16,7 @@ interface ChecklistItem {
   label: string;
   complete: boolean;
   section: SectionKey;
-  setupPath?: string;
+  fixPath?: string;
   templateType?: TemplateLaunchType;
 }
 
@@ -26,89 +26,111 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   live: "Go Live",
 };
 
-function hasSocialLinks(links: Club["socialLinks"]): boolean {
-  if (!links) return false;
-  return Object.values(links).some((value) => Boolean(value && value.trim() !== ""));
+function buildCompletionChecks(
+  club: Club,
+  postsCount: number,
+  eventsCount: number,
+) {
+  return {
+    clubName: club.name?.trim() !== "",
+    shortDescription:
+      club.shortDescription?.trim() !== "" && club.shortDescription != null,
+    logo: club.logoUrl?.trim() !== "" && club.logoUrl != null,
+    banner: club.bannerUrl?.trim() !== "" && club.bannerUrl != null,
+    contactEmail:
+      club.contactEmail?.trim() !== "" && club.contactEmail != null,
+    meetingSchedule:
+      club.meetingSchedule?.trim() !== "" && club.meetingSchedule != null,
+    socialLinks:
+      club.socialLinks != null &&
+      Object.values(club.socialLinks).some(
+        (value) => value && String(value).trim() !== "",
+      ),
+    membershipType: true,
+    firstAnnouncement: postsCount > 0,
+    firstEvent: eventsCount > 0,
+  };
 }
 
 function buildChecklistItems(
   club: Club,
-  hasAnnouncement: boolean,
-  hasEvent: boolean,
+  postsCount: number,
+  eventsCount: number,
 ): ChecklistItem[] {
   const settingsBase = `/app/clubs/${club.id}/settings`;
+  const checks = buildCompletionChecks(club, postsCount, eventsCount);
 
   return [
     {
       id: "name",
       label: "Club name added",
-      complete: Boolean(club.name && club.name.trim() !== ""),
+      complete: checks.clubName,
       section: "profile",
-      setupPath: `${settingsBase}?section=profile`,
+      fixPath: `${settingsBase}?section=profile`,
     },
     {
       id: "short-description",
       label: "Short description added",
-      complete: Boolean(club.shortDescription && club.shortDescription.trim() !== ""),
+      complete: checks.shortDescription,
       section: "profile",
-      setupPath: `${settingsBase}?section=profile`,
+      fixPath: `${settingsBase}?section=profile`,
     },
     {
       id: "logo",
       label: "Logo uploaded",
-      complete: Boolean(club.logoUrl && club.logoUrl.trim() !== ""),
+      complete: checks.logo,
       section: "profile",
-      setupPath: `${settingsBase}?section=branding`,
+      fixPath: `${settingsBase}?section=branding`,
     },
     {
       id: "banner",
       label: "Banner uploaded",
-      complete: Boolean(club.bannerUrl && club.bannerUrl.trim() !== ""),
+      complete: checks.banner,
       section: "profile",
-      setupPath: `${settingsBase}?section=branding`,
+      fixPath: `${settingsBase}?section=branding`,
     },
     {
       id: "contact-email",
       label: "Contact email added",
-      complete: Boolean(club.contactEmail && club.contactEmail.trim() !== ""),
+      complete: checks.contactEmail,
       section: "profile",
-      setupPath: `${settingsBase}?section=profile`,
+      fixPath: `${settingsBase}?section=profile`,
     },
     {
       id: "meeting-schedule",
       label: "Meeting schedule set",
-      complete: Boolean(club.meetingSchedule && club.meetingSchedule.trim() !== ""),
+      complete: checks.meetingSchedule,
       section: "profile",
-      setupPath: `${settingsBase}?section=profile`,
+      fixPath: `${settingsBase}?section=profile`,
     },
     {
       id: "social-links",
       label: "Social links added",
-      complete: hasSocialLinks(club.socialLinks),
+      complete: checks.socialLinks,
       section: "profile",
-      setupPath: `${settingsBase}?section=social`,
+      fixPath: `${settingsBase}?section=social`,
     },
     {
       id: "membership-type",
       label: "Membership type configured",
-      complete: true,
+      complete: checks.membershipType,
       section: "profile",
-      setupPath: `${settingsBase}?section=membership`,
+      fixPath: `${settingsBase}?section=membership`,
     },
     {
       id: "announcement",
       label: "Create welcome announcement",
-      complete: hasAnnouncement,
+      complete: checks.firstAnnouncement,
       section: "launch",
-      setupPath: `/app/clubs/${club.id}/announcements?create=true`,
+      fixPath: `/app/clubs/${club.id}/announcements?openCreate=true`,
       templateType: "announcement",
     },
     {
       id: "event",
       label: "Create first event",
-      complete: hasEvent,
+      complete: checks.firstEvent,
       section: "launch",
-      setupPath: `/app/clubs/${club.id}/events?create=true`,
+      fixPath: `/app/clubs/${club.id}/events?openCreate=true`,
       templateType: "event",
     },
   ];
@@ -160,10 +182,10 @@ function ChecklistRow({
             {item.label}
           </span>
         </div>
-        {!item.complete && item.setupPath ? (
+        {!item.complete && item.fixPath ? (
           <button
             type="button"
-            onClick={() => navigate(item.setupPath!)}
+            onClick={() => navigate(item.fixPath!)}
             style={{
               background: "none",
               border: "none",
@@ -176,7 +198,7 @@ function ChecklistRow({
               flexShrink: 0,
             }}
           >
-            → Set up
+            → Fix this
           </button>
         ) : null}
       </div>
@@ -205,26 +227,35 @@ function ChecklistRow({
 
 export interface SetupChecklistProps {
   club: Club;
-  hasAnnouncement: boolean;
-  hasEvent: boolean;
+  postsCount: number;
+  eventsCount: number;
   contentLoading?: boolean;
   onPublish: () => Promise<void>;
+  onRefetch?: () => void;
 }
 
 export default function SetupChecklist({
   club,
-  hasAnnouncement,
-  hasEvent,
+  postsCount,
+  eventsCount,
   contentLoading = false,
   onPublish,
+  onRefetch,
 }: SetupChecklistProps) {
   const navigate = useNavigate();
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!onRefetch) return;
+    const handleFocus = () => onRefetch();
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [onRefetch]);
+
   const items = useMemo(
-    () => buildChecklistItems(club, hasAnnouncement, hasEvent),
-    [club, hasAnnouncement, hasEvent],
+    () => buildChecklistItems(club, postsCount, eventsCount),
+    [club, postsCount, eventsCount],
   );
 
   const completedCount = items.filter((item) => item.complete).length;
@@ -291,7 +322,7 @@ export default function SetupChecklist({
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#777777" }}>
             {contentLoading
               ? "Checking your progress…"
-              : `${completedCount} of ${totalCount} complete`}
+              : `${completedCount} of ${totalCount} complete · ${progressPercent}%`}
           </p>
         </div>
       </div>
@@ -391,10 +422,9 @@ export default function SetupChecklist({
         >
           Continue Setup
         </Link>
-        <Link
-          to={publicProfilePath}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => navigate(publicProfilePath)}
           style={{
             background: "transparent",
             color: "#cccccc",
@@ -403,11 +433,11 @@ export default function SetupChecklist({
             padding: "10px 18px",
             fontSize: "13px",
             fontWeight: 600,
-            textDecoration: "none",
+            cursor: "pointer",
           }}
         >
           Preview Public Profile
-        </Link>
+        </button>
         {allComplete ? (
           <button
             type="button"
