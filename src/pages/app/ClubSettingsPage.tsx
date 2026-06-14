@@ -1554,6 +1554,7 @@ export default function ClubSettingsPage() {
     presidentMembers[0]?.userId === user?.id;
   const canSendTransfer =
     transferCandidates.length > 0 && !pendingTransfer && Boolean(transferTargetId);
+  const transferBlockedNoMembers = isOwner && transferCandidates.length === 0;
 
   const pendingTransferRecipient = pendingTransfer
     ? members.find((m) => m.userId === pendingTransfer.toUserId)
@@ -2384,7 +2385,7 @@ export default function ClubSettingsPage() {
             title="Ownership"
             subtitle="Invite another member to become President or Co-President. Ownership will only transfer after they accept."
           >
-            {isOnlyPresident ? (
+            {isOnlyPresident || transferBlockedNoMembers ? (
               <p
                 style={{
                   fontSize: "13px",
@@ -2397,8 +2398,9 @@ export default function ClubSettingsPage() {
                   padding: "12px 14px",
                 }}
               >
-                This club must have at least one President or Co-President. Transfer
-                ownership before leaving or changing your role.
+                {transferBlockedNoMembers
+                  ? "Add at least one other active member before you can send a transfer request."
+                  : "This club must have at least one President or Co-President. Transfer ownership before leaving or changing your role."}
               </p>
             ) : null}
 
@@ -2446,7 +2448,7 @@ export default function ClubSettingsPage() {
                       opacity: transferActionLoading ? 0.6 : 1,
                     }}
                   >
-                    Resend Reminder
+                    Resend
                   </button>
                   <button
                     type="button"
@@ -2464,7 +2466,7 @@ export default function ClubSettingsPage() {
                       opacity: transferActionLoading ? 0.6 : 1,
                     }}
                   >
-                    Cancel Request
+                    Cancel
                   </button>
                 </div>
               </div>
@@ -2510,6 +2512,18 @@ export default function ClubSettingsPage() {
                       <option value="owner">President</option>
                       <option value="co_president">Co-President</option>
                     </SettingsSelect>
+                  </div>
+                  <div>
+                    <label htmlFor="transfer-message" style={fieldLabelStyle}>
+                      Optional message
+                    </label>
+                    <SettingsTextarea
+                      id="transfer-message"
+                      value={transferMessage}
+                      onChange={setTransferMessage}
+                      minHeight={80}
+                      placeholder="Add a personal note with this invitation…"
+                    />
                   </div>
                 </div>
                 <button

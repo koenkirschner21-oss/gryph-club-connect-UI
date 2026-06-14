@@ -12,8 +12,7 @@ export type OwnershipTransferStatus =
   | "expired";
 
 export type FormerOwnerChoice =
-  | "stay_president"
-  | "managerial_executive"
+  | "stay_co_president"
   | "executive"
   | "member"
   | "leave";
@@ -82,6 +81,19 @@ export async function sendOwnershipTransferInvite(
     optionalMessage?: string;
   },
 ): Promise<OwnershipTransferRow | null> {
+  const { data: existingPending } = await supabase
+    .from("ownership_transfers")
+    .select("id")
+    .eq("club_id", params.clubId)
+    .eq("from_user_id", params.fromUserId)
+    .eq("status", "pending")
+    .maybeSingle();
+
+  if (existingPending) {
+    console.error("A pending ownership transfer already exists for this club.");
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("ownership_transfers")
     .insert({
@@ -247,6 +259,14 @@ export async function acceptOwnershipTransfer(
     return { ok: false, error: "Transfer accepted but member role could not be updated." };
   }
 
+  const recipientTitle =
+    transfer.newRole === "co_president" ? "Co-President" : "President";
+  await supabase
+    .from("club_members")
+    .update({ title: recipientTitle })
+    .eq("club_id", transfer.clubId)
+    .eq("user_id", transfer.toUserId);
+
   if (params.inboxMessageId) {
     await markInboxActionCompleted(supabase, params.inboxMessageId, params.recipientUserId);
   }
@@ -327,6 +347,17 @@ export async function declineOwnershipTransfer(
     await markInboxActionCompleted(supabase, params.inboxMessageId, params.recipientUserId);
   }
 
+  await createInboxMessage(supabase, {
+    recipientId: transfer.fromUserId,
+    senderId: params.recipientUserId,
+    type: "ownership_transfer",
+    title: `Ownership transfer declined — ${params.clubName}`,
+    message: `Your ownership transfer invitation for ${params.clubName} was declined.`,
+    clubId: transfer.clubId,
+    referenceId: transfer.id,
+    referenceType: "ownership_transfer",
+  });
+
   await createNotification(supabase, {
     userId: transfer.fromUserId,
     type: "club_update",
@@ -341,20 +372,29 @@ export async function declineOwnershipTransfer(
 function choiceToMemberUpdate(choice: FormerOwnerChoice): {
   role: MemberRole;
   accessLevel: AccessLevel;
+  title: string | null;
   leave: boolean;
 } {
   switch (choice) {
-    case "stay_president":
-      return { role: "owner", accessLevel: "president", leave: false };
-    case "managerial_executive":
-      return { role: "executive", accessLevel: "managerial_executive", leave: false };
+    case "stay_co_president":
+      return {
+        role: "owner",
+        accessLevel: "president",
+        title: "Co-President",
+        leave: false,
+      };
     case "executive":
-      return { role: "executive", accessLevel: "executive", leave: false };
+      return {
+        role: "executive",
+        accessLevel: "executive",
+        title: null,
+        leave: false,
+      };
     case "member":
-      return { role: "member", accessLevel: "member", leave: false };
+      return { role: "member", accessLevel: "member", title: null, leave: false };
     case "leave":
     default:
-      return { role: "member", accessLevel: "member", leave: true };
+      return { role: "member", accessLevel: "member", title: null, leave: true };
   }
 }
 
@@ -396,7 +436,11 @@ export async function applyFormerOwnerChoice(
   } else {
     const { error: memberError } = await supabase
       .from("club_members")
-      .update({ role: update.role, access_level: update.accessLevel })
+      .update({
+        role: update.role,
+        access_level: update.accessLevel,
+        title: update.title,
+      })
       .eq("club_id", transfer.clubId)
       .eq("user_id", params.userId);
 
@@ -424,8 +468,7 @@ export const FORMER_OWNER_CHOICE_OPTIONS: {
   value: FormerOwnerChoice;
   label: string;
 }[] = [
-  { value: "stay_president", label: "Stay as President/Co-President" },
-  { value: "managerial_executive", label: "Step down to Managerial Executive" },
+  { value: "stay_co_president", label: "Stay as Co-President" },
   { value: "executive", label: "Step down to Executive" },
   { value: "member", label: "Step down to General Member" },
   { value: "leave", label: "Leave club" },
