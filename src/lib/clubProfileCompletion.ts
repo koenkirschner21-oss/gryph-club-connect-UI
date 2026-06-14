@@ -5,6 +5,27 @@ function hasSocialLinks(links: Club["socialLinks"]): boolean {
   return Object.values(links).some((value) => Boolean(value && value.trim() !== ""));
 }
 
+export function clubHasSocialLinks(links: Club["socialLinks"]): boolean {
+  return hasSocialLinks(links);
+}
+
+export function getClubProfileMissingLabels(
+  club: Club,
+  hasAnnouncement: boolean,
+  hasEvent: boolean,
+): string[] {
+  const missing: string[] = [];
+  if (!club.logoUrl?.trim()) missing.push("logo");
+  if (!club.bannerUrl?.trim()) missing.push("banner");
+  if (!club.contactEmail?.trim()) missing.push("contact email");
+  if (!hasSocialLinks(club.socialLinks)) missing.push("social links");
+  if (!club.shortDescription?.trim()) missing.push("short description");
+  if (!club.meetingSchedule?.trim()) missing.push("meeting schedule");
+  if (!hasAnnouncement) missing.push("announcement");
+  if (!hasEvent) missing.push("event");
+  return missing;
+}
+
 export function computeClubProfileCompletionPercent(
   club: Club,
   hasAnnouncement: boolean,

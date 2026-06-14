@@ -19,7 +19,11 @@ import {
 } from "lucide-react";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
 import { useClubMembers } from "../../hooks/useClubMembers";
-import { computeClubProfileCompletionPercent } from "../../lib/clubProfileCompletion";
+import {
+  clubHasSocialLinks,
+  computeClubProfileCompletionPercent,
+  getClubProfileMissingLabels,
+} from "../../lib/clubProfileCompletion";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
 import { supabase } from "../../lib/supabaseClient";
@@ -36,6 +40,13 @@ const sectionHeading: CSSProperties = {
   color: "#ffffff",
   margin: "0 0 16px",
 };
+
+const urgentSectionHeading: CSSProperties = {
+  ...sectionHeading,
+  marginBottom: "11px",
+};
+
+const THIS_WEEK_CARD_BG = "#161616";
 
 const actionButtonStyle: CSSProperties = {
   background: ACCENT_RED,
@@ -203,7 +214,66 @@ interface HiringSnapshot {
   loading: boolean;
 }
 
-function UrgentCard({
+function ProfileCompletionUrgentCard({
+  percent,
+  missingLabels,
+  onAction,
+}: {
+  percent: number;
+  missingLabels: string[];
+  onAction: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "#1a0a0a",
+        border: "1px solid #2a2a2a",
+        borderTop: "2px solid #FFC429",
+        borderRadius: "8px",
+        padding: "16px",
+        minWidth: 0,
+      }}
+    >
+      <p
+        style={{
+          fontSize: "28px",
+          fontWeight: 800,
+          color: "#FFC429",
+          margin: "0 0 6px",
+          lineHeight: 1,
+        }}
+      >
+        {percent}%
+      </p>
+      <p
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#777777",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          margin: "0 0 10px",
+        }}
+      >
+        Profile Completion
+      </p>
+      {missingLabels.length > 0 ? (
+        <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#999999", lineHeight: 1.4 }}>
+          Missing: {missingLabels.join(", ")}
+        </p>
+      ) : (
+        <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#999999" }}>All setup items complete.</p>
+      )}
+      {percent < 100 ? (
+        <button type="button" onClick={onAction} style={textLinkStyle}>
+          Finish Setup →
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function UrgentCountCard({
   title,
   value,
   actionLabel,
@@ -218,26 +288,35 @@ function UrgentCard({
     <div
       style={{
         background: "#1a0a0a",
-        border: "1px solid #E51937",
+        border: "1px solid #2a2a2a",
+        borderTop: "2px solid #E51937",
         borderRadius: "8px",
         padding: "16px",
-        minWidth: "180px",
-        flex: "1 1 180px",
+        minWidth: 0,
       }}
     >
-      <p style={{ fontSize: "13px", fontWeight: 600, color: "#ffffff", margin: "0 0 8px" }}>
-        {title}
-      </p>
       <p
         style={{
           fontSize: "24px",
           fontWeight: 800,
           color: "#E51937",
-          margin: "0 0 12px",
+          margin: "0 0 6px",
           lineHeight: 1,
         }}
       >
         {value}
+      </p>
+      <p
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#777777",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          margin: "0 0 12px",
+        }}
+      >
+        {title}
       </p>
       <button type="button" onClick={onAction} style={actionButtonStyle}>
         {actionLabel}
@@ -603,15 +682,6 @@ export default function ClubCommandCenter({
     [tasks],
   );
 
-  const overdueTasks = useMemo(
-    () =>
-      openTasks.filter((task) => {
-        const due = parseTaskDueDate(task.dueDate);
-        return due != null && due.getTime() < today.getTime();
-      }),
-    [openTasks, today],
-  );
-
   const tasksDueThisWeek = useMemo(
     () =>
       openTasks.filter((task) => {
@@ -630,100 +700,94 @@ export default function ClubCommandCenter({
     );
   }, [upcomingOccurrences, today, weekEnd]);
 
-  const previewUpcomingEvents = useMemo(() => upcomingOccurrences.slice(0, 3), [upcomingOccurrences]);
+  const previewUpcomingEvents = useMemo(() => {
+    const seen = new Set<string>();
+    const deduped: typeof upcomingOccurrences = [];
+    for (const event of upcomingOccurrences) {
+      const key = event.title.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(event);
+      if (deduped.length >= 3) break;
+    }
+    return deduped;
+  }, [upcomingOccurrences]);
 
   const profileCompletion = useMemo(
     () => computeClubProfileCompletionPercent(club, posts.length > 0, upcomingOccurrences.length > 0),
     [club, posts.length, upcomingOccurrences.length],
   );
 
+  const profileMissingLabels = useMemo(
+    () => getClubProfileMissingLabels(club, posts.length > 0, upcomingOccurrences.length > 0),
+    [club, posts.length, upcomingOccurrences.length],
+  );
+
   const pendingJoinCount = pendingMembers.length;
   const pendingApplicationCount = hiringSnapshot.pendingApplicationsCount;
 
-  const urgentCards = useMemo(() => {
-    const cards: {
-      key: string;
-      title: string;
-      value: string;
-      actionLabel: string;
-      onAction: () => void;
-    }[] = [];
-
-    if (overdueTasks.length > 0) {
-      cards.push({
-        key: "overdue",
-        title: "Overdue Tasks",
-        value: String(overdueTasks.length),
-        actionLabel: "View Tasks",
-        onAction: () => navigate(tasksPath),
-      });
-    }
-
-    if (tasksDueThisWeek.length > 0) {
-      cards.push({
-        key: "week-tasks",
-        title: "Tasks Due This Week",
-        value: String(tasksDueThisWeek.length),
-        actionLabel: "View Tasks",
-        onAction: () => navigate(tasksPath),
-      });
-    }
-
-    if (pendingJoinCount > 0) {
-      cards.push({
-        key: "join-requests",
-        title: "Pending Join Requests",
-        value: String(pendingJoinCount),
-        actionLabel: "Review Requests",
-        onAction: () => navigate(`${membersPath}?tab=pending`),
-      });
-    }
-
-    if (pendingApplicationCount > 0) {
-      cards.push({
-        key: "applications",
-        title: "Pending Applications",
-        value: String(pendingApplicationCount),
-        actionLabel: "Review Applications",
-        onAction: () => navigate(`${recruitingPath}?tab=applications`),
-      });
-    }
-
-    if (profileCompletion < 100) {
-      cards.push({
-        key: "profile",
-        title: "Profile Completion",
-        value: `${profileCompletion}%`,
-        actionLabel: "Improve Profile",
-        onAction: () => navigate(`${settingsPath}?section=profile`),
-      });
-    }
-
-    return cards;
-  }, [
-    overdueTasks.length,
-    tasksDueThisWeek.length,
-    pendingJoinCount,
-    pendingApplicationCount,
-    profileCompletion,
-    navigate,
-    tasksPath,
-    membersPath,
-    recruitingPath,
-    settingsPath,
-  ]);
-
   const suggestedActions = useMemo(() => {
     const actions: SuggestedAction[] = [];
+    const profileActionIds = new Set(["logo", "banner", "contact-email", "social-links"]);
+
+    if (profileCompletion < 100) {
+      if (!club.logoUrl?.trim()) {
+        actions.push({
+          id: "logo",
+          priority: 1,
+          icon: <Image size={18} aria-hidden />,
+          title: "Add a club logo",
+          reason: "Clubs with logos look more credible on Explore and public profiles.",
+          actionLabel: "Go to Settings",
+          onAction: () => navigate(`${settingsPath}?section=branding`),
+        });
+      }
+
+      if (!club.bannerUrl?.trim()) {
+        actions.push({
+          id: "banner",
+          priority: 2,
+          icon: <Image size={18} aria-hidden />,
+          title: "Add a banner image",
+          reason: "A banner helps your public profile stand out to prospective members.",
+          actionLabel: "Go to Settings",
+          onAction: () => navigate(`${settingsPath}?section=branding`),
+        });
+      }
+
+      if (!club.contactEmail?.trim()) {
+        actions.push({
+          id: "contact-email",
+          priority: 3,
+          icon: <Megaphone size={18} aria-hidden />,
+          title: "Add contact email",
+          reason: "Prospective members need a way to reach your club leadership.",
+          actionLabel: "Go to Settings",
+          onAction: () => navigate(`${settingsPath}?section=profile`),
+        });
+      }
+
+      if (!clubHasSocialLinks(club.socialLinks)) {
+        actions.push({
+          id: "social-links",
+          priority: 4,
+          icon: <Users size={18} aria-hidden />,
+          title: "Add social links",
+          reason: "Link your Instagram, website, or other channels on your public profile.",
+          actionLabel: "Go to Settings",
+          onAction: () => navigate(`${settingsPath}?section=social`),
+        });
+      }
+    }
 
     if (pendingJoinCount > 0) {
       actions.push({
         id: "review-join",
-        priority: 1,
+        priority: 10,
         icon: <Users size={18} aria-hidden />,
         title: "Review join requests",
         reason: `${pendingJoinCount} student${pendingJoinCount === 1 ? "" : "s"} waiting for approval.`,
-        actionLabel: `Review (${pendingJoinCount})`,
+        actionLabel: "Review Requests",
         onAction: () => navigate(`${membersPath}?tab=pending`),
       });
     }
@@ -731,11 +795,11 @@ export default function ClubCommandCenter({
     if (pendingApplicationCount > 0) {
       actions.push({
         id: "review-applications",
-        priority: 2,
+        priority: 11,
         icon: <ClipboardList size={18} aria-hidden />,
         title: "Review applications",
         reason: `${pendingApplicationCount} hiring application${pendingApplicationCount === 1 ? "" : "s"} need review.`,
-        actionLabel: `Review (${pendingApplicationCount})`,
+        actionLabel: "Review Applications",
         onAction: () => navigate(`${recruitingPath}?tab=applications`),
       });
     }
@@ -751,7 +815,7 @@ export default function ClubCommandCenter({
     if (eventInThreeDays) {
       actions.push({
         id: "event-reminder",
-        priority: 3,
+        priority: 12,
         icon: <Megaphone size={18} aria-hidden />,
         title: "Post an event reminder",
         reason: `${eventInThreeDays.title} is coming up on ${formatEventDateLine(eventInThreeDays.occurrenceDate, eventInThreeDays.time)}.`,
@@ -763,7 +827,7 @@ export default function ClubCommandCenter({
     if (upcomingOccurrences.length === 0) {
       actions.push({
         id: "first-event",
-        priority: 4,
+        priority: 13,
         icon: <Calendar size={18} aria-hidden />,
         title: "Create your first event",
         reason: "No upcoming events are scheduled for your club yet.",
@@ -780,7 +844,7 @@ export default function ClubCommandCenter({
     if (announcementStale) {
       actions.push({
         id: "club-update",
-        priority: 5,
+        priority: 14,
         icon: <Megaphone size={18} aria-hidden />,
         title: "Post a club update",
         reason: latestPost
@@ -791,34 +855,10 @@ export default function ClubCommandCenter({
       });
     }
 
-    if (!club.logoUrl?.trim()) {
-      actions.push({
-        id: "logo",
-        priority: 6,
-        icon: <Image size={18} aria-hidden />,
-        title: "Add a club logo",
-        reason: "Clubs with logos look more credible on Explore and public profiles.",
-        actionLabel: "Go to Settings",
-        onAction: () => navigate(`${settingsPath}?section=branding`),
-      });
-    }
-
-    if (!club.bannerUrl?.trim()) {
-      actions.push({
-        id: "banner",
-        priority: 7,
-        icon: <Image size={18} aria-hidden />,
-        title: "Add a banner image",
-        reason: "A banner helps your public profile stand out to prospective members.",
-        actionLabel: "Go to Settings",
-        onAction: () => navigate(`${settingsPath}?section=branding`),
-      });
-    }
-
     if (hiringSnapshot.rolesWithZeroApplicants > 0) {
       actions.push({
         id: "promote-role",
-        priority: 8,
+        priority: 15,
         icon: <Briefcase size={18} aria-hidden />,
         title: "Promote your open role",
         reason: `${hiringSnapshot.rolesWithZeroApplicants} open role${hiringSnapshot.rolesWithZeroApplicants === 1 ? "" : "s"} ha${hiringSnapshot.rolesWithZeroApplicants === 1 ? "s" : "ve"} no applicants yet.`,
@@ -827,8 +867,25 @@ export default function ClubCommandCenter({
       });
     }
 
-    return actions.sort((left, right) => left.priority - right.priority).slice(0, 4);
+    const sorted = actions.sort((left, right) => left.priority - right.priority);
+    let result = sorted.slice(0, 4);
+
+    if (
+      profileCompletion < 100 &&
+      !result.some((action) => profileActionIds.has(action.id))
+    ) {
+      const firstProfileAction = sorted.find((action) => profileActionIds.has(action.id));
+      if (firstProfileAction) {
+        result = [
+          firstProfileAction,
+          ...result.filter((action) => action.id !== firstProfileAction.id),
+        ].slice(0, 4);
+      }
+    }
+
+    return result;
   }, [
+    profileCompletion,
     pendingJoinCount,
     pendingApplicationCount,
     upcomingOccurrences,
@@ -836,6 +893,8 @@ export default function ClubCommandCenter({
     posts,
     club.logoUrl,
     club.bannerUrl,
+    club.contactEmail,
+    club.socialLinks,
     hiringSnapshot.rolesWithZeroApplicants,
     navigate,
     membersPath,
@@ -955,21 +1014,43 @@ export default function ClubCommandCenter({
         </div>
       </div>
 
-      <section>
-        <h2 style={sectionHeading}>Urgent Attention</h2>
+      <section style={{ marginBottom: "22px", paddingBottom: 0 }}>
+        <h2 style={urgentSectionHeading}>Urgent Attention</h2>
         {tasksLoading || membersLoading || hiringSnapshot.loading ? (
           <div className="flex justify-center py-6">
             <Spinner label="Loading urgent items…" />
           </div>
-        ) : urgentCards.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "14px", color: "#555555" }}>
-            You&apos;re all caught up! 🎉
-          </p>
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
-            {urgentCards.map(({ key, ...card }) => (
-              <UrgentCard key={key} {...card} />
-            ))}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)",
+              gap: "16px",
+            }}
+          >
+            <ProfileCompletionUrgentCard
+              percent={profileCompletion}
+              missingLabels={profileMissingLabels}
+              onAction={() => navigate(`${settingsPath}?section=profile`)}
+            />
+            <UrgentCountCard
+              title="Pending Requests"
+              value={String(pendingJoinCount)}
+              actionLabel="Review Requests"
+              onAction={() => navigate(`${membersPath}?tab=pending`)}
+            />
+            <UrgentCountCard
+              title="Tasks Due This Week"
+              value={String(tasksDueThisWeek.length)}
+              actionLabel="View Tasks"
+              onAction={() => navigate(tasksPath)}
+            />
+            <UrgentCountCard
+              title="Pending Applications"
+              value={String(pendingApplicationCount)}
+              actionLabel="Review Applications"
+              onAction={() => navigate(`${recruitingPath}?tab=applications`)}
+            />
           </div>
         )}
       </section>
@@ -985,7 +1066,7 @@ export default function ClubCommandCenter({
         >
           <div
             style={{
-              background: CARD_BG,
+              background: THIS_WEEK_CARD_BG,
               border: `1px solid ${CARD_BORDER}`,
               borderRadius: "10px",
               padding: "16px",
@@ -1036,7 +1117,7 @@ export default function ClubCommandCenter({
 
           <div
             style={{
-              background: CARD_BG,
+              background: THIS_WEEK_CARD_BG,
               border: `1px solid ${CARD_BORDER}`,
               borderRadius: "10px",
               padding: "16px",
@@ -1102,10 +1183,10 @@ export default function ClubCommandCenter({
           <div
             style={{
               flex: "1 1 220px",
-              background: CARD_BG,
+              background: THIS_WEEK_CARD_BG,
               border: `1px solid ${CARD_BORDER}`,
               borderRadius: "10px",
-              padding: "14px 16px",
+              padding: "16px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1116,16 +1197,16 @@ export default function ClubCommandCenter({
               Pending join requests: <strong style={{ color: "#ffffff" }}>{pendingJoinCount}</strong>
             </p>
             <button type="button" style={outlineButtonStyle} onClick={() => navigate(`${membersPath}?tab=pending`)}>
-              Review
+              Review Requests
             </button>
           </div>
           <div
             style={{
               flex: "1 1 220px",
-              background: CARD_BG,
+              background: THIS_WEEK_CARD_BG,
               border: `1px solid ${CARD_BORDER}`,
               borderRadius: "10px",
-              padding: "14px 16px",
+              padding: "16px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1137,7 +1218,7 @@ export default function ClubCommandCenter({
               <strong style={{ color: "#ffffff" }}>{pendingApplicationCount}</strong>
             </p>
             <button type="button" style={outlineButtonStyle} onClick={() => navigate(`${recruitingPath}?tab=applications`)}>
-              Review
+              Review Applications
             </button>
           </div>
         </div>
@@ -1185,7 +1266,7 @@ export default function ClubCommandCenter({
                   background: CARD_BG,
                   border: `1px solid ${CARD_BORDER}`,
                   borderRadius: "10px",
-                  padding: "16px",
+                  padding: "14px 16px",
                 }}
               >
                 <div
@@ -1201,7 +1282,7 @@ export default function ClubCommandCenter({
                     <p style={{ margin: "0 0 6px", fontSize: "15px", fontWeight: 700, color: "#ffffff" }}>
                       {event.title}
                     </p>
-                    <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#777777" }}>
+                    <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#999999" }}>
                       {formatEventDateLine(event.occurrenceDate, event.time)} ·{" "}
                       {eventRsvpCounts[event.id]?.going ?? 0} RSVPs
                     </p>
@@ -1289,8 +1370,8 @@ export default function ClubCommandCenter({
           <div
             style={{
               background: CARD_BG,
-              border: `1px solid ${CARD_BORDER}`,
-              borderRadius: "10px",
+              border: "none",
+              borderRadius: 0,
               overflow: "hidden",
             }}
           >
@@ -1301,9 +1382,9 @@ export default function ClubCommandCenter({
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
-                  padding: "14px 16px",
+                  padding: "10px 0",
                   borderBottom:
-                    index < activityItems.length - 1 ? `1px solid ${CARD_BORDER}` : "none",
+                    index < activityItems.length - 1 ? "1px solid #1a1a1a" : "none",
                 }}
               >
                 <div
