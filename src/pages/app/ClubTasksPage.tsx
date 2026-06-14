@@ -23,7 +23,13 @@ import {
   getTaskDueUrgency,
   taskDueDateColor,
 } from "../../lib/taskDueUrgency";
-import type { MemberRole, Task, TaskStatus, TaskPriority } from "../../types";
+import type { MemberRole, Task, TaskStatus, TaskPriority, TaskType } from "../../types";
+import {
+  TASK_TYPE_BADGE_LABELS,
+  TASK_TYPE_FILTER_CHIPS,
+  TASK_TYPE_FORM_OPTIONS,
+  type TaskTypeFilter,
+} from "../../lib/taskTypes";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
@@ -89,6 +95,84 @@ function isTaskOverdue(task: Task): boolean {
   if (Number.isNaN(due.getTime())) return false;
   due.setHours(0, 0, 0, 0);
   return due < today;
+}
+
+function TaskTypeBadge({ taskType }: { taskType: TaskType }) {
+  if (taskType === "general") return null;
+  return (
+    <span
+      style={{
+        background: "transparent",
+        border: "1px solid #333333",
+        color: "#777777",
+        borderRadius: "4px",
+        padding: "2px 8px",
+        fontSize: "10px",
+        fontWeight: 600,
+        flexShrink: 0,
+        lineHeight: 1.2,
+      }}
+    >
+      {TASK_TYPE_BADGE_LABELS[taskType]}
+    </span>
+  );
+}
+
+function TaskLinkedLabel({ task }: { task: Task }) {
+  if (task.taskType === "event" && task.linkedEventId) {
+    return (
+      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
+        📅 Linked to: {task.linkedEventTitle ?? "Event"}
+      </p>
+    );
+  }
+  if (task.taskType === "meeting" && task.linkedMeetingId) {
+    return (
+      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
+        🗓 Linked to: {task.linkedMeetingTitle ?? "Meeting"}
+      </p>
+    );
+  }
+  return null;
+}
+
+function TaskTypeFilterChipBar({
+  active,
+  onChange,
+}: {
+  active: TaskTypeFilter;
+  onChange: (chip: TaskTypeFilter) => void;
+}) {
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <p style={{ margin: "0 0 8px", fontSize: "11px", color: "#555555" }}>Type:</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {TASK_TYPE_FILTER_CHIPS.map((chip) => {
+          const isActive = active === chip.id;
+          return (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={() => onChange(chip.id)}
+              style={{
+                background: isActive ? "#E51937" : "transparent",
+                color: isActive ? "#ffffff" : "#999999",
+                border: isActive ? "1px solid #E51937" : "1px solid #333333",
+                borderRadius: "20px",
+                padding: "6px 14px",
+                fontSize: "12px",
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {chip.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function PriorityPill({
@@ -796,6 +880,10 @@ export default function ClubTasksPage() {
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
 
+  const [eventLinkOptions, setEventLinkOptions] = useState<{ id: string; title: string }[]>([]);
+  const [meetingLinkOptions, setMeetingLinkOptions] = useState<{ id: string; title: string }[]>([]);
+  const [hiringLinkOptions, setHiringLinkOptions] = useState<{ id: string; title: string }[]>([]);
+
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
     if (previewRole) {
@@ -814,16 +902,80 @@ export default function ClubTasksPage() {
         setUserRole(normalizeUserRole(data.role));
       }
     };
-    fetchRole();
+    void fetchRole();
   }, [clubId, user?.id]);
 
+  useEffect(() => {
+    if (!clubId || !isPrivileged) return;
+
+    const nowIso = new Date().toISOString();
+
+    void Promise.all([
+      supabase
+        .from("events")
+        .select("id, title, date")
+        .eq("club_id", clubId)
+        .gte("date", nowIso.slice(0, 10))
+        .order("date", { ascending: true }),
+      supabase
+        .from("club_meetings")
+        .select("id, title, date")
+        .eq("club_id", clubId)
+        .gte("date", nowIso)
+        .order("date", { ascending: true }),
+      supabase
+        .from("hiring_listings")
+        .select("id, title")
+        .eq("club_id", clubId)
+        .eq("is_open", true)
+        .order("created_at", { ascending: false }),
+    ]).then(([eventsRes, meetingsRes, hiringRes]) => {
+      setEventLinkOptions(
+        (eventsRes.data ?? []).map((row) => ({
+          id: row.id as string,
+          title: (row.title as string) ?? "Event",
+        })),
+      );
+      setMeetingLinkOptions(
+        (meetingsRes.data ?? []).map((row) => ({
+          id: row.id as string,
+          title: (row.title as string) ?? "Meeting",
+        })),
+      );
+      setHiringLinkOptions(
+        (hiringRes.data ?? []).map((row) => ({
+          id: row.id as string,
+          title: (row.title as string) ?? "Role",
+        })),
+      );
+    });
+  }, [clubId, isPrivileged]);
+
+  const enrichedTasks = useMemo(
+    () =>
+      tasks.map((task) => ({
+        ...task,
+        linkedEventTitle:
+          task.linkedEventTitle ??
+          eventLinkOptions.find((option) => option.id === task.linkedEventId)?.title,
+        linkedMeetingTitle:
+          task.linkedMeetingTitle ??
+          meetingLinkOptions.find((option) => option.id === task.linkedMeetingId)?.title,
+        linkedHiringTitle:
+          task.linkedHiringTitle ??
+          hiringLinkOptions.find((option) => option.id === task.linkedHiringListingId)?.title,
+      })),
+    [tasks, eventLinkOptions, meetingLinkOptions, hiringLinkOptions],
+  );
+
   const visibleTasks = useMemo(() => {
-    if (isPrivileged) return tasks;
-    return tasks.filter((t) => t.assignedTo === user?.id);
-  }, [tasks, isPrivileged, user?.id]);
+    if (isPrivileged) return enrichedTasks;
+    return enrichedTasks.filter((t) => t.assignedTo === user?.id);
+  }, [enrichedTasks, isPrivileged, user?.id]);
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [activeFilter, setActiveFilter] = useState<TaskFilterChip>("all");
+  const [activeTypeFilter, setActiveTypeFilter] = useState<TaskTypeFilter>("all");
   const effectiveViewMode: ViewMode = isPrivileged ? viewMode : "list";
   const [showForm, setShowForm] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -842,6 +994,10 @@ export default function ClubTasksPage() {
   const [highImportance, setHighImportance] = useState(false);
   const [assignedTo, setAssignedTo] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [taskType, setTaskType] = useState<TaskType>("general");
+  const [linkedEventId, setLinkedEventId] = useState("");
+  const [linkedMeetingId, setLinkedMeetingId] = useState("");
+  const [linkedHiringListingId, setLinkedHiringListingId] = useState("");
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -885,27 +1041,32 @@ export default function ClubTasksPage() {
     };
   }, [visibleTasks]);
 
+  const typeFilteredTasks = useMemo(() => {
+    if (activeTypeFilter === "all") return visibleTasks;
+    return visibleTasks.filter((task) => (task.taskType ?? "general") === activeTypeFilter);
+  }, [visibleTasks, activeTypeFilter]);
+
   const filteredTasks = useMemo(() => {
     switch (activeFilter) {
       case "assigned_to_me":
-        return visibleTasks.filter((t) => t.assignedTo === user?.id);
+        return typeFilteredTasks.filter((t) => t.assignedTo === user?.id);
       case "assigned_by_me":
-        return visibleTasks.filter(
+        return typeFilteredTasks.filter(
           (t) =>
             t.createdBy === user?.id &&
             t.assignedTo &&
             t.assignedTo !== user?.id,
         );
       case "overdue":
-        return visibleTasks.filter(isTaskOverdue);
+        return typeFilteredTasks.filter(isTaskOverdue);
       case "high_priority":
-        return visibleTasks.filter((t) => t.priority === "high");
+        return typeFilteredTasks.filter((t) => t.priority === "high");
       case "completed":
-        return visibleTasks.filter((t) => t.status === "done");
+        return typeFilteredTasks.filter((t) => t.status === "done");
       default:
-        return visibleTasks;
+        return typeFilteredTasks;
     }
-  }, [visibleTasks, activeFilter, user?.id]);
+  }, [typeFilteredTasks, activeFilter, user?.id]);
 
   const filteredDoneCount = filteredTasks.filter((t) => t.status === "done").length;
   const filteredTotalCount = filteredTasks.length;
@@ -943,6 +1104,10 @@ export default function ClubTasksPage() {
     setHighImportance(false);
     setAssignedTo("");
     setDueDate("");
+    setTaskType("general");
+    setLinkedEventId("");
+    setLinkedMeetingId("");
+    setLinkedHiringListingId("");
     setEditingId(null);
     setShowForm(false);
   }
@@ -954,6 +1119,10 @@ export default function ClubTasksPage() {
     setHighImportance(task.priority === "high");
     setAssignedTo(task.assignedTo ?? "");
     setDueDate(task.dueDate ?? "");
+    setTaskType(task.taskType ?? "general");
+    setLinkedEventId(task.linkedEventId ?? "");
+    setLinkedMeetingId(task.linkedMeetingId ?? "");
+    setLinkedHiringListingId(task.linkedHiringListingId ?? "");
     setShowForm(true);
     setOpenMenuTaskId(null);
   }
@@ -970,6 +1139,10 @@ export default function ClubTasksPage() {
     setHighImportance(false);
     setAssignedTo("");
     setDueDate("");
+    setTaskType("general");
+    setLinkedEventId("");
+    setLinkedMeetingId("");
+    setLinkedHiringListingId("");
     setShowForm(true);
 
     const next = new URLSearchParams(searchParams);
@@ -984,24 +1157,33 @@ export default function ClubTasksPage() {
     setFeedback(null);
 
     const priority: TaskPriority = highImportance ? "high" : "medium";
+    const taskFields = {
+      title: title.trim(),
+      description: description.trim(),
+      priority,
+      assignedTo: assignedTo || undefined,
+      dueDate: dueDate || undefined,
+      taskType,
+      linkedEventId: taskType === "event" ? linkedEventId || null : null,
+      linkedMeetingId: taskType === "meeting" ? linkedMeetingId || null : null,
+      linkedHiringListingId: taskType === "hiring" ? linkedHiringListingId || null : null,
+    };
 
     let ok = false;
     if (editingId) {
       ok = await updateTask(editingId, {
-        title: title.trim(),
-        description: description.trim(),
-        priority,
+        title: taskFields.title,
+        description: taskFields.description,
+        priority: taskFields.priority,
         assignedTo: assignedTo || null,
         dueDate: dueDate || null,
+        taskType: taskFields.taskType,
+        linkedEventId: taskFields.linkedEventId,
+        linkedMeetingId: taskFields.linkedMeetingId,
+        linkedHiringListingId: taskFields.linkedHiringListingId,
       });
     } else {
-      const taskId = await createTask({
-        title: title.trim(),
-        description: description.trim(),
-        priority,
-        assignedTo: assignedTo || undefined,
-        dueDate: dueDate || undefined,
-      });
+      const taskId = await createTask(taskFields);
       ok = Boolean(taskId);
       if (
         taskId &&
@@ -1229,7 +1411,9 @@ export default function ClubTasksPage() {
               {task.title}
             </p>
             <PriorityPill priority={task.priority} muted={isDone} />
+            <TaskTypeBadge taskType={task.taskType ?? "general"} />
           </div>
+          <TaskLinkedLabel task={task} />
           {isHovered ? renderTaskMenu(task) : null}
         </div>
 
@@ -1587,7 +1771,9 @@ export default function ClubTasksPage() {
             {!isDone ? (
               <PriorityPill priority={task.priority} />
             ) : null}
+            <TaskTypeBadge taskType={task.taskType ?? "general"} />
           </div>
+          <TaskLinkedLabel task={task} />
           <p
             style={{
               fontSize: "13px",
@@ -1803,6 +1989,11 @@ export default function ClubTasksPage() {
         onChange={setActiveFilter}
       />
 
+      <TaskTypeFilterChipBar
+        active={activeTypeFilter}
+        onChange={setActiveTypeFilter}
+      />
+
       <p
         style={{
           fontSize: "12px",
@@ -1868,6 +2059,101 @@ export default function ClubTasksPage() {
                 className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
               />
             </div>
+            <div>
+              <label
+                htmlFor="taskType"
+                className="mb-1 block text-sm font-medium text-white"
+              >
+                Task Type
+              </label>
+              <select
+                id="taskType"
+                value={taskType}
+                onChange={(e) => {
+                  const next = e.target.value as TaskType;
+                  setTaskType(next);
+                  if (next !== "event") setLinkedEventId("");
+                  if (next !== "meeting") setLinkedMeetingId("");
+                  if (next !== "hiring") setLinkedHiringListingId("");
+                }}
+                className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
+              >
+                {TASK_TYPE_FORM_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {taskType === "event" ? (
+              <div>
+                <label
+                  htmlFor="taskLinkedEvent"
+                  className="mb-1 block text-sm font-medium text-white"
+                >
+                  Link to Event
+                </label>
+                <select
+                  id="taskLinkedEvent"
+                  value={linkedEventId}
+                  onChange={(e) => setLinkedEventId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
+                >
+                  <option value="">Select an event…</option>
+                  {eventLinkOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            {taskType === "meeting" ? (
+              <div>
+                <label
+                  htmlFor="taskLinkedMeeting"
+                  className="mb-1 block text-sm font-medium text-white"
+                >
+                  Link to Meeting
+                </label>
+                <select
+                  id="taskLinkedMeeting"
+                  value={linkedMeetingId}
+                  onChange={(e) => setLinkedMeetingId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
+                >
+                  <option value="">Select a meeting…</option>
+                  {meetingLinkOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            {taskType === "hiring" ? (
+              <div>
+                <label
+                  htmlFor="taskLinkedHiring"
+                  className="mb-1 block text-sm font-medium text-white"
+                >
+                  Link to Hiring Role
+                </label>
+                <select
+                  id="taskLinkedHiring"
+                  value={linkedHiringListingId}
+                  onChange={(e) => setLinkedHiringListingId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
+                >
+                  <option value="">Select a role…</option>
+                  {hiringLinkOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
                 <label
               style={{
                 display: "flex",

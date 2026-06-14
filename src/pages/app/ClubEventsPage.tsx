@@ -19,10 +19,11 @@ import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
+import { useClubTasks } from "../../hooks/useClubTasks";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { supabase } from "../../lib/supabaseClient";
-import type { ClubEvent, MemberRole, RsvpStatus, Visibility } from "../../types";
+import type { ClubEvent, MemberRole, RsvpStatus, Task, Visibility } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
@@ -44,6 +45,7 @@ import {
   normalizeEventCategory,
   type EventCategory,
 } from "../../lib/eventCategories";
+import { EVENT_PLANNING_TASK_TITLES } from "../../lib/taskTypes";
 
 type EventFilter = "all" | "public" | "my_rsvps";
 
@@ -1691,6 +1693,184 @@ function FormQuestionBuilder({
 const useTemplateButtonClass =
   "rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-[#cccccc] transition-colors hover:border-[#555555] hover:text-white";
 
+function EventPlanningTasksSection({
+  eventId,
+  eventTitle,
+  planningTasks,
+  createTask,
+  onFeedback,
+}: {
+  eventId: string;
+  eventTitle: string;
+  planningTasks: Task[];
+  createTask: ReturnType<typeof useClubTasks>["createTask"];
+  onFeedback: (message: { type: "success" | "error"; text: string }) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickTitle, setQuickTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
+
+  async function handleQuickAdd() {
+    if (!quickTitle.trim()) return;
+    setSaving(true);
+    const taskId = await createTask({
+      title: quickTitle.trim(),
+      description: `Planning task for ${eventTitle}`,
+      priority: "medium",
+      taskType: "event",
+      linkedEventId: eventId,
+    });
+    setSaving(false);
+    if (taskId) {
+      setQuickTitle("");
+      setShowQuickAdd(false);
+      onFeedback({ type: "success", text: "Planning task added." });
+    } else {
+      onFeedback({ type: "error", text: "Could not add planning task." });
+    }
+  }
+
+  async function handleUseTemplate() {
+    setTemplateSaving(true);
+    const existingTitles = new Set(
+      planningTasks.map((task) => task.title.trim().toLowerCase()),
+    );
+    let created = 0;
+    for (const title of EVENT_PLANNING_TASK_TITLES) {
+      if (existingTitles.has(title.toLowerCase())) continue;
+      const taskId = await createTask({
+        title,
+        description: `Planning task for ${eventTitle}`,
+        priority: "medium",
+        taskType: "event",
+        linkedEventId: eventId,
+      });
+      if (taskId) created += 1;
+    }
+    setTemplateSaving(false);
+    if (created > 0) {
+      onFeedback({
+        type: "success",
+        text: `Added ${created} planning task${created === 1 ? "" : "s"}.`,
+      });
+    } else {
+      onFeedback({
+        type: "success",
+        text: "All planning template tasks already exist for this event.",
+      });
+    }
+  }
+
+  return (
+    <div
+      style={{
+        border: "1px solid #2a2a2a",
+        borderRadius: "10px",
+        padding: "14px",
+        background: "#111111",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+          background: "transparent",
+          border: "none",
+          color: "#ffffff",
+          fontSize: "14px",
+          fontWeight: 600,
+          cursor: "pointer",
+          padding: 0,
+          fontFamily: "inherit",
+        }}
+      >
+        <span>Planning Tasks ({planningTasks.length})</span>
+        {expanded ? (
+          <ChevronUp size={18} color="#777777" aria-hidden />
+        ) : (
+          <ChevronDown size={18} color="#777777" aria-hidden />
+        )}
+      </button>
+
+      {expanded ? (
+        <div style={{ marginTop: "12px" }}>
+          {planningTasks.length === 0 ? (
+            <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#777777" }}>
+              No planning tasks linked to this event yet.
+            </p>
+          ) : (
+            <ul style={{ margin: "0 0 12px", padding: 0, listStyle: "none" }}>
+              {planningTasks.map((task) => (
+                <li
+                  key={task.id}
+                  style={{
+                    fontSize: "13px",
+                    color: "#cccccc",
+                    padding: "8px 0",
+                    borderBottom: "1px solid #222222",
+                  }}
+                >
+                  {task.title}
+                  {task.status === "done" ? (
+                    <span style={{ marginLeft: "8px", fontSize: "11px", color: "#777777" }}>
+                      Done
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+            <button
+              type="button"
+              onClick={() => setShowQuickAdd((prev) => !prev)}
+              className={useTemplateButtonClass}
+            >
+              {showQuickAdd ? "Cancel" : "Add Planning Task"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleUseTemplate()}
+              disabled={templateSaving}
+              className={useTemplateButtonClass}
+            >
+              {templateSaving ? "Creating…" : "Use Event Planning Template"}
+            </button>
+          </div>
+
+          {showQuickAdd ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "flex-end" }}>
+              <div style={{ flex: "1 1 200px" }}>
+                <FormInput
+                  id="planningTaskTitle"
+                  label="Task title"
+                  value={quickTitle}
+                  onChange={(e) => setQuickTitle(e.target.value)}
+                  placeholder="e.g. Confirm catering"
+                />
+              </div>
+              <Button
+                onClick={() => void handleQuickAdd()}
+                disabled={!quickTitle.trim() || saving}
+              >
+                {saving ? "Adding…" : "Add Task"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const isMobile = useIsMobile();
@@ -1699,6 +1879,7 @@ export default function ClubEventsPage() {
   const club = getClubById(clubId ?? "");
   const { events, loading, createEvent, updateEvent, deleteEvent, refresh } =
     useClubEvents(clubId);
+  const { tasks, createTask } = useClubTasks(clubId);
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
@@ -1771,6 +1952,15 @@ export default function ClubEventsPage() {
 
   // Form state for create / edit
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const planningTasksForEditingEvent = useMemo(() => {
+    if (!editingId) return [];
+    return tasks.filter(
+      (task) =>
+        task.taskType === "event" &&
+        task.linkedEventId === editingId,
+    );
+  }, [tasks, editingId]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
@@ -2889,6 +3079,15 @@ export default function ClubEventsPage() {
               questions={formQuestions}
               onChange={setFormQuestions}
             />
+            {editingId ? (
+              <EventPlanningTasksSection
+                eventId={editingId}
+                eventTitle={title.trim() || "this event"}
+                planningTasks={planningTasksForEditingEvent}
+                createTask={createTask}
+                onFeedback={setFeedback}
+              />
+            ) : null}
             <div className="flex justify-end gap-3 pt-2">
               {editingId && (
                 <Button variant="ghost" onClick={resetForm}>

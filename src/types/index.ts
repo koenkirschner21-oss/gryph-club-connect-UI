@@ -173,6 +173,7 @@ export interface Message {
 // ---------------------------------------------------------------------------
 export type TaskStatus = "todo" | "in_progress" | "done";
 export type TaskPriority = "low" | "medium" | "high";
+export type TaskType = "general" | "event" | "hiring" | "setup" | "meeting";
 
 export interface Task {
   id: string;
@@ -181,6 +182,13 @@ export interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
+  taskType: TaskType;
+  linkedEventId?: string;
+  linkedMeetingId?: string;
+  linkedHiringListingId?: string;
+  linkedEventTitle?: string;
+  linkedMeetingTitle?: string;
+  linkedHiringTitle?: string;
   assignedTo?: string;
   assigneeName?: string;
   assigneeAvatar?: string;
