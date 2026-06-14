@@ -11,6 +11,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import { createInboxMessage } from "../../lib/inboxUtils";
+import { createNotification } from "../../lib/notifications";
 import {
   clubReportReasonLabel,
   clubReportStatusBadgeStyle,
@@ -1121,15 +1122,24 @@ export default function AdminPage() {
       return;
     }
 
-    await notifyUsers([
-      {
-        user_id: request.submitted_by,
-        type: "club_update",
-        message: `Your claim for "${request.clubName}" has been approved!`,
-        club_id: request.club_id,
-        reference_id: request.id,
-      },
-    ]);
+    await createNotification(supabase, {
+      userId: request.submitted_by,
+      type: "claim_approved",
+      message: `Your claim request for ${request.clubName} has been approved. You are now President.`,
+      clubId: request.club_id,
+      referenceId: request.id,
+    });
+
+    await createInboxMessage(supabase, {
+      recipientId: request.submitted_by,
+      type: "club_claim_approved",
+      title: `Club claim approved — ${request.clubName}`,
+      message: `Your claim request for ${request.clubName} has been approved. You are now able to manage this club as President.`,
+      actionRequired: false,
+      clubId: request.club_id,
+      referenceId: request.id,
+      referenceType: "club_claim_request",
+    });
 
     setClaimActionLoadingId(null);
     await loadClaimRequests();
@@ -1163,15 +1173,23 @@ export default function AdminPage() {
       .eq("id", request.club_id)
       .eq("claim_status", "claim_pending");
 
-    await notifyUsers([
-      {
-        user_id: request.submitted_by,
-        type: "club_update",
-        message: `Your claim for "${request.clubName}" was not approved.`,
-        club_id: request.club_id,
-        reference_id: request.id,
-      },
-    ]);
+    await createNotification(supabase, {
+      userId: request.submitted_by,
+      type: "claim_rejected",
+      message: `Your claim request for ${request.clubName} was not approved at this time.`,
+      referenceId: request.id,
+    });
+
+    await createInboxMessage(supabase, {
+      recipientId: request.submitted_by,
+      type: "club_claim_rejected",
+      title: `Club claim declined — ${request.clubName}`,
+      message: `Your claim request for ${request.clubName} was not approved at this time.`,
+      actionRequired: false,
+      clubId: request.club_id,
+      referenceId: request.id,
+      referenceType: "club_claim_request",
+    });
 
     setClaimActionLoadingId(null);
     await loadClaimRequests();
@@ -1199,25 +1217,24 @@ export default function AdminPage() {
       return;
     }
 
+    await createNotification(supabase, {
+      userId: request.submitted_by,
+      type: "claim_more_info",
+      message: `More information is needed for your claim request for ${request.clubName}.`,
+      referenceId: request.id,
+    });
+
     await createInboxMessage(supabase, {
       recipientId: request.submitted_by,
       type: "admin_message",
-      title: "More Information Needed",
-      message: `The admin team has reviewed your claim request for ${request.clubName} and needs more information. Please check your email or resubmit with additional details.`,
+      title: `More information needed — ${request.clubName}`,
+      message: `An admin needs more information before reviewing your claim request for ${request.clubName}.`,
+      actionRequired: true,
+      actionType: "provide_more_info",
       clubId: request.club_id,
       referenceId: request.id,
       referenceType: "club_claim_request",
     });
-
-    await notifyUsers([
-      {
-        user_id: request.submitted_by,
-        type: "club_update",
-        message: `We need more information about your claim for "${request.clubName}".`,
-        club_id: request.club_id,
-        reference_id: request.id,
-      },
-    ]);
 
     setClaimActionLoadingId(null);
     await loadClaimRequests();

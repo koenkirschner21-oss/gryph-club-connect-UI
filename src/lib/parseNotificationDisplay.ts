@@ -38,6 +38,15 @@ export function parseNotificationDisplay(
   if (type === "new_claim_request") {
     return { title: "Club Claim Request", body: trimmed };
   }
+  if (type === "claim_approved") {
+    return { title: "Claim Approved", body: trimmed };
+  }
+  if (type === "claim_rejected") {
+    return { title: "Claim Declined", body: trimmed };
+  }
+  if (type === "claim_more_info") {
+    return { title: "More Info Needed", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }

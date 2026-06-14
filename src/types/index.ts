@@ -264,7 +264,10 @@ export type NotificationType =
   | "join_request_submitted"
   | "new_join_request"
   | "join_rejected"
-  | "new_claim_request";
+  | "new_claim_request"
+  | "claim_approved"
+  | "claim_rejected"
+  | "claim_more_info";
 
 export interface Notification {
   id: string;

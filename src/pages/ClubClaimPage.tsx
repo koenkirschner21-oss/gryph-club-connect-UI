@@ -180,7 +180,7 @@ export default function ClubClaimPage() {
       user.email,
     );
 
-    void notifyClaimRequestSubmitted(supabase, {
+    await notifyClaimRequestSubmitted(supabase, {
       clubId: club.id,
       clubName: club.name,
       submitterName,
