@@ -21,7 +21,7 @@ import {
 } from "../../lib/clubJoinUtils";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
-import type { JoinQuestion, JoinQuestionType, MemberRole, MembershipType } from "../../types";
+import type { Club, JoinQuestion, JoinQuestionType, MemberRole, MembershipType } from "../../types";
 import {
   cloneDefaultPermissions,
   isPermissionCellChanged,
@@ -1300,20 +1300,37 @@ export default function ClubSettingsPage() {
     setSaving(true);
     const permissionsDirty = !permissionsEqual(permissions, savedPermissions);
 
+    const ownerUpdate: Partial<Club> = {
+      name: name.trim(),
+      shortDescription: shortDescription.trim() || undefined,
+      longDescription: longDescription.trim() || undefined,
+      category: category.trim(),
+      abbreviation: abbreviation.trim() || undefined,
+      brandColor: brandColor.trim() || undefined,
+      logoUrl: logoUrl.trim() || undefined,
+      bannerUrl: bannerUrl.trim() || undefined,
+      membershipType,
+    };
+
+    if (savedSnapshot) {
+      if (shortDescription.trim() !== savedSnapshot.shortDescription) {
+        ownerUpdate.descriptionConfirmed = true;
+      }
+      if (logoUrl.trim() !== savedSnapshot.logoUrl) {
+        ownerUpdate.logoConfirmed = true;
+      }
+      if (bannerUrl.trim() !== savedSnapshot.bannerUrl) {
+        ownerUpdate.bannerConfirmed = true;
+      }
+      if (membershipType !== savedSnapshot.membershipType) {
+        ownerUpdate.membershipConfirmed = true;
+      }
+    }
+
     const ok = await updateClub(
       clubId!,
       isOwner
-        ? {
-            name: name.trim(),
-            shortDescription: shortDescription.trim() || undefined,
-            longDescription: longDescription.trim() || undefined,
-            category: category.trim(),
-            abbreviation: abbreviation.trim() || undefined,
-            brandColor: brandColor.trim() || undefined,
-            logoUrl: logoUrl.trim() || undefined,
-            bannerUrl: bannerUrl.trim() || undefined,
-            membershipType,
-          }
+        ? ownerUpdate
         : {
             name: name.trim(),
             shortDescription: shortDescription.trim() || undefined,

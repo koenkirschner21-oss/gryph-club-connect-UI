@@ -69,6 +69,10 @@ function mapRow(row: Record<string, unknown>): Club {
     requiresApproval: (row.requires_approval as boolean) ?? false,
     joinType: ((row.join_type as string) ?? "open") as Club["joinType"],
     membershipType: normalizeMembershipType(row.membership_type),
+    descriptionConfirmed: (row.description_confirmed as boolean) ?? false,
+    logoConfirmed: (row.logo_confirmed as boolean) ?? false,
+    bannerConfirmed: (row.banner_confirmed as boolean) ?? false,
+    membershipConfirmed: (row.membership_confirmed as boolean) ?? false,
     claimStatus: normalizeClaimStatus(row.claim_status),
     setupCompleted: (row.setup_completed as boolean) ?? false,
     isPublished: (row.is_published as boolean) ?? false,
@@ -488,6 +492,13 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         row.requires_approval = fields.requiresApproval;
       if (fields.membershipType !== undefined)
         row.membership_type = fields.membershipType;
+      if (fields.descriptionConfirmed !== undefined)
+        row.description_confirmed = fields.descriptionConfirmed;
+      if (fields.logoConfirmed !== undefined) row.logo_confirmed = fields.logoConfirmed;
+      if (fields.bannerConfirmed !== undefined)
+        row.banner_confirmed = fields.bannerConfirmed;
+      if (fields.membershipConfirmed !== undefined)
+        row.membership_confirmed = fields.membershipConfirmed;
       if (fields.joinCode !== undefined) row.join_code = fields.joinCode;
       if (fields.contactEmail !== undefined) row.contact_email = fields.contactEmail;
       if (fields.meetingSchedule !== undefined)

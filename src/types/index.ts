@@ -69,6 +69,10 @@ export interface Club {
   requiresApproval?: boolean;
   joinType?: ClubJoinType;
   membershipType?: MembershipType;
+  descriptionConfirmed?: boolean;
+  logoConfirmed?: boolean;
+  bannerConfirmed?: boolean;
+  membershipConfirmed?: boolean;
   claimStatus?: ClaimStatus;
   setupCompleted?: boolean;
   isPublished?: boolean;

@@ -43,17 +43,23 @@ function buildCompletionChecks(
   return {
     clubName: Boolean(club.name?.trim()),
     shortDescription: Boolean(
-      club.shortDescription?.trim() && club.shortDescription.trim().length > 50,
+      club.shortDescription?.trim() &&
+        club.shortDescription.trim().length > 100 &&
+        club.descriptionConfirmed === true,
     ),
     logo: Boolean(
       club.logoUrl?.trim() &&
         !club.logoUrl.includes("ui-avatars") &&
-        !club.logoUrl.includes("placeholder"),
+        !club.logoUrl.includes("placeholder") &&
+        !club.logoUrl.includes("default") &&
+        !club.logoUrl.includes("initials") &&
+        club.logoConfirmed === true,
     ),
     banner: Boolean(
       club.bannerUrl?.trim() &&
         !club.bannerUrl.includes("placeholder") &&
-        !club.bannerUrl.includes("default"),
+        !club.bannerUrl.includes("default") &&
+        club.bannerConfirmed === true,
     ),
     contactEmail: Boolean(club.contactEmail?.trim()),
     meetingSchedule: Boolean(club.meetingSchedule?.trim()),
@@ -63,8 +69,7 @@ function buildCompletionChecks(
           (value) => value && String(value).trim() !== "",
         ),
     ),
-    membershipType:
-      club.membershipType !== null && club.membershipType !== undefined,
+    membershipType: club.membershipConfirmed === true,
     firstAnnouncement: postsCount > 0,
     firstEvent: eventsCount > 0,
   };
@@ -86,20 +91,21 @@ function buildChecklistItems(
     },
     {
       id: "logo",
-      label: "Upload club logo",
+      label: "Update club logo",
       complete: checks.logo,
       section: "profile",
       fixPath: settingsFixPath(club.id, "branding", "branding"),
       instruction:
-        "Add your official club logo so students can recognize your profile.",
+        "Replace the default logo with your club's official logo.",
     },
     {
       id: "banner",
-      label: "Upload club banner",
+      label: "Update club banner",
       complete: checks.banner,
       section: "profile",
       fixPath: settingsFixPath(club.id, "branding", "branding"),
-      instruction: "Add a banner image to make your club profile stand out.",
+      instruction:
+        "Replace the default banner with a real club banner image.",
     },
     {
       id: "short-description",
@@ -108,7 +114,7 @@ function buildChecklistItems(
       section: "profile",
       fixPath: settingsFixPath(club.id, "profile", "profile"),
       instruction:
-        "Review the imported description and update it to reflect your club accurately.",
+        "Review the imported description and update it to accurately represent your club. Click Save in Settings to confirm.",
     },
     {
       id: "contact-email",
@@ -140,7 +146,8 @@ function buildChecklistItems(
       complete: checks.membershipType,
       section: "profile",
       fixPath: settingsFixPath(club.id, "membership", "membership"),
-      instruction: "Choose how students can join your club.",
+      instruction:
+        "Choose how students can join your club and click Save to confirm.",
     },
     {
       id: "announcement",

@@ -1264,7 +1264,7 @@ export default function ClubHomePage() {
     const { data } = await supabase
       .from("clubs")
       .select(
-        "name, short_description, logo_url, banner_url, contact_email, meeting_schedule, social_links, membership_type",
+        "name, short_description, logo_url, banner_url, contact_email, meeting_schedule, social_links, membership_type, description_confirmed, logo_confirmed, banner_confirmed, membership_confirmed",
       )
       .eq("id", clubId)
       .maybeSingle();
@@ -1282,6 +1282,12 @@ export default function ClubHomePage() {
       socialLinks: (data.social_links as typeof club.socialLinks) ?? club.socialLinks,
       membershipType:
         (data.membership_type as Club["membershipType"]) ?? club.membershipType,
+      descriptionConfirmed:
+        (data.description_confirmed as boolean) ?? club.descriptionConfirmed,
+      logoConfirmed: (data.logo_confirmed as boolean) ?? club.logoConfirmed,
+      bannerConfirmed: (data.banner_confirmed as boolean) ?? club.bannerConfirmed,
+      membershipConfirmed:
+        (data.membership_confirmed as boolean) ?? club.membershipConfirmed,
     });
   }, [club, clubId, refreshEvents, refreshPosts]);
 
