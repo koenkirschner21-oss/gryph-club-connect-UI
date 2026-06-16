@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Bookmark, Download, Heart } from "lucide-react";
+import { Download } from "lucide-react";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -7,17 +7,22 @@ import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
-import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
-import VisibilityBadge from "../../components/club/VisibilityBadge";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import { filterByVisibility } from "../../lib/contentVisibility";
 import type { MemberRole, Post, Visibility } from "../../types";
+import {
+  AnnouncementCard,
+  AnnouncementSortDropdown,
+  EngagementTipsSidebar,
+  SeenListModal,
+  VisibilityFilterDropdown,
+  type AnnouncementSort,
+  type VisibilityFilter,
+} from "./announcements/AnnouncementsListUI";
 
 const PAGE_BG = "#0f0f0f";
-const CARD_BG = "#141414";
-const CARD_BORDER = "#242424";
 const MUTED = "#555555";
 const ACCENT_RED = "#E51937";
 
@@ -182,61 +187,6 @@ function formatPostDate(dateStr: string): string {
     day: "numeric",
     year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
   });
-}
-
-function initials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-}
-
-const reactionButtonStyle: CSSProperties = {
-  background: "transparent",
-  border: "none",
-  display: "flex",
-  alignItems: "center",
-  gap: "6px",
-  padding: "6px 10px",
-  borderRadius: "20px",
-  cursor: "pointer",
-};
-
-function menuItemButtonStyle(destructive = false): CSSProperties {
-  return {
-    width: "100%",
-    textAlign: "left",
-    background: "transparent",
-    border: "none",
-    color: destructive ? ACCENT_RED : "#cccccc",
-    padding: "9px 12px",
-    fontSize: "13px",
-    cursor: "pointer",
-  };
-}
-
-function DotsIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none" />
-    </svg>
-  );
 }
 
 function ThemedField({
@@ -427,6 +377,9 @@ export default function ClubAnnouncementsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
+  const [sortBy, setSortBy] = useState<AnnouncementSort>("newest");
+  const [seenListPostId, setSeenListPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -618,28 +571,54 @@ export default function ClubAnnouncementsPage() {
   const displayPosts = useMemo(() => {
     let list = filterByVisibility(posts, { isMember, isPrivileged });
 
+    if (visibilityFilter !== "all") {
+      list = list.filter((post) => (post.visibility ?? "members_only") === visibilityFilter);
+    }
+
     if (announcementFilter === "pinned") {
       list = list.filter((post) => pinnedById[post.id] ?? false);
     }
-
-    list.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
 
     if (announcementFilter === "all") {
       list.sort((a, b) => {
         const aPinned = pinnedById[a.id] ?? false;
         const bPinned = pinnedById[b.id] ?? false;
         if (aPinned !== bPinned) return aPinned ? -1 : 1;
-        return (
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
+        return 0;
       });
     }
 
+    list.sort((a, b) => {
+      if (sortBy === "oldest") {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (sortBy === "most_liked") {
+        const aLikes = reactionCountsByPost[a.id]?.heart ?? 0;
+        const bLikes = reactionCountsByPost[b.id]?.heart ?? 0;
+        if (bLikes !== aLikes) return bLikes - aLikes;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      if (sortBy === "most_seen") {
+        const aSeen = viewCountByPost[a.id] ?? 0;
+        const bSeen = viewCountByPost[b.id] ?? 0;
+        if (bSeen !== aSeen) return bSeen - aSeen;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
     return list;
-  }, [posts, pinnedById, announcementFilter, isMember, isPrivileged]);
+  }, [
+    posts,
+    pinnedById,
+    announcementFilter,
+    visibilityFilter,
+    sortBy,
+    isMember,
+    isPrivileged,
+    reactionCountsByPost,
+    viewCountByPost,
+  ]);
 
   function resetForm() {
     setTitle("");
@@ -944,21 +923,29 @@ export default function ClubAnnouncementsPage() {
       <div
         style={{
           display: "flex",
-          gap: "8px",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
           flexWrap: "wrap",
           marginBottom: "24px",
         }}
       >
-        {ANNOUNCEMENT_FILTER_PILLS.map((pill) => (
-          <button
-            key={pill.value}
-            type="button"
-            onClick={() => setAnnouncementFilter(pill.value)}
-            style={announcementFilterPillStyle(announcementFilter === pill.value)}
-          >
-            {pill.label}
-          </button>
-        ))}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {ANNOUNCEMENT_FILTER_PILLS.map((pill) => (
+            <button
+              key={pill.value}
+              type="button"
+              onClick={() => setAnnouncementFilter(pill.value)}
+              style={announcementFilterPillStyle(announcementFilter === pill.value)}
+            >
+              {pill.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <VisibilityFilterDropdown value={visibilityFilter} onChange={setVisibilityFilter} />
+          <AnnouncementSortDropdown value={sortBy} onChange={setSortBy} />
+        </div>
       </div>
 
       {reportSuccessMessage ? (
@@ -1101,10 +1088,27 @@ export default function ClubAnnouncementsPage() {
           No pinned announcements yet.
         </p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", width: "100%" }}>
-          {displayPosts.map((post) => renderPostCard(post))}
+        <div style={{ display: "flex", alignItems: "flex-start" }}>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              marginRight: isPrivileged && !isMobile ? "24px" : 0,
+            }}
+          >
+            {displayPosts.map((post) => renderPostCard(post))}
+          </div>
+          {isPrivileged && !isMobile ? <EngagementTipsSidebar /> : null}
         </div>
       )}
+
+      {seenListPostId ? (
+        <SeenListModal
+          postTitle={posts.find((p) => p.id === seenListPostId)?.title ?? "Announcement"}
+          seenCount={viewCountByPost[seenListPostId] ?? 0}
+          onClose={() => setSeenListPostId(null)}
+        />
+      ) : null}
 
       {reportPostId ? (
         <div
@@ -1248,10 +1252,7 @@ export default function ClubAnnouncementsPage() {
     const isExpanded = expanded[post.id] ?? false;
     const showReadMore = (post.content?.length ?? 0) > 300;
     const authorMeta = authorMetaById[post.authorId] ?? {};
-    const displayName = formatNameWithRoleTitle(
-      authorMeta.name ?? post.authorName ?? "Unknown",
-      authorMeta.roleTitle,
-    );
+    const authorName = authorMeta.name ?? post.authorName ?? "Unknown";
     const reactionCounts = reactionCountsByPost[post.id] ?? {
       heart: 0,
       thumbs_up: 0,
@@ -1264,309 +1265,63 @@ export default function ClubAnnouncementsPage() {
       laugh: false,
       bookmark: false,
     };
-    const heartActive = myReactions.heart;
-    const bookmarkActive = myReactions.bookmark;
-    const heartCount = reactionCounts.heart ?? 0;
-    const borderColor = isHovered ? "#2a2a2a" : CARD_BORDER;
+    const showMenu = isPrivileged || (isMemberRole && post.authorId !== user?.id);
 
     return (
-      <article
+      <AnnouncementCard
         key={post.id}
+        post={post}
+        isPinned={isPinned}
+        isHovered={isHovered}
+        isExpanded={isExpanded}
+        showReadMore={showReadMore}
+        authorName={authorName}
+        roleTitle={authorMeta.roleTitle}
+        avatarUrl={authorMeta.avatarUrl}
+        heartCount={reactionCounts.heart ?? 0}
+        heartActive={myReactions.heart}
+        bookmarkActive={myReactions.bookmark}
+        seenCount={viewCountByPost[post.id] ?? 0}
+        isPrivileged={isPrivileged}
+        showMenu={showMenu}
+        menuOpen={menuOpenPostId === post.id}
+        isMemberRole={isMemberRole}
+        canReport={post.authorId !== user?.id}
         onMouseEnter={() => setHoveredPostId(post.id)}
         onMouseLeave={() => setHoveredPostId(null)}
-        style={{
-          background: CARD_BG,
-          borderTop: `1px solid ${borderColor}`,
-          borderRight: `1px solid ${borderColor}`,
-          borderBottom: `1px solid ${borderColor}`,
-          borderLeft: isPinned ? `3px solid ${ACCENT_RED}` : `1px solid ${borderColor}`,
-          borderRadius: "14px",
-          padding: "24px",
-          marginBottom: "16px",
-          transition: "border-color 0.15s ease",
-          width: "100%",
-          boxSizing: "border-box",
+        onToggleMenu={() =>
+          setMenuOpenPostId((prev) => (prev === post.id ? null : post.id))
+        }
+        onToggleExpand={() =>
+          setExpanded((prev) => ({ ...prev, [post.id]: !prev[post.id] }))
+        }
+        onHeartToggle={() => void handleReactionToggle(post.id, "heart")}
+        onBookmarkToggle={() => void handleReactionToggle(post.id, "bookmark")}
+        onViewSeenList={() => setSeenListPostId(post.id)}
+        onPin={() => {
+          setMenuOpenPostId(null);
+          void handleTogglePin(post.id);
         }}
-      >
-        {isPinned ? (
-          <p
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              color: ACCENT_RED,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              margin: "0 0 12px",
-            }}
-          >
-            📌 Pinned
-          </p>
-        ) : null}
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "12px",
-            marginBottom: "16px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-            <VisibilityBadge visibility={post.visibility} />
-            {authorMeta.avatarUrl ? (
-              <img
-                src={authorMeta.avatarUrl}
-                alt=""
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  flexShrink: 0,
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  background: "#2a2a2a",
-                  color: "#888888",
-                  fontWeight: 600,
-                  fontSize: "13px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {initials(displayName)}
-              </div>
-            )}
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <p style={{ fontSize: "14px", fontWeight: 600, color: "#ffffff", margin: 0 }}>
-                  {displayName}
-                </p>
-              </div>
-              <p style={{ fontSize: "12px", color: "#444444", margin: "3px 0 0" }}>
-                {formatPostDate(post.createdAt)}
-                {post.updatedAt && post.updatedAt !== post.createdAt ? (
-                  <>
-                    {" · "}
-                    <span style={{ fontSize: "11px", color: "#333333" }}>
-                      edited {formatPostDate(post.updatedAt)}
-                    </span>
-                  </>
-                ) : null}
-              </p>
-            </div>
-          </div>
-          {isPrivileged || (isMemberRole && post.authorId !== user?.id) ? (
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <button
-                type="button"
-                aria-label="Post options"
-                onClick={() => setMenuOpenPostId((prev) => (prev === post.id ? null : post.id))}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#777777",
-                  padding: "4px",
-                  cursor: "pointer",
-                }}
-              >
-                <DotsIcon />
-              </button>
-              {menuOpenPostId === post.id ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    top: "24px",
-                    background: "#151515",
-                    border: "1px solid #2a2a2a",
-                    borderRadius: "8px",
-                    minWidth: "140px",
-                    zIndex: 5,
-                    overflow: "hidden",
-                  }}
-                >
-                  {isPrivileged ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuOpenPostId(null);
-                          void handleTogglePin(post.id);
-                        }}
-                        style={menuItemButtonStyle()}
-                      >
-                        {isPinned ? "Unpin" : "Pin"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuOpenPostId(null);
-                          openEditForm(post);
-                        }}
-                        style={menuItemButtonStyle()}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuOpenPostId(null);
-                          void handleDelete(post.id);
-                        }}
-                        style={menuItemButtonStyle(true)}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  ) : null}
-                  {isMemberRole && post.authorId !== user?.id ? (
-                    <button
-                      type="button"
-                      onClick={() => openReportModal(post.id)}
-                      style={menuItemButtonStyle()}
-                    >
-                      Report Post
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-
-        <p
-          style={{
-            fontSize: "17px",
-            fontWeight: 700,
-            color: "#ffffff",
-            margin: "0 0 10px",
-            maxWidth: "720px",
-            width: "100%",
-          }}
-        >
-          {post.title}
-        </p>
-        <div
-          style={{
-            display: isExpanded ? "block" : "-webkit-box",
-            WebkitLineClamp: isExpanded ? "unset" : 4,
-            WebkitBoxOrient: "vertical",
-            overflow: isExpanded ? "visible" : "hidden",
-            fontSize: "14px",
-            color: "#cccccc",
-            lineHeight: 1.8,
-            maxWidth: "720px",
-            width: "100%",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {post.content}
-        </div>
-        {showReadMore ? (
-          <button
-            type="button"
-            onClick={() =>
-              setExpanded((prev) => ({ ...prev, [post.id]: !prev[post.id] }))
-            }
-            style={{
-              background: "none",
-              border: "none",
-              color: ACCENT_RED,
-              fontSize: "13px",
-              fontWeight: 500,
-              cursor: "pointer",
-              padding: "4px 0",
-              marginTop: "4px",
-            }}
-          >
-            {isExpanded ? "Show less" : "Read more"}
-          </button>
-        ) : null}
-
-        {post.attachmentUrl && post.attachmentType ? (
-          <PostAttachment url={post.attachmentUrl} type={post.attachmentType} title={post.title} />
-        ) : null}
-
-        {post.linkUrl ? (
-          <a
-            href={post.linkUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "inline-block",
-              marginTop: "12px",
-              color: ACCENT_RED,
-              fontSize: "13px",
-              fontWeight: 500,
-              textDecoration: "none",
-            }}
-          >
-            View Link →
-          </a>
-        ) : null}
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginTop: "16px",
-            paddingTop: "16px",
-            borderTop: "1px solid #1a1a1a",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <button
-              type="button"
-              aria-label={heartActive ? "Unlike announcement" : "Like announcement"}
-              onClick={() => void handleReactionToggle(post.id, "heart")}
-              style={reactionButtonStyle}
-            >
-              <Heart
-                size={16}
-                color={heartActive ? ACCENT_RED : "#555555"}
-                fill={heartActive ? ACCENT_RED : "none"}
-                aria-hidden
-              />
-              <span
-                style={{
-                  fontSize: "13px",
-                  color: heartActive ? ACCENT_RED : "#555555",
-                }}
-              >
-                {heartCount}
-              </span>
-            </button>
-            <button
-              type="button"
-              aria-label={bookmarkActive ? "Remove bookmark" : "Bookmark announcement"}
-              onClick={() => void handleReactionToggle(post.id, "bookmark")}
-              style={reactionButtonStyle}
-            >
-              <Bookmark
-                size={16}
-                color="#555555"
-                fill={bookmarkActive ? "#555555" : "none"}
-                aria-hidden
-              />
-            </button>
-          </div>
-          {isPrivileged ? (
-            <p style={{ fontSize: "12px", color: "#444444", margin: 0 }}>
-              Seen by {viewCountByPost[post.id] ?? 0} members
-            </p>
-          ) : null}
-        </div>
-      </article>
+        onEdit={() => {
+          setMenuOpenPostId(null);
+          openEditForm(post);
+        }}
+        onDelete={() => {
+          setMenuOpenPostId(null);
+          void handleDelete(post.id);
+        }}
+        onReport={() => openReportModal(post.id)}
+        formatDate={formatPostDate}
+        attachment={
+          post.attachmentUrl && post.attachmentType ? (
+            <PostAttachment
+              url={post.attachmentUrl}
+              type={post.attachmentType}
+              title={post.title}
+            />
+          ) : undefined
+        }
+      />
     );
   }
 }
