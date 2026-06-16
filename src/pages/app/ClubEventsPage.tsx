@@ -23,7 +23,7 @@ import { useClubTasks } from "../../hooks/useClubTasks";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { supabase } from "../../lib/supabaseClient";
-import type { ClubEvent, MemberRole, RsvpStatus, Task, Visibility } from "../../types";
+import type { ClubEvent, MemberRole, RsvpStatus, Visibility } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
@@ -45,9 +45,13 @@ import {
   normalizeEventCategory,
   type EventCategory,
 } from "../../lib/eventCategories";
-import { EVENT_PLANNING_TASK_TITLES } from "../../lib/taskTypes";
+import EventPlanningTasksSection from "../../components/club/EventPlanningTasksSection";
+import { useClubMembers } from "../../hooks/useClubMembers";
 
 type EventFilter = "all" | "public" | "my_rsvps";
+
+const templateOutlineButtonClass =
+  "rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-[#cccccc] transition-colors hover:border-[#555555] hover:text-white";
 
 const EVENT_FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -907,6 +911,7 @@ function EventCard({
   myStatus,
   counts,
   copiedEventId,
+  planningTaskCount = 0,
   onRsvp,
   onStartEdit,
   onDelete,
@@ -929,6 +934,7 @@ function EventCard({
   myStatus?: RsvpStatus;
   counts: { going: number; maybe: number; not_going: number };
   copiedEventId: string | null;
+  planningTaskCount?: number;
   onRsvp: (eventId: string, status: RsvpStatus) => void;
   onStartEdit: (event: ClubEvent) => void;
   onDelete: (eventId: string) => void;
@@ -1042,6 +1048,14 @@ function EventCard({
             locationLabel={locationLabel}
             color="#777777"
           />
+
+          {isPrivileged ? (
+            <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 8px" }}>
+              {planningTaskCount > 0
+                ? `${planningTaskCount} planning task${planningTaskCount === 1 ? "" : "s"}`
+                : "No planning tasks"}
+            </p>
+          ) : null}
 
           {attendeeCountLabel ? (
             <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 8px" }}>
@@ -1690,187 +1704,6 @@ function FormQuestionBuilder({
   );
 }
 
-const useTemplateButtonClass =
-  "rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-[#cccccc] transition-colors hover:border-[#555555] hover:text-white";
-
-function EventPlanningTasksSection({
-  eventId,
-  eventTitle,
-  planningTasks,
-  createTask,
-  onFeedback,
-}: {
-  eventId: string;
-  eventTitle: string;
-  planningTasks: Task[];
-  createTask: ReturnType<typeof useClubTasks>["createTask"];
-  onFeedback: (message: { type: "success" | "error"; text: string }) => void;
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [quickTitle, setQuickTitle] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [templateSaving, setTemplateSaving] = useState(false);
-
-  async function handleQuickAdd() {
-    if (!quickTitle.trim()) return;
-    setSaving(true);
-    const taskId = await createTask({
-      title: quickTitle.trim(),
-      description: `Planning task for ${eventTitle}`,
-      priority: "medium",
-      taskType: "event",
-      linkedEventId: eventId,
-    });
-    setSaving(false);
-    if (taskId) {
-      setQuickTitle("");
-      setShowQuickAdd(false);
-      onFeedback({ type: "success", text: "Planning task added." });
-    } else {
-      onFeedback({ type: "error", text: "Could not add planning task." });
-    }
-  }
-
-  async function handleUseTemplate() {
-    setTemplateSaving(true);
-    const existingTitles = new Set(
-      planningTasks.map((task) => task.title.trim().toLowerCase()),
-    );
-    let created = 0;
-    for (const title of EVENT_PLANNING_TASK_TITLES) {
-      if (existingTitles.has(title.toLowerCase())) continue;
-      const taskId = await createTask({
-        title,
-        description: `Planning task for ${eventTitle}`,
-        priority: "medium",
-        taskType: "event",
-        linkedEventId: eventId,
-      });
-      if (taskId) created += 1;
-    }
-    setTemplateSaving(false);
-    if (created > 0) {
-      onFeedback({
-        type: "success",
-        text: `Added ${created} planning task${created === 1 ? "" : "s"}.`,
-      });
-    } else {
-      onFeedback({
-        type: "success",
-        text: "All planning template tasks already exist for this event.",
-      });
-    }
-  }
-
-  return (
-    <div
-      style={{
-        border: "1px solid #2a2a2a",
-        borderRadius: "10px",
-        padding: "14px",
-        background: "#111111",
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setExpanded((prev) => !prev)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "8px",
-          background: "transparent",
-          border: "none",
-          color: "#ffffff",
-          fontSize: "14px",
-          fontWeight: 600,
-          cursor: "pointer",
-          padding: 0,
-          fontFamily: "inherit",
-        }}
-      >
-        <span>Planning Tasks ({planningTasks.length})</span>
-        {expanded ? (
-          <ChevronUp size={18} color="#777777" aria-hidden />
-        ) : (
-          <ChevronDown size={18} color="#777777" aria-hidden />
-        )}
-      </button>
-
-      {expanded ? (
-        <div style={{ marginTop: "12px" }}>
-          {planningTasks.length === 0 ? (
-            <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#777777" }}>
-              No planning tasks linked to this event yet.
-            </p>
-          ) : (
-            <ul style={{ margin: "0 0 12px", padding: 0, listStyle: "none" }}>
-              {planningTasks.map((task) => (
-                <li
-                  key={task.id}
-                  style={{
-                    fontSize: "13px",
-                    color: "#cccccc",
-                    padding: "8px 0",
-                    borderBottom: "1px solid #222222",
-                  }}
-                >
-                  {task.title}
-                  {task.status === "done" ? (
-                    <span style={{ marginLeft: "8px", fontSize: "11px", color: "#777777" }}>
-                      Done
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
-            <button
-              type="button"
-              onClick={() => setShowQuickAdd((prev) => !prev)}
-              className={useTemplateButtonClass}
-            >
-              {showQuickAdd ? "Cancel" : "Add Planning Task"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleUseTemplate()}
-              disabled={templateSaving}
-              className={useTemplateButtonClass}
-            >
-              {templateSaving ? "Creating…" : "Use Event Planning Template"}
-            </button>
-          </div>
-
-          {showQuickAdd ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "flex-end" }}>
-              <div style={{ flex: "1 1 200px" }}>
-                <FormInput
-                  id="planningTaskTitle"
-                  label="Task title"
-                  value={quickTitle}
-                  onChange={(e) => setQuickTitle(e.target.value)}
-                  placeholder="e.g. Confirm catering"
-                />
-              </div>
-              <Button
-                onClick={() => void handleQuickAdd()}
-                disabled={!quickTitle.trim() || saving}
-              >
-                {saving ? "Adding…" : "Add Task"}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function ClubEventsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const isMobile = useIsMobile();
@@ -1879,7 +1712,8 @@ export default function ClubEventsPage() {
   const club = getClubById(clubId ?? "");
   const { events, loading, createEvent, updateEvent, deleteEvent, refresh } =
     useClubEvents(clubId);
-  const { tasks, createTask } = useClubTasks(clubId);
+  const { tasks, createTask, updateTask, deleteTask } = useClubTasks(clubId);
+  const { members } = useClubMembers(clubId);
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const isPrivileged = userRole === "owner" || userRole === "executive";
@@ -1961,6 +1795,16 @@ export default function ClubEventsPage() {
         task.linkedEventId === editingId,
     );
   }, [tasks, editingId]);
+
+  const planningTaskCountByEvent = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const task of tasks) {
+      if (task.taskType === "event" && task.linkedEventId) {
+        counts[task.linkedEventId] = (counts[task.linkedEventId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [tasks]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
@@ -2990,7 +2834,7 @@ export default function ClubEventsPage() {
             {!editingId ? (
               <button
                 type="button"
-                className={useTemplateButtonClass}
+                className={templateOutlineButtonClass}
                 onClick={() => setShowTemplatePicker(true)}
               >
                 Use Template
@@ -3081,10 +2925,14 @@ export default function ClubEventsPage() {
             />
             {editingId ? (
               <EventPlanningTasksSection
+                clubId={clubId ?? ""}
                 eventId={editingId}
                 eventTitle={title.trim() || "this event"}
                 planningTasks={planningTasksForEditingEvent}
+                members={members}
                 createTask={createTask}
+                updateTask={updateTask}
+                deleteTask={deleteTask}
                 onFeedback={setFeedback}
               />
             ) : null}
@@ -3227,6 +3075,7 @@ export default function ClubEventsPage() {
                 myStatus={myStatus}
                 counts={c}
                 copiedEventId={copiedEventId}
+                planningTaskCount={planningTaskCountByEvent[event.id] ?? 0}
                 onRsvp={handleRsvp}
                 onStartEdit={startEdit}
                 onDelete={handleDelete}
@@ -3263,6 +3112,7 @@ export default function ClubEventsPage() {
                 past
                 counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}
                 copiedEventId={copiedEventId}
+                planningTaskCount={planningTaskCountByEvent[event.id] ?? 0}
                 onRsvp={handleRsvp}
                 onStartEdit={startEdit}
                 onDelete={handleDelete}
