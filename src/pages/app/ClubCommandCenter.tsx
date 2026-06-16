@@ -26,6 +26,7 @@ import {
 } from "../../lib/clubProfileCompletion";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
+import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { supabase } from "../../lib/supabaseClient";
 import type { Club, ClubEvent, Post, RsvpCounts, Task, TaskStatus } from "../../types";
 import Spinner from "../../components/ui/Spinner";
@@ -145,6 +146,7 @@ function parseTaskDueDate(dateStr: string | undefined): Date | null {
 }
 
 function taskStatusLabel(status: TaskStatus): string {
+  if (status === "cancelled") return "Cancelled";
   if (status === "in_progress") return "In Progress";
   if (status === "done") return "Done";
   return "To Do";
@@ -678,7 +680,7 @@ export default function ClubCommandCenter({
   const weekEnd = useMemo(() => endOfWeek(new Date()), []);
 
   const openTasks = useMemo(
-    () => tasks.filter((task) => task.status !== "done"),
+    () => tasks.filter((task) => task.status !== "done" && task.status !== "cancelled"),
     [tasks],
   );
 
@@ -1157,6 +1159,7 @@ export default function ClubCommandCenter({
                       <p style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
                         {task.title}
                       </p>
+                      <LinkedMeetingCancelledLabel task={task} />
                       <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
                         {task.assigneeName ?? "Unassigned"} ·{" "}
                         {task.dueDate ? formatTaskDate(task.dueDate) : "No due date"}

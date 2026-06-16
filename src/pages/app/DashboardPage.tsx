@@ -14,6 +14,7 @@ import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
 import { useDashboardEvents, type DashboardEvent } from "../../hooks/useDashboardEvents";
+import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { useDashboardTasks } from "../../hooks/useDashboardTasks";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import {
@@ -754,6 +755,12 @@ function calendarWeekDays(reference = new Date()): Array<{
   });
 }
 
+function isLinkedMeetingCancelledRow(row: Record<string, unknown>): boolean {
+  const raw = row.linked_meeting;
+  const meeting = Array.isArray(raw) ? raw[0] : raw;
+  return (meeting as { status?: string } | null)?.status === "cancelled";
+}
+
 type WeekTaskItem = {
   kind: "task";
   id: string;
@@ -763,6 +770,7 @@ type WeekTaskItem = {
   clubId: string;
   priority: string;
   status: string;
+  linkedMeetingCancelled?: boolean;
 };
 
 type WeekEventItem = {
@@ -854,6 +862,7 @@ function WeekTaskCard({
           >
             {task.title}
           </p>
+          <LinkedMeetingCancelledLabel show={task.linkedMeetingCancelled} />
           <span
             style={{
               display: "inline-flex",
@@ -932,6 +941,8 @@ function ThisWeekTab({
             priority,
             status,
             due_date,
+            linked_meeting_id,
+            linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( status ),
             clubs:club_id ( name )
           `,
           )
@@ -939,6 +950,7 @@ function ThisWeekTab({
           .gte("due_date", start)
           .lte("due_date", end)
           .neq("status", "done")
+          .neq("status", "cancelled")
           .order("due_date", { ascending: true }),
         supabase
           .from("events")
@@ -1002,6 +1014,9 @@ function ThisWeekTab({
             clubId: row.club_id as string,
             priority: (row.priority as string) ?? "medium",
             status: (row.status as string) ?? "todo",
+            linkedMeetingCancelled: isLinkedMeetingCancelledRow(
+              row as Record<string, unknown>,
+            ),
           });
         }
       }
@@ -1265,6 +1280,7 @@ type OverviewTask = {
   clubName: string;
   clubId: string;
   dueDate?: string;
+  linkedMeetingCancelled?: boolean;
 };
 
 function OverviewTaskCard({
@@ -1317,6 +1333,7 @@ function OverviewTaskCard({
           >
             {task.title}
           </p>
+          <LinkedMeetingCancelledLabel show={task.linkedMeetingCancelled} />
           <p
             style={{
               fontSize: "11px",
@@ -1943,11 +1960,14 @@ function OverviewTab({
         due_date,
         created_by,
         created_at,
+        linked_meeting_id,
+        linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( status ),
         clubs:club_id ( name )
       `)
       .in("club_id", joinedClubIds)
       .or(`assigned_to.eq.${userId},created_by.eq.${userId}`)
       .neq("status", "done")
+      .neq("status", "cancelled")
       .order("due_date", { ascending: true })
       .limit(3)
       .then(({ data, error }) => {
@@ -1969,6 +1989,9 @@ function OverviewTab({
                 clubName: (club.name as string) ?? "",
                 clubId: row.club_id as string,
                 dueDate: (row.due_date as string) ?? undefined,
+                linkedMeetingCancelled: isLinkedMeetingCancelledRow(
+                  row as Record<string, unknown>,
+                ),
               };
             }),
           );
@@ -2667,6 +2690,7 @@ type TasksTabTask = {
   clubId: string;
   clubAbbreviation?: string;
   clubLogoUrl?: string;
+  linkedMeetingCancelled?: boolean;
 };
 
 function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
@@ -2718,9 +2742,10 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     supabase
       .from("tasks")
       .select(
-        "id, title, status, club_id, clubs:club_id ( name, logo_url, abbreviation )",
+        "id, title, status, club_id, linked_meeting_id, linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( status ), clubs:club_id ( name, logo_url, abbreviation )",
       )
       .in("club_id", joinedClubs)
+      .neq("status", "cancelled")
       .order("created_at", { ascending: false })
       .limit(60)
       .then(({ data, error }) => {
@@ -2743,6 +2768,9 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
                 clubId: row.club_id as string,
                 clubAbbreviation: (club.abbreviation as string) ?? undefined,
                 clubLogoUrl: clubLogoUrl || undefined,
+                linkedMeetingCancelled: isLinkedMeetingCancelledRow(
+                  row as Record<string, unknown>,
+                ),
               };
             }),
           );
@@ -2970,6 +2998,7 @@ function TasksTabTaskCard({
                 >
                   {task.title}
                 </p>
+                <LinkedMeetingCancelledLabel show={task.linkedMeetingCancelled} />
                 <p
                   style={{
                     margin: "3px 0 0",

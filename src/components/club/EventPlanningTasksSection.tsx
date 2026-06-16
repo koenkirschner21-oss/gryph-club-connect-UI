@@ -10,6 +10,7 @@ import {
 } from "../../lib/taskTypes";
 import { supabase } from "../../lib/supabaseClient";
 import type { ClubMember, Task, TaskPriority, TaskStatus } from "../../types";
+import LinkedMeetingCancelledLabel from "../tasks/LinkedMeetingCancelledLabel";
 import Button from "../ui/Button";
 import FormInput from "../ui/FormInput";
 
@@ -20,6 +21,7 @@ const statusLabels: Record<TaskStatus, string> = {
   todo: "To Do",
   in_progress: "In Progress",
   done: "Done",
+  cancelled: "Cancelled",
 };
 
 const useTemplateButtonClass =
@@ -402,6 +404,7 @@ function PlanningTaskDetailModal({
         >
           {task.title}
         </h2>
+        <LinkedMeetingCancelledLabel task={task} />
         <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#555555" }}>
           Linked to: {task.linkedEventTitle ?? eventTitle}
         </p>
@@ -547,6 +550,7 @@ function PlanningTaskRow({
             <TaskTypeBadge />
             <PriorityPill priority={task.priority} />
           </div>
+          <LinkedMeetingCancelledLabel task={task} />
           <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
             Linked to: {task.linkedEventTitle ?? eventTitle}
           </p>

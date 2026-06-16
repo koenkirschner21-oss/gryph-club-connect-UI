@@ -23,7 +23,8 @@ export function useDashboardTasks(joinedClubIds: string[]) {
         .from("tasks")
         .select("id", { count: "exact", head: true })
         .in("club_id", joinedClubIds)
-        .neq("status", "done");
+        .neq("status", "done")
+      .neq("status", "cancelled");
 
       if (cancelled) return;
 

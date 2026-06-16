@@ -7,6 +7,10 @@ import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import type { MemberRole } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 import { MeetingCard } from "./meetings/MeetingCard";
+import {
+  MeetingCancelConfirmModal,
+  type MeetingCancelOption,
+} from "./meetings/MeetingCancelConfirmModal";
 import { MeetingCreateFlow, emptyCreateForm } from "./meetings/MeetingCreateFlow";
 import { MeetingDetailView } from "./meetings/MeetingDetailView";
 import { primaryButtonStyle } from "./meetings/meetingStyles";
@@ -44,6 +48,12 @@ export default function ClubMeetingsPage() {
   const [showPast, setShowPast] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<ClubMeeting | null>(null);
   const [createInitial, setCreateInitial] = useState(emptyCreateForm());
+  const [cancelModal, setCancelModal] = useState<{
+    meeting: ClubMeeting;
+    linkedTaskCount: number;
+    selectedOption: MeetingCancelOption;
+    applying: boolean;
+  } | null>(null);
   const editMeetingId = searchParams.get("edit");
 
   const isPrivileged = isPrivilegedClubRole(userRole);
@@ -201,9 +211,79 @@ export default function ClubMeetingsPage() {
     navigate(`/app/clubs/${clubId}/meetings/new?edit=${meeting.id}`);
   };
 
-  const cancelMeeting = async (meeting: ClubMeeting) => {
-    if (!window.confirm(`Cancel "${meeting.title}"?`)) return;
-    await supabase.from("club_meetings").update({ status: "cancelled" }).eq("id", meeting.id);
+  const requestCancelMeeting = async (meeting: ClubMeeting) => {
+    const { count, error } = await supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("linked_meeting_id", meeting.id)
+      .neq("status", "done");
+
+    if (error) {
+      console.error("Failed to check linked tasks for meeting cancellation:", error.message);
+      return;
+    }
+
+    const linkedTaskCount = count ?? 0;
+
+    if (linkedTaskCount === 0) {
+      if (!window.confirm("Cancel this meeting? This cannot be undone.")) return;
+      const { error: cancelError } = await supabase
+        .from("club_meetings")
+        .update({ status: "cancelled" })
+        .eq("id", meeting.id);
+      if (cancelError) {
+        console.error("Failed to cancel meeting:", cancelError.message);
+        return;
+      }
+      void loadMeetings();
+      return;
+    }
+
+    setCancelModal({
+      meeting,
+      linkedTaskCount,
+      selectedOption: "meeting_only",
+      applying: false,
+    });
+  };
+
+  const closeCancelModal = () => {
+    setCancelModal(null);
+  };
+
+  const confirmCancelMeeting = async () => {
+    if (!cancelModal || cancelModal.selectedOption === "keep") {
+      closeCancelModal();
+      return;
+    }
+
+    setCancelModal((prev) => (prev ? { ...prev, applying: true } : prev));
+
+    const { meeting, selectedOption } = cancelModal;
+    const { error: meetingError } = await supabase
+      .from("club_meetings")
+      .update({ status: "cancelled" })
+      .eq("id", meeting.id);
+
+    if (meetingError) {
+      console.error("Failed to cancel meeting:", meetingError.message);
+      setCancelModal((prev) => (prev ? { ...prev, applying: false } : prev));
+      return;
+    }
+
+    if (selectedOption === "meeting_and_tasks") {
+      const { error: tasksError } = await supabase
+        .from("tasks")
+        .update({ status: "cancelled" })
+        .eq("linked_meeting_id", meeting.id)
+        .neq("status", "done");
+
+      if (tasksError) {
+        console.error("Failed to cancel linked tasks:", tasksError.message);
+      }
+    }
+
+    closeCancelModal();
     void loadMeetings();
   };
 
@@ -334,7 +414,7 @@ export default function ClubMeetingsPage() {
                 isPrivileged={isPrivileged}
                 isMobile={isMobile}
                 onEdit={openEdit}
-                onCancel={cancelMeeting}
+                onCancel={requestCancelMeeting}
               />
             )
           ) : (
@@ -354,9 +434,23 @@ export default function ClubMeetingsPage() {
           isPrivileged={isPrivileged}
           isMobile={isMobile}
           onEdit={openEdit}
-          onCancel={cancelMeeting}
+          onCancel={requestCancelMeeting}
         />
       )}
+
+      {cancelModal ? (
+        <MeetingCancelConfirmModal
+          meeting={cancelModal.meeting}
+          linkedTaskCount={cancelModal.linkedTaskCount}
+          selectedOption={cancelModal.selectedOption}
+          applying={cancelModal.applying}
+          onSelectOption={(option) =>
+            setCancelModal((prev) => (prev ? { ...prev, selectedOption: option } : prev))
+          }
+          onConfirm={() => void confirmCancelMeeting()}
+          onGoBack={closeCancelModal}
+        />
+      ) : null}
     </div>
   );
 }

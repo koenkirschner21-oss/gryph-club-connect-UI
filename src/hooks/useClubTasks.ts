@@ -31,7 +31,7 @@ const TASK_SELECT = `
     avatar_url
   ),
   linked_event:events!tasks_linked_event_id_fkey ( title ),
-  linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( title ),
+  linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( title, status ),
   linked_hiring:hiring_listings!tasks_linked_hiring_listing_id_fkey ( title )
 `;
 
@@ -59,6 +59,11 @@ function mapTaskRow(row: Record<string, unknown>): Task {
     linkedHiringListingId: (row.linked_hiring_listing_id as string | null) ?? undefined,
     linkedEventTitle: ((linkedEvent as { title?: string } | null)?.title ?? undefined),
     linkedMeetingTitle: ((linkedMeeting as { title?: string } | null)?.title ?? undefined),
+    linkedMeetingStatus: ((linkedMeeting as { status?: string } | null)?.status as
+      | "upcoming"
+      | "completed"
+      | "cancelled"
+      | undefined),
     linkedHiringTitle: ((linkedHiring as { title?: string } | null)?.title ?? undefined),
     assignedTo: (row.assigned_to as string) ?? undefined,
     assigneeName: (profile?.full_name as string) ?? undefined,

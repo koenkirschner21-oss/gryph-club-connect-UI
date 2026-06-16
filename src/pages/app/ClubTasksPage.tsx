@@ -33,6 +33,7 @@ import {
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
+import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 
@@ -40,12 +41,14 @@ const statusLabels: Record<TaskStatus, string> = {
   todo: "To Do",
   in_progress: "In Progress",
   done: "Done",
+  cancelled: "Cancelled",
 };
 
 const boardColumnHeaderColor: Record<TaskStatus, string> = {
   todo: "#777777",
   in_progress: "#FFC429",
   done: "#777777",
+  cancelled: "#555555",
 };
 
 const BOARD_COLUMNS: TaskStatus[] = ["todo", "in_progress", "done"];
@@ -119,21 +122,21 @@ function TaskTypeBadge({ taskType }: { taskType: TaskType }) {
 }
 
 function TaskLinkedLabel({ task }: { task: Task }) {
-  if (task.taskType === "event" && task.linkedEventId) {
-    return (
-      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
-        📅 Linked to: {task.linkedEventTitle ?? "Event"}
-      </p>
-    );
-  }
-  if (task.taskType === "meeting" && task.linkedMeetingId) {
-    return (
-      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
-        🗓 Linked to: {task.linkedMeetingTitle ?? "Meeting"}
-      </p>
-    );
-  }
-  return null;
+  return (
+    <>
+      <LinkedMeetingCancelledLabel task={task} />
+      {task.taskType === "event" && task.linkedEventId ? (
+        <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
+          📅 Linked to: {task.linkedEventTitle ?? "Event"}
+        </p>
+      ) : null}
+      {task.taskType === "meeting" && task.linkedMeetingId ? (
+        <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
+          🗓 Linked to: {task.linkedMeetingTitle ?? "Meeting"}
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 function TaskTypeFilterChipBar({
@@ -969,8 +972,9 @@ export default function ClubTasksPage() {
   );
 
   const visibleTasks = useMemo(() => {
-    if (isPrivileged) return enrichedTasks;
-    return enrichedTasks.filter((t) => t.assignedTo === user?.id);
+    const activeTasks = enrichedTasks.filter((task) => task.status !== "cancelled");
+    if (isPrivileged) return activeTasks;
+    return activeTasks.filter((t) => t.assignedTo === user?.id);
   }, [enrichedTasks, isPrivileged, user?.id]);
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -1084,6 +1088,7 @@ export default function ClubTasksPage() {
       todo: [],
       in_progress: [],
       done: [],
+      cancelled: [],
     };
     for (const task of filteredTasks) {
       grouped[task.status].push(task);

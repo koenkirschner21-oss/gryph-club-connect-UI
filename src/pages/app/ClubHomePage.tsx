@@ -14,6 +14,7 @@ import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useClubTasks } from "../../hooks/useClubTasks";
+import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import {
@@ -794,6 +795,7 @@ function NeedsAttentionTaskRow({
         >
           {task.title}
         </p>
+        <LinkedMeetingCancelledLabel task={task} />
         {metaParts.length > 0 ? (
           <p
             style={{
