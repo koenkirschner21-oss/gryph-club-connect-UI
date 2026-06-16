@@ -35,6 +35,20 @@ import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCan
 import TaskDetailModal from "../../components/tasks/TaskDetailModal";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
+import {
+  TasksListColumnHeaders,
+  TasksListFooter,
+  TasksListMenu,
+  TasksListMenuButton,
+  TasksListMobileCard,
+  TasksListSectionHeader,
+  TasksListStatCards,
+  TasksListTableRow,
+  TaskTypeFilterDropdown,
+  formatRelativeDueLabel,
+  parseTaskDueDay,
+  sortTasksByDueDate,
+} from "./tasks/TasksListUI";
 
 const statusLabels: Record<TaskStatus, string> = {
   todo: "To Do",
@@ -146,7 +160,7 @@ function TaskTypeFilterChipBar({
   onChange: (chip: TaskTypeFilter) => void;
 }) {
   return (
-    <div style={{ marginBottom: "16px" }}>
+    <div>
       <p style={{ margin: "0 0 8px", fontSize: "11px", color: "#555555" }}>Type:</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
         {TASK_TYPE_FILTER_CHIPS.map((chip) => {
@@ -218,17 +232,6 @@ function listRowLeftBorder(status: TaskStatus): string {
   if (status === "in_progress") return "#FFC429";
   if (status === "done") return "#2a2a2a";
   return "#333333";
-}
-
-function parseTaskDueDay(dueDate: string): Date | null {
-  const trimmed = dueDate.trim();
-  if (!trimmed) return null;
-  const due = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
-    ? new Date(`${trimmed}T00:00:00`)
-    : new Date(trimmed);
-  if (Number.isNaN(due.getTime())) return null;
-  due.setHours(0, 0, 0, 0);
-  return due;
 }
 
 function getSectionNextDue(
@@ -323,6 +326,19 @@ const markDoneButtonStyle: CSSProperties = {
   background: "transparent",
   border: "1px solid #E51937",
   color: "#E51937",
+  borderRadius: "6px",
+  padding: "5px 12px",
+  fontSize: "12px",
+  fontWeight: 500,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  fontFamily: "inherit",
+};
+
+const viewDetailsActionStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #2a2a2a",
+  color: "#777777",
   borderRadius: "6px",
   padding: "5px 12px",
   fontSize: "12px",
@@ -1064,14 +1080,43 @@ export default function ClubTasksPage() {
 
   const filteredDoneCount = filteredTasks.filter((t) => t.status === "done").length;
   const filteredTotalCount = filteredTasks.length;
-  const progressFillPercent =
-    filteredTotalCount === 0
-      ? 0
-      : (filteredDoneCount / filteredTotalCount) * 100;
-  const progressPercent =
-    filteredTotalCount === 0
-      ? 0
-      : Math.round((filteredDoneCount / filteredTotalCount) * 100);
+
+  const dueThisWeekCount = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return filteredTasks.filter((task) => {
+      if (task.status === "done" || !task.dueDate) return false;
+      const due = parseTaskDueDay(task.dueDate);
+      if (!due) return false;
+      return due.getTime() >= today.getTime() && due.getTime() <= weekEnd.getTime();
+    }).length;
+  }, [filteredTasks]);
+
+  const highPriorityCount = useMemo(
+    () =>
+      filteredTasks.filter((task) => task.priority === "high" && task.status !== "done")
+        .length,
+    [filteredTasks],
+  );
+
+  const listFooterLabel = useMemo(() => {
+    const chips = isPrivileged ? privilegedFilterChips : memberFilterChips;
+    if (activeFilter === "all" && activeTypeFilter === "all") {
+      return "Showing all tasks";
+    }
+    const parts: string[] = [];
+    if (activeFilter !== "all") {
+      const chip = chips.find((c) => c.id === activeFilter);
+      parts.push(chip?.label.toLowerCase() ?? "filtered");
+    }
+    if (activeTypeFilter !== "all") {
+      const typeChip = TASK_TYPE_FILTER_CHIPS.find((c) => c.id === activeTypeFilter);
+      parts.push(typeChip?.label.toLowerCase() ?? activeTypeFilter);
+    }
+    return `Showing ${parts.join(" · ")} tasks`;
+  }, [activeFilter, activeTypeFilter, isPrivileged]);
 
   const tasksByStatus = useMemo(() => {
     const grouped: Record<TaskStatus, Task[]> = {
@@ -1259,6 +1304,11 @@ export default function ClubTasksPage() {
     const name = task.assigneeName ?? member?.fullName ?? "Unassigned";
     if (!task.assignedTo) return "Unassigned";
     return formatNameWithRoleTitle(name, member?.roleTitle);
+  }
+
+  function assigneePlainNameFor(task: Task): string {
+    const member = members.find((m) => m.userId === task.assignedTo);
+    return task.assigneeName ?? member?.fullName ?? "Unassigned";
   }
 
   function renderTaskMenu(task: Task) {
@@ -1581,88 +1631,28 @@ export default function ClubTasksPage() {
     sectionTasks: Task[],
   ) {
     const nextDue = getSectionNextDue(sectionTasks);
+    if (sectionStatus === "cancelled") return null;
 
     return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "12px",
-          paddingBottom: "8px",
-          borderBottom: "1px solid #2a2a2a",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <span
-            style={{
-              fontWeight: 700,
-              fontSize: "13px",
-              color: "#ffffff",
-              textTransform: "uppercase",
-            }}
-          >
-            {statusLabels[sectionStatus]}
-          </span>
-          <span
-            style={{
-              marginLeft: "8px",
-              background: "#2a2a2a",
-              color: "#999999",
-              fontSize: "11px",
-              padding: "2px 8px",
-              borderRadius: "12px",
-            }}
-          >
-            {sectionTasks.length}
-          </span>
-        </div>
-        {nextDue && sectionStatus !== "done" ? (
-          <span
-            style={{
-              fontSize: "12px",
-              color: nextDue.isOverdue ? "#E51937" : "#777777",
-            }}
-          >
-            Next due {nextDue.label}
-          </span>
-        ) : null}
-      </div>
+      <TasksListSectionHeader
+        sectionStatus={sectionStatus}
+        count={sectionTasks.length}
+        nextDueLabel={nextDue?.label}
+        nextDueOverdue={nextDue?.isOverdue}
+      />
     );
   }
 
   function renderListSection(sectionStatus: TaskStatus, sectionTasks: Task[]) {
     if (sectionTasks.length === 0) return null;
-
-    const content = (
-      <>
-        {renderListSectionHeader(sectionStatus, sectionTasks)}
-        {sectionTasks.map((task) =>
-          renderListCard(task, sectionStatus === "done"),
-        )}
-      </>
-    );
-
-    if (sectionStatus === "in_progress") {
-      return (
-        <div
-          key={sectionStatus}
-          style={{
-            marginBottom: "20px",
-            background: "#0d0d0d",
-            borderRadius: "10px",
-            padding: "16px",
-            border: "1px solid #222222",
-          }}
-        >
-          {content}
-        </div>
-      );
-    }
+    const sortedTasks = sortTasksByDueDate(sectionTasks);
 
     return (
       <div key={sectionStatus} style={{ marginBottom: "20px" }}>
-        {content}
+        {renderListSectionHeader(sectionStatus, sortedTasks)}
+        {sortedTasks.map((task) =>
+          renderListCard(task, sectionStatus === "done"),
+        )}
       </div>
     );
   }
@@ -1708,9 +1698,11 @@ export default function ClubTasksPage() {
 
     return (
       <>
+        {!isMobile ? <TasksListColumnHeaders /> : null}
         {sections.map((section) =>
           renderListSection(section.status, section.tasks),
         )}
+        <TasksListFooter filterLabel={listFooterLabel} />
       </>
     );
   }
@@ -1722,7 +1714,7 @@ export default function ClubTasksPage() {
     const canViewComments = isPrivileged || task.assignedTo === user?.id;
     const canComment = isPrivileged || task.assignedTo === user?.id;
     const next = nextStatus(task.status);
-    const assigneeName = assigneeDisplayFor(task);
+    const assigneeName = assigneePlainNameFor(task);
     const commentCount = commentCounts[task.id] ?? 0;
     const listAction = listQuickActionLabel(task.status);
     const showStatusAction = canChangeStatus && listAction && !isDone;
@@ -1730,10 +1722,95 @@ export default function ClubTasksPage() {
     const metaParts: string[] = [assigneeName];
     if (task.dueDate) {
       metaParts.push(formatTaskDate(task.dueDate));
+      const relative = formatRelativeDueLabel(task.dueDate, task.status);
+      if (relative) metaParts.push(relative.text);
     }
     if (canViewComments) {
       metaParts.push(
         `${commentCount} ${commentCount === 1 ? "comment" : "comments"}`,
+      );
+    }
+
+    const actionStyle =
+      task.status === "todo" ? startTaskButtonStyle : markDoneButtonStyle;
+
+    const menu = isPrivileged ? (
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <TasksListMenuButton
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenMenuTaskId((prev) => (prev === task.id ? null : task.id));
+          }}
+        />
+        <TasksListMenu
+          open={openMenuTaskId === task.id}
+          onViewDetails={() => {
+            setOpenMenuTaskId(null);
+            openTaskDetail(task);
+          }}
+          onEdit={() => startEdit(task)}
+          onDelete={() => {
+            setOpenMenuTaskId(null);
+            void handleDelete(task.id);
+          }}
+        />
+      </div>
+    ) : null;
+
+    const linkedLabel = <TaskLinkedLabel task={task} />;
+
+    const commentsSection =
+      canViewComments && expandedComments[task.id] ? (
+        <TaskCommentsSection
+          taskId={task.id}
+          taskTitle={task.title}
+          assigneeId={task.assignedTo}
+          clubId={clubId}
+          commenterName={myCommenterName}
+          userId={user?.id}
+          expanded
+          onToggle={() => toggleComments(task.id)}
+          commentCount={commentCount}
+          onCommentCountChange={handleCommentCountChange}
+          canComment={canComment}
+          canDeleteAnyComment={isPrivileged}
+        />
+      ) : null;
+
+    if (isMobile) {
+      return (
+        <div
+          key={task.id}
+          onMouseEnter={() => setHoveredTaskId(task.id)}
+          onMouseLeave={() => {
+            setHoveredTaskId((prev) => (prev === task.id ? null : prev));
+            if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
+          }}
+        >
+          <TasksListMobileCard
+            task={task}
+            isDone={isDone}
+            isHovered={isHovered}
+            leftBorder={leftBorder}
+            assigneeId={task.assignedTo}
+            metaParts={metaParts}
+            showStatusAction={Boolean(showStatusAction)}
+            listAction={listAction}
+            actionStyle={
+              showStatusAction
+                ? actionStyle
+                : viewDetailsActionStyle
+            }
+            onRowClick={() => openTaskDetail(task)}
+            onStatusAction={() => {
+              if (next) void handleStatusChange(task.id, next);
+            }}
+            onViewDetails={() => openTaskDetail(task)}
+            menu={menu}
+            linkedLabel={linkedLabel}
+            commentsSection={commentsSection}
+          />
+        </div>
       );
     }
 
@@ -1745,128 +1822,31 @@ export default function ClubTasksPage() {
           setHoveredTaskId((prev) => (prev === task.id ? null : prev));
           if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
         }}
-        onClick={() => openTaskDetail(task)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          background: "#141414",
-          borderTop: `1px solid ${isHovered ? "#333333" : "#2a2a2a"}`,
-          borderRight: `1px solid ${isHovered ? "#333333" : "#2a2a2a"}`,
-          borderBottom: `1px solid ${isHovered ? "#333333" : "#2a2a2a"}`,
-          borderLeft: `3px solid ${leftBorder}`,
-          borderRadius: "8px",
-          padding: "14px 16px",
-          marginBottom: "8px",
-          opacity: isDone ? 0.65 : 1,
-          transition: "opacity 0.15s ease, border-color 0.15s ease",
-          cursor: "pointer",
-        }}
       >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              flexWrap: "wrap",
-              marginBottom: "4px",
-            }}
-          >
-            <p
-              style={{
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#ffffff",
-                margin: 0,
-                textDecoration: isDone ? "line-through" : "none",
-                minWidth: 0,
-              }}
-            >
-              {task.title}
-            </p>
-            {!isDone ? (
-              <PriorityPill priority={task.priority} />
-            ) : null}
-            <TaskTypeBadge taskType={task.taskType ?? "general"} />
-          </div>
-          <TaskLinkedLabel task={task} />
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#777777",
-              margin: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {task.assignedTo ? (
-              <>
-                <Link
-                  to={`/app/profile/${task.assignedTo}`}
-                  style={{ color: "#777777", textDecoration: "none" }}
-                >
-                  {metaParts[0]}
-                </Link>
-                {metaParts.length > 1 ? ` · ${metaParts.slice(1).join(" · ")}` : ""}
-              </>
-            ) : (
-              metaParts.join(" · ")
-            )}
-          </p>
-          {canViewComments && expandedComments[task.id] ? (
-            <TaskCommentsSection
-              taskId={task.id}
-              taskTitle={task.title}
-              assigneeId={task.assignedTo}
-              clubId={clubId}
-              commenterName={myCommenterName}
-              userId={user?.id}
-              expanded
-              onToggle={() => toggleComments(task.id)}
-              commentCount={commentCount}
-              onCommentCountChange={handleCommentCountChange}
-              canComment={canComment}
-              canDeleteAnyComment={isPrivileged}
-            />
-          ) : null}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            flexShrink: 0,
+        <TasksListTableRow
+          task={task}
+          isDone={isDone}
+          isHovered={isHovered}
+          assigneeName={assigneeName}
+          assigneeId={task.assignedTo}
+          assigneeAvatar={assigneeAvatarFor(task)}
+          assigneeInitials={getInitials(assigneeName)}
+          commentCount={commentCount}
+          showStatusAction={Boolean(showStatusAction)}
+          listAction={listAction}
+          actionStyle={
+            showStatusAction
+              ? actionStyle
+              : viewDetailsActionStyle
+          }
+          onRowClick={() => openTaskDetail(task)}
+          onStatusAction={() => {
+            if (next) void handleStatusChange(task.id, next);
           }}
-        >
-          {showStatusAction ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (next) void handleStatusChange(task.id, next);
-              }}
-              style={
-                task.status === "todo" ? startTaskButtonStyle : markDoneButtonStyle
-              }
-            >
-              {listAction}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                openTaskDetail(task);
-              }}
-              style={viewDetailsPlainStyle}
-            >
-              View Details
-            </button>
-          )}
-          {isHovered && isPrivileged ? renderTaskMenu(task) : null}
-        </div>
+          onViewDetails={() => openTaskDetail(task)}
+          menu={menu}
+          linkedLabel={linkedLabel}
+        />
       </div>
     );
   }
@@ -1962,47 +1942,13 @@ export default function ClubTasksPage() {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <span
-          style={{
-            fontSize: "13px",
-            color: "#777777",
-            flexShrink: 0,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {filteredDoneCount} of {filteredTotalCount} tasks complete · {progressPercent}%
-        </span>
-        <div
-          style={{
-            flex: 1,
-            height: "6px",
-            borderRadius: "3px",
-            background: "#2a2a2a",
-            overflow: "hidden",
-            minWidth: 0,
-          }}
-        >
-          {progressFillPercent > 0 ? (
-            <div
-              style={{
-                height: "100%",
-                width: `${progressFillPercent}%`,
-                background: "#FFC429",
-                borderRadius: "3px",
-                transition: "width 0.25s ease",
-              }}
-            />
-          ) : null}
-        </div>
-      </div>
+      <TasksListStatCards
+        doneCount={filteredDoneCount}
+        totalCount={filteredTotalCount}
+        dueThisWeekCount={dueThisWeekCount}
+        highPriorityCount={highPriorityCount}
+        isMobile={isMobile}
+      />
 
       <TaskFilterChipBar
         chips={isPrivileged ? privilegedFilterChips : memberFilterChips}
@@ -2010,21 +1956,25 @@ export default function ClubTasksPage() {
         onChange={setActiveFilter}
       />
 
-      <TaskTypeFilterChipBar
-        active={activeTypeFilter}
-        onChange={setActiveTypeFilter}
-      />
-
-      <p
+      <div
         style={{
-          fontSize: "12px",
-          color: "#555555",
-          marginTop: 0,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "12px",
+          flexWrap: "wrap",
           marginBottom: "16px",
         }}
       >
-        Grouped by status · Sorted by due date
-      </p>
+        <TaskTypeFilterChipBar
+          active={activeTypeFilter}
+          onChange={setActiveTypeFilter}
+        />
+        <TaskTypeFilterDropdown
+          value={activeTypeFilter}
+          onChange={setActiveTypeFilter}
+        />
+      </div>
 
       {feedback ? (
         <div
