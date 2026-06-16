@@ -4,8 +4,6 @@ import {
   MoreHorizontal,
   Send,
   X,
-  Calendar,
-  User,
   Circle,
   CheckCircle,
 } from "lucide-react";
@@ -34,6 +32,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
+import TaskDetailModal from "../../components/tasks/TaskDetailModal";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 
@@ -256,15 +255,6 @@ function getSectionNextDue(
     isOverdue: nearest.dueDay.getTime() < today.getTime(),
   };
 }
-
-const sectionLabelStyle: CSSProperties = {
-  fontSize: "11px",
-  fontWeight: 700,
-  color: "#555555",
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  margin: "0 0 8px",
-};
 
 function nextStatus(status: TaskStatus): TaskStatus | null {
   if (status === "todo") return "in_progress";
@@ -1255,7 +1245,7 @@ export default function ClubTasksPage() {
   }
 
   const detailTask = selectedTask
-    ? visibleTasks.find((t) => t.id === selectedTask.id) ?? null
+    ? enrichedTasks.find((t) => t.id === selectedTask.id) ?? selectedTask
     : null;
 
   function assigneeAvatarFor(task: Task): string | undefined {
@@ -1308,6 +1298,25 @@ export default function ClubTasksPage() {
               overflow: "hidden",
             }}
           >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openTaskDetail(task);
+              }}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                color: "#cccccc",
+                padding: "9px 12px",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              View Details
+            </button>
             <button
               type="button"
               onClick={(e) => {
@@ -1374,6 +1383,7 @@ export default function ClubTasksPage() {
           setHoveredTaskId((prev) => (prev === task.id ? null : prev));
           if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
         }}
+        onClick={() => openTaskDetail(task)}
         style={{
           background: "#141414",
           border: `1px solid ${isHovered ? "#333333" : "#2a2a2a"}`,
@@ -1735,6 +1745,7 @@ export default function ClubTasksPage() {
           setHoveredTaskId((prev) => (prev === task.id ? null : prev));
           if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
         }}
+        onClick={() => openTaskDetail(task)}
         style={{
           display: "flex",
           alignItems: "center",
@@ -1749,6 +1760,7 @@ export default function ClubTasksPage() {
           marginBottom: "8px",
           opacity: isDone ? 0.65 : 1,
           transition: "opacity 0.15s ease, border-color 0.15s ease",
+          cursor: "pointer",
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1831,7 +1843,8 @@ export default function ClubTasksPage() {
           {showStatusAction ? (
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (next) void handleStatusChange(task.id, next);
               }}
               style={
@@ -1843,7 +1856,10 @@ export default function ClubTasksPage() {
           ) : (
             <button
               type="button"
-              onClick={() => openTaskDetail(task)}
+              onClick={(e) => {
+                e.stopPropagation();
+                openTaskDetail(task);
+              }}
               style={viewDetailsPlainStyle}
             >
               View Details
@@ -2361,182 +2377,29 @@ export default function ClubTasksPage() {
         renderListSections(filteredTasks)
       )}
 
-      {detailTask ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="task-detail-title"
-          onClick={closeTaskDetail}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.8)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "24px",
+      {detailTask && clubId ? (
+        <TaskDetailModal
+          task={detailTask}
+          clubId={clubId}
+          onClose={closeTaskDetail}
+          assigneeName={assigneeDisplayFor(detailTask)}
+          assigneeAvatarUrl={assigneeAvatarFor(detailTask)}
+          canEdit={isPrivileged}
+          canDelete={isPrivileged}
+          canChangeStatus={isPrivileged || detailTask.assignedTo === user?.id}
+          canComment={isPrivileged || detailTask.assignedTo === user?.id}
+          commenterName={myCommenterName}
+          userId={user?.id}
+          onEdit={() => {
+            closeTaskDetail();
+            startEdit(detailTask);
           }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#141414",
-              border: "1px solid #2a2a2a",
-              borderRadius: "16px",
-              maxWidth: "580px",
-              width: "100%",
-              maxHeight: "85vh",
-              overflowY: "auto",
-              padding: "32px",
-              position: "relative",
-            }}
-          >
-            <button
-              type="button"
-              aria-label="Close task details"
-              onClick={closeTaskDetail}
-              style={{
-                position: "absolute",
-                top: "16px",
-                right: "16px",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "#555555",
-                padding: "4px",
-                display: "flex",
-              }}
-            >
-              <X size={20} aria-hidden />
-            </button>
-
-            <PriorityPill priority={detailTask.priority} />
-
-            <h2
-              id="task-detail-title"
-              style={{
-                fontSize: "22px",
-                fontWeight: 800,
-                color: "#ffffff",
-                margin: "8px 0 0",
-              }}
-            >
-              {detailTask.title}
-            </h2>
-
-            {(
-              [
-                {
-                  icon: User,
-                  label: "Assignee",
-                  value: assigneeDisplayFor(detailTask),
-                },
-                {
-                  icon: Calendar,
-                  label: "Due date",
-                  value: detailTask.dueDate
-                    ? formatTaskDate(detailTask.dueDate)
-                    : "No due date",
-                },
-                {
-                  icon: Circle,
-                  label: "Status",
-                  value: statusLabels[detailTask.status],
-                },
-              ] as const
-            ).map(({ icon: Icon, label, value }) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  alignItems: "center",
-                  padding: "10px 0",
-                  borderBottom: "1px solid #1e1e1e",
-                }}
-              >
-                <Icon size={16} color="#555555" aria-hidden />
-                <span
-                  style={{
-                    fontSize: "12px",
-                    color: "#555555",
-                    width: "100px",
-                    flexShrink: 0,
-                  }}
-                >
-                  {label}
-                </span>
-                <span style={{ fontSize: "14px", color: "#cccccc" }}>{value}</span>
-              </div>
-            ))}
-
-            <p style={sectionLabelStyle}>Description</p>
-            <p
-              style={{
-                fontSize: "14px",
-                color: "#cccccc",
-                lineHeight: 1.8,
-                margin: 0,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {detailTask.description.trim() || "No description provided."}
-            </p>
-
-            <p style={{ fontSize: "12px", color: "#555555", margin: "16px 0 0" }}>
-              {commentCounts[detailTask.id] ?? 0}{" "}
-              {(commentCounts[detailTask.id] ?? 0) === 1 ? "comment" : "comments"}
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "8px",
-                marginTop: "20px",
-              }}
-            >
-              {(isPrivileged || detailTask.assignedTo === user?.id) &&
-              listQuickActionLabel(detailTask.status) ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = nextStatus(detailTask.status);
-                    if (target) void handleStatusChange(detailTask.id, target);
-                  }}
-                  style={
-                    detailTask.status === "todo"
-                      ? startTaskButtonStyle
-                      : markDoneButtonStyle
-                  }
-                >
-                  {listQuickActionLabel(detailTask.status)}
-                </button>
-              ) : null}
-              {isPrivileged ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    closeTaskDetail();
-                    startEdit(detailTask);
-                  }}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #E51937",
-                    borderRadius: "20px",
-                    padding: "5px 12px",
-                    fontSize: "11px",
-                    color: "#E51937",
-                    cursor: "pointer",
-                  }}
-                >
-                  Edit Task
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
+          onDelete={() => {
+            void handleDelete(detailTask.id);
+            closeTaskDetail();
+          }}
+          onStatusChange={(status) => void handleStatusChange(detailTask.id, status)}
+        />
       ) : null}
 
       {showTemplatePicker ? (

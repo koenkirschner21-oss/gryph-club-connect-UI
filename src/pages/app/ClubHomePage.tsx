@@ -14,7 +14,9 @@ import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useClubTasks } from "../../hooks/useClubTasks";
+import { useClubMembers } from "../../hooks/useClubMembers";
 import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
+import TaskDetailModal from "../../components/tasks/TaskDetailModal";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import {
@@ -22,12 +24,9 @@ import {
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { filterByVisibility } from "../../lib/contentVisibility";
+import { formatNameWithRoleTitle, accessLevelFromMember } from "../../lib/memberRoleTitle";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
-import {
-  accessLevelFromMember,
-  formatNameWithRoleTitle,
-} from "../../lib/memberRoleTitle";
 import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
 import { supabase } from "../../lib/supabaseClient";
 import type {
@@ -1249,7 +1248,8 @@ export default function ClubHomePage() {
 
   const { events, loading: eventsLoading, refresh: refreshEvents } = useClubEvents(clubId);
   const { posts, loading: postsLoading, refresh: refreshPosts } = useClubPosts(clubId);
-  const { tasks, loading: tasksLoading } = useClubTasks(clubId);
+  const { tasks, loading: tasksLoading, updateTask, deleteTask } = useClubTasks(clubId);
+  const { members } = useClubMembers(clubId);
   const [checklistClub, setChecklistClub] = useState<Club | null>(null);
 
   useEffect(() => {
@@ -1638,6 +1638,25 @@ export default function ClubHomePage() {
   const firstName = fullNameSource
     ? fullNameSource.split(/\s+/)[0]
     : user?.email?.split("@")[0] || "there";
+
+  const detailTask = selectedTask
+    ? tasks.find((task) => task.id === selectedTask.id) ?? selectedTask
+    : null;
+
+  function assigneeDisplayFor(task: Task): string {
+    const member = members.find((m) => m.userId === task.assignedTo);
+    const name = task.assigneeName ?? member?.fullName ?? "Unassigned";
+    if (!task.assignedTo) return "Unassigned";
+    return formatNameWithRoleTitle(name, member?.roleTitle);
+  }
+
+  function assigneeAvatarFor(task: Task): string | undefined {
+    if (task.assigneeAvatar) return task.assigneeAvatar;
+    return members.find((m) => m.userId === task.assignedTo)?.avatarUrl;
+  }
+
+  const taskCommenterName =
+    fullNameSource || user?.email?.split("@")[0] || "A member";
 
   return (
     <div
@@ -2146,60 +2165,29 @@ export default function ClubHomePage() {
         </DashboardItemModal>
       ) : null}
 
-      {selectedTask && isPrivileged ? (
-        <DashboardItemModal
+      {detailTask && clubId ? (
+        <TaskDetailModal
+          task={detailTask}
+          clubId={clubId}
           onClose={() => setSelectedTask(null)}
-          footerLink={{ label: "View All Tasks →", to: tasksPath }}
-        >
-          <h2
-            style={{
-              fontSize: "18px",
-              fontWeight: 700,
-              color: "#ffffff",
-              margin: "0 0 16px",
-              paddingRight: "28px",
-            }}
-          >
-            {selectedTask.title}
-          </h2>
-          {selectedTask.description?.trim() ? (
-            <p
-              style={{
-                fontSize: "14px",
-                color: "#cccccc",
-                lineHeight: 1.6,
-                margin: "0 0 12px",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {selectedTask.description}
-            </p>
-          ) : null}
-          {selectedTask.assigneeName ? (
-            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
-              <span style={{ color: "#555555" }}>Assignee: </span>
-              {selectedTask.assigneeName}
-            </p>
-          ) : null}
-          {selectedTask.dueDate ? (
-            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
-              <span style={{ color: "#555555" }}>Due: </span>
-              {new Date(selectedTask.dueDate).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </p>
-          ) : null}
-          <p style={{ fontSize: "13px", color: "#888888", margin: 0 }}>
-            <span style={{ color: "#555555" }}>Status: </span>
-            {selectedTask.status === "in_progress"
-              ? "In progress"
-              : selectedTask.status === "done"
-                ? "Done"
-                : "To do"}
-          </p>
-        </DashboardItemModal>
+          assigneeName={assigneeDisplayFor(detailTask)}
+          assigneeAvatarUrl={assigneeAvatarFor(detailTask)}
+          canEdit={isPrivileged}
+          canDelete={isPrivileged}
+          canChangeStatus={isPrivileged || detailTask.assignedTo === user?.id}
+          canComment={isPrivileged || detailTask.assignedTo === user?.id}
+          commenterName={taskCommenterName}
+          userId={user?.id}
+          onEdit={() => {
+            setSelectedTask(null);
+            navigate(`${tasksPath}?edit=${detailTask.id}`);
+          }}
+          onDelete={() => {
+            void deleteTask(detailTask.id);
+            setSelectedTask(null);
+          }}
+          onStatusChange={(status) => void updateTask(detailTask.id, { status })}
+        />
       ) : null}
     </div>
   );

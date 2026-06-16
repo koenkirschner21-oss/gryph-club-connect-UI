@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check, MoreHorizontal, X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import type { UseClubTasksReturn } from "../../hooks/useClubTasks";
@@ -8,9 +8,9 @@ import {
   EVENT_PLANNING_TASK_TITLES,
   TASK_TYPE_BADGE_LABELS,
 } from "../../lib/taskTypes";
-import { supabase } from "../../lib/supabaseClient";
 import type { ClubMember, Task, TaskPriority, TaskStatus } from "../../types";
 import LinkedMeetingCancelledLabel from "../tasks/LinkedMeetingCancelledLabel";
+import TaskDetailModal from "../tasks/TaskDetailModal";
 import Button from "../ui/Button";
 import FormInput from "../ui/FormInput";
 
@@ -288,201 +288,6 @@ function EventPlanningTemplateModal({
   );
 }
 
-function PlanningTaskDetailModal({
-  task,
-  eventTitle,
-  clubId,
-  onClose,
-  onEdit,
-  onStatusChange,
-}: {
-  task: Task;
-  eventTitle: string;
-  clubId: string;
-  onClose: () => void;
-  onEdit: () => void;
-  onStatusChange: (status: TaskStatus) => void;
-}) {
-  const { user } = useAuthContext();
-  const [commentCount, setCommentCount] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    void supabase
-      .from("task_comments")
-      .select("id", { count: "exact", head: true })
-      .eq("task_id", task.id)
-      .then(({ count }) => {
-        if (!cancelled) setCommentCount(count ?? 0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [task.id]);
-
-  const detailRows = [
-    { label: "Assignee", value: task.assigneeName ?? "Unassigned" },
-    {
-      label: "Due date",
-      value: task.dueDate ? formatTaskDate(task.dueDate) : "No due date",
-    },
-    { label: "Priority", value: task.priority },
-    { label: "Status", value: statusLabels[task.status] },
-    { label: "Task type", value: TASK_TYPE_BADGE_LABELS.event },
-    { label: "Linked event", value: task.linkedEventTitle ?? eventTitle },
-    { label: "Created by", value: task.creatorName ?? "Unknown" },
-    {
-      label: "Created",
-      value: task.createdAt
-        ? new Date(task.createdAt).toLocaleString()
-        : "Unknown",
-    },
-    {
-      label: "Last updated",
-      value: task.createdAt
-        ? new Date(task.createdAt).toLocaleString()
-        : "Not tracked",
-    },
-  ];
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="planning-task-detail-title"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.8)",
-        zIndex: 1100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#141414",
-          border: "1px solid #2a2a2a",
-          borderRadius: "14px",
-          maxWidth: "560px",
-          width: "100%",
-          maxHeight: "85vh",
-          overflowY: "auto",
-          padding: "28px",
-          position: "relative",
-        }}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            background: "none",
-            border: "none",
-            color: "#555555",
-            cursor: "pointer",
-          }}
-        >
-          <X size={20} />
-        </button>
-
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
-          <TaskTypeBadge />
-          <PriorityPill priority={task.priority} />
-        </div>
-
-        <h2
-          id="planning-task-detail-title"
-          style={{ margin: "0 0 4px", fontSize: "20px", fontWeight: 800, color: "#ffffff" }}
-        >
-          {task.title}
-        </h2>
-        <LinkedMeetingCancelledLabel task={task} />
-        <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#555555" }}>
-          Linked to: {task.linkedEventTitle ?? eventTitle}
-        </p>
-
-        {detailRows.map((row) => (
-          <div
-            key={row.label}
-            style={{
-              display: "flex",
-              gap: "12px",
-              padding: "8px 0",
-              borderBottom: "1px solid #1e1e1e",
-              fontSize: "13px",
-            }}
-          >
-            <span style={{ color: "#555555", width: "110px", flexShrink: 0 }}>{row.label}</span>
-            <span style={{ color: "#cccccc" }}>{row.value}</span>
-          </div>
-        ))}
-
-        <p style={{ margin: "16px 0 6px", fontSize: "11px", fontWeight: 700, color: "#555555" }}>
-          DESCRIPTION
-        </p>
-        <p style={{ margin: 0, fontSize: "14px", color: "#cccccc", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
-          {task.description.trim() || "No description provided."}
-        </p>
-
-        <p style={{ margin: "16px 0 0", fontSize: "12px", color: "#555555" }}>
-          {commentCount} {commentCount === 1 ? "comment" : "comments"}
-        </p>
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "20px" }}>
-          {task.status !== "in_progress" && task.status !== "done" ? (
-            <button
-              type="button"
-              onClick={() => onStatusChange("in_progress")}
-              style={menuActionStyle}
-            >
-              Mark In Progress
-            </button>
-          ) : null}
-          {task.status !== "done" ? (
-            <button
-              type="button"
-              onClick={() => onStatusChange("done")}
-              style={{ ...menuActionStyle, borderColor: GOLD, color: GOLD }}
-            >
-              Mark Complete
-            </button>
-          ) : null}
-          <button type="button" onClick={onEdit} style={menuActionStyle}>
-            Edit
-          </button>
-          {user?.id ? (
-            <a
-              href={`/app/clubs/${clubId}/tasks`}
-              style={{ ...menuActionStyle, textDecoration: "none", display: "inline-flex" }}
-            >
-              Open in Tasks
-            </a>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const menuActionStyle: CSSProperties = {
-  background: "transparent",
-  border: "1px solid #333333",
-  borderRadius: "6px",
-  padding: "6px 12px",
-  fontSize: "12px",
-  fontWeight: 600,
-  color: "#cccccc",
-  cursor: "pointer",
-};
-
 function PlanningTaskRow({
   task,
   eventTitle,
@@ -661,6 +466,7 @@ export default function EventPlanningTasksSection({
   deleteTask,
   onFeedback,
 }: EventPlanningTasksSectionProps) {
+  const { user } = useAuthContext();
   const [expanded, setExpanded] = useState(true);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -801,6 +607,25 @@ export default function EventPlanningTasksSection({
 
   const detailTaskLive =
     detailTask ? planningTasks.find((task) => task.id === detailTask.id) ?? detailTask : null;
+
+  function assigneeDisplayFor(task: Task): string {
+    const member = members.find((m) => m.userId === task.assignedTo);
+    const name = task.assigneeName ?? member?.fullName ?? "Unassigned";
+    if (!task.assignedTo) return "Unassigned";
+    return formatNameWithRoleTitle(name, member?.roleTitle);
+  }
+
+  function assigneeAvatarFor(task: Task): string | undefined {
+    if (task.assigneeAvatar) return task.assigneeAvatar;
+    return members.find((m) => m.userId === task.assignedTo)?.avatarUrl;
+  }
+
+  const commenterName =
+    (typeof user?.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name.trim()
+      : "") ||
+    user?.email?.split("@")[0] ||
+    "A member";
 
   return (
     <>
@@ -1033,12 +858,21 @@ export default function EventPlanningTasksSection({
       ) : null}
 
       {detailTaskLive ? (
-        <PlanningTaskDetailModal
+        <TaskDetailModal
           task={detailTaskLive}
-          eventTitle={eventTitle}
           clubId={clubId}
           onClose={() => setDetailTask(null)}
+          assigneeName={assigneeDisplayFor(detailTaskLive)}
+          assigneeAvatarUrl={assigneeAvatarFor(detailTaskLive)}
+          canEdit
+          canDelete
+          canChangeStatus
+          canComment
+          commenterName={commenterName}
+          userId={user?.id}
+          linkedEventFallback={eventTitle}
           onEdit={() => startEdit(detailTaskLive)}
+          onDelete={() => void handleDelete(detailTaskLive.id)}
           onStatusChange={(status) => void handleStatusChange(detailTaskLive.id, status)}
         />
       ) : null}
