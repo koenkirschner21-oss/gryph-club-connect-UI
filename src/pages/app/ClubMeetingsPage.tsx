@@ -6,7 +6,11 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import type { MemberRole } from "../../types";
 import Spinner from "../../components/ui/Spinner";
-import { MeetingCard } from "./meetings/MeetingCard";
+import {
+  CompactMeetingRow,
+  MeetingsStatCards,
+  MeetingsUpcomingLayout,
+} from "./meetings/MeetingsListUI";
 import {
   MeetingCancelConfirmModal,
   type MeetingCancelOption,
@@ -21,6 +25,7 @@ import {
   mapActionItemRow,
   mapMeetingRow,
 } from "./meetings/meetingUtils";
+import { parseMeetingNotes } from "../../lib/meetingMetadata";
 import type { MeetingType } from "../../lib/meetingMetadata";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -199,6 +204,54 @@ export default function ClubMeetingsPage() {
     [meetings],
   );
 
+  const nextMeeting = upcomingMeetings[0] ?? null;
+  const additionalUpcomingMeetings = nextMeeting
+    ? upcomingMeetings.slice(1)
+    : upcomingMeetings;
+
+  const openActionItemCount = useMemo(
+    () =>
+      meetings
+        .filter((meeting) => meeting.status !== "cancelled")
+        .reduce((sum, meeting) => sum + meeting.actionItemCount, 0),
+    [meetings],
+  );
+
+  const actionItemsDueSoon = useMemo(() => {
+    return myActionItems
+      .filter((item) => item.status !== "completed")
+      .sort((a, b) => {
+        const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        return aDue - bDue;
+      })
+      .slice(0, 5);
+  }, [myActionItems]);
+
+  const dueThisWeekCount = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return myActionItems.filter((item) => {
+      if (item.status === "completed" || !item.dueDate) return false;
+      const due = new Date(item.dueDate);
+      if (Number.isNaN(due.getTime())) return false;
+      due.setHours(0, 0, 0, 0);
+      return due.getTime() >= today.getTime() && due.getTime() <= weekEnd.getTime();
+    }).length;
+  }, [myActionItems]);
+
+  const recentNotesMeetings = useMemo(() => {
+    return meetings
+      .filter((meeting) => {
+        const { meetingNotes } = parseMeetingNotes(meeting.notes);
+        return Boolean(meetingNotes.trim());
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 3);
+  }, [meetings]);
+
   const openCreate = (type?: MeetingType) => {
     const params = new URLSearchParams();
     if (type) params.set("type", type);
@@ -324,7 +377,7 @@ export default function ClubMeetingsPage() {
   const hasAnyMeetings = meetings.length > 0;
 
   return (
-    <div style={{ padding: isMobile ? "20px 16px" : "24px 28px", maxWidth: "960px" }}>
+    <div style={{ padding: isMobile ? "20px 16px" : "24px 28px", maxWidth: "1200px" }}>
       <div
         style={{
           display: "flex",
@@ -351,6 +404,16 @@ export default function ClubMeetingsPage() {
           </button>
         ) : null}
       </div>
+
+      {!loading ? (
+        <MeetingsStatCards
+          upcomingCount={upcomingMeetings.length}
+          nextMeeting={nextMeeting}
+          openActionItemCount={openActionItemCount}
+          dueThisWeekCount={dueThisWeekCount}
+          isMobile={isMobile}
+        />
+      ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "24px" }}>
         <TabButton active={activeTab === "upcoming"} onClick={() => setActiveTab("upcoming")}>
@@ -408,14 +471,19 @@ export default function ClubMeetingsPage() {
             pastMeetings.length === 0 ? (
               <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>No past meetings.</p>
             ) : (
-              <MeetingGrid
-                meetings={pastMeetings}
-                clubId={clubId}
-                isPrivileged={isPrivileged}
-                isMobile={isMobile}
-                onEdit={openEdit}
-                onCancel={requestCancelMeeting}
-              />
+              <div>
+                {pastMeetings.map((meeting) => (
+                  <CompactMeetingRow
+                    key={meeting.id}
+                    meeting={meeting}
+                    clubId={clubId}
+                    isPrivileged={isPrivileged}
+                    isPast
+                    onEdit={openEdit}
+                    onCancel={requestCancelMeeting}
+                  />
+                ))}
+              </div>
             )
           ) : (
             <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
@@ -428,13 +496,21 @@ export default function ClubMeetingsPage() {
       ) : upcomingMeetings.length === 0 ? (
         <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>No upcoming meetings scheduled.</p>
       ) : (
-        <MeetingGrid
-          meetings={upcomingMeetings}
+        <MeetingsUpcomingLayout
+          nextMeeting={nextMeeting}
+          listMeetings={additionalUpcomingMeetings}
           clubId={clubId}
           isPrivileged={isPrivileged}
           isMobile={isMobile}
+          actionItemsDueSoon={actionItemsDueSoon}
+          recentNotesMeetings={recentNotesMeetings}
           onEdit={openEdit}
           onCancel={requestCancelMeeting}
+          onViewAllActions={() => setActiveTab("my_actions")}
+          onViewAllNotes={() => {
+            setActiveTab("past");
+            setShowPast(true);
+          }}
         />
       )}
 
@@ -481,43 +557,6 @@ function TabButton({
     >
       {children}
     </button>
-  );
-}
-
-function MeetingGrid({
-  meetings,
-  clubId,
-  isPrivileged,
-  isMobile,
-  onEdit,
-  onCancel,
-}: {
-  meetings: ClubMeeting[];
-  clubId: string;
-  isPrivileged: boolean;
-  isMobile: boolean;
-  onEdit: (meeting: ClubMeeting) => void;
-  onCancel: (meeting: ClubMeeting) => void;
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
-        gap: "12px",
-      }}
-    >
-      {meetings.map((meeting) => (
-        <MeetingCard
-          key={meeting.id}
-          meeting={meeting}
-          clubId={clubId}
-          isPrivileged={isPrivileged}
-          onEdit={onEdit}
-          onCancel={onCancel}
-        />
-      ))}
-    </div>
   );
 }
 
