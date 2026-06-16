@@ -1278,6 +1278,8 @@ export default function ClubHomePage() {
       contactEmail: (data.contact_email as string) ?? club.contactEmail,
       meetingSchedule: (data.meeting_schedule as string) ?? club.meetingSchedule,
       socialLinks: (data.social_links as typeof club.socialLinks) ?? club.socialLinks,
+      membershipType:
+        (data.membership_type as Club["membershipType"]) ?? club.membershipType,
     });
   }, [club, clubId, refreshEvents, refreshPosts]);
 

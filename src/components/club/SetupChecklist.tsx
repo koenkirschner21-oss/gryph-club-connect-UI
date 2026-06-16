@@ -18,6 +18,7 @@ interface ChecklistItem {
   section: SectionKey;
   fixPath?: string;
   templateType?: TemplateLaunchType;
+  instruction?: string;
 }
 
 const SECTION_LABELS: Record<SectionKey, string> = {
@@ -26,27 +27,44 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   live: "Go Live",
 };
 
+function settingsFixPath(
+  clubId: string,
+  section: "profile" | "branding" | "social" | "membership",
+  highlight: "profile" | "branding" | "social" | "membership",
+): string {
+  return `/app/clubs/${clubId}/settings?section=${section}&highlight=${highlight}`;
+}
+
 function buildCompletionChecks(
   club: Club,
   postsCount: number,
   eventsCount: number,
 ) {
   return {
-    clubName: club.name?.trim() !== "",
-    shortDescription:
-      club.shortDescription?.trim() !== "" && club.shortDescription != null,
-    logo: club.logoUrl?.trim() !== "" && club.logoUrl != null,
-    banner: club.bannerUrl?.trim() !== "" && club.bannerUrl != null,
-    contactEmail:
-      club.contactEmail?.trim() !== "" && club.contactEmail != null,
-    meetingSchedule:
-      club.meetingSchedule?.trim() !== "" && club.meetingSchedule != null,
-    socialLinks:
-      club.socialLinks != null &&
-      Object.values(club.socialLinks).some(
-        (value) => value && String(value).trim() !== "",
-      ),
-    membershipType: true,
+    clubName: Boolean(club.name?.trim()),
+    shortDescription: Boolean(
+      club.shortDescription?.trim() && club.shortDescription.trim().length > 50,
+    ),
+    logo: Boolean(
+      club.logoUrl?.trim() &&
+        !club.logoUrl.includes("ui-avatars") &&
+        !club.logoUrl.includes("placeholder"),
+    ),
+    banner: Boolean(
+      club.bannerUrl?.trim() &&
+        !club.bannerUrl.includes("placeholder") &&
+        !club.bannerUrl.includes("default"),
+    ),
+    contactEmail: Boolean(club.contactEmail?.trim()),
+    meetingSchedule: Boolean(club.meetingSchedule?.trim()),
+    socialLinks: Boolean(
+      club.socialLinks &&
+        Object.values(club.socialLinks).some(
+          (value) => value && String(value).trim() !== "",
+        ),
+    ),
+    membershipType:
+      club.membershipType !== null && club.membershipType !== undefined,
     firstAnnouncement: postsCount > 0,
     firstEvent: eventsCount > 0,
   };
@@ -57,65 +75,72 @@ function buildChecklistItems(
   postsCount: number,
   eventsCount: number,
 ): ChecklistItem[] {
-  const settingsBase = `/app/clubs/${club.id}/settings`;
   const checks = buildCompletionChecks(club, postsCount, eventsCount);
 
   return [
     {
       id: "name",
-      label: "Club name added",
+      label: "Club name confirmed",
       complete: checks.clubName,
       section: "profile",
-      fixPath: `${settingsBase}?section=profile`,
-    },
-    {
-      id: "short-description",
-      label: "Short description added",
-      complete: checks.shortDescription,
-      section: "profile",
-      fixPath: `${settingsBase}?section=profile`,
     },
     {
       id: "logo",
-      label: "Logo uploaded",
+      label: "Upload club logo",
       complete: checks.logo,
       section: "profile",
-      fixPath: `${settingsBase}?section=branding`,
+      fixPath: settingsFixPath(club.id, "branding", "branding"),
+      instruction:
+        "Add your official club logo so students can recognize your profile.",
     },
     {
       id: "banner",
-      label: "Banner uploaded",
+      label: "Upload club banner",
       complete: checks.banner,
       section: "profile",
-      fixPath: `${settingsBase}?section=branding`,
+      fixPath: settingsFixPath(club.id, "branding", "branding"),
+      instruction: "Add a banner image to make your club profile stand out.",
+    },
+    {
+      id: "short-description",
+      label: "Review or update short description",
+      complete: checks.shortDescription,
+      section: "profile",
+      fixPath: settingsFixPath(club.id, "profile", "profile"),
+      instruction:
+        "Review the imported description and update it to reflect your club accurately.",
     },
     {
       id: "contact-email",
-      label: "Contact email added",
+      label: "Add contact email",
       complete: checks.contactEmail,
       section: "profile",
-      fixPath: `${settingsBase}?section=profile`,
+      fixPath: settingsFixPath(club.id, "profile", "profile"),
+      instruction: "Add a contact email so students can reach your club.",
     },
     {
       id: "meeting-schedule",
-      label: "Meeting schedule set",
+      label: "Add meeting schedule",
       complete: checks.meetingSchedule,
       section: "profile",
-      fixPath: `${settingsBase}?section=profile`,
+      fixPath: settingsFixPath(club.id, "profile", "profile"),
+      instruction: "Let members know when and where your club meets.",
     },
     {
       id: "social-links",
-      label: "Social links added",
+      label: "Add social links",
       complete: checks.socialLinks,
       section: "profile",
-      fixPath: `${settingsBase}?section=social`,
+      fixPath: settingsFixPath(club.id, "social", "social"),
+      instruction: "Link your Instagram, website, or other channels.",
     },
     {
       id: "membership-type",
-      label: "Membership type configured",
+      label: "Choose membership settings",
       complete: checks.membershipType,
       section: "profile",
-      fixPath: `${settingsBase}?section=membership`,
+      fixPath: settingsFixPath(club.id, "membership", "membership"),
+      instruction: "Choose how students can join your club.",
     },
     {
       id: "announcement",
@@ -124,6 +149,8 @@ function buildChecklistItems(
       section: "launch",
       fixPath: `/app/clubs/${club.id}/announcements?openCreate=true`,
       templateType: "announcement",
+      instruction:
+        "Post a welcome message to introduce your club to new members.",
     },
     {
       id: "event",
@@ -132,17 +159,31 @@ function buildChecklistItems(
       section: "launch",
       fixPath: `/app/clubs/${club.id}/events?openCreate=true`,
       templateType: "event",
+      instruction: "Create your first event to start engaging your club community.",
     },
   ];
 }
 
 const checkRowStyle: CSSProperties = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   justifyContent: "space-between",
   gap: "10px",
   fontSize: "14px",
   lineHeight: 1.4,
+};
+
+const fixButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: `1px solid ${ACCENT_RED}`,
+  borderRadius: "6px",
+  padding: "6px 10px",
+  color: ACCENT_RED,
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
 };
 
 function ChecklistRow({
@@ -157,48 +198,52 @@ function ChecklistRow({
   return (
     <div>
       <div style={checkRowStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-          {item.complete ? (
-            <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
-          ) : (
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {item.complete ? (
+              <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
+            ) : (
+              <span
+                aria-hidden
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  borderRadius: "50%",
+                  border: "1px solid #444444",
+                  flexShrink: 0,
+                  boxSizing: "border-box",
+                  marginTop: "2px",
+                }}
+              />
+            )}
             <span
-              aria-hidden
               style={{
-                width: "16px",
-                height: "16px",
-                borderRadius: "50%",
-                border: "1px solid #444444",
-                flexShrink: 0,
-                boxSizing: "border-box",
+                color: item.complete ? "#666666" : "#cccccc",
               }}
-            />
-          )}
-          <span
-            style={{
-              color: item.complete ? "#666666" : "#cccccc",
-              textDecoration: item.complete ? "line-through" : "none",
-            }}
-          >
-            {item.label}
-          </span>
+            >
+              {item.label}
+            </span>
+          </div>
+          {!item.complete && item.instruction ? (
+            <p
+              style={{
+                margin: "6px 0 0 26px",
+                fontSize: "12px",
+                color: "#555555",
+                lineHeight: 1.45,
+              }}
+            >
+              {item.instruction}
+            </p>
+          ) : null}
         </div>
         {!item.complete && item.fixPath ? (
           <button
             type="button"
             onClick={() => navigate(item.fixPath!)}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              color: ACCENT_RED,
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-            }}
+            style={{ ...fixButtonStyle, marginTop: "2px" }}
           >
-            → Fix this
+            Fix this →
           </button>
         ) : null}
       </div>

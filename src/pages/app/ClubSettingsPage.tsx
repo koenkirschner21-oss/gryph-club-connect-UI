@@ -390,17 +390,25 @@ function SettingsSection({
   children,
   style,
   sectionId,
+  highlighted = false,
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
   style?: CSSProperties;
   sectionId?: string;
+  highlighted?: boolean;
 }) {
   return (
     <section
       id={sectionId}
-      style={{ ...sectionCardStyle, scrollMarginTop: "88px", ...style }}
+      style={{
+        ...sectionCardStyle,
+        scrollMarginTop: "88px",
+        boxShadow: highlighted ? "0 0 0 2px #FFC429" : undefined,
+        transition: "box-shadow 0.3s ease",
+        ...style,
+      }}
     >
       <h2
         style={{
@@ -991,6 +999,7 @@ export default function ClubSettingsPage() {
     cloneDefaultPermissions(),
   );
   const [resettingPermissions, setResettingPermissions] = useState(false);
+  const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
 
   const isOwner = userRole === "owner";
 
@@ -1088,7 +1097,8 @@ export default function ClubSettingsPage() {
 
   useEffect(() => {
     const section = searchParams.get("section");
-    if (!section || roleLoading) return;
+    const highlight = searchParams.get("highlight");
+    if ((!section && !highlight) || roleLoading) return;
 
     const sectionIdMap: Record<string, string> = {
       profile: "club-profile",
@@ -1097,7 +1107,23 @@ export default function ClubSettingsPage() {
       membership: "membership",
     };
 
-    const targetId = sectionIdMap[section];
+    const scrollKey = section ?? highlight;
+    const targetId = scrollKey ? sectionIdMap[scrollKey] : undefined;
+
+    if (highlight) {
+      setHighlightedSection(highlight);
+      const timer = window.setTimeout(() => setHighlightedSection(null), 3000);
+      if (targetId) {
+        window.requestAnimationFrame(() => {
+          document.getElementById(targetId)?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+      }
+      return () => window.clearTimeout(timer);
+    }
+
     if (!targetId) return;
 
     window.requestAnimationFrame(() => {
@@ -1785,6 +1811,7 @@ export default function ClubSettingsPage() {
           title="Club Profile"
           subtitle="Basic information members see on your club page."
           sectionId="club-profile"
+          highlighted={highlightedSection === "profile"}
         >
           <SettingsField id="club-name" label="Club Name" required>
             <SettingsTextInput
@@ -1864,6 +1891,7 @@ export default function ClubSettingsPage() {
             title="Branding"
             subtitle="Logo, banner, and accent color for your club."
             sectionId="branding"
+            highlighted={highlightedSection === "branding"}
           >
             <SettingsField label="Club Logo">
               <div
@@ -2079,6 +2107,7 @@ export default function ClubSettingsPage() {
             title="Social Links"
             subtitle="Connect your club's social profiles and website."
             sectionId="social-links"
+            highlighted={highlightedSection === "social"}
           >
             <SocialLinkField
               id="instagram-url"
@@ -2122,6 +2151,7 @@ export default function ClubSettingsPage() {
             title="Membership"
             subtitle="Control how new members join your club."
             sectionId="membership"
+            highlighted={highlightedSection === "membership"}
           >
             <div
               style={{
