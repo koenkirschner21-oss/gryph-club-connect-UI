@@ -93,6 +93,8 @@ function notificationIconColor(type: string): string {
       return "#777777";
     case "new_claim_request":
       return "#E51937";
+    case "claim_submitted":
+      return "#777777";
     case "claim_approved":
       return "#22c55e";
     case "claim_rejected":

@@ -346,6 +346,55 @@ export default function WorkspaceLayout() {
   );
 
   useEffect(() => {
+    const previewRole = localStorage.getItem("previewRole");
+    if (previewRole || !user?.id || !resolvedClubId) {
+      setWorkspaceAccess("allowed");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function verifyMembership() {
+      setWorkspaceAccess("checking");
+      const currentUserId = user?.id;
+      if (!currentUserId) {
+        setWorkspaceAccess("allowed");
+        return;
+      }
+
+      const [{ data: membership }, { data: clubRow }] = await Promise.all([
+        supabase
+          .from("club_members")
+          .select("status")
+          .eq("club_id", resolvedClubId)
+          .eq("user_id", currentUserId)
+          .maybeSingle(),
+        supabase
+          .from("clubs")
+          .select("slug")
+          .eq("id", resolvedClubId)
+          .maybeSingle(),
+      ]);
+
+      if (cancelled) return;
+
+      if (membership?.status === "active") {
+        setWorkspaceAccess("allowed");
+        return;
+      }
+
+      setDeniedClubSlug((clubRow?.slug as string | undefined) ?? null);
+      setWorkspaceAccess("denied");
+    }
+
+    void verifyMembership();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedClubId, user?.id]);
+
+  useEffect(() => {
     if (!user?.id || !resolvedClubId) return;
 
     const channel: RealtimeChannel = supabase
@@ -400,6 +449,10 @@ export default function WorkspaceLayout() {
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [clubHeaderHovered, setClubHeaderHovered] = useState(false);
+  const [workspaceAccess, setWorkspaceAccess] = useState<"checking" | "allowed" | "denied">(
+    "checking",
+  );
+  const [deniedClubSlug, setDeniedClubSlug] = useState<string | null>(null);
 
   const clubProfilePath = club?.slug ? `/clubs/${club.slug}` : "/explore";
 
@@ -413,6 +466,28 @@ export default function WorkspaceLayout() {
 
   if (!club) {
     return <Navigate to="/app" replace />;
+  }
+
+  if (workspaceAccess === "checking") {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Spinner label="Checking workspace access…" />
+      </div>
+    );
+  }
+
+  if (workspaceAccess === "denied") {
+    const redirectPath = deniedClubSlug ? `/clubs/${deniedClubSlug}` : "/explore";
+    return (
+      <Navigate
+        to={redirectPath}
+        replace
+        state={{
+          workspaceAccessDenied: true,
+          flashMessage: "You don't have access to this club workspace",
+        }}
+      />
+    );
   }
 
   const closeDrawer = () => setDrawerOpen(false);

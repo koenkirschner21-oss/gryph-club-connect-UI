@@ -16,6 +16,19 @@ import {
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
 
+function resolveOpenActionLabel(message: InboxMessage): string {
+  if (message.type === "club_claim_rejected") {
+    return "View Club Profile";
+  }
+
+  const label = message.actionData.actionLabel;
+  if (typeof label === "string" && label.trim()) {
+    return label.trim();
+  }
+
+  return "Open →";
+}
+
 function formatInboxTimestamp(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -406,7 +419,7 @@ export default function InboxMessageCard({
             padding: 0,
           }}
         >
-          Open →
+          {resolveOpenActionLabel(message)}
         </button>
       ) : null}
     </div>

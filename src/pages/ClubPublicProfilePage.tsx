@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { Globe, Users, X, MoreHorizontal } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
 import { getClubInitials } from "../lib/clubUtils";
@@ -451,6 +451,7 @@ export default function ClubPublicProfilePage() {
   const isMobile = useIsMobile();
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     getClubBySlug,
     getClubById,
@@ -475,6 +476,7 @@ export default function ClubPublicProfilePage() {
 
   const [joinError, setJoinError] = useState(false);
   const [joinNotice, setJoinNotice] = useState<string | null>(null);
+  const [workspaceAccessNotice, setWorkspaceAccessNotice] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [bookmarkHovered, setBookmarkHovered] = useState(false);
   const [applicationStatus, setApplicationStatus] =
@@ -492,6 +494,16 @@ export default function ClubPublicProfilePage() {
   const joined = clubId ? isJoined(clubId) : false;
   const pending = clubId ? isPending(clubId) : false;
   const saved = clubId ? isSaved(clubId) : false;
+
+  useEffect(() => {
+    const state = location.state as
+      | { workspaceAccessDenied?: boolean; flashMessage?: string }
+      | null;
+    if (state?.workspaceAccessDenied && state.flashMessage) {
+      setWorkspaceAccessNotice(state.flashMessage);
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }
+  }, [location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
     if (!showReportMenu) return;
@@ -1195,6 +1207,11 @@ export default function ClubPublicProfilePage() {
           </p>
         ) : null}
 
+        {workspaceAccessNotice ? (
+          <p className="mt-2 text-sm text-[#FFC429]" role="status" style={{ padding: headerPadding }}>
+            {workspaceAccessNotice}
+          </p>
+        ) : null}
         {joinNotice ? (
           <p className="mt-2 text-sm text-[#FFC429]" role="status" style={{ padding: headerPadding }}>
             {joinNotice}

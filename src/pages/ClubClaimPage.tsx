@@ -144,7 +144,7 @@ export default function ClubClaimPage() {
     setSubmitting(true);
     setSubmitError(null);
 
-    const { error: insertError } = await supabase
+    const { data: insertedClaim, error: insertError } = await supabase
       .from("club_claim_requests")
       .insert({
         club_id: club.id,
@@ -154,7 +154,9 @@ export default function ClubClaimPage() {
         proof_url: proofUrl.trim() || null,
         contact_email: contactEmail.trim() || null,
         status: "pending",
-      });
+      })
+      .select("id")
+      .single();
 
     if (insertError) {
       console.error("Failed to submit claim request:", insertError.message);
@@ -184,6 +186,8 @@ export default function ClubClaimPage() {
       clubId: club.id,
       clubName: club.name,
       submitterName,
+      submitterUserId: user.id,
+      claimRequestId: insertedClaim?.id as string | undefined,
     });
 
     setSubmitted(true);

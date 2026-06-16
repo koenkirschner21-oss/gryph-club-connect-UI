@@ -273,6 +273,7 @@ export type NotificationType =
   | "new_join_request"
   | "join_rejected"
   | "new_claim_request"
+  | "claim_submitted"
   | "claim_approved"
   | "claim_rejected"
   | "claim_more_info";

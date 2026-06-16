@@ -258,8 +258,35 @@ export async function notifyClaimRequestSubmitted(
     clubId: string;
     clubName: string;
     submitterName: string;
+    submitterUserId: string;
+    claimRequestId?: string;
   },
 ): Promise<void> {
+  const claimantInboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "system_message",
+    title: `Claim request submitted — ${params.clubName}`,
+    message: `Your claim request for ${params.clubName} has been submitted and is currently under review. We'll notify you once a decision has been made.`,
+    actionRequired: false,
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+    referenceType: "club_claim_request",
+  });
+  if (!claimantInboxOk) {
+    console.error("Failed to create claimant claim submission inbox message.");
+  }
+
+  const claimantBellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "claim_submitted",
+    message: `Your claim request for ${params.clubName} has been submitted and is under review.`,
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+  });
+  if (!claimantBellOk) {
+    console.error("Failed to create claimant claim submission notification.");
+  }
+
   const { data: admins, error: adminsError } = await supabase
     .from("platform_admins")
     .select("user_id");
@@ -294,17 +321,35 @@ export async function notifyClaimRequestSubmitted(
       ? adminIds.filter((id) => uoguelphAdminIds.has(id))
       : adminIds;
 
-  const ok = await createNotifications(
+  const adminBellOk = await createNotifications(
     supabase,
     recipientIds.map((userId) => ({
       userId,
       type: "new_claim_request",
-      message: `${params.submitterName} submitted a claim request for ${params.clubName}.`,
+      message: `New club claim submitted for ${params.clubName} by ${params.submitterName}.`,
       clubId: params.clubId,
+      referenceId: params.claimRequestId,
     })),
   );
+  if (!adminBellOk) {
+    console.error("Failed to send admin claim request notifications.");
+  }
 
-  if (!ok) {
-    console.error("Failed to send claim request notifications.");
+  for (const adminId of recipientIds) {
+    const inboxOk = await createInboxMessage(supabase, {
+      recipientId: adminId,
+      type: "admin_message",
+      title: `New club claim — ${params.clubName}`,
+      message: `${params.submitterName} has submitted a claim request for ${params.clubName}. Review it in the admin panel.`,
+      actionRequired: true,
+      actionType: "review_claim_request",
+      actionData: { path: "/app/admin" },
+      clubId: params.clubId,
+      referenceId: params.claimRequestId,
+      referenceType: "club_claim_request",
+    });
+    if (!inboxOk) {
+      console.error("Failed to create admin claim request inbox message for:", adminId);
+    }
   }
 }

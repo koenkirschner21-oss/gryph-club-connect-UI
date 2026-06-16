@@ -141,6 +141,8 @@ export function resolveInboxLink(message: InboxMessage): string {
   switch (message.type) {
     case "join_rejected":
       return "/explore";
+    case "club_claim_rejected":
+      return "/explore";
     case "admin_message":
     case "system_message":
       return "/app/settings";

@@ -1189,51 +1189,10 @@ export default function AdminPage() {
       clubId: request.club_id,
       referenceId: request.id,
       referenceType: "club_claim_request",
-    });
-
-    setClaimActionLoadingId(null);
-    await loadClaimRequests();
-  }
-
-  async function handleMoreInfoClaim(request: ClubClaimRequestRow) {
-    if (!user?.id) return;
-
-    setClaimActionLoadingId(request.id);
-    setFeedback(null);
-
-    const { error } = await supabase
-      .from("club_claim_requests")
-      .update({
-        status: "more_info",
-        reviewed_by: user.id,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq("id", request.id);
-
-    if (error) {
-      console.error("Failed to request more info:", error.message);
-      setFeedback("Failed to update claim request.");
-      setClaimActionLoadingId(null);
-      return;
-    }
-
-    await createNotification(supabase, {
-      userId: request.submitted_by,
-      type: "claim_more_info",
-      message: `More information is needed for your claim request for ${request.clubName}.`,
-      referenceId: request.id,
-    });
-
-    await createInboxMessage(supabase, {
-      recipientId: request.submitted_by,
-      type: "admin_message",
-      title: `More information needed — ${request.clubName}`,
-      message: `An admin needs more information before reviewing your claim request for ${request.clubName}.`,
-      actionRequired: true,
-      actionType: "provide_more_info",
-      clubId: request.club_id,
-      referenceId: request.id,
-      referenceType: "club_claim_request",
+      actionData: {
+        path: request.clubSlug ? `/clubs/${request.clubSlug}` : "/explore",
+        actionLabel: "View Club Profile",
+      },
     });
 
     setClaimActionLoadingId(null);
@@ -2965,23 +2924,6 @@ export default function AdminPage() {
                       }}
                     >
                       Reject
-                    </button>
-                    <button
-                      type="button"
-                      disabled={claimActionLoadingId === request.id}
-                      onClick={() => void handleMoreInfoClaim(request)}
-                      style={{
-                        background: "transparent",
-                        color: "#FFC429",
-                        border: "1px solid #FFC429",
-                        borderRadius: "6px",
-                        padding: "8px 14px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Request More Info
                     </button>
                   </div>
                 </div>
