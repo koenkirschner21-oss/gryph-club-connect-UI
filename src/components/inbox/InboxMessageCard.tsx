@@ -17,6 +17,10 @@ import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
 
 function resolveOpenActionLabel(message: InboxMessage): string {
+  if (message.actionType === "view_claim_status") {
+    return "View Claim Status";
+  }
+
   if (message.type === "club_claim_rejected") {
     return "View Club Profile";
   }

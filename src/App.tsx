@@ -27,6 +27,7 @@ import Home from "./pages/Home";
 import Explore from "./pages/Explore";
 import ClubPublicProfilePage from "./pages/ClubPublicProfilePage";
 import ClubClaimPage from "./pages/ClubClaimPage";
+import ClaimStatusPage from "./pages/ClaimStatusPage";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -333,6 +334,14 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <JoinClubPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/claim-status/:claimId"
+                  element={
+                    <ProtectedRoute>
+                      <ClaimStatusPage />
                     </ProtectedRoute>
                   }
                 />

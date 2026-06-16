@@ -257,6 +257,7 @@ export async function notifyClaimRequestSubmitted(
   params: {
     clubId: string;
     clubName: string;
+    clubSlug?: string;
     submitterName: string;
     submitterUserId: string;
     claimRequestId?: string;
@@ -268,6 +269,11 @@ export async function notifyClaimRequestSubmitted(
     title: `Claim request submitted — ${params.clubName}`,
     message: `Your claim request for ${params.clubName} has been submitted and is currently under review. We'll notify you once a decision has been made.`,
     actionRequired: false,
+    actionType: "view_claim_status",
+    actionData: {
+      claimId: params.claimRequestId,
+      clubSlug: params.clubSlug,
+    },
     clubId: params.clubId,
     referenceId: params.claimRequestId,
     referenceType: "club_claim_request",

@@ -136,6 +136,14 @@ export function resolveInboxLink(message: InboxMessage): string {
       : "";
   if (actionPath) return actionPath;
 
+  if (message.actionType === "view_claim_status") {
+    const claimId =
+      (typeof message.actionData.claimId === "string" &&
+        message.actionData.claimId.trim()) ||
+      message.referenceId;
+    if (claimId) return `/claim-status/${claimId}`;
+  }
+
   const clubBase = message.clubId ? `/app/clubs/${message.clubId}` : null;
 
   switch (message.type) {

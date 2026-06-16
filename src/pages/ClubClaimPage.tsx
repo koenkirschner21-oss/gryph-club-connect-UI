@@ -185,6 +185,7 @@ export default function ClubClaimPage() {
     await notifyClaimRequestSubmitted(supabase, {
       clubId: club.id,
       clubName: club.name,
+      clubSlug: club.slug,
       submitterName,
       submitterUserId: user.id,
       claimRequestId: insertedClaim?.id as string | undefined,
