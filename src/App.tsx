@@ -429,7 +429,6 @@ export default function App() {
                   <Route path="documents" element={<ClubDocumentsPage />} />
                   <Route path="events" element={<ClubEventsPage />} />
                   <Route path="meetings" element={<ClubMeetingsPage />} />
-                  <Route path="meetings/new" element={<ClubMeetingsPage />} />
                   <Route path="meetings/:meetingId" element={<ClubMeetingsPage />} />
                   <Route path="recruiting" element={<ClubRecruitingPage />} />
                   <Route path="members" element={<ClubMembersPage />} />

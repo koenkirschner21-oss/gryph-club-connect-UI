@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Calendar, ChevronDown, Plus } from "lucide-react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
@@ -31,6 +31,7 @@ function normalizeUserRole(role: string): MemberRole {
 export default function ClubMeetingsPage() {
   const { clubId, meetingId } = useParams<{ clubId: string; meetingId?: string }>();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const isMobile = useIsMobile();
@@ -46,7 +47,10 @@ export default function ClubMeetingsPage() {
   const editMeetingId = searchParams.get("edit");
 
   const isPrivileged = isPrivilegedClubRole(userRole);
-  const isCreateRoute = meetingId === "new" || searchParams.get("create") === "true";
+  const isCreateRoute =
+    meetingId === "new" ||
+    location.pathname.endsWith("/meetings/new") ||
+    searchParams.get("create") === "true";
   const presetType = (searchParams.get("type") as MeetingType | null) ?? undefined;
 
   useEffect(() => {
