@@ -232,8 +232,18 @@ export default function NotificationsDropdown() {
   );
 
   useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+    void fetchNotifications();
+
+    if (!userId) return;
+
+    const pollId = window.setInterval(() => {
+      void fetchNotifications();
+    }, 30_000);
+
+    return () => {
+      window.clearInterval(pollId);
+    };
+  }, [fetchNotifications, userId]);
 
   useEffect(() => {
     if (!open) return;
@@ -280,14 +290,21 @@ export default function NotificationsDropdown() {
       });
     };
 
+    const onInsert = (
+      payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
+    ) => {
+      if (payload.new && Object.keys(payload.new).length > 0) {
+        upsertNotification(mapRow(payload.new));
+        notifyUnreadCountRefresh();
+      }
+      void fetchNotifications();
+    };
+
     const onNotificationChange = (
       payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
     ) => {
       if (payload.eventType === "INSERT") {
-        if (payload.new && Object.keys(payload.new).length > 0) {
-          upsertNotification(mapRow(payload.new));
-          notifyUnreadCountRefresh();
-        }
+        onInsert(payload);
         return;
       }
 
@@ -313,14 +330,39 @@ export default function NotificationsDropdown() {
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
         onNotificationChange,
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        onNotificationChange,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        onNotificationChange,
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("Notifications dropdown realtime channel error for user:", userId);
+          void fetchNotifications();
+        }
+      });
 
     realtimeChannelRef.current = channel;
 
@@ -330,7 +372,7 @@ export default function NotificationsDropdown() {
         realtimeChannelRef.current = null;
       }
     };
-  }, [syncUnreadCount, userId]);
+  }, [fetchNotifications, syncUnreadCount, userId]);
 
   useEffect(() => {
     if (!open) return;

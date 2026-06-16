@@ -46,10 +46,7 @@ export interface UseNotificationsReturn {
   refresh: () => void;
 }
 
-/**
- * Hook that fetches & manages the current user's notifications from Supabase.
- * Fetches once on mount (no real-time).
- */
+/** Fetch + realtime + polling for the current user's notifications. */
 export function useNotificationsSubscription(): UseNotificationsReturn {
   const { user } = useAuthContext();
   const userId = user?.id;
@@ -82,28 +79,41 @@ export function useNotificationsSubscription(): UseNotificationsReturn {
   }, []);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      setNotifications([]);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 
-    supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(50)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to load notifications:", error.message);
-        } else {
-          setNotifications((data ?? []).map(mapRow));
-        }
-        setLoading(false);
-      });
+    async function loadNotifications() {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Failed to load notifications:", error.message);
+      } else {
+        setNotifications((data ?? []).map(mapRow));
+      }
+      setLoading(false);
+    }
+
+    void loadNotifications();
+
+    const pollId = window.setInterval(() => {
+      void loadNotifications();
+    }, 30_000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(pollId);
     };
   }, [userId, refreshKey]);
 
@@ -169,14 +179,39 @@ export function useNotificationsSubscription(): UseNotificationsReturn {
         .on(
           "postgres_changes",
           {
-            event: "*",
+            event: "INSERT",
             schema: "public",
             table: "notifications",
             filter: `user_id=eq.${userId}`,
           },
           onNotificationChange,
         )
-        .subscribe();
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          onNotificationChange,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          onNotificationChange,
+        )
+        .subscribe((status) => {
+          if (status === "CHANNEL_ERROR") {
+            console.error("Notifications realtime channel error for user:", userId);
+            refresh();
+          }
+        });
 
       entry.channel = channel;
     }, STABILIZATION_MS);
@@ -191,7 +226,7 @@ export function useNotificationsSubscription(): UseNotificationsReturn {
         notificationsRealtimeOwnersByUserId.set(userId, nextOwners);
       }
     };
-  }, [removeNotification, upsertNotification, userId]);
+  }, [refresh, removeNotification, upsertNotification, userId]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

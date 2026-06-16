@@ -25,7 +25,7 @@ export async function createNotifications(
 ): Promise<boolean> {
   if (inputs.length === 0) return true;
 
-  return notifyUsers(
+  const ok = await notifyUsers(
     inputs.map((input) => ({
       user_id: input.userId,
       type: input.type,
@@ -34,6 +34,17 @@ export async function createNotifications(
       reference_id: input.referenceId,
     })),
   );
+
+  if (!ok) {
+    console.error(
+      "createNotifications failed for",
+      inputs.length,
+      "notification(s):",
+      inputs.map((input) => ({ userId: input.userId, type: input.type })),
+    );
+  }
+
+  return ok;
 }
 
 export function resolveStudentDisplayName(
