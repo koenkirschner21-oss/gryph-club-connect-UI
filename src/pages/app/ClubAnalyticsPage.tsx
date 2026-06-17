@@ -1,12 +1,19 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Link, useParams } from "react-router-dom";
 import {
+  ArrowDown,
+  ArrowUp,
   Bell,
   Calendar,
+  CheckCircle,
   CheckSquare,
+  ChevronDown,
+  Download,
+  Info,
+  Megaphone,
   TrendingUp,
   Users,
 } from "lucide-react";
-import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import {
@@ -15,6 +22,7 @@ import {
   CartesianGrid,
   Cell,
   Label,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -107,6 +115,15 @@ interface DirectMessageRow {
 interface InsightItem {
   text: string;
   dotColor: string;
+  sentiment: "warning" | "positive" | "neutral";
+}
+
+type MemberGrowthMode = "cumulative" | "monthly";
+type EventAttendanceFilter = "all" | "public" | "internal";
+
+interface StatTrend {
+  percent: number;
+  positive: boolean;
 }
 
 const pageStyle = (isMobile: boolean): CSSProperties => ({
@@ -131,9 +148,106 @@ const chartCardStyle: CSSProperties = {
   borderRight: `1px solid ${CARD_BORDER}`,
   borderBottom: `1px solid ${CARD_BORDER}`,
   borderLeft: `1px solid ${CARD_BORDER}`,
-  borderRadius: "14px",
+  borderRadius: "10px",
   padding: "24px",
 };
+
+const chartDropdownStyle: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #2a2a2a",
+  borderRadius: "8px",
+  padding: "6px 12px",
+  color: "#cccccc",
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
+function insightDotColor(sentiment: InsightItem["sentiment"]): string {
+  if (sentiment === "warning") return ACCENT_RED;
+  if (sentiment === "positive") return ACCENT_GOLD;
+  return MUTED;
+}
+
+function oneYearAgoDate(): Date {
+  const date = new Date();
+  date.setHours(23, 59, 59, 999);
+  date.setFullYear(date.getFullYear() - 1);
+  return date;
+}
+
+function computeYearOverYearTrend(
+  current: number,
+  prior: number,
+): StatTrend | null {
+  if (prior <= 0) return null;
+  const percent = Math.round(((current - prior) / prior) * 100);
+  if (percent === 0) return null;
+  return { percent: Math.abs(percent), positive: percent > 0 };
+}
+
+function toMonthlyGrowth(points: { label: string; count: number }[]) {
+  return points.map((point, index) => {
+    const previous = index > 0 ? points[index - 1].count : 0;
+    return {
+      label: point.label,
+      count: Math.max(0, point.count - previous),
+    };
+  });
+}
+
+function MemberGrowthTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ value?: number }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const count = payload[0]?.value ?? 0;
+  return (
+    <div
+      style={{
+        background: "#1a1a1a",
+        border: "1px solid #2a2a2a",
+        borderRadius: "8px",
+        padding: "8px 12px",
+        fontSize: "12px",
+        color: "#ffffff",
+      }}
+    >
+      <div style={{ color: MUTED, marginBottom: "2px" }}>{label}</div>
+      <div style={{ fontWeight: 600 }}>
+        {count} Member{count === 1 ? "" : "s"}
+      </div>
+    </div>
+  );
+}
+
+function ChartCardHeader({
+  title,
+  action,
+}: {
+  title: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+        marginBottom: "16px",
+      }}
+    >
+      <h3 style={{ ...chartTitleStyle, margin: 0 }}>{title}</h3>
+      {action}
+    </div>
+  );
+}
 
 const chartTitleStyle: CSSProperties = {
   fontWeight: 700,
@@ -279,11 +393,13 @@ function buildInsights(params: {
 
   if (newThisMonth === 0) {
     insights.push({
+      sentiment: "warning",
       dotColor: ACCENT_RED,
       text: "No new members this month. Share your invite code to grow your club.",
     });
   } else {
     insights.push({
+      sentiment: "positive",
       dotColor: ACCENT_GOLD,
       text: `${newThisMonth} new member${newThisMonth === 1 ? "" : "s"} joined this month — keep the momentum going.`,
     });
@@ -291,16 +407,19 @@ function buildInsights(params: {
 
   if (totalTasks === 0) {
     insights.push({
+      sentiment: "neutral",
       dotColor: MUTED,
       text: "No tasks tracked yet. Create tasks to monitor team progress.",
     });
   } else if (taskPct < 50) {
     insights.push({
+      sentiment: "warning",
       dotColor: ACCENT_RED,
       text: `Task completion is low — ${doneTasks} of ${totalTasks} tasks are done. Review assignments or update task statuses.`,
     });
   } else {
     insights.push({
+      sentiment: "positive",
       dotColor: ACCENT_GOLD,
       text: `${taskPct}% of tasks are complete (${doneTasks} of ${totalTasks}).`,
     });
@@ -308,11 +427,13 @@ function buildInsights(params: {
 
   if (postsThisMonth === 0) {
     insights.push({
+      sentiment: "warning",
       dotColor: ACCENT_RED,
       text: "No announcements this month. Post an update to keep members engaged.",
     });
   } else {
     insights.push({
+      sentiment: "positive",
       dotColor: ACCENT_GOLD,
       text: `${postsThisMonth} announcement${postsThisMonth === 1 ? "" : "s"} posted this month.`,
     });
@@ -322,6 +443,7 @@ function buildInsights(params: {
   if (categoryCounts.length > 0) {
     const top = categoryCounts[0];
     insights.push({
+      sentiment: "neutral",
       dotColor: MUTED,
       text: `Most common event type: ${top.name} (${top.value} event${top.value === 1 ? "" : "s"}).`,
     });
@@ -338,7 +460,8 @@ function buildInsights(params: {
   }
   if (bestEvent && bestEvent.going > 0) {
     insights.push({
-      dotColor: ACCENT_GOLD,
+      sentiment: "neutral",
+      dotColor: MUTED,
       text: `Top attendance: ${bestEvent.title} with ${bestEvent.going} going.`,
     });
   }
@@ -349,12 +472,16 @@ function buildInsights(params: {
       return d >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     }).length;
     insights.push({
+      sentiment: "neutral",
       dotColor: MUTED,
       text: `${last7} direct message${last7 === 1 ? "" : "s"} sent in the last 7 days.`,
     });
   }
 
-  return insights.slice(0, 5);
+  return insights.slice(0, 5).map((insight) => ({
+    ...insight,
+    dotColor: insightDotColor(insight.sentiment),
+  }));
 }
 
 interface RecommendedAction {
@@ -446,62 +573,270 @@ function StatCard({
   value,
   topColor,
   valueColor = "#ffffff",
-  subtext,
+  icon,
+  iconBg,
+  iconColor,
+  trend,
 }: {
   label: string;
   value: string | number;
   topColor: string;
   valueColor?: string;
-  subtext?: string;
+  icon: ReactNode;
+  iconBg: string;
+  iconColor: string;
+  trend?: StatTrend | null;
 }) {
   return (
     <div
       style={{
         background: CARD_BG,
-        borderRadius: "12px",
-        padding: "18px 20px",
+        borderRadius: "10px",
+        padding: "20px",
         borderTop: `3px solid ${topColor}`,
         borderRight: `1px solid ${CARD_BORDER}`,
         borderBottom: `1px solid ${CARD_BORDER}`,
         borderLeft: `1px solid ${CARD_BORDER}`,
       }}
     >
-      <p
-        style={{
-          fontSize: "28px",
-          fontWeight: 800,
-          color: valueColor,
-          margin: 0,
-          lineHeight: 1,
-        }}
-      >
-        {value}
-      </p>
-      {subtext ? (
-        <p
+      <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+        <div
           style={{
-            fontSize: "12px",
-            color: "#444444",
-            marginTop: "4px",
-            marginBottom: 0,
+            width: "44px",
+            height: "44px",
+            borderRadius: "10px",
+            background: iconBg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
           }}
         >
-          {subtext}
-        </p>
-      ) : null}
-      <p
+          <span style={{ color: iconColor, display: "flex" }}>{icon}</span>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "8px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "13px",
+                fontWeight: 700,
+                color: "#ffffff",
+              }}
+            >
+              {label}
+            </span>
+            <Info size={12} color="#555555" aria-hidden />
+          </div>
+
+          <p
+            style={{
+              fontSize: "28px",
+              fontWeight: 700,
+              color: valueColor,
+              margin: 0,
+              lineHeight: 1,
+            }}
+          >
+            {value}
+          </p>
+
+          {trend ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                marginTop: "8px",
+                fontSize: "12px",
+                color: trend.positive ? "#22C55E" : ACCENT_RED,
+              }}
+            >
+              {trend.positive ? (
+                <ArrowUp size={14} aria-hidden />
+              ) : (
+                <ArrowDown size={14} aria-hidden />
+              )}
+              <span>
+                {trend.percent}% vs last year
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExportMenuButton() {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleClick(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={menuRef} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
         style={{
-          fontSize: "11px",
-          fontWeight: 600,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: MUTED,
-          marginTop: subtext ? "8px" : "4px",
-          marginBottom: 0,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          background: "#1a1a1a",
+          border: "1px solid #2a2a2a",
+          borderRadius: "8px",
+          padding: "8px 16px",
+          color: "#ffffff",
+          fontSize: "13px",
+          cursor: "pointer",
         }}
       >
-        {label}
-      </p>
+        <Download size={16} aria-hidden />
+        Export
+        <ChevronDown size={14} aria-hidden />
+      </button>
+
+      {open ? (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            minWidth: "160px",
+            background: "#1a1a1a",
+            border: "1px solid #2a2a2a",
+            borderRadius: "8px",
+            padding: "6px",
+            zIndex: 20,
+          }}
+        >
+          {["Export as CSV", "Export as PDF"].map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setOpen(false)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 10px",
+                color: "#cccccc",
+                fontSize: "13px",
+                cursor: "pointer",
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskBreakdownLegend({
+  segments,
+  total,
+}: {
+  segments: { name: string; value: number; color: string }[];
+  total: number;
+}) {
+  return (
+    <div style={{ marginTop: "12px" }}>
+      {segments.map((segment) => {
+        const pct =
+          total > 0 ? ((segment.value / total) * 100).toFixed(1) : "0.0";
+        return (
+          <div
+            key={segment.name}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              padding: "6px 0",
+              fontSize: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  background: segment.color,
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ color: "#cccccc" }}>{segment.name}</span>
+            </div>
+            <span style={{ color: MUTED }}>
+              {segment.value} ({pct}%)
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CardFooterLink({
+  left,
+  rightHref,
+  rightLabel,
+}: {
+  left?: ReactNode;
+  rightHref: string;
+  rightLabel: string;
+}) {
+  return (
+    <div
+      style={{
+        borderTop: "1px solid #2a2a2a",
+        paddingTop: "12px",
+        marginTop: "12px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+        flexWrap: "wrap",
+      }}
+    >
+      <div>{left}</div>
+      <Link
+        to={rightHref}
+        style={{
+          fontSize: "13px",
+          color: ACCENT_RED,
+          textDecoration: "none",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {rightLabel}
+      </Link>
     </div>
   );
 }
@@ -551,6 +886,8 @@ export default function ClubAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
+  const [memberGrowthMode, setMemberGrowthMode] = useState<MemberGrowthMode>("cumulative");
+  const [attendanceFilter, setAttendanceFilter] = useState<EventAttendanceFilter>("all");
 
   useEffect(() => {
     const previewRole = localStorage.getItem("previewRole");
@@ -675,9 +1012,25 @@ export default function ClubAnalyticsPage() {
   }, [clubId, isPrivileged]);
 
   const memberGrowth = useMemo(() => buildMemberGrowth(members), [members]);
+  const memberGrowthChartData = useMemo(
+    () =>
+      memberGrowthMode === "monthly"
+        ? toMonthlyGrowth(memberGrowth)
+        : memberGrowth,
+    [memberGrowth, memberGrowthMode],
+  );
+  const filteredEventsForAttendance = useMemo(() => {
+    if (attendanceFilter === "public") {
+      return events.filter((event) => event.visibility !== "members_only");
+    }
+    if (attendanceFilter === "internal") {
+      return events.filter((event) => event.visibility === "members_only");
+    }
+    return events;
+  }, [events, attendanceFilter]);
   const eventAttendance = useMemo(
-    () => buildEventAttendance(events, rsvps),
-    [events, rsvps],
+    () => buildEventAttendance(filteredEventsForAttendance, rsvps),
+    [filteredEventsForAttendance, rsvps],
   );
   const taskBreakdown = useMemo(() => buildTaskBreakdown(tasks), [tasks]);
   const eventCategories = useMemo(
@@ -704,14 +1057,28 @@ export default function ClubAnalyticsPage() {
   const doneTasks = tasks.filter((t) => t.status === "done").length;
   const taskCompletionRate =
     totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  const newMembersThisMonth = countNewMembersThisMonth(members);
   const announcementsThisMonth = countPostsThisMonth(posts);
-  const publicEventCount = events.filter(
-    (e) => e.visibility !== "members_only",
+
+  const yearAgo = oneYearAgoDate();
+  const membersYearAgo = members.filter(
+    (member) => new Date(member.created_at) <= yearAgo,
   ).length;
-  const internalEventCount = events.filter(
-    (e) => e.visibility === "members_only",
+  const eventsYearAgo = events.filter((event) => {
+    const eventDate = new Date(event.date);
+    return !Number.isNaN(eventDate.getTime()) && eventDate <= yearAgo;
+  }).length;
+  const announcementsYearAgo = posts.filter(
+    (post) => new Date(post.created_at) <= yearAgo,
   ).length;
+
+  const memberTrend = computeYearOverYearTrend(totalMembers, membersYearAgo);
+  const eventTrend = computeYearOverYearTrend(totalEvents, eventsYearAgo);
+  const announcementTrend = computeYearOverYearTrend(
+    totalAnnouncements,
+    announcementsYearAgo,
+  );
+
+  const tasksBasePath = clubId ? `/app/clubs/${clubId}` : "/app";
 
   const recommendedActions = useMemo(
     () =>
@@ -815,26 +1182,39 @@ export default function ClubAnalyticsPage() {
   return (
     <div style={pageStyle(isMobile)}>
       <div style={{ marginBottom: "24px" }}>
-        <h1
+        <div
           style={{
-            fontWeight: 800,
-            fontSize: "28px",
-            color: "#ffffff",
-            margin: 0,
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "16px",
           }}
         >
-          Club Analytics
-        </h1>
-        <p
-          style={{
-            fontSize: "14px",
-            color: MUTED,
-            marginTop: "4px",
-            marginBottom: 0,
-          }}
-        >
-          Track membership, engagement, events, and team activity.
-        </p>
+          <div>
+            <h1
+              style={{
+                fontWeight: 800,
+                fontSize: "28px",
+                color: "#ffffff",
+                margin: 0,
+              }}
+            >
+              Club Analytics
+            </h1>
+            <p
+              style={{
+                fontSize: "14px",
+                color: MUTED,
+                marginTop: "4px",
+                marginBottom: 0,
+              }}
+            >
+              Track membership, engagement, events, and team activity.
+            </p>
+          </div>
+          <ExportMenuButton />
+        </div>
         <div
           style={{
             display: "flex",
@@ -898,26 +1278,37 @@ export default function ClubAnalyticsPage() {
           label="Total Members"
           value={totalMembers}
           topColor="#777777"
-          subtext={`+${newMembersThisMonth} this month`}
+          icon={<Users size={22} aria-hidden />}
+          iconBg="rgba(229, 25, 55, 0.15)"
+          iconColor={ACCENT_RED}
+          trend={memberTrend}
         />
         <StatCard
           label="Total Events"
           value={totalEvents}
           topColor={ACCENT_RED}
-          subtext={`${publicEventCount} public · ${internalEventCount} internal`}
+          icon={<Calendar size={22} aria-hidden />}
+          iconBg="rgba(229, 25, 55, 0.15)"
+          iconColor={ACCENT_RED}
+          trend={eventTrend}
         />
         <StatCard
           label="Task Completion Rate"
           value={`${taskCompletionRate}%`}
           topColor={ACCENT_GOLD}
           valueColor={ACCENT_GOLD}
-          subtext={`${doneTasks} of ${totalTasks} tasks completed`}
+          icon={<CheckCircle size={22} aria-hidden />}
+          iconBg="rgba(255, 196, 41, 0.15)"
+          iconColor={ACCENT_GOLD}
         />
         <StatCard
           label="Total Announcements"
           value={totalAnnouncements}
           topColor="#777777"
-          subtext={`${announcementsThisMonth} posted this month`}
+          icon={<Megaphone size={22} aria-hidden />}
+          iconBg="rgba(229, 25, 55, 0.15)"
+          iconColor={ACCENT_RED}
+          trend={announcementTrend}
         />
       </div>
 
@@ -931,27 +1322,42 @@ export default function ClubAnalyticsPage() {
         }}
       >
         <div style={chartCardStyle}>
-          <h3 style={chartTitleStyle}>Member Growth</h3>
+          <ChartCardHeader
+            title="Member Growth"
+            action={
+              <select
+                value={memberGrowthMode}
+                onChange={(event) =>
+                  setMemberGrowthMode(event.target.value as MemberGrowthMode)
+                }
+                style={chartDropdownStyle}
+                aria-label="Member growth view"
+              >
+                <option value="cumulative">Cumulative</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            }
+          />
           <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
             {totalMembers === 0 ? (
               <div style={chartEmptyStyle}>No data yet</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
-                  data={memberGrowth}
+                  data={memberGrowthChartData}
                   margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid stroke={GRID} vertical={false} />
                   <XAxis dataKey="label" {...chartAxisProps} />
                   <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
-                  <Tooltip {...tooltipStyle} />
+                  <Tooltip content={<MemberGrowthTooltip />} />
                   <Line
                     type="monotone"
                     dataKey="count"
                     stroke={ACCENT_RED}
                     strokeWidth={2}
                     dot={{ fill: ACCENT_RED, r: 3 }}
-                    activeDot={{ r: 5 }}
+                    activeDot={{ r: 5, fill: ACCENT_RED, stroke: "#ffffff", strokeWidth: 2 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -960,7 +1366,23 @@ export default function ClubAnalyticsPage() {
         </div>
 
         <div style={chartCardStyle}>
-          <h3 style={chartTitleStyle}>Event Attendance</h3>
+          <ChartCardHeader
+            title="Event Attendance"
+            action={
+              <select
+                value={attendanceFilter}
+                onChange={(event) =>
+                  setAttendanceFilter(event.target.value as EventAttendanceFilter)
+                }
+                style={chartDropdownStyle}
+                aria-label="Event attendance filter"
+              >
+                <option value="all">All Events</option>
+                <option value="public">Public Only</option>
+                <option value="internal">Internal Only</option>
+              </select>
+            }
+          />
           <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
             {eventAttendance.length === 0 ? (
               <div style={chartEmptyStyle}>No data yet</div>
@@ -1008,7 +1430,7 @@ export default function ClubAnalyticsPage() {
         <div style={chartCardStyle}>
           <h3 style={chartTitleStyle}>Task Breakdown</h3>
           <div
-            style={{ width: "100%", minWidth: 0, height: "200px", position: "relative" }}
+            style={{ width: "100%", minWidth: 0, height: "180px", position: "relative" }}
           >
             {totalTasks === 0 ? (
               <div style={chartEmptyStyle}>No data yet</div>
@@ -1021,8 +1443,8 @@ export default function ClubAnalyticsPage() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    innerRadius={55}
-                    outerRadius={75}
+                    innerRadius={50}
+                    outerRadius={70}
                     paddingAngle={2}
                     labelLine={false}
                   >
@@ -1038,14 +1460,19 @@ export default function ClubAnalyticsPage() {
                     />
                   </Pie>
                   <Tooltip {...tooltipStyle} />
-                  <Legend
-                    wrapperStyle={{ fontSize: "11px", color: MUTED }}
-                    iconType="circle"
-                  />
                 </PieChart>
               </ResponsiveContainer>
             )}
           </div>
+          {totalTasks > 0 ? (
+            <>
+              <TaskBreakdownLegend segments={taskBreakdown} total={totalTasks} />
+              <CardFooterLink
+                rightHref={`${tasksBasePath}/tasks`}
+                rightLabel="View all tasks →"
+              />
+            </>
+          ) : null}
         </div>
 
         <div style={chartCardStyle}>
@@ -1054,7 +1481,7 @@ export default function ClubAnalyticsPage() {
             style={{
               width: "100%",
               minWidth: 0,
-              height: Math.max(200, eventCategories.length * 36),
+              height: Math.max(180, eventCategories.length * 36),
             }}
           >
             {eventCategories.length === 0 ? (
@@ -1064,7 +1491,7 @@ export default function ClubAnalyticsPage() {
                 <BarChart
                   data={eventCategories}
                   layout="vertical"
-                  margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
+                  margin={{ top: 4, right: 32, left: 8, bottom: 4 }}
                 >
                   <CartesianGrid stroke={GRID} horizontal={false} />
                   <XAxis type="number" allowDecimals={false} {...chartAxisProps} axisLine={false} />
@@ -1081,11 +1508,28 @@ export default function ClubAnalyticsPage() {
                     {eventCategories.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      fill="#cccccc"
+                      fontSize={12}
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             )}
           </div>
+          {eventCategories.length > 0 ? (
+            <CardFooterLink
+              left={
+                <span style={{ fontSize: "13px", color: "#777777" }}>
+                  Total Events: {totalEvents}
+                </span>
+              }
+              rightHref={`${tasksBasePath}/events`}
+              rightLabel="View all events →"
+            />
+          ) : null}
         </div>
 
         <div style={chartCardStyle}>
@@ -1144,9 +1588,32 @@ export default function ClubAnalyticsPage() {
               ))
             )}
           </div>
+          {insights.length > 0 ? (
+            <div style={{ marginTop: "12px" }}>
+              <Link
+                to={`${tasksBasePath}/analytics`}
+                style={{
+                  fontSize: "13px",
+                  color: ACCENT_RED,
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
+              >
+                View full report →
+              </Link>
+            </div>
+          ) : null}
         </div>
 
-        <div style={{ ...chartCardStyle, gridColumn: isMobile ? undefined : "1 / -1" }}>
+        <div
+          style={{
+            background: CARD_BG,
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: "10px",
+            padding: "24px",
+            gridColumn: isMobile ? undefined : "1 / -1",
+          }}
+        >
           <h3 style={chartTitleStyle}>Recommended Actions</h3>
           <div>
             {recommendedActions.map((action, index) => (
