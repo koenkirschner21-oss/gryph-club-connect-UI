@@ -55,6 +55,12 @@ import {
   type TaskSortOption,
 } from "../dashboard/TasksTabUI";
 import {
+  EventsTabHeader,
+  EventsTabTimeline,
+  useEventsTabSummary,
+  type DeduplicatedDashboardEvent,
+} from "../dashboard/EventsTabUI";
+import {
   TasksWeekEmptyState,
   ThisWeekEventCard,
   WeekAchievementCard,
@@ -2308,10 +2314,6 @@ function OverviewTab({
 // ---------------------------------------------------------------------------
 // Events Tab (full-page list)
 // ---------------------------------------------------------------------------
-type DeduplicatedDashboardEvent = DashboardEvent & {
-  moreDatesCount: number;
-};
-
 function deduplicateDashboardEvents(
   events: DashboardEvent[],
 ): DeduplicatedDashboardEvent[] {
@@ -2350,207 +2352,6 @@ function groupDashboardEventsByDate(events: DeduplicatedDashboardEvent[]) {
     .map(([date, dateEvents]) => ({ date, events: dateEvents }));
 }
 
-function parseDashboardEventDay(dateStr: string): Date | null {
-  const trimmed = dateStr.trim();
-  if (!trimmed) return null;
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
-    ? new Date(`${trimmed}T12:00:00`)
-    : new Date(trimmed);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function formatEventsTabDateGroupLabel(dateStr: string): string {
-  const eventDay = parseDashboardEventDay(dateStr);
-  if (!eventDay) return dateStr;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const compareDay = new Date(eventDay);
-  compareDay.setHours(0, 0, 0, 0);
-
-  if (compareDay.getTime() === today.getTime()) return "Today";
-  if (compareDay.getTime() === tomorrow.getTime()) return "Tomorrow";
-
-  return eventDay.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-function formatEventsTabTime12h(timeStr: string): string | null {
-  const t = timeStr.trim();
-  if (!t || t.toUpperCase() === "TBD") return null;
-
-  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
-  if (ampmMatch) {
-    const hour = parseInt(ampmMatch[1], 10);
-    const minute = ampmMatch[2];
-    if (hour >= 1 && hour <= 12) {
-      return `${hour}:${minute} ${ampmMatch[3].toUpperCase()}`;
-    }
-  }
-
-  const m24 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-  if (m24) {
-    let hour = parseInt(m24[1], 10);
-    const minute = m24[2];
-    if (hour <= 23) {
-      const period = hour >= 12 ? "PM" : "AM";
-      hour = hour % 12 || 12;
-      return `${hour}:${minute} ${period}`;
-    }
-  }
-
-  return t;
-}
-
-function EventsTabClubLogo({
-  name,
-  abbreviation,
-  logoUrl,
-}: {
-  name: string;
-  abbreviation?: string;
-  logoUrl?: string;
-}) {
-  const abbr = abbreviation || deriveAbbreviation(name);
-
-  if (logoUrl) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        style={{
-          width: "32px",
-          height: "32px",
-          borderRadius: "50%",
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        width: "32px",
-        height: "32px",
-        borderRadius: "50%",
-        background: "#2a2a2a",
-        color: "#888888",
-        fontSize: "10px",
-        fontWeight: 600,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {abbr}
-    </div>
-  );
-}
-
-function EventsTabEventCard({
-  event,
-  rsvpStatus,
-  logoUrl,
-}: {
-  event: DashboardEvent;
-  rsvpStatus?: string;
-  logoUrl?: string;
-}) {
-  const timeLabel = event.time ? formatEventsTabTime12h(event.time) : null;
-  const metaParts = [timeLabel, event.clubName].filter(Boolean);
-  const isGoing = rsvpStatus === "going";
-
-  return (
-    <Link
-      to={`/app/clubs/${event.clubId}/events`}
-      className="block"
-      style={{ textDecoration: "none" }}
-    >
-      <div
-        style={{
-          background: "#141414",
-          borderTop: "1px solid #2a2a2a",
-          borderRight: "1px solid #2a2a2a",
-          borderBottom: "1px solid #2a2a2a",
-          borderLeft: "1px solid #2a2a2a",
-          borderRadius: "10px",
-          padding: "12px 16px",
-          marginBottom: "8px",
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-        }}
-      >
-        <EventsTabClubLogo
-          name={event.clubName}
-          abbreviation={event.clubAbbreviation}
-          logoUrl={logoUrl}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p
-            style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              color: "#ffffff",
-              margin: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {event.title}
-          </p>
-          {metaParts.length > 0 ? (
-            <p
-              style={{
-                fontSize: "12px",
-                color: "#555555",
-                marginTop: "2px",
-                marginBottom: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {metaParts.join(" · ")}
-            </p>
-          ) : null}
-        </div>
-        <span
-          style={{
-            flexShrink: 0,
-            borderRadius: "4px",
-            padding: "3px 10px",
-            fontSize: "11px",
-            fontWeight: 500,
-            ...(isGoing
-              ? {
-                  background: "#1a1200",
-                  border: "1px solid #FFC429",
-                  color: "#FFC429",
-                }
-              : {
-                  background: "#1a1a1a",
-                  border: "1px solid #333333",
-                  color: "#555555",
-                }),
-          }}
-        >
-          {isGoing ? "Going" : "Open"}
-        </span>
-      </div>
-    </Link>
-  );
-}
-
 function EventsTab({
   upcomingEvents,
   eventsLoading,
@@ -2562,10 +2363,15 @@ function EventsTab({
   myRsvps: Record<string, string>;
   clubLogos: Record<string, string>;
 }) {
-  const eventsByDate = useMemo(() => {
-    const deduplicated = deduplicateDashboardEvents(upcomingEvents);
-    return groupDashboardEventsByDate(deduplicated);
-  }, [upcomingEvents]);
+  const displayEvents = useMemo(
+    () => deduplicateDashboardEvents(upcomingEvents),
+    [upcomingEvents],
+  );
+  const eventsByDate = useMemo(
+    () => groupDashboardEventsByDate(displayEvents),
+    [displayEvents],
+  );
+  const summary = useEventsTabSummary(displayEvents);
 
   if (eventsLoading) {
     return (
@@ -2585,33 +2391,12 @@ function EventsTab({
 
   return (
     <div>
-      {eventsByDate.map((group, groupIndex) => (
-        <section key={group.date}>
-          <h3
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              color: "#555555",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              marginBottom: "8px",
-              marginTop: groupIndex === 0 ? 0 : "20px",
-              paddingBottom: "8px",
-              borderBottom: "1px solid #1a1a1a",
-            }}
-          >
-            {formatEventsTabDateGroupLabel(group.date)}
-          </h3>
-          {group.events.map((event) => (
-            <EventsTabEventCard
-              key={`${event.id}-${event.date}`}
-              event={event}
-              rsvpStatus={myRsvps[event.id]}
-              logoUrl={event.clubId ? clubLogos[event.clubId] : undefined}
-            />
-          ))}
-        </section>
-      ))}
+      <EventsTabHeader eventCount={summary.eventCount} clubCount={summary.clubCount} />
+      <EventsTabTimeline
+        groups={eventsByDate}
+        myRsvps={myRsvps}
+        clubLogos={clubLogos}
+      />
     </div>
   );
 }

@@ -1,0 +1,613 @@
+import { useMemo } from "react";
+import { Calendar, Clock, Filter, MapPin, MoreVertical } from "lucide-react";
+import { Link } from "react-router-dom";
+import type { DashboardEvent } from "../../hooks/useDashboardEvents";
+import type { EventRsvp, RsvpStatus } from "../../types";
+
+export type DeduplicatedDashboardEvent = DashboardEvent & {
+  moreDatesCount: number;
+};
+
+export type EventsByDateGroup = {
+  date: string;
+  events: DeduplicatedDashboardEvent[];
+};
+
+const HEADER_CONTROL_STYLE = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  background: "#1a1a1a",
+  border: "1px solid #2a2a2a",
+  borderRadius: "8px",
+  padding: "8px 14px",
+  color: "#cccccc",
+  fontSize: "13px",
+  cursor: "pointer",
+} as const;
+
+function parseEventDay(dateStr: string): Date | null {
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T12:00:00`)
+    : new Date(trimmed);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isToday(dateStr: string): boolean {
+  const eventDay = parseEventDay(dateStr);
+  if (!eventDay) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const compare = new Date(eventDay);
+  compare.setHours(0, 0, 0, 0);
+  return compare.getTime() === today.getTime();
+}
+
+function isTomorrow(dateStr: string): boolean {
+  const eventDay = parseEventDay(dateStr);
+  if (!eventDay) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const compare = new Date(eventDay);
+  compare.setHours(0, 0, 0, 0);
+  return compare.getTime() === tomorrow.getTime();
+}
+
+function timelineDotColor(dateStr: string): string {
+  if (isToday(dateStr)) return "#E51937";
+  if (isTomorrow(dateStr)) return "#FFC429";
+  return "#555555";
+}
+
+export function formatEventsTimelineGroupLabel(dateStr: string): string {
+  const eventDay = parseEventDay(dateStr);
+  if (!eventDay) return dateStr.toUpperCase();
+
+  if (isToday(dateStr)) return "TODAY";
+  if (isTomorrow(dateStr)) return "TOMORROW";
+
+  return eventDay
+    .toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    })
+    .toUpperCase();
+}
+
+function formatTimelineDateBox(dateStr: string): {
+  weekday: string;
+  day: string;
+  month: string;
+} | null {
+  const eventDay = parseEventDay(dateStr);
+  if (!eventDay) return null;
+
+  return {
+    weekday: eventDay
+      .toLocaleDateString("en-US", { weekday: "short" })
+      .toUpperCase()
+      .slice(0, 3),
+    day: String(eventDay.getDate()),
+    month: eventDay
+      .toLocaleDateString("en-US", { month: "short" })
+      .toUpperCase()
+      .slice(0, 3),
+  };
+}
+
+function formatEventTime12h(timeStr: string): string | null {
+  const t = timeStr.trim();
+  if (!t || t.toUpperCase() === "TBD") return null;
+
+  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    const hour = parseInt(ampmMatch[1], 10);
+    const minute = ampmMatch[2];
+    if (hour >= 1 && hour <= 12) {
+      return `${hour}:${minute} ${ampmMatch[3].toUpperCase()}`;
+    }
+  }
+
+  const m24 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m24) {
+    let hour = parseInt(m24[1], 10);
+    const minute = m24[2];
+    if (hour <= 23) {
+      const period = hour >= 12 ? "PM" : "AM";
+      hour = hour % 12 || 12;
+      return `${hour}:${minute} ${period}`;
+    }
+  }
+
+  return t;
+}
+
+function hasEventLocation(location: string | null | undefined): boolean {
+  const trimmed = location?.trim();
+  return !!trimmed && trimmed.toUpperCase() !== "TBD";
+}
+
+type EventStatusDisplay = "going" | "rsvp" | "open";
+
+function resolveEventStatusDisplay(rsvpStatus?: RsvpStatus | string): EventStatusDisplay {
+  if (rsvpStatus === "going") return "going";
+  if (!rsvpStatus) return "rsvp";
+  return "open";
+}
+
+function EventStatusButton({ display }: { display: EventStatusDisplay }) {
+  const base = {
+    flexShrink: 0,
+    borderRadius: "6px",
+    padding: "6px 14px",
+    fontSize: "12px",
+    fontWeight: 600,
+    whiteSpace: "nowrap" as const,
+  };
+
+  if (display === "going") {
+    return (
+      <span
+        style={{
+          ...base,
+          background: "#FFC429",
+          color: "#0f0f0f",
+          border: "none",
+        }}
+      >
+        Going
+      </span>
+    );
+  }
+
+  if (display === "rsvp") {
+    return (
+      <span
+        style={{
+          ...base,
+          background: "transparent",
+          border: "1px solid #E51937",
+          color: "#E51937",
+          fontWeight: 600,
+        }}
+      >
+        RSVP
+      </span>
+    );
+  }
+
+  return (
+    <span
+      style={{
+        ...base,
+        background: "transparent",
+        border: "1px solid #555555",
+        color: "#999999",
+        fontWeight: 500,
+      }}
+    >
+      Open
+    </span>
+  );
+}
+
+function EventClubLogo({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr =
+    abbreviation?.trim() ||
+    name
+      .split(" ")
+      .filter(Boolean)
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 3)
+      .toUpperCase();
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: "40px",
+          height: "40px",
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "40px",
+        height: "40px",
+        borderRadius: "50%",
+        background: "#2a2a2a",
+        color: "#888888",
+        fontSize: "11px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
+}
+
+function EventAttendeeAvatarStack({ attendees }: { attendees: EventRsvp[] }) {
+  const going = attendees.filter((a) => a.status === "going" && a.avatarUrl?.trim());
+  if (going.length === 0) return null;
+
+  const visible = going.slice(0, 3);
+  const remaining = going.length - visible.length;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {visible.map((attendee, index) => (
+          <img
+            key={attendee.id}
+            src={attendee.avatarUrl}
+            alt=""
+            style={{
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #141414",
+              marginLeft: index === 0 ? 0 : "-8px",
+              position: "relative",
+              zIndex: visible.length - index,
+            }}
+          />
+        ))}
+      </div>
+      {remaining > 0 ? (
+        <span
+          style={{
+            marginLeft: "6px",
+            fontSize: "11px",
+            color: "#555555",
+            background: "#1a1a1a",
+            border: "1px solid #2a2a2a",
+            borderRadius: "999px",
+            padding: "2px 8px",
+            flexShrink: 0,
+          }}
+        >
+          +{remaining}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function TimelineDateBox({ dateStr }: { dateStr: string }) {
+  const parsed = formatTimelineDateBox(dateStr);
+
+  return (
+    <div
+      style={{
+        background: "#1a1a1a",
+        border: "1px solid #2a2a2a",
+        borderRadius: "8px",
+        padding: "8px",
+        textAlign: "center",
+        width: "64px",
+        boxSizing: "border-box",
+      }}
+    >
+      {parsed ? (
+        <>
+          <div style={{ fontSize: "10px", color: "#777777", letterSpacing: "0.05em" }}>
+            {parsed.weekday}
+          </div>
+          <div
+            style={{
+              fontSize: "22px",
+              fontWeight: 700,
+              color: "#ffffff",
+              lineHeight: 1.1,
+              margin: "2px 0",
+            }}
+          >
+            {parsed.day}
+          </div>
+          <div style={{ fontSize: "11px", color: "#777777" }}>{parsed.month}</div>
+        </>
+      ) : (
+        <div style={{ fontSize: "10px", color: "#777777" }}>TBD</div>
+      )}
+    </div>
+  );
+}
+
+function EventsTabEventRow({
+  event,
+  rsvpStatus,
+  logoUrl,
+  attendees,
+}: {
+  event: DeduplicatedDashboardEvent;
+  rsvpStatus?: RsvpStatus | string;
+  logoUrl?: string;
+  attendees?: EventRsvp[];
+}) {
+  const timeLabel = event.time ? formatEventTime12h(event.time) : null;
+  const showLocation = hasEventLocation(event.location);
+  const statusDisplay = resolveEventStatusDisplay(rsvpStatus);
+  const attendeeList = attendees ?? [];
+
+  return (
+    <div
+      style={{
+        background: "#141414",
+        border: "1px solid #2a2a2a",
+        borderRadius: "10px",
+        padding: "16px",
+        marginBottom: "8px",
+        display: "flex",
+        alignItems: "center",
+        gap: "14px",
+      }}
+    >
+      <Link
+        to={`/app/clubs/${event.clubId}/events`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "14px",
+          flex: 1,
+          minWidth: 0,
+          textDecoration: "none",
+        }}
+      >
+        <EventClubLogo
+          name={event.clubName}
+          abbreviation={event.clubAbbreviation}
+          logoUrl={logoUrl}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "15px",
+              fontWeight: 700,
+              color: "#ffffff",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {event.title}
+          </p>
+          <p
+            style={{
+              margin: "4px 0 8px",
+              fontSize: "13px",
+              color: "#777777",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {event.clubName}
+          </p>
+          {timeLabel ? (
+            <p
+              style={{
+                margin: "0 0 4px",
+                fontSize: "12px",
+                color: "#777777",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <Clock size={12} aria-hidden />
+              {timeLabel}
+            </p>
+          ) : null}
+          {showLocation ? (
+            <p
+              style={{
+                margin: 0,
+                fontSize: "12px",
+                color: "#777777",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <MapPin size={12} aria-hidden />
+              {event.location.trim()}
+            </p>
+          ) : null}
+        </div>
+      </Link>
+
+      {attendeeList.length > 0 ? (
+        <EventAttendeeAvatarStack attendees={attendeeList} />
+      ) : null}
+
+      <EventStatusButton display={statusDisplay} />
+
+      <button
+        type="button"
+        aria-label="Event actions"
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "#555555",
+          cursor: "pointer",
+          padding: "4px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <MoreVertical size={18} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+export function EventsTabHeader({
+  eventCount,
+  clubCount,
+}: {
+  eventCount: number;
+  clubCount: number;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        marginBottom: "20px",
+        gap: "16px",
+        flexWrap: "wrap",
+      }}
+    >
+      <div>
+        <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#ffffff" }}>
+          Events this week
+        </h2>
+        <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#777777" }}>
+          {eventCount} event{eventCount === 1 ? "" : "s"} · {clubCount} club
+          {clubCount === 1 ? "" : "s"}
+        </p>
+      </div>
+
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+        <button type="button" style={HEADER_CONTROL_STYLE}>
+          <Calendar size={16} aria-hidden />
+          Weekly view
+        </button>
+        <button type="button" style={HEADER_CONTROL_STYLE}>
+          <Filter size={16} aria-hidden />
+          Filter
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function EventsTabTimeline({
+  groups,
+  myRsvps,
+  clubLogos,
+  eventAttendees,
+}: {
+  groups: EventsByDateGroup[];
+  myRsvps: Record<string, RsvpStatus | string>;
+  clubLogos: Record<string, string>;
+  eventAttendees?: Record<string, EventRsvp[]>;
+}) {
+  return (
+    <div>
+      {groups.map((group, groupIndex) => {
+        const isLast = groupIndex === groups.length - 1;
+
+        return (
+          <div
+            key={group.date}
+            style={{
+              display: "flex",
+              gap: "16px",
+              marginBottom: isLast ? 0 : "4px",
+            }}
+          >
+            <div
+              style={{
+                width: "70px",
+                flexShrink: 0,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  background: timelineDotColor(group.date),
+                  marginBottom: "8px",
+                  flexShrink: 0,
+                }}
+              />
+              <TimelineDateBox dateStr={group.date} />
+              {!isLast ? (
+                <div
+                  style={{
+                    flex: 1,
+                    width: 0,
+                    borderLeft: "1px dashed #2a2a2a",
+                    marginTop: "8px",
+                    minHeight: "24px",
+                  }}
+                />
+              ) : null}
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : "16px" }}>
+              <p
+                style={{
+                  margin: "0 0 10px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#555555",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                {formatEventsTimelineGroupLabel(group.date)}
+              </p>
+
+              {group.events.map((event) => (
+                <EventsTabEventRow
+                  key={`${event.id}-${event.date}`}
+                  event={event}
+                  rsvpStatus={myRsvps[event.id]}
+                  logoUrl={event.clubId ? clubLogos[event.clubId] : undefined}
+                  attendees={eventAttendees?.[event.id]}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function useEventsTabSummary(events: DeduplicatedDashboardEvent[]) {
+  return useMemo(() => {
+    const clubCount = new Set(events.map((event) => event.clubId)).size;
+    return { eventCount: events.length, clubCount };
+  }, [events]);
+}
