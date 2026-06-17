@@ -41,6 +41,20 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useInbox } from "../../hooks/useInbox";
 import InboxTab from "../dashboard/InboxTab";
 import {
+  TasksFilterBar,
+  TaskBreakdownCard,
+  TaskClubGroupSection,
+  TasksTabFooter,
+  type TasksTabTask,
+  WeeklyTaskProgressCard,
+  prioritySortValue,
+  statusSortValue,
+  useTaskBreakdown,
+  useWeeklyTaskProgress,
+  type TaskPriorityFilter,
+  type TaskSortOption,
+} from "../dashboard/TasksTabUI";
+import {
   TasksWeekEmptyState,
   ThisWeekEventCard,
   WeekAchievementCard,
@@ -1566,31 +1580,6 @@ function taskStatusLabel(status: string): string {
   return "To Do";
 }
 
-function taskStatusColorStyle(status: string): Pick<
-  CSSProperties,
-  "background" | "border" | "color"
-> {
-  if (status === "in_progress") {
-    return {
-      background: "#2a1f00",
-      border: "1px solid #FFC429",
-      color: "#FFC429",
-    };
-  }
-  if (status === "done") {
-    return {
-      background: "#1a0a0a",
-      border: "1px solid #E51937",
-      color: "#E51937",
-    };
-  }
-  return {
-    background: "#222222",
-    border: "1px solid #444444",
-    color: "#888888",
-  };
-}
-
 function dashboardEventRsvpBadgeStyle(rsvpStatus?: string): CSSProperties {
   const base: CSSProperties = {
     fontSize: "11px",
@@ -1652,17 +1641,6 @@ function dashboardTaskStatusBadgeStyle(status: string): CSSProperties {
     background: "#1a1a1a",
     border: "1px solid #333333",
     color: "#666666",
-  };
-}
-
-function taskStatusPillStyle(status: string): CSSProperties {
-  return {
-    ...taskStatusColorStyle(status),
-    fontSize: "11px",
-    fontWeight: 500,
-    borderRadius: "20px",
-    padding: "2px 8px",
-    flexShrink: 0,
   };
 }
 
@@ -2641,89 +2619,24 @@ function EventsTab({
 // ---------------------------------------------------------------------------
 // Tasks Tab
 // ---------------------------------------------------------------------------
-const TASK_TAB_LOGO_SIZE = 36;
-
-function taskTabStatusSortOrder(status: string): number {
-  if (status === "todo") return 0;
-  if (status === "in_progress") return 1;
-  if (status === "done") return 2;
-  return 0;
-}
-
-function TaskTabClubLogo({
-  name,
-  abbreviation,
-  logoUrl,
-  size = TASK_TAB_LOGO_SIZE,
-  circular = false,
-}: {
-  name: string;
-  abbreviation?: string;
-  logoUrl?: string;
-  size?: number;
-  circular?: boolean;
-}) {
-  const abbr = abbreviation || deriveAbbreviation(name);
-  const radius = circular ? "50%" : "6px";
-  const fontSize = size <= 24 ? "9px" : "11px";
-
-  if (logoUrl) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        style={{
-          width: `${size}px`,
-          height: `${size}px`,
-          borderRadius: radius,
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        width: `${size}px`,
-        height: `${size}px`,
-        borderRadius: radius,
-        background: "#2a2a2a",
-        color: "#888",
-        fontSize,
-        fontWeight: 600,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {abbr}
-    </div>
-  );
-}
-
-type TasksTabTask = {
-  id: string;
-  title: string;
-  status: string;
-  clubName: string;
-  clubId: string;
-  clubAbbreviation?: string;
-  clubLogoUrl?: string;
-  linkedMeetingCancelled?: boolean;
-};
-
 function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
   const { user } = useAuthContext();
   const [tasks, setTasks] = useState<TasksTabTask[]>([]);
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
+  const [joinedClubOptions, setJoinedClubOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
+  const [search, setSearch] = useState("");
+  const [clubFilter, setClubFilter] = useState("all");
+  const [sort, setSort] = useState<TaskSortOption>("due_date");
+  const [priorityFilter, setPriorityFilter] = useState<TaskPriorityFilter>("all");
+  const [expandedClubs, setExpandedClubs] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (joinedClubs.length === 0) {
-      queueMicrotask(() => setClubLogos({}));
+      queueMicrotask(() => {
+        setClubLogos({});
+        setJoinedClubOptions([]);
+      });
       return;
     }
 
@@ -2738,14 +2651,20 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
         if (error) {
           console.error("Failed to load task tab club logos:", error.message);
           setClubLogos({});
+          setJoinedClubOptions([]);
           return;
         }
         const map: Record<string, string> = {};
+        const options: Array<{ id: string; name: string }> = [];
         for (const row of data ?? []) {
+          const id = row.id as string;
           const url = row.logo_url as string | null;
-          if (url) map[row.id as string] = url;
+          if (url) map[id] = url;
+          options.push({ id, name: (row.name as string) ?? "Unknown Club" });
         }
+        options.sort((a, b) => a.name.localeCompare(b.name));
         setClubLogos(map);
+        setJoinedClubOptions(options);
       });
 
     return () => {
@@ -2764,12 +2683,11 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     supabase
       .from("tasks")
       .select(
-        "id, title, status, club_id, linked_meeting_id, linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( status ), clubs:club_id ( name, logo_url, abbreviation )",
+        "id, title, status, priority, task_type, due_date, created_at, club_id, linked_meeting_id, linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( status ), clubs:club_id ( name, logo_url, abbreviation )",
       )
       .in("club_id", joinedClubs)
       .neq("status", "cancelled")
       .order("created_at", { ascending: false })
-      .limit(60)
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
@@ -2786,10 +2704,14 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
                 id: row.id as string,
                 title: (row.title as string) ?? "",
                 status: (row.status as string) ?? "todo",
+                priority: (row.priority as string) ?? "medium",
+                taskType: (row.task_type as string) ?? "general",
                 clubName: (club.name as string) ?? "",
                 clubId: row.club_id as string,
                 clubAbbreviation: (club.abbreviation as string) ?? undefined,
                 clubLogoUrl: clubLogoUrl || undefined,
+                dueDate: (row.due_date as string | null) ?? undefined,
+                createdAt: (row.created_at as string) ?? undefined,
                 linkedMeetingCancelled: isLinkedMeetingCancelledRow(
                   row as Record<string, unknown>,
                 ),
@@ -2842,32 +2764,98 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     };
   }, [tasks, clubLogos]);
 
+  const clubOptions = joinedClubOptions;
+
+  const filtersActive =
+    search.trim().length > 0 ||
+    clubFilter !== "all" ||
+    priorityFilter !== "all" ||
+    sort !== "due_date";
+
+  const filteredTasks = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return tasks.filter((task) => {
+      if (clubFilter !== "all" && task.clubId !== clubFilter) return false;
+      if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
+      if (query && !task.title.toLowerCase().includes(query)) return false;
+      return true;
+    });
+  }, [tasks, search, clubFilter, priorityFilter]);
+
+  const sortedTasks = useMemo(() => {
+    const next = [...filteredTasks];
+
+    next.sort((a, b) => {
+      if (sort === "club_name") {
+        return a.clubName.localeCompare(b.clubName) || a.title.localeCompare(b.title);
+      }
+
+      if (sort === "status") {
+        return (
+          statusSortValue(a.status) - statusSortValue(b.status) ||
+          a.title.localeCompare(b.title)
+        );
+      }
+
+      if (sort === "priority") {
+        return (
+          prioritySortValue(a.priority) - prioritySortValue(b.priority) ||
+          a.title.localeCompare(b.title)
+        );
+      }
+
+      const aDue = a.dueDate?.trim() ?? "9999-12-31";
+      const bDue = b.dueDate?.trim() ?? "9999-12-31";
+      return aDue.localeCompare(bDue) || a.title.localeCompare(b.title);
+    });
+
+    return next;
+  }, [filteredTasks, sort]);
+
   const groupedTasks = useMemo(() => {
     const byClub = new Map<string, TasksTabTask[]>();
-    for (const task of tasks) {
+    for (const task of sortedTasks) {
       const existing = byClub.get(task.clubId) ?? [];
       existing.push(task);
       byClub.set(task.clubId, existing);
     }
 
-    return Array.from(byClub.entries())
-      .map(([clubId, clubTasks]) => {
-        const sortedTasks = [...clubTasks].sort(
-          (a, b) =>
-            taskTabStatusSortOrder(a.status) - taskTabStatusSortOrder(b.status),
-        );
-        const doneCount = clubTasks.filter((t) => t.status === "done").length;
+    const allClubIds = new Set([...byClub.keys()]);
+    if (clubFilter !== "all") {
+      allClubIds.add(clubFilter);
+    }
+
+    return Array.from(allClubIds)
+      .map((clubId) => {
+        const clubTasks = byClub.get(clubId) ?? [];
+        const sourceTasks = tasks.filter((task) => task.clubId === clubId);
+        const doneCount = sourceTasks.filter((task) => task.status === "done").length;
         return {
           clubId,
-          clubName: clubTasks[0]?.clubName ?? "Unknown Club",
-          clubAbbreviation: clubTasks[0]?.clubAbbreviation,
-          tasks: sortedTasks,
+          clubName: clubTasks[0]?.clubName ?? sourceTasks[0]?.clubName ?? "Unknown Club",
+          clubAbbreviation: clubTasks[0]?.clubAbbreviation ?? sourceTasks[0]?.clubAbbreviation,
+          tasks: clubTasks,
           doneCount,
-          totalCount: clubTasks.length,
+          totalCount: sourceTasks.length,
         };
       })
+      .filter((group) => group.totalCount > 0)
       .sort((a, b) => a.clubName.localeCompare(b.clubName));
-  }, [tasks]);
+  }, [sortedTasks, tasks, clubFilter]);
+
+  const weeklyProgress = useWeeklyTaskProgress(tasks);
+  const breakdown = useTaskBreakdown(filteredTasks);
+
+  useEffect(() => {
+    setExpandedClubs((prev) => {
+      const next = { ...prev };
+      for (const group of groupedTasks) {
+        if (next[group.clubId] === undefined) next[group.clubId] = true;
+      }
+      return next;
+    });
+  }, [groupedTasks]);
 
   if (loadingTasks) {
     return (
@@ -2887,164 +2875,50 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
 
   return (
     <div>
-      {groupedTasks.map((group, groupIndex) => {
-        const logoUrl =
-          group.tasks[0]?.clubLogoUrl ?? clubLogos[group.clubId];
-        const progressPercent =
-          group.totalCount > 0
-            ? Math.round((group.doneCount / group.totalCount) * 100)
-            : 0;
-
-        return (
-          <div key={group.clubId}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                marginBottom: "8px",
-                marginTop: groupIndex === 0 ? 0 : "20px",
-              }}
-            >
-              <TaskTabClubLogo
-                name={group.clubName}
-                abbreviation={group.clubAbbreviation}
-                logoUrl={logoUrl}
-                size={24}
-                circular
-              />
-              <span
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "#ffffff",
-                }}
-              >
-                {group.clubName}
-              </span>
-              <span
-                style={{
-                  fontSize: "12px",
-                  color: "#555555",
-                  marginLeft: "auto",
-                }}
-              >
-                {group.doneCount} of {group.totalCount} done
-              </span>
-            </div>
-            <div
-              style={{
-                width: "100%",
-                height: "3px",
-                background: "#1a1a1a",
-                borderRadius: "2px",
-                marginBottom: "12px",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  background: "#FFC429",
-                  height: "100%",
-                  borderRadius: "2px",
-                  width: `${progressPercent}%`,
-                }}
-              />
-            </div>
-            {group.tasks.map((task) => (
-              <TasksTabTaskCard
-                key={task.id}
-                task={task}
-                logoUrl={task.clubLogoUrl ?? clubLogos[task.clubId]}
-              />
-            ))}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function TasksTabTaskCard({
-  task,
-  logoUrl,
-}: {
-  task: TasksTabTask;
-  logoUrl?: string;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const borderMuted = hovered ? "#333" : "#242424";
-
-  return (
-    <Link
-      to={`/app/clubs/${task.clubId}/tasks`}
-      className="block w-full"
-      style={{ cursor: "pointer" }}
-    >
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: "14px",
-          background: "#1a1a1a",
-          borderTop: `1px solid ${borderMuted}`,
-          borderRight: `1px solid ${borderMuted}`,
-          borderBottom: `1px solid ${borderMuted}`,
-          borderLeft: `4px solid ${taskStatusBorder(task.status)}`,
-          borderRadius: "10px",
-          padding: "14px 18px",
-          marginBottom: "8px",
-          transition: "all 0.15s ease",
-          transform: hovered ? "translateY(-1px)" : undefined,
-        }}
-      >
-              <TaskTabClubLogo
-                name={task.clubName}
-                abbreviation={task.clubAbbreviation}
-                logoUrl={logoUrl}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "#ffffff",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {task.title}
-                </p>
-                <LinkedMeetingCancelledLabel show={task.linkedMeetingCancelled} />
-                <p
-                  style={{
-                    margin: "3px 0 0",
-                    fontSize: "12px",
-                    color: "#747676",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {task.clubName}
-                </p>
-              </div>
-              <span
-                style={{
-                  ...taskStatusPillStyle(task.status),
-                  padding: "3px 10px",
-                  flexShrink: 0,
-                }}
-              >
-                {taskStatusLabel(task.status)}
-              </span>
+      <div style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
+        <WeeklyTaskProgressCard
+          completed={weeklyProgress.completed}
+          total={weeklyProgress.total}
+          dailyCounts={weeklyProgress.dailyCounts}
+          weekLabels={weeklyProgress.weekLabels}
+        />
+        <TaskBreakdownCard arcs={breakdown.arcs} segments={breakdown.segments} />
       </div>
-    </Link>
+
+      <TasksFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        clubFilter={clubFilter}
+        onClubFilterChange={setClubFilter}
+        clubOptions={clubOptions}
+        sort={sort}
+        onSortChange={setSort}
+        priorityFilter={priorityFilter}
+        onPriorityFilterChange={setPriorityFilter}
+      />
+
+      {groupedTasks.map((group) => (
+        <TaskClubGroupSection
+          key={group.clubId}
+          group={group}
+          logoUrl={group.tasks[0]?.clubLogoUrl ?? clubLogos[group.clubId]}
+          expanded={expandedClubs[group.clubId] ?? true}
+          onToggle={() =>
+            setExpandedClubs((prev) => ({
+              ...prev,
+              [group.clubId]: !(prev[group.clubId] ?? true),
+            }))
+          }
+        />
+      ))}
+
+      <TasksTabFooter
+        visibleCount={sortedTasks.length}
+        totalCount={tasks.length}
+        clubCount={groupedTasks.length}
+        filtersActive={filtersActive}
+      />
+    </div>
   );
 }
 
