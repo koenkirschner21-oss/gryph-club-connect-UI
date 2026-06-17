@@ -31,6 +31,12 @@ import {
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useInbox } from "../../hooks/useInbox";
 import InboxTab from "../dashboard/InboxTab";
+import {
+  TasksWeekEmptyState,
+  ThisWeekEventCard,
+  WeekAchievementCard,
+  WeekCalendarStrip,
+} from "../dashboard/ThisWeekTabUI";
 
 // ---------------------------------------------------------------------------
 // Tab types
@@ -50,8 +56,6 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
 // ---------------------------------------------------------------------------
 // Main Dashboard
 // ---------------------------------------------------------------------------
-const CALENDAR_MOBILE_LABELS = ["M", "T", "W", "T", "F", "S", "S"] as const;
-
 export default function DashboardPage() {
   const isMobile = useIsMobile();
   const { user, loading: authLoading } = useAuthContext();
@@ -594,6 +598,7 @@ export default function DashboardPage() {
         <ThisWeekTab
           joinedClubIds={joinedClubs}
           clubLogos={clubLogos}
+          displayName={displayName}
           onViewAllTasks={() => setActiveTab("tasks")}
           onViewAllEvents={() => setActiveTab("events")}
         />
@@ -782,25 +787,10 @@ type WeekEventItem = {
   clubId: string;
   time: string;
   location: string;
+  visibility?: string | null;
 };
 
 type WeekPlannerItem = WeekTaskItem | WeekEventItem;
-
-function weekEventToDashboard(event: WeekEventItem): DashboardEvent {
-  return {
-    id: event.id,
-    clubId: event.clubId,
-    title: event.title,
-    description: "",
-    date: event.dateKey,
-    time: event.time,
-    location: event.location,
-    createdAt: "",
-    clubName: event.clubName,
-    clubAbbreviation: "",
-    clubBrandColor: "#C20430",
-  };
-}
 
 function TaskDueBadgeInline({
   dueDate,
@@ -898,39 +888,54 @@ function WeekTaskCard({
 function ThisWeekTab({
   joinedClubIds,
   clubLogos,
+  displayName,
   onViewAllTasks,
-  onViewAllEvents,
 }: {
   joinedClubIds: string[];
   clubLogos: Record<string, string>;
+  displayName: string;
   onViewAllTasks: () => void;
   onViewAllEvents: () => void;
 }) {
-  const isMobile = useIsMobile();
   const [items, setItems] = useState<WeekPlannerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [monthlyCompleted, setMonthlyCompleted] = useState(0);
+  const [monthlyTotal, setMonthlyTotal] = useState(0);
   const weekItemsRef = useRef<HTMLDivElement>(null);
   const todayKey = todayIsoDate();
-  const weekDays = useMemo(() => calendarWeekDays(), []);
+  const weekReference = useMemo(() => {
+    const ref = new Date();
+    ref.setDate(ref.getDate() + weekOffset * 7);
+    return ref;
+  }, [weekOffset]);
+  const weekDays = useMemo(() => calendarWeekDays(weekReference), [weekReference]);
+  const weekStart = weekDays[0]?.dateKey ?? todayKey;
+  const weekEnd = weekDays[6]?.dateKey ?? addDaysIso(todayKey, 6);
 
   useEffect(() => {
     if (joinedClubIds.length === 0) {
       queueMicrotask(() => {
         setItems([]);
+        setMonthlyCompleted(0);
+        setMonthlyTotal(0);
         setLoading(false);
       });
       return;
     }
 
     let cancelled = false;
-    const start = todayIsoDate();
-    const end = addDaysIso(start, 7);
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    const monthStartIso = localIsoDate(monthStart);
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    const monthEndIso = localIsoDate(monthEnd);
 
     async function loadWeek() {
       setLoading(true);
 
-      const [tasksRes, eventsRes] = await Promise.all([
+      const [tasksRes, eventsRes, monthTasksRes] = await Promise.all([
         supabase
           .from("tasks")
           .select(
@@ -947,8 +952,8 @@ function ThisWeekTab({
           `,
           )
           .in("club_id", joinedClubIds)
-          .gte("due_date", start)
-          .lte("due_date", end)
+          .gte("due_date", weekStart)
+          .lte("due_date", weekEnd)
           .neq("status", "done")
           .neq("status", "cancelled")
           .order("due_date", { ascending: true }),
@@ -962,14 +967,22 @@ function ThisWeekTab({
             date,
             time,
             location,
+            visibility,
             clubs:club_id ( name )
           `,
           )
           .in("club_id", joinedClubIds)
-          .gte("date", start)
-          .lte("date", end)
+          .gte("date", weekStart)
+          .lte("date", weekEnd)
           .order("date", { ascending: true })
           .order("time", { ascending: true }),
+        supabase
+          .from("tasks")
+          .select("id, status")
+          .in("club_id", joinedClubIds)
+          .neq("status", "cancelled")
+          .gte("due_date", monthStartIso)
+          .lte("due_date", monthEndIso),
       ]);
 
       if (cancelled) return;
@@ -993,6 +1006,7 @@ function ThisWeekTab({
             clubId: row.club_id as string,
             time: (row.time as string) ?? "",
             location: (row.location as string) ?? "",
+            visibility: (row.visibility as string) ?? null,
           });
         }
       }
@@ -1021,6 +1035,16 @@ function ThisWeekTab({
         }
       }
 
+      if (!monthTasksRes.error) {
+        const monthRows = monthTasksRes.data ?? [];
+        const completed = monthRows.filter((row) => row.status === "done").length;
+        setMonthlyCompleted(completed);
+        setMonthlyTotal(monthRows.length);
+      } else {
+        setMonthlyCompleted(0);
+        setMonthlyTotal(0);
+      }
+
       setItems(plannerItems);
       setLoading(false);
     }
@@ -1030,7 +1054,7 @@ function ThisWeekTab({
     return () => {
       cancelled = true;
     };
-  }, [joinedClubIds]);
+  }, [joinedClubIds, weekStart, weekEnd]);
 
   const dayMeta = useMemo(() => {
     const map = new Map<
@@ -1075,9 +1099,7 @@ function ThisWeekTab({
   const previewEvents = weekEvents.slice(0, 3);
 
   function handleDayClick(dateKey: string) {
-    const meta = dayMeta.get(dateKey);
-    if (!meta?.itemCount) return;
-    setSelectedDayKey(dateKey);
+    setSelectedDayKey((prev) => (prev === dateKey ? null : dateKey));
     requestAnimationFrame(() => {
       weekItemsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -1093,114 +1115,15 @@ function ThisWeekTab({
 
   return (
     <div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          gap: isMobile ? "4px" : "8px",
-          marginBottom: "24px",
-        }}
-      >
-        {weekDays.map((day, index) => {
-          const meta = dayMeta.get(day.dateKey);
-          const isToday = day.dateKey === todayKey;
-          const isSelected = selectedDayKey === day.dateKey;
-          const hasItems = (meta?.itemCount ?? 0) > 0;
-          const showDots = meta?.hasEvents || meta?.hasTasks;
-
-          let background = "#111111";
-          let border = "1px solid #1e1e1e";
-          if (isToday) {
-            background = "#1a0505";
-            border = "1px solid #E51937";
-          }
-          if (isSelected && hasItems) {
-            border = "1px solid #333333";
-          }
-
-          return (
-            <button
-              key={day.dateKey}
-              type="button"
-              onClick={() => handleDayClick(day.dateKey)}
-              style={{
-                height: isMobile ? "48px" : "64px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: isMobile ? "2px" : "4px",
-                cursor: hasItems ? "pointer" : "default",
-                background,
-                border,
-                borderRadius: isMobile ? "6px" : "8px",
-                padding: 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: isMobile ? "11px" : "10px",
-                  textTransform: "uppercase",
-                  color: isToday ? "#ffffff" : "#555555",
-                  letterSpacing: isMobile ? 0 : "0.04em",
-                  fontWeight: isMobile ? 600 : 400,
-                  lineHeight: 1,
-                }}
-              >
-                {isMobile ? CALENDAR_MOBILE_LABELS[index] : day.label}
-              </span>
-              {!isMobile ? (
-              <span
-                style={{
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  color: "#ffffff",
-                  lineHeight: 1,
-                }}
-              >
-                {day.dayNum}
-              </span>
-              ) : null}
-              {showDots ? (
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "4px",
-                    minHeight: "6px",
-                  }}
-                >
-                  {meta?.hasEvents ? (
-                    <span
-                      style={{
-                        width: "5px",
-                        height: "5px",
-                        borderRadius: "50%",
-                        background: "#E51937",
-                        flexShrink: 0,
-                      }}
-                    />
-                  ) : null}
-                  {meta?.hasTasks ? (
-                    <span
-                      style={{
-                        width: "5px",
-                        height: "5px",
-                        borderRadius: "50%",
-                        background: "#FFC429",
-                        flexShrink: 0,
-                      }}
-                    />
-                  ) : null}
-                </span>
-              ) : (
-                <span style={{ minHeight: "6px" }} />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      <WeekCalendarStrip
+        weekDays={weekDays}
+        todayKey={todayKey}
+        selectedDayKey={selectedDayKey}
+        dayMeta={dayMeta}
+        onPrevWeek={() => setWeekOffset((prev) => prev - 1)}
+        onNextWeek={() => setWeekOffset((prev) => prev + 1)}
+        onDayClick={handleDayClick}
+      />
 
       <div ref={weekItemsRef}>
         <h3
@@ -1214,9 +1137,7 @@ function ThisWeekTab({
           Tasks This Week
         </h3>
         {weekTasks.length === 0 ? (
-          <p style={{ color: "#444444", fontSize: "13px", margin: "0 0 24px" }}>
-            No tasks due this week
-          </p>
+          <TasksWeekEmptyState />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
             {previewTasks.map((task) => (
@@ -1253,21 +1174,25 @@ function ThisWeekTab({
         ) : (
           <div>
             {previewEvents.map((event) => (
-              <EventCard
+              <ThisWeekEventCard
                 key={event.id}
-                event={weekEventToDashboard(event)}
+                event={event}
                 logoUrl={clubLogos[event.clubId]}
               />
             ))}
-            {weekEvents.length > 3 ? (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
-                <button type="button" onClick={onViewAllEvents} style={viewAllLinkStyle}>
-                  View All →
-                </button>
-              </div>
-            ) : null}
+            <div style={{ textAlign: "center", marginTop: "16px" }}>
+              <Link to="/events" style={{ ...viewAllLinkStyle, display: "inline-block" }}>
+                View all events →
+              </Link>
+            </div>
           </div>
         )}
+
+        <WeekAchievementCard
+          displayName={displayName}
+          completedCount={monthlyCompleted}
+          totalCount={monthlyTotal}
+        />
       </div>
     </div>
   );
