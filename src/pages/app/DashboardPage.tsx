@@ -9,7 +9,16 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Calendar, CheckSquare, Bell, Compass } from "lucide-react";
+import {
+  Calendar,
+  CheckSquare,
+  Bell,
+  Compass,
+  ChevronRight,
+  Megaphone,
+  Users,
+} from "lucide-react";
+import type { InboxMessage } from "../../lib/inboxUtils";
 import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
@@ -58,6 +67,7 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
 // ---------------------------------------------------------------------------
 export default function DashboardPage() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
   const { clubs, joinedClubs, savedClubs, loading, getUserRole } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
@@ -281,7 +291,7 @@ export default function DashboardPage() {
     () => upcomingEvents.map((e) => e.id),
     [upcomingEvents],
   );
-  const { myRsvps, counts: rsvpCounts } = useEventRsvps(eventIds);
+  const { myRsvps } = useEventRsvps(eventIds);
 
   const sourceName = profile?.fullName || user?.email?.split("@")[0] || "";
   const displayName = sourceName.split(" ")[0];
@@ -429,7 +439,7 @@ export default function DashboardPage() {
       ) : (
         <>
       {/* ── Stat Cards (always visible) ── */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="MY CLUBS"
           accentColor="#E51937"
@@ -538,7 +548,7 @@ export default function DashboardPage() {
 
       {/* ── Tab Navigation ── */}
       <div
-        className={`mb-8 border-b border-border ${
+        className={`mb-6 border-b border-border ${
           isMobile
             ? "flex flex-nowrap items-center gap-6 overflow-x-auto"
             : "flex items-center gap-6"
@@ -581,17 +591,29 @@ export default function DashboardPage() {
       {activeTab === "overview" && (
         <OverviewTab
           myClubs={myClubs}
-          mySavedClubs={mySavedClubs}
           upcomingEvents={upcomingEvents}
           eventsLoading={eventsLoading}
           myRsvps={myRsvps}
-          rsvpCounts={rsvpCounts}
           getUserRole={getUserRole}
           userId={user?.id}
           joinedClubIds={joinedClubs}
           clubLogos={clubLogos}
+          inboxMessages={inbox.messages}
+          inboxLoading={inbox.loading}
+          inboxUnreadCount={inbox.unreadCount}
+          isMobile={isMobile}
           onViewAllEvents={() => setActiveTab("events")}
           onViewAllTasks={() => setActiveTab("tasks")}
+          onViewAllClubs={() => setActiveTab("clubs")}
+          onViewAllInbox={() => setActiveTab("inbox")}
+          onViewAllAnnouncements={() => {
+            const firstClubId = joinedClubs[0];
+            if (firstClubId) {
+              navigate(`/app/clubs/${firstClubId}/announcements`);
+              return;
+            }
+            setActiveTab("clubs");
+          }}
         />
       )}
       {activeTab === "week" && (
@@ -606,6 +628,7 @@ export default function DashboardPage() {
       {activeTab === "clubs" && (
         <MyClubsTab
           myClubs={myClubs}
+          mySavedClubs={mySavedClubs}
           clubLogos={clubLogos}
           getUserRole={getUserRole}
         />
@@ -726,6 +749,321 @@ const overviewEmptyTextStyle = {
   fontSize: "13px",
   margin: 0,
 } as const;
+
+const overviewColumnCardStyle: CSSProperties = {
+  background: "#141414",
+  border: "1px solid #2a2a2a",
+  borderRadius: "10px",
+  padding: "16px",
+};
+
+const overviewColumnHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  width: "100%",
+  fontSize: "15px",
+  fontWeight: 700,
+  color: "#ffffff",
+  margin: "0 0 12px",
+};
+
+const overviewRowDividerStyle: CSSProperties = {
+  padding: "10px 0",
+  borderBottom: "1px solid #1a1a1a",
+};
+
+function OverviewColumnCard({
+  title,
+  icon,
+  badge,
+  children,
+  footer,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div style={overviewColumnCardStyle}>
+      <div style={overviewColumnHeaderStyle}>
+        {icon}
+        <span>{title}</span>
+        {badge}
+      </div>
+      {children}
+      {footer}
+    </div>
+  );
+}
+
+function OverviewClubLogo({
+  name,
+  abbreviation,
+  logoUrl,
+}: {
+  name: string;
+  abbreviation?: string;
+  logoUrl?: string;
+}) {
+  const abbr = abbreviation?.trim() || deriveAbbreviation(name);
+
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        style={{
+          width: "28px",
+          height: "28px",
+          borderRadius: "6px",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "28px",
+        height: "28px",
+        borderRadius: "6px",
+        background: "#2a2a2a",
+        color: "#888888",
+        fontSize: "10px",
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {abbr}
+    </div>
+  );
+}
+
+function OverviewCompactEventDateBadge({ date }: { date: string }) {
+  const parsed = parseEventDate(date);
+
+  return (
+    <div
+      style={{
+        width: "40px",
+        height: "44px",
+        borderRadius: "8px",
+        background: "#E51937",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        color: "#ffffff",
+        lineHeight: 1.1,
+      }}
+    >
+      {parsed ? (
+        <>
+          <span style={{ fontSize: "9px", fontWeight: 600 }}>{parsed.month}</span>
+          <span style={{ fontSize: "16px", fontWeight: 700 }}>{parsed.day}</span>
+        </>
+      ) : (
+        <span style={{ fontSize: "10px", fontWeight: 600 }}>TBD</span>
+      )}
+    </div>
+  );
+}
+
+function formatOverviewEventTime(timeStr: string): string | null {
+  const t = timeStr?.trim();
+  if (!t || t.toUpperCase() === "TBD") return null;
+
+  const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    const hour = parseInt(ampmMatch[1], 10);
+    const minute = ampmMatch[2];
+    if (hour >= 1 && hour <= 12) {
+      return `${hour}:${minute} ${ampmMatch[3].toUpperCase()}`;
+    }
+  }
+
+  const m24 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m24) {
+    let hour = parseInt(m24[1], 10);
+    const minute = m24[2];
+    if (hour <= 23) {
+      const period = hour >= 12 ? "PM" : "AM";
+      hour = hour % 12 || 12;
+      return `${hour}:${minute} ${period}`;
+    }
+  }
+
+  return t;
+}
+
+function OverviewViewAllLink({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} style={{ ...viewAllLinkStyle, marginTop: "12px" }}>
+      {label}
+    </button>
+  );
+}
+
+function OverviewCompactTaskRow({
+  task,
+  logoUrl,
+}: {
+  task: OverviewTask;
+  logoUrl?: string;
+}) {
+  return (
+    <Link
+      to={`/app/clubs/${task.clubId}/tasks`}
+      style={{ textDecoration: "none", display: "block" }}
+    >
+      <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "center", gap: "10px" }}>
+        <OverviewClubLogo name={task.clubName} logoUrl={logoUrl} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
+            {task.title}
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>{task.clubName}</p>
+          {task.dueDate?.trim() ? (
+            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#777777" }}>
+              {formatTaskDate(task.dueDate)}
+            </p>
+          ) : null}
+        </div>
+        <span style={dashboardTaskStatusBadgeStyle(task.status)}>
+          {taskStatusLabel(task.status)}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function OverviewCompactEventRow({
+  event,
+  rsvpStatus,
+}: {
+  event: DashboardEvent;
+  rsvpStatus?: string;
+}) {
+  const timeLabel = formatOverviewEventTime(event.time);
+  const locationLabel = hasEventLocation(event.location) ? event.location.trim() : null;
+
+  return (
+    <Link
+      to={`/app/clubs/${event.clubId}/events`}
+      style={{ textDecoration: "none", display: "block" }}
+    >
+      <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
+        <OverviewCompactEventDateBadge date={event.date} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
+            {event.title}
+          </p>
+          {locationLabel ? (
+            <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>{locationLabel}</p>
+          ) : null}
+          {timeLabel ? (
+            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#777777" }}>{timeLabel}</p>
+          ) : null}
+        </div>
+        {rsvpStatus === "going" ? (
+          <span style={dashboardEventRsvpBadgeStyle("going")}>Going</span>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
+function OverviewCompactClubRow({
+  club,
+  logoUrl,
+  roleLabel,
+}: {
+  club: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"][number];
+  logoUrl?: string;
+  roleLabel: string;
+}) {
+  return (
+    <Link
+      to={`/app/clubs/${club.id}`}
+      style={{ textDecoration: "none", display: "block" }}
+    >
+      <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "center", gap: "10px" }}>
+        <OverviewClubLogo
+          name={club.name}
+          abbreviation={club.abbreviation}
+          logoUrl={logoUrl}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
+            {club.name}
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#E51937" }}>{roleLabel}</p>
+        </div>
+        <ChevronRight size={16} color="#555555" aria-hidden style={{ flexShrink: 0 }} />
+      </div>
+    </Link>
+  );
+}
+
+function OverviewCompactInboxRow({ message }: { message: InboxMessage }) {
+  return (
+    <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
+          {message.title}
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>
+          {message.clubName ?? "Gryph Club Connect"}
+        </p>
+      </div>
+      <span style={{ fontSize: "11px", color: "#555555", whiteSpace: "nowrap", flexShrink: 0 }}>
+        {formatTimeAgo(message.createdAt)}
+      </span>
+    </div>
+  );
+}
+
+function OverviewCompactAnnouncementRow({
+  announcement,
+}: {
+  announcement: OverviewAnnouncement;
+}) {
+  return (
+    <Link
+      to={`/app/clubs/${announcement.clubId}/announcements`}
+      style={{ textDecoration: "none", display: "block" }}
+    >
+      <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "12px", color: "#E51937", fontWeight: 600 }}>
+            {announcement.clubName}
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
+            {announcement.title}
+          </p>
+        </div>
+        <span style={{ fontSize: "11px", color: "#555555", whiteSpace: "nowrap", flexShrink: 0 }}>
+          {formatTimeAgo(announcement.createdAt)}
+        </span>
+      </div>
+    </Link>
+  );
+}
 
 function localIsoDate(date = new Date()): string {
   const year = date.getFullYear();
@@ -1216,188 +1554,6 @@ type OverviewTask = {
   linkedMeetingCancelled?: boolean;
 };
 
-function OverviewTaskCard({
-  task,
-  logoUrl,
-}: {
-  task: OverviewTask;
-  logoUrl?: string;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const borderMuted = hovered ? "#333" : "#242424";
-  const dueUrgency = getTaskDueUrgency(task.dueDate, task.status);
-  const leftBorder = taskDueLeftBorder(dueUrgency, taskStatusBorder(task.status));
-
-  return (
-    <Link
-      to={`/app/clubs/${task.clubId}/tasks`}
-      className="block w-full no-underline"
-      style={{ cursor: "pointer" }}
-    >
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          position: "relative",
-          background: "#1a1a1a",
-          borderTop: `1px solid ${borderMuted}`,
-          borderRight: `1px solid ${borderMuted}`,
-          borderBottom: `1px solid ${borderMuted}`,
-          borderLeft: `4px solid ${leftBorder}`,
-          borderRadius: "8px",
-          padding: "14px 16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "12px",
-          transition: "all 0.15s ease",
-          transform: hovered ? "translateY(-1px)" : undefined,
-        }}
-      >
-        <EventClubLogo name={task.clubName} logoUrl={logoUrl} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <p
-            style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              color: "#ffffff",
-              margin: "0 0 4px",
-            }}
-          >
-            {task.title}
-          </p>
-          <LinkedMeetingCancelledLabel show={task.linkedMeetingCancelled} />
-          <p
-            style={{
-              fontSize: "11px",
-              color: "#555555",
-              margin: 0,
-              maxWidth: "180px",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {task.clubName}
-          </p>
-          {task.dueDate?.trim() ? (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                marginTop: "6px",
-                fontSize: "11px",
-                color: taskDueDateColor(dueUrgency),
-              }}
-            >
-              <Calendar size={11} aria-hidden />
-              Due: {formatTaskDate(task.dueDate)}
-            </span>
-          ) : null}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: "6px",
-            flexShrink: 0,
-          }}
-        >
-          <TaskDueBadgeInline dueDate={task.dueDate} status={task.status} />
-          <span style={{ ...dashboardTaskStatusBadgeStyle(task.status) }}>
-            {taskStatusLabel(task.status)}
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function MyClubSidebarItem({
-  club,
-  logoUrl,
-  roleDisplay,
-}: {
-  club: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"][number];
-  logoUrl?: string;
-  roleDisplay: { label: string; color: string };
-}) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <Link
-      to={`/app/clubs/${club.id}`}
-      className="flex items-start gap-3 p-3"
-      style={{
-        minHeight: "80px",
-        background: hovered ? "#1f1f1f" : "#191919",
-        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
-        borderRadius: 7,
-        cursor: "pointer",
-        transition: "all 0.15s ease",
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <ClubBadge
-        abbreviation={club.abbreviation}
-        name={club.name}
-        logoUrl={logoUrl}
-      />
-      <div className="min-w-0 flex-1">
-        <p
-          style={{
-            fontSize: "14px",
-            fontWeight: 600,
-            color: "#ffffff",
-            margin: 0,
-            lineHeight: 1.4,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {club.name}
-        </p>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "8px",
-            marginTop: "8px",
-          }}
-        >
-          <p
-            className="text-xs text-[var(--text-2)]"
-            style={{ margin: 0, minWidth: 0, color: roleDisplay.color }}
-          >
-            {roleDisplay.label}
-          </p>
-          <span
-            style={{
-              flexShrink: 0,
-              fontSize: "10px",
-              fontWeight: 600,
-              color: "#ffffff",
-              background: hovered ? "#252525" : "#1a1a1a",
-              border: "1px solid #444444",
-              borderRadius: "4px",
-              padding: "2px 6px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Open workspace →
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 function taskStatusBorder(status: string): string {
   if (status === "in_progress") return "#FFC429";
   if (status === "done") return "#E51937";
@@ -1510,48 +1666,9 @@ function taskStatusPillStyle(status: string): CSSProperties {
   };
 }
 
-function SectionHeadingWithIcon({
-  icon,
-  iconColor,
-  children,
-}: {
-  icon: React.ReactNode;
-  iconColor: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <h2
-      className="mb-5 flex items-center gap-2"
-      style={{
-        fontSize: "15px",
-        fontWeight: 600,
-        color: "#ffffff",
-      }}
-    >
-      <span style={{ color: iconColor, display: "flex" }}>{icon}</span>
-      {children}
-    </h2>
-  );
-}
-
 function hasEventLocation(location: string | null | undefined): boolean {
   const trimmed = location?.trim();
   return !!trimmed && trimmed !== "TBD";
-}
-
-function formatEventDateShort(dateStr: string): string {
-  const trimmedDate = dateStr.trim();
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)
-    ? new Date(`${trimmedDate}T12:00:00`)
-    : new Date(trimmedDate);
-
-  if (Number.isNaN(d.getTime())) return trimmedDate;
-
-  return d.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function formatClubRoleDisplay(
@@ -1591,58 +1708,6 @@ function formatTimeAgo(iso: string): string {
   if (diffMin >= 2) return `${diffMin} minutes ago`;
   if (diffMin === 1) return "1 minute ago";
   return "just now";
-}
-
-function AnnouncementTitlePreview({ title }: { title: string }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const [isTruncated, setIsTruncated] = useState(false);
-
-  useEffect(() => {
-    const el = textRef.current;
-    if (!el) return;
-
-    const checkTruncation = () => {
-      setIsTruncated(el.scrollWidth > el.clientWidth);
-    };
-
-    checkTruncation();
-
-    const observer = new ResizeObserver(checkTruncation);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [title]);
-
-  return (
-    <div style={{ margin: "0 0 4px", minWidth: 0 }}>
-      <span
-        ref={textRef}
-        style={{
-          display: "block",
-          fontSize: "12px",
-          fontWeight: 500,
-          color: "#d0d0d0",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {title}
-      </span>
-      {isTruncated ? (
-        <span
-          style={{
-            display: "block",
-            marginTop: "3px",
-            fontSize: "11px",
-            fontWeight: 500,
-            color: "#E51937",
-          }}
-        >
-          read more
-        </span>
-      ) : null}
-    </div>
-  );
 }
 
 function MyClubsTabClubAvatar({
@@ -1696,10 +1761,12 @@ function MyClubsTabClubAvatar({
 
 function MyClubsTab({
   myClubs,
+  mySavedClubs,
   clubLogos,
   getUserRole,
 }: {
   myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
+  mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   clubLogos: Record<string, string>;
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
 }) {
@@ -1724,6 +1791,7 @@ function MyClubsTab({
   }
 
   return (
+  <>
     <div
       style={{
         display: "grid",
@@ -1827,35 +1895,108 @@ function MyClubsTab({
         );
       })}
     </div>
+
+    {mySavedClubs.length > 0 ? (
+      <div style={{ marginTop: "32px" }}>
+        <h2
+          style={{
+            fontSize: "16px",
+            fontWeight: 700,
+            color: "#ffffff",
+            margin: "0 0 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <svg
+            className="h-4 w-4 text-muted"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
+            />
+          </svg>
+          Saved Clubs
+        </h2>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, 1fr)",
+            gap: "16px",
+          }}
+        >
+          {mySavedClubs.map((club) => (
+            <Link
+              key={club.id}
+              to={`/clubs/${club.slug}`}
+              className="flex items-start gap-3 no-underline"
+              style={{
+                background: "#141414",
+                border: "1px solid #2a2a2a",
+                borderRadius: "10px",
+                padding: "16px",
+                cursor: "pointer",
+              }}
+            >
+              <ClubBadge abbreviation={club.abbreviation} name={club.name} />
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">
+                  {club.name}
+                </p>
+                <p className="text-xs text-muted">{club.category}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    ) : null}
+  </>
   );
 }
 
 function OverviewTab({
   myClubs,
-  mySavedClubs,
   upcomingEvents,
   eventsLoading,
   myRsvps,
-  rsvpCounts,
   getUserRole,
   userId,
   joinedClubIds,
   clubLogos,
+  inboxMessages,
+  inboxLoading,
+  inboxUnreadCount,
+  isMobile,
   onViewAllEvents,
   onViewAllTasks,
+  onViewAllClubs,
+  onViewAllInbox,
+  onViewAllAnnouncements,
 }: {
   myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
-  mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
   myRsvps: Record<string, string>;
-  rsvpCounts: Record<string, import("../../types").RsvpCounts>;
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
   userId?: string;
   joinedClubIds: string[];
   clubLogos: Record<string, string>;
+  inboxMessages: InboxMessage[];
+  inboxLoading: boolean;
+  inboxUnreadCount: number;
+  isMobile: boolean;
   onViewAllEvents: () => void;
   onViewAllTasks: () => void;
+  onViewAllClubs: () => void;
+  onViewAllInbox: () => void;
+  onViewAllAnnouncements: () => void;
 }) {
   const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
@@ -1867,6 +2008,13 @@ function OverviewTab({
   const previewEvents = useMemo(
     () => upcomingEvents.slice(0, 3),
     [upcomingEvents],
+  );
+
+  const previewClubs = useMemo(() => myClubs.slice(0, 4), [myClubs]);
+
+  const previewInboxMessages = useMemo(
+    () => inboxMessages.slice(0, 3),
+    [inboxMessages],
   );
 
   useEffect(() => {
@@ -1990,249 +2138,190 @@ function OverviewTab({
     };
   }, [joinedClubIds]);
 
+  const tasksColumn = (
+    <OverviewColumnCard
+      title="My Tasks"
+      icon={<CheckSquare size={16} color="#555555" aria-hidden />}
+      footer={
+        !tasksLoading ? (
+          <OverviewViewAllLink label="View All Tasks →" onClick={onViewAllTasks} />
+        ) : null
+      }
+    >
+      {tasksLoading ? (
+        <div className="flex justify-center py-6">
+          <Spinner label="Loading tasks…" />
+        </div>
+      ) : myTasks.length === 0 ? (
+        <p style={overviewEmptyTextStyle}>No active tasks</p>
+      ) : (
+        <div>
+          {myTasks.map((task) => (
+            <OverviewCompactTaskRow
+              key={task.id}
+              task={task}
+              logoUrl={clubLogos[task.clubId]}
+            />
+          ))}
+        </div>
+      )}
+    </OverviewColumnCard>
+  );
+
+  const eventsColumn = (
+    <OverviewColumnCard
+      title="Upcoming Events"
+      icon={<Calendar size={16} color="#555555" aria-hidden />}
+      footer={
+        !eventsLoading ? (
+          <OverviewViewAllLink label="View All Events →" onClick={onViewAllEvents} />
+        ) : null
+      }
+    >
+      {eventsLoading ? (
+        <div className="flex justify-center py-6">
+          <Spinner label="Loading events…" />
+        </div>
+      ) : previewEvents.length === 0 ? (
+        <p style={overviewEmptyTextStyle}>No upcoming events</p>
+      ) : (
+        <div>
+          {previewEvents.map((event) => (
+            <OverviewCompactEventRow
+              key={event.id}
+              event={event}
+              rsvpStatus={myRsvps[event.id]}
+            />
+          ))}
+        </div>
+      )}
+    </OverviewColumnCard>
+  );
+
+  const clubsColumn = (
+    <OverviewColumnCard
+      title="My Clubs"
+      icon={<Users size={16} color="#555555" aria-hidden />}
+      footer={
+        <OverviewViewAllLink label="View All Clubs →" onClick={onViewAllClubs} />
+      }
+    >
+      {previewClubs.length === 0 ? (
+        <p style={overviewEmptyTextStyle}>You have not joined any clubs yet.</p>
+      ) : (
+        <div>
+          {previewClubs.map((club) => (
+            <OverviewCompactClubRow
+              key={club.id}
+              club={club}
+              logoUrl={clubLogos[club.id] ?? club.logoUrl}
+              roleLabel={formatClubRoleDisplay(getUserRole(club.id)).label}
+            />
+          ))}
+        </div>
+      )}
+    </OverviewColumnCard>
+  );
+
+  const inboxColumn = (
+    <OverviewColumnCard
+      title="Inbox"
+      icon={<Bell size={16} color="#555555" aria-hidden />}
+      badge={
+        inboxUnreadCount > 0 ? (
+          <span
+            style={{
+              marginLeft: "auto",
+              background: "#E51937",
+              color: "#ffffff",
+              borderRadius: "999px",
+              padding: "2px 8px",
+              fontSize: "11px",
+              fontWeight: 700,
+            }}
+          >
+            {inboxUnreadCount}
+          </span>
+        ) : null
+      }
+      footer={<OverviewViewAllLink label="View All Messages →" onClick={onViewAllInbox} />}
+    >
+      {inboxLoading ? (
+        <div className="flex justify-center py-6">
+          <Spinner label="Loading inbox…" />
+        </div>
+      ) : previewInboxMessages.length === 0 ? (
+        <p style={overviewEmptyTextStyle}>No messages yet</p>
+      ) : (
+        <div>
+          {previewInboxMessages.map((message) => (
+            <OverviewCompactInboxRow key={message.id} message={message} />
+          ))}
+        </div>
+      )}
+    </OverviewColumnCard>
+  );
+
+  const announcementsColumn = (
+    <OverviewColumnCard
+      title="Recent Announcements"
+      icon={<Megaphone size={16} color="#555555" aria-hidden />}
+      footer={<OverviewViewAllLink label="View All Announcements →" onClick={onViewAllAnnouncements} />}
+    >
+      {announcementsLoading ? (
+        <div className="flex justify-center py-6">
+          <Spinner label="Loading announcements…" />
+        </div>
+      ) : recentAnnouncements.length === 0 ? (
+        <p style={overviewEmptyTextStyle}>No announcements yet</p>
+      ) : (
+        <div>
+          {recentAnnouncements.map((announcement) => (
+            <OverviewCompactAnnouncementRow
+              key={announcement.id}
+              announcement={announcement}
+            />
+          ))}
+        </div>
+      )}
+    </OverviewColumnCard>
+  );
+
+  if (isMobile) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {tasksColumn}
+        {eventsColumn}
+        {clubsColumn}
+        {inboxColumn}
+        {announcementsColumn}
+      </div>
+    );
+  }
+
   return (
     <>
-      {/* ── Two-column layout ── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
-        {/* Left: My Tasks + Upcoming Events */}
-        <div className="space-y-6">
-          <Card className="p-6">
-            <SectionHeadingWithIcon
-              icon={<CheckSquare size={15} aria-hidden />}
-              iconColor="#555555"
-            >
-              My Tasks
-            </SectionHeadingWithIcon>
-
-            {tasksLoading ? (
-              <div className="flex justify-center py-8">
-                <Spinner label="Loading tasks…" />
-              </div>
-            ) : myTasks.length === 0 ? (
-              <p style={overviewEmptyTextStyle}>No active tasks</p>
-            ) : (
-              <div className="space-y-3">
-                {myTasks.map((task) => (
-                  <OverviewTaskCard
-                    key={task.id}
-                    task={task}
-                    logoUrl={clubLogos[task.clubId]}
-                  />
-                ))}
-              </div>
-            )}
-
-            {!tasksLoading && (
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={onViewAllTasks}
-                  style={viewAllLinkStyle}
-                >
-                  View All Tasks
-                </button>
-              </div>
-            )}
-          </Card>
-
-          <Card className="p-6">
-            <SectionHeadingWithIcon
-              icon={<Calendar size={15} aria-hidden />}
-              iconColor="#555555"
-            >
-              Upcoming Events
-            </SectionHeadingWithIcon>
-
-            {eventsLoading ? (
-              <div className="flex justify-center py-8">
-                <Spinner label="Loading events…" />
-              </div>
-            ) : previewEvents.length === 0 ? (
-              <p style={overviewEmptyTextStyle}>No upcoming events</p>
-            ) : (
-              <div>
-                {previewEvents.map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    rsvpStatus={myRsvps[event.id]}
-                    counts={rsvpCounts[event.id]}
-                    logoUrl={
-                      event.clubId ? clubLogos[event.clubId] : undefined
-                    }
-                  />
-                ))}
-              </div>
-            )}
-
-            {!eventsLoading && (
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={onViewAllEvents}
-                  style={viewAllLinkStyle}
-                >
-                  View All Events
-                </button>
-              </div>
-            )}
-          </Card>
-        </div>
-
-        {/* Right: My Clubs + Saved Clubs */}
-        <div className="space-y-6">
-          {/* My Clubs */}
-          <div id="dashboard-my-clubs">
-          <Card className="p-5">
-            <h3 className="mb-4 text-base font-bold text-white">My Clubs</h3>
-            {myClubs.length === 0 ? (
-              <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-4 py-8 text-center">
-                <svg className="mx-auto mb-2 h-6 w-6 text-[var(--text-2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 10l9-7 9 7v10a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V10z" />
-                </svg>
-                <p className="text-sm text-[var(--text-2)]">You have not joined any clubs yet.</p>
-                <div className="mt-4 flex justify-center gap-2">
-                  <Link to="/app/join-club" className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-3 text-sm text-[var(--text-1)] hover:bg-[var(--bg-4)]">Join Club</Link>
-                  <Link to="/explore" className="inline-flex h-9 items-center rounded-[var(--r-md)] bg-[var(--red)] px-3 text-sm text-white hover:bg-[var(--red-hover)]">Explore</Link>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {myClubs.map((club) => (
-                  <MyClubSidebarItem
-                    key={club.id}
-                    club={club}
-                    logoUrl={clubLogos[club.id] ?? club.logoUrl}
-                    roleDisplay={formatClubRoleDisplay(getUserRole(club.id))}
-                  />
-                ))}
-              </div>
-            )}
-            <Link
-              to="/explore"
-              className="mt-4 flex items-center gap-2 text-sm font-medium text-primary hover:text-primary-light"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              Explore 260+ clubs at U of G
-            </Link>
-          </Card>
-          </div>
-
-          {/* Recent Announcements */}
-          <Card className="p-5">
-            <h3 className="mb-4 text-base font-bold text-white">
-              Recent Announcements
-            </h3>
-            {announcementsLoading ? (
-              <div className="flex justify-center py-6">
-                <Spinner label="Loading announcements…" />
-              </div>
-            ) : recentAnnouncements.length === 0 ? (
-              <p
-                style={{
-                  color: "#555555",
-                  fontSize: "12px",
-                  padding: "10px 12px",
-                  margin: 0,
-                }}
-              >
-                No announcements yet
-              </p>
-            ) : (
-              <div>
-                {recentAnnouncements.map((announcement) => (
-                  <Link
-                    key={announcement.id}
-                    to={`/app/clubs/${announcement.clubId}/announcements`}
-                    className="block no-underline"
-                    style={{
-                      background: "#191919",
-                      border: "1px solid #222",
-                      borderRadius: 7,
-                      padding: "10px 12px",
-                      marginBottom: 8,
-                      cursor: "pointer",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#333";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#222";
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: "11px",
-                        color: "#E51937",
-                        fontWeight: 600,
-                        margin: "0 0 3px",
-                      }}
-                    >
-                      {announcement.clubName}
-                    </p>
-                    <AnnouncementTitlePreview title={announcement.title} />
-                    <p
-                      style={{
-                        fontSize: "11px",
-                        color: "#555555",
-                        margin: 0,
-                      }}
-                    >
-                      {formatTimeAgo(announcement.createdAt)}
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* Saved Clubs */}
-          {mySavedClubs.length > 0 && (
-            <Card className="p-5">
-              <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-white">
-                <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
-                </svg>
-                Saved Clubs
-              </h3>
-              <div className="space-y-3">
-                {mySavedClubs.map((club) => (
-                  <Link
-                    key={club.id}
-                    to={`/clubs/${club.slug}`}
-                    className="flex items-start gap-3 no-underline"
-                    style={{
-                      background: "#191919",
-                      border: "1px solid #222",
-                      borderRadius: 7,
-                      padding: "10px 12px",
-                      cursor: "pointer",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#333";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#222";
-                    }}
-                  >
-                    <ClubBadge
-                      abbreviation={club.abbreviation}
-                      name={club.name}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">
-                        {club.name}
-                      </p>
-                      <p className="text-xs text-muted">{club.category}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </Card>
-          )}
-        </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: "16px",
+          marginBottom: "16px",
+        }}
+      >
+        {tasksColumn}
+        {eventsColumn}
+        {clubsColumn}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, 1fr)",
+          gap: "16px",
+        }}
+      >
+        {inboxColumn}
+        {announcementsColumn}
       </div>
     </>
   );
@@ -3136,31 +3225,6 @@ function ClubBadge({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Event Card
-// ---------------------------------------------------------------------------
-const EVENT_DATE_BLOCK_SIZE = 48;
-const EVENT_CLUB_LOGO_SIZE = 40;
-
-const eventCardTextEllipsis: CSSProperties = {
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  margin: 0,
-};
-
-const eventDateBlockStyle = {
-  backgroundColor: "#E51937",
-  borderRadius: "8px",
-  width: `${EVENT_DATE_BLOCK_SIZE}px`,
-  height: `${EVENT_DATE_BLOCK_SIZE}px`,
-  flexShrink: 0,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-} as const;
-
 function parseEventDate(
   dateStr: string | null | undefined,
 ): { month: string; day: string } | null {
@@ -3179,216 +3243,4 @@ function parseEventDate(
     month: d.toLocaleDateString("en-US", { month: "short" }).toUpperCase(),
     day: String(d.getDate()),
   };
-}
-
-function EventDateBlock({ date }: { date: string }) {
-  const parsed = parseEventDate(date);
-
-  return (
-    <div style={eventDateBlockStyle}>
-      {parsed ? (
-        <>
-          <span
-            style={{
-              fontSize: "9px",
-              textTransform: "uppercase",
-              color: "#ffffff",
-              lineHeight: 1,
-              letterSpacing: "0.08em",
-            }}
-          >
-            {parsed.month}
-          </span>
-          <span
-            style={{
-              fontSize: "20px",
-              fontWeight: 700,
-              color: "#ffffff",
-              lineHeight: 1,
-            }}
-          >
-            {parsed.day}
-          </span>
-        </>
-      ) : (
-        <span
-          style={{
-            fontSize: "10px",
-            fontWeight: 700,
-            color: "#ffffff",
-            lineHeight: 1.1,
-          }}
-        >
-          TBD
-        </span>
-      )}
-    </div>
-  );
-}
-
-function EventClubLogo({
-  name,
-  abbreviation,
-  logoUrl,
-}: {
-  name: string;
-  abbreviation?: string;
-  logoUrl?: string;
-}) {
-  const abbr = abbreviation || deriveAbbreviation(name);
-
-  if (logoUrl) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        style={{
-          width: `${EVENT_CLUB_LOGO_SIZE}px`,
-          height: `${EVENT_CLUB_LOGO_SIZE}px`,
-          borderRadius: "8px",
-          border: "1px solid #2a2a2a",
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        width: `${EVENT_CLUB_LOGO_SIZE}px`,
-        height: `${EVENT_CLUB_LOGO_SIZE}px`,
-        borderRadius: "8px",
-        border: "1px solid #2a2a2a",
-        background: "#2a2a2a",
-        color: "#888",
-        fontSize: "12px",
-        fontWeight: 600,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {abbr}
-    </div>
-  );
-}
-
-function EventCard({
-  event,
-  rsvpStatus,
-  counts,
-  logoUrl,
-  moreDatesCount = 0,
-}: {
-  event: DashboardEvent;
-  rsvpStatus?: string;
-  counts?: import("../../types").RsvpCounts;
-  logoUrl?: string;
-  moreDatesCount?: number;
-}) {
-  const goingCount = counts?.going ?? 0;
-
-  const dateLine = hasEventLocation(event.location)
-    ? `${formatEventDateShort(event.date)} · ${event.location.trim()}`
-    : formatEventDateShort(event.date);
-
-  let rsvpLine: string | null = null;
-  if (rsvpStatus === "going") {
-    rsvpLine = "Going";
-  } else if (rsvpStatus === "maybe") {
-    rsvpLine = "Maybe";
-  } else if (goingCount > 0) {
-    rsvpLine = `${goingCount} going`;
-  } else if (!rsvpStatus) {
-    rsvpLine = "Open to all students";
-  }
-
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <Link
-      to={`/app/clubs/${event.clubId}/events`}
-      className="block"
-      style={{ cursor: "pointer" }}
-    >
-      <div
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: "14px",
-          background: "#1a1a1a",
-          border: `1px solid ${hovered ? "#333333" : "#242424"}`,
-          borderRadius: "10px",
-          padding: "16px 20px",
-          marginBottom: "10px",
-          transition: "all 0.15s ease",
-          transform: hovered ? "translateY(-1px)" : undefined,
-          boxShadow: hovered ? "0 4px 12px rgba(0,0,0,0.3)" : undefined,
-        }}
-      >
-        <EventDateBlock date={event.date} />
-        <EventClubLogo
-          name={event.clubName}
-          abbreviation={event.clubAbbreviation}
-          logoUrl={logoUrl}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p
-            style={{
-              ...eventCardTextEllipsis,
-              fontSize: "15px",
-              fontWeight: 600,
-              color: "#ffffff",
-              marginBottom: "4px",
-            }}
-          >
-            {event.title}
-          </p>
-          {moreDatesCount > 0 ? (
-            <p
-              style={{
-                fontSize: "11px",
-                color: "#444444",
-                marginTop: "2px",
-                marginBottom: "4px",
-              }}
-            >
-              + {moreDatesCount} more date{moreDatesCount === 1 ? "" : "s"} this
-              semester
-            </p>
-          ) : null}
-          <p
-            style={{
-              ...eventCardTextEllipsis,
-              fontSize: "12px",
-              color: "#999999",
-            }}
-          >
-            {event.clubName}
-          </p>
-          <p
-            style={{
-              ...eventCardTextEllipsis,
-              fontSize: "12px",
-              color: "#999999",
-              margin: 0,
-            }}
-          >
-            {dateLine}
-          </p>
-        </div>
-        {rsvpLine ? (
-          <span style={dashboardEventRsvpBadgeStyle(rsvpStatus)}>
-            {rsvpLine}
-          </span>
-        ) : null}
-      </div>
-    </Link>
-  );
 }
