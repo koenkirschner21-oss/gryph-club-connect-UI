@@ -15,23 +15,15 @@ import {
 } from "../../lib/executiveInviteUtils";
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
-
-function resolveOpenActionLabel(message: InboxMessage): string {
-  if (message.actionType === "view_claim_status") {
-    return "View Claim Status";
-  }
-
-  if (message.type === "club_claim_rejected") {
-    return "View Club Profile";
-  }
-
-  const label = message.actionData.actionLabel;
-  if (typeof label === "string" && label.trim()) {
-    return label.trim();
-  }
-
-  return "Open →";
-}
+import {
+  InboxMessageAvatar,
+  InboxStatusBadgePill,
+  OUTLINED_BUTTON_STYLE,
+  SOLID_RED_BUTTON_STYLE,
+  inboxCategoryLabel,
+  inboxStatusBadge,
+  normalizeInboxUiType,
+} from "./inboxMessageUi";
 
 function formatInboxTimestamp(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -46,34 +38,47 @@ function formatInboxTimestamp(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-const actionButtonStyle = {
-  background: "#111111",
-  border: "1px solid #2a2a2a",
-  borderRadius: "6px",
-  color: "#cccccc",
-  cursor: "pointer",
-  fontSize: "12px",
-  fontWeight: 600,
-  padding: "8px 10px",
-} as const;
+type ActionButtonConfig = {
+  label: string;
+  variant: "solid" | "outlined" | "link";
+};
 
-const primaryActionStyle = {
-  ...actionButtonStyle,
-  background: "#E51937",
-  border: "1px solid #E51937",
-  color: "#ffffff",
-} as const;
+function resolveActionButtons(message: InboxMessage): ActionButtonConfig[] {
+  const uiType = normalizeInboxUiType(message);
+
+  switch (uiType) {
+    case "claim_approved":
+    case "join_approved":
+      return [{ label: "Open Club Dashboard", variant: "solid" }];
+    case "claim_rejected":
+      return [{ label: "View Club Profile", variant: "outlined" }];
+    case "claim_submitted":
+      return [{ label: "View Status", variant: "outlined" }];
+    case "join_rejected":
+      return [{ label: "View Club", variant: "outlined" }];
+    case "new_join_request":
+      return [{ label: "Review Request", variant: "outlined" }];
+    case "application_update":
+      return [{ label: "View Application", variant: "outlined" }];
+    case "new_claim_request":
+      return [{ label: "Review in Admin", variant: "outlined" }];
+    default:
+      return [{ label: "Open →", variant: "link" }];
+  }
+}
 
 interface InboxMessageCardProps {
   message: InboxMessage;
   onMarkAsRead: (id: string) => Promise<void>;
   onRefresh: () => void;
+  clubLogoUrl?: string;
 }
 
 export default function InboxMessageCard({
   message,
   onMarkAsRead,
   onRefresh,
+  clubLogoUrl,
 }: InboxMessageCardProps) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
@@ -104,6 +109,10 @@ export default function InboxMessageCard({
     typeof message.actionData.invitedBy === "string"
       ? message.actionData.invitedBy
       : message.senderId;
+
+  const statusBadge = inboxStatusBadge(message);
+  const categoryLabel = inboxCategoryLabel(message);
+  const clubLabel = message.clubName?.trim() || "Gryph Club Connect";
 
   async function handleNavigate() {
     if (!message.read) {
@@ -233,199 +242,275 @@ export default function InboxMessageCard({
     onRefresh();
   }
 
+  function renderDefaultActions() {
+    const buttons = resolveActionButtons(message);
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          flexWrap: "wrap",
+          gap: "8px",
+          marginTop: "10px",
+        }}
+      >
+        {buttons.map((button) => {
+          if (button.variant === "solid") {
+            return (
+              <button
+                key={button.label}
+                type="button"
+                onClick={() => void handleNavigate()}
+                style={SOLID_RED_BUTTON_STYLE}
+              >
+                {button.label}
+              </button>
+            );
+          }
+
+          if (button.variant === "outlined") {
+            return (
+              <button
+                key={button.label}
+                type="button"
+                onClick={() => void handleNavigate()}
+                style={OUTLINED_BUTTON_STYLE}
+              >
+                {button.label}
+              </button>
+            );
+          }
+
+          return (
+            <button
+              key={button.label}
+              type="button"
+              onClick={() => void handleNavigate()}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#E51937",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: "8px 0",
+              }}
+            >
+              {button.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
-        width: "100%",
-        textAlign: "left",
-        borderRadius: "8px",
-        padding: "14px 16px",
-        background: message.read ? "#111111" : "#161616",
-        border: "1px solid #2a2a2a",
-        borderLeft: message.read ? "3px solid #2a2a2a" : "3px solid #E51937",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "12px",
+        padding: "16px",
+        borderBottom: "1px solid #1a1a1a",
+        background: message.read ? "#141414" : "#161616",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "12px",
-        }}
-      >
-        <p
+      <InboxMessageAvatar message={message} logoUrl={clubLogoUrl} />
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
           style={{
-            margin: 0,
-            fontSize: "14px",
-            fontWeight: 700,
-            color: "#ffffff",
-            lineHeight: 1.4,
-            flex: 1,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "12px",
           }}
         >
-          {message.title}
-        </p>
-        {message.actionRequired && !message.actionCompleted ? (
-          <span
+          <div
             style={{
-              flexShrink: 0,
-              fontSize: "10px",
-              fontWeight: 600,
-              color: "#FFC429",
-              border: "1px solid #3a2f00",
-              background: "#1a1500",
-              borderRadius: "4px",
-              padding: "2px 6px",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "8px",
+              flex: 1,
+              minWidth: 0,
             }}
           >
-            Action Required
+            <p
+              style={{
+                margin: 0,
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#ffffff",
+                lineHeight: 1.4,
+              }}
+            >
+              {message.title}
+            </p>
+            {statusBadge ? <InboxStatusBadgePill badge={statusBadge} /> : null}
+            {message.actionRequired && !message.actionCompleted ? (
+              <span
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  color: "#FFC429",
+                  border: "1px solid #3a2f00",
+                  background: "#1a1500",
+                  borderRadius: "4px",
+                  padding: "2px 6px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Action Required
+              </span>
+            ) : null}
+          </div>
+          <span
+            style={{
+              fontSize: "11px",
+              color: "#555555",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {formatInboxTimestamp(message.createdAt)}
           </span>
-        ) : null}
-      </div>
+        </div>
 
-      <p
-        style={{
-          margin: "6px 0 0",
-          fontSize: "13px",
-          color: "#999999",
-          lineHeight: 1.5,
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {message.message}
-      </p>
+        <p
+          style={{
+            margin: "6px 0 0",
+            fontSize: "13px",
+            color: "#777777",
+            lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {message.message}
+        </p>
+
+        <p style={{ margin: "8px 0 0", fontSize: "11px", lineHeight: 1.4 }}>
+          <span style={{ color: "#E51937" }}>{clubLabel}</span>
+          <span style={{ color: "#555555" }}> · {categoryLabel}</span>
+        </p>
+
+        {actionError ? (
+          <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#E51937" }}>{actionError}</p>
+        ) : null}
+
+        {hasPendingActions && message.actionType === "executive_invite_response" ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginTop: "10px",
+            }}
+          >
+            <button
+              type="button"
+              disabled={acting}
+              style={SOLID_RED_BUTTON_STYLE}
+              onClick={() => void handleAcceptExecutiveInvite()}
+            >
+              {acting ? "Working…" : "Accept"}
+            </button>
+            <button
+              type="button"
+              disabled={acting}
+              style={OUTLINED_BUTTON_STYLE}
+              onClick={() => void handleDeclineExecutiveInvite()}
+            >
+              Decline
+            </button>
+          </div>
+        ) : null}
+
+        {hasPendingActions && message.actionType === "ownership_transfer_response" ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginTop: "10px",
+            }}
+          >
+            <button
+              type="button"
+              disabled={acting}
+              style={SOLID_RED_BUTTON_STYLE}
+              onClick={() => void handleAcceptOwnership()}
+            >
+              {acting ? "Working…" : "Accept Ownership"}
+            </button>
+            <button
+              type="button"
+              disabled={acting}
+              style={OUTLINED_BUTTON_STYLE}
+              onClick={() => void handleDeclineOwnership()}
+            >
+              Decline
+            </button>
+          </div>
+        ) : null}
+
+        {hasPendingActions && message.actionType === "former_owner_role_choice" ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: "8px",
+              marginTop: "10px",
+            }}
+          >
+            {FORMER_OWNER_CHOICE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                disabled={acting}
+                style={{
+                  ...OUTLINED_BUTTON_STYLE,
+                  minWidth: "220px",
+                  textAlign: "left",
+                }}
+                onClick={() => void handleFormerOwnerChoice(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {!hasPendingActions ? renderDefaultActions() : null}
+      </div>
 
       <div
         style={{
+          width: "8px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: "8px",
-          marginTop: "8px",
+          justifyContent: "center",
+          alignSelf: "center",
+          flexShrink: 0,
         }}
       >
-        {message.clubName ? (
-          <span style={{ fontSize: "11px", color: "#E51937" }}>{message.clubName}</span>
-        ) : (
-          <span />
-        )}
-        <span style={{ fontSize: "11px", color: "#555555" }}>
-          {formatInboxTimestamp(message.createdAt)}
-        </span>
+        {!message.read ? (
+          <span
+            aria-hidden
+            style={{
+              width: "8px",
+              height: "8px",
+              background: "#E51937",
+              borderRadius: "50%",
+            }}
+          />
+        ) : null}
       </div>
-
-      {actionError ? (
-        <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#E51937" }}>{actionError}</p>
-      ) : null}
-
-      {hasPendingActions && message.actionType === "executive_invite_response" ? (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "8px",
-            marginTop: "12px",
-            paddingTop: "12px",
-            borderTop: "1px solid #2a2a2a",
-          }}
-        >
-          <button
-            type="button"
-            disabled={acting}
-            style={primaryActionStyle}
-            onClick={() => void handleAcceptExecutiveInvite()}
-          >
-            {acting ? "Working…" : "Accept"}
-          </button>
-          <button
-            type="button"
-            disabled={acting}
-            style={actionButtonStyle}
-            onClick={() => void handleDeclineExecutiveInvite()}
-          >
-            Decline
-          </button>
-        </div>
-      ) : null}
-
-      {hasPendingActions && message.actionType === "ownership_transfer_response" ? (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "8px",
-            marginTop: "12px",
-            paddingTop: "12px",
-            borderTop: "1px solid #2a2a2a",
-          }}
-        >
-          <button
-            type="button"
-            disabled={acting}
-            style={primaryActionStyle}
-            onClick={() => void handleAcceptOwnership()}
-          >
-            {acting ? "Working…" : "Accept Ownership"}
-          </button>
-          <button
-            type="button"
-            disabled={acting}
-            style={actionButtonStyle}
-            onClick={() => void handleDeclineOwnership()}
-          >
-            Decline
-          </button>
-        </div>
-      ) : null}
-
-      {hasPendingActions && message.actionType === "former_owner_role_choice" ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-            marginTop: "12px",
-            paddingTop: "12px",
-            borderTop: "1px solid #2a2a2a",
-          }}
-        >
-          {FORMER_OWNER_CHOICE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              disabled={acting}
-              style={{
-                ...actionButtonStyle,
-                width: "100%",
-                textAlign: "left",
-              }}
-              onClick={() => void handleFormerOwnerChoice(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {!hasPendingActions ? (
-        <button
-          type="button"
-          onClick={() => void handleNavigate()}
-          style={{
-            marginTop: "10px",
-            background: "transparent",
-            border: "none",
-            color: "#777777",
-            fontSize: "12px",
-            cursor: "pointer",
-            padding: 0,
-          }}
-        >
-          {resolveOpenActionLabel(message)}
-        </button>
-      ) : null}
     </div>
   );
 }

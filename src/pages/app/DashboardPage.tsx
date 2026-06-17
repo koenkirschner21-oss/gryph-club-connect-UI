@@ -619,7 +619,15 @@ export default function DashboardPage() {
         />
       )}
       {activeTab === "tasks" && <TasksTab joinedClubs={joinedClubs} />}
-      {activeTab === "inbox" && <InboxTab {...inbox} />}
+      {activeTab === "inbox" && (
+        <InboxTab
+          {...inbox}
+          clubLogos={clubLogos}
+          displayName={displayName}
+          joinedClubs={myClubs.map((club) => ({ id: club.id, name: club.name }))}
+          onViewMyClubs={() => setActiveTab("clubs")}
+        />
+      )}
         </>
       )}
     </div>
