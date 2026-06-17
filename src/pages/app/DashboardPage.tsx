@@ -61,6 +61,17 @@ import {
   type DeduplicatedDashboardEvent,
 } from "../dashboard/EventsTabUI";
 import {
+  MyClubsFilterBar,
+  MyClubsGrid,
+  MyClubsPagination,
+  filterMyClubs,
+  paginateClubs,
+  sortMyClubs,
+  type ClubFilterOption,
+  type ClubSortOption,
+  type ClubViewMode,
+} from "../dashboard/MyClubsTabUI";
+import {
   TasksWeekEmptyState,
   ThisWeekEventCard,
   WeekAchievementCard,
@@ -651,6 +662,7 @@ export default function DashboardPage() {
           mySavedClubs={mySavedClubs}
           clubLogos={clubLogos}
           getUserRole={getUserRole}
+          isMobile={isMobile}
         />
       )}
       {activeTab === "events" && (
@@ -1694,67 +1706,48 @@ function formatTimeAgo(iso: string): string {
   return "just now";
 }
 
-function MyClubsTabClubAvatar({
-  name,
-  abbreviation,
-  logoUrl,
-}: {
-  name: string;
-  abbreviation?: string;
-  logoUrl?: string;
-}) {
-  const abbr = abbreviation?.trim() || deriveAbbreviation(name);
-
-  if (logoUrl) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: "8px",
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        width: 48,
-        height: 48,
-        borderRadius: "8px",
-        border: "1px solid #333333",
-        background: "#2a2a2a",
-        color: "#888888",
-        fontSize: "13px",
-        fontWeight: 600,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {abbr}
-    </div>
-  );
-}
-
 function MyClubsTab({
   myClubs,
   mySavedClubs,
   clubLogos,
   getUserRole,
+  isMobile,
 }: {
   myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   clubLogos: Record<string, string>;
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
+  isMobile: boolean;
 }) {
   const navigate = useNavigate();
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<ClubFilterOption>("all");
+  const [sort, setSort] = useState<ClubSortOption>("recent");
+  const [viewMode, setViewMode] = useState<ClubViewMode>("grid");
+  const [page, setPage] = useState(1);
+
+  const filteredClubs = useMemo(
+    () => filterMyClubs(myClubs, search, filter, getUserRole),
+    [myClubs, search, filter, getUserRole],
+  );
+  const sortedClubs = useMemo(
+    () => sortMyClubs(filteredClubs, sort, getUserRole),
+    [filteredClubs, sort, getUserRole],
+  );
+  const pagination = useMemo(
+    () => paginateClubs(sortedClubs, page),
+    [sortedClubs, page],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, filter, sort]);
+
+  useEffect(() => {
+    if (page > pagination.totalPages) {
+      setPage(pagination.totalPages);
+    }
+  }, [page, pagination.totalPages]);
 
   if (myClubs.length === 0) {
     return (
@@ -1775,112 +1768,54 @@ function MyClubsTab({
   }
 
   return (
-  <>
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(2, 1fr)",
-        gap: "16px",
-      }}
-    >
-      {myClubs.map((club) => {
-        const roleDisplay = formatClubRoleDisplay(getUserRole(club.id));
-        return (
-          <div
-            key={club.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => navigate(`/app/clubs/${club.id}`)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                navigate(`/app/clubs/${club.id}`);
-              }
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "#333333";
-              e.currentTarget.style.transform = "translateY(-2px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "#242424";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-            style={{
-              background: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "12px",
-              padding: "20px",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-              <MyClubsTabClubAvatar
-                name={club.name}
-                abbreviation={club.abbreviation}
-                logoUrl={clubLogos[club.id] ?? club.logoUrl}
-              />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <p
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    color: "#ffffff",
-                    margin: 0,
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {club.name}
-                </p>
-                <span
-                  style={{
-                    display: "inline-block",
-                    marginTop: "8px",
-                    borderRadius: "20px",
-                    padding: "2px 10px",
-                    fontSize: "11px",
-                    fontWeight: 500,
-                    color: roleDisplay.color,
-                    border: `1px solid ${roleDisplay.color}`,
-                    background: "transparent",
-                  }}
-                >
-                  {roleDisplay.label}
-                </span>
-                <p style={{ fontSize: "12px", color: "#555555", margin: "8px 0 0" }}>
-                  {club.memberCount} members
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/app/clubs/${club.id}`);
-              }}
-              style={{
-                background: "#E51937",
-                color: "#ffffff",
-                borderRadius: "8px",
-                padding: "9px 0",
-                fontSize: "13px",
-                fontWeight: 600,
-                width: "100%",
-                textAlign: "center",
-                cursor: "pointer",
-                border: "none",
-                display: "block",
-                marginTop: "12px",
-              }}
-            >
-              Open Workspace
-            </button>
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <MyClubsFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        filter={filter}
+        onFilterChange={setFilter}
+        sort={sort}
+        onSortChange={setSort}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
 
-    {mySavedClubs.length > 0 ? (
+      {sortedClubs.length === 0 ? (
+        <div
+          style={{
+            background: "#141414",
+            border: "1px solid #2a2a2a",
+            borderRadius: "10px",
+            padding: "32px",
+            textAlign: "center",
+          }}
+        >
+          <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
+            No clubs match your search or filters.
+          </p>
+        </div>
+      ) : (
+        <>
+          <MyClubsGrid
+            clubs={pagination.items}
+            clubLogos={clubLogos}
+            getUserRole={getUserRole}
+            formatClubRoleDisplay={formatClubRoleDisplay}
+            onOpenWorkspace={(clubId) => navigate(`/app/clubs/${clubId}`)}
+            isMobile={isMobile}
+          />
+          <MyClubsPagination
+            page={pagination.safePage}
+            totalPages={pagination.totalPages}
+            start={pagination.start}
+            end={pagination.end}
+            total={pagination.total}
+            onPageChange={setPage}
+          />
+        </>
+      )}
+
+      {mySavedClubs.length > 0 ? (
       <div style={{ marginTop: "32px" }}>
         <h2
           style={{
