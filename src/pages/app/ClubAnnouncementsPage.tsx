@@ -579,16 +579,7 @@ export default function ClubAnnouncementsPage() {
       list = list.filter((post) => pinnedById[post.id] ?? false);
     }
 
-    if (announcementFilter === "all") {
-      list.sort((a, b) => {
-        const aPinned = pinnedById[a.id] ?? false;
-        const bPinned = pinnedById[b.id] ?? false;
-        if (aPinned !== bPinned) return aPinned ? -1 : 1;
-        return 0;
-      });
-    }
-
-    list.sort((a, b) => {
+    const comparePosts = (a: Post, b: Post) => {
       if (sortBy === "oldest") {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       }
@@ -605,9 +596,16 @@ export default function ClubAnnouncementsPage() {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+    };
 
-    return list;
+    const pinnedPosts = list
+      .filter((post) => pinnedById[post.id] ?? false)
+      .sort(comparePosts);
+    const unpinnedPosts = list
+      .filter((post) => !(pinnedById[post.id] ?? false))
+      .sort(comparePosts);
+
+    return [...pinnedPosts, ...unpinnedPosts];
   }, [
     posts,
     pinnedById,
@@ -1088,11 +1086,18 @@ export default function ClubAnnouncementsPage() {
           No pinned announcements yet.
         </p>
       ) : (
-        <div style={{ display: "flex", alignItems: "flex-start" }}>
+        <div
+          style={
+            isPrivileged && !isMobile
+              ? { display: "flex", alignItems: "flex-start" }
+              : undefined
+          }
+        >
           <div
             style={{
-              flex: 1,
+              flex: isPrivileged && !isMobile ? 1 : undefined,
               minWidth: 0,
+              width: isPrivileged && !isMobile ? undefined : "100%",
               marginRight: isPrivileged && !isMobile ? "24px" : 0,
             }}
           >

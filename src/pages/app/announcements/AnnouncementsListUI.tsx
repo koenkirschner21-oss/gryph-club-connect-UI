@@ -206,8 +206,10 @@ function RoleTitlePill({ title }: { title: string }) {
         border: `1px solid ${GOLD}`,
         color: GOLD,
         fontSize: "11px",
+        fontWeight: 600,
         padding: "2px 8px",
         borderRadius: "12px",
+        marginLeft: "8px",
         flexShrink: 0,
       }}
     >
@@ -373,9 +375,8 @@ export function AnnouncementCard({
       onMouseLeave={onMouseLeave}
       style={{
         position: "relative",
-        background: isPinned ? "rgba(229, 25, 55, 0.04)" : CARD_BG,
+        background: CARD_BG,
         border: `1px solid ${borderColor}`,
-        borderLeft: isPinned ? `3px solid ${ACCENT_RED}` : `1px solid ${borderColor}`,
         borderRadius: "12px",
         padding: "20px",
         marginBottom: "16px",
@@ -390,16 +391,16 @@ export function AnnouncementCard({
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            fontSize: "12px",
-            fontWeight: 700,
-            color: ACCENT_RED,
+            fontSize: "11px",
+            fontWeight: 600,
+            color: GOLD,
             textTransform: "uppercase",
-            letterSpacing: "0.04em",
+            letterSpacing: "0.05em",
             margin: "0 0 12px",
           }}
         >
-          <Pin size={14} aria-hidden />
-          Pinned
+          <Pin size={12} aria-hidden />
+          PINNED
         </p>
       ) : null}
 
