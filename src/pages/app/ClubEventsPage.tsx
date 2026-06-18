@@ -725,9 +725,61 @@ const eventCardStyle: CSSProperties = {
   border: "1px solid #2a2a2a",
   borderLeft: "1px solid #2a2a2a",
   borderRadius: "14px",
-  padding: "14px 16px",
+  padding: "12px 14px",
   marginBottom: "12px",
 };
+
+function EventAttendeeAvatarStack({
+  attendees,
+}: {
+  attendees: Array<{ id: string; avatarUrl?: string; status: RsvpStatus }>;
+}) {
+  const going = attendees.filter((a) => a.status === "going" && a.avatarUrl?.trim());
+  if (going.length === 0) return null;
+
+  const visible = going.slice(0, 3);
+  const remaining = going.length - visible.length;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {visible.map((attendee, index) => (
+          <img
+            key={attendee.id}
+            src={attendee.avatarUrl}
+            alt=""
+            style={{
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              objectFit: "cover",
+              border: "2px solid #141414",
+              marginLeft: index === 0 ? 0 : "-8px",
+              position: "relative",
+              zIndex: visible.length - index,
+            }}
+          />
+        ))}
+      </div>
+      {remaining > 0 ? (
+        <span
+          style={{
+            marginLeft: "6px",
+            fontSize: "11px",
+            color: "#555555",
+            background: "#1a1a1a",
+            border: "1px solid #2a2a2a",
+            borderRadius: "999px",
+            padding: "2px 8px",
+            flexShrink: 0,
+          }}
+        >
+          +{remaining}
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 const upcomingSectionHeadingStyle: CSSProperties = {
   fontSize: "11px",
@@ -912,6 +964,9 @@ function EventCard({
   counts,
   copiedEventId,
   planningTaskCount = 0,
+  onPlanningTasksClick,
+  onAddPlanningTask,
+  attendeePreview,
   onRsvp,
   onStartEdit,
   onDelete,
@@ -935,6 +990,13 @@ function EventCard({
   counts: { going: number; maybe: number; not_going: number };
   copiedEventId: string | null;
   planningTaskCount?: number;
+  onPlanningTasksClick: (event: ClubEvent) => void;
+  onAddPlanningTask: (event: ClubEvent) => void;
+  attendeePreview?: Array<{
+    id: string;
+    avatarUrl?: string;
+    status: RsvpStatus;
+  }>;
   onRsvp: (eventId: string, status: RsvpStatus) => void;
   onStartEdit: (event: ClubEvent) => void;
   onDelete: (eventId: string) => void;
@@ -953,24 +1015,21 @@ function EventCard({
   hasFormResponses: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const timeLabel = formatEventTime(event.time);
   const locationLabel = cleanEventLocation(event.location);
   const attendeeCountLabel = formatAttendeeCounts(counts);
+  const hasAttendeeAvatars =
+    (attendeePreview?.some((a) => a.status === "going" && a.avatarUrl?.trim()) ?? false);
 
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setMenuOpen(false);
-      }}
+      onMouseLeave={() => setMenuOpen(false)}
       style={{
         ...eventCardStyle,
         ...(past ? { opacity: 0.6 } : null),
       }}
     >
-      <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+      <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
@@ -1050,17 +1109,60 @@ function EventCard({
           />
 
           {isPrivileged ? (
-            <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 8px" }}>
-              {planningTaskCount > 0
-                ? `${planningTaskCount} planning task${planningTaskCount === 1 ? "" : "s"}`
-                : "No planning tasks"}
-            </p>
+            planningTaskCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => onPlanningTasksClick(event)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "#E51937",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  margin: "0 0 8px",
+                }}
+              >
+                {planningTaskCount} planning task{planningTaskCount === 1 ? "" : "s"} →
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onAddPlanningTask(event)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "#777777",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  margin: "0 0 8px",
+                }}
+              >
+                + Add planning task
+              </button>
+            )
           ) : null}
 
-          {attendeeCountLabel ? (
-            <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 8px" }}>
-              {attendeeCountLabel}
-            </p>
+          {attendeeCountLabel || hasAttendeeAvatars ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                margin: "0 0 8px",
+                flexWrap: "wrap",
+              }}
+            >
+              {hasAttendeeAvatars && attendeePreview ? (
+                <EventAttendeeAvatarStack attendees={attendeePreview} />
+              ) : null}
+              {attendeeCountLabel ? (
+                <span style={{ fontSize: "12px", color: "#444444" }}>{attendeeCountLabel}</span>
+              ) : null}
+            </div>
           ) : null}
 
           {attendeesList && isPrivileged ? (
@@ -1188,16 +1290,15 @@ function EventCard({
 
         <div
           style={{
-            width: "180px",
+            width: "152px",
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-end",
-            gap: "8px",
             flexShrink: 0,
           }}
         >
-          {isPrivileged && hovered ? (
-            <div style={{ position: "relative" }}>
+          {isPrivileged ? (
+            <div style={{ position: "relative", alignSelf: "flex-end", marginBottom: "8px" }}>
               <button
                 type="button"
                 aria-label="Event options"
@@ -1295,7 +1396,8 @@ function EventCard({
               display: "flex",
               flexDirection: "column",
               alignItems: "flex-end",
-              gap: "6px",
+              gap: "4px",
+              width: "100%",
             }}
           >
             {isPrivileged && !past ? (
@@ -1331,9 +1433,11 @@ function EventCard({
                 {attendeesList ? "Hide Attendees" : "View Attendees"}
               </button>
             ) : null}
+          </div>
 
-            {!past ? (
-              rsvpAccess.showRsvpButton ? (
+          {!past ? (
+            <div style={{ marginTop: "12px", width: "100%", display: "flex", justifyContent: "flex-end" }}>
+              {rsvpAccess.showRsvpButton ? (
                 <SmartRsvpButton
                   eventId={event.id}
                   status={myStatus}
@@ -1351,9 +1455,9 @@ function EventCard({
                 >
                   {rsvpAccess.blockedMessage}
                 </p>
-              ) : null
-            ) : null}
-          </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1776,6 +1880,9 @@ export default function ClubEventsPage() {
   const { myRsvps, counts, attendees, setRsvp, removeRsvp, loadAttendees } =
     useEventRsvps(eventIds);
   const [expandedAttendees, setExpandedAttendees] = useState<string | null>(null);
+  const [planningQuickAddEventId, setPlanningQuickAddEventId] = useState<string | null>(
+    null,
+  );
 
   const [searchParams, setSearchParams] = useSearchParams();
   const routerLocation = useLocation();
@@ -2693,6 +2800,33 @@ export default function ClubEventsPage() {
     .filter((e) => new Date(e.date) < now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  useEffect(() => {
+    const idsToPrefetch = new Set<string>();
+    for (const item of upcomingDisplayList) {
+      if (item.kind !== "event") continue;
+      const going = counts[item.event.id]?.going ?? 0;
+      if (going > 0) idsToPrefetch.add(item.event.id);
+    }
+    for (const event of pastEvents) {
+      const going = counts[event.id]?.going ?? 0;
+      if (going > 0) idsToPrefetch.add(event.id);
+    }
+    for (const eventId of idsToPrefetch) {
+      if (!attendees[eventId]) {
+        void loadAttendees(eventId);
+      }
+    }
+  }, [upcomingDisplayList, pastEvents, counts, attendees, loadAttendees]);
+
+  function openPlanningTasks(event: ClubEvent) {
+    startEdit(event);
+  }
+
+  function openPlanningTaskQuickAdd(event: ClubEvent) {
+    setPlanningQuickAddEventId(event.id);
+    startEdit(event);
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -2934,6 +3068,8 @@ export default function ClubEventsPage() {
                 updateTask={updateTask}
                 deleteTask={deleteTask}
                 onFeedback={setFeedback}
+                initialQuickAddOpen={planningQuickAddEventId === editingId}
+                onQuickAddOpened={() => setPlanningQuickAddEventId(null)}
               />
             ) : null}
             <div className="flex justify-end gap-3 pt-2">
@@ -3076,6 +3212,9 @@ export default function ClubEventsPage() {
                 counts={c}
                 copiedEventId={copiedEventId}
                 planningTaskCount={planningTaskCountByEvent[event.id] ?? 0}
+                onPlanningTasksClick={openPlanningTasks}
+                onAddPlanningTask={openPlanningTaskQuickAdd}
+                attendeePreview={attendees[event.id]}
                 onRsvp={handleRsvp}
                 onStartEdit={startEdit}
                 onDelete={handleDelete}
@@ -3113,6 +3252,9 @@ export default function ClubEventsPage() {
                 counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}
                 copiedEventId={copiedEventId}
                 planningTaskCount={planningTaskCountByEvent[event.id] ?? 0}
+                onPlanningTasksClick={openPlanningTasks}
+                onAddPlanningTask={openPlanningTaskQuickAdd}
+                attendeePreview={attendees[event.id]}
                 onRsvp={handleRsvp}
                 onStartEdit={startEdit}
                 onDelete={handleDelete}

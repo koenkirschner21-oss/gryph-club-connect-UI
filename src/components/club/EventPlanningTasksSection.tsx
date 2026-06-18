@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, MoreHorizontal, X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import type { UseClubTasksReturn } from "../../hooks/useClubTasks";
@@ -453,6 +453,8 @@ export interface EventPlanningTasksSectionProps {
   updateTask: UseClubTasksReturn["updateTask"];
   deleteTask: UseClubTasksReturn["deleteTask"];
   onFeedback: (message: { type: "success" | "error"; text: string }) => void;
+  initialQuickAddOpen?: boolean;
+  onQuickAddOpened?: () => void;
 }
 
 export default function EventPlanningTasksSection({
@@ -465,6 +467,8 @@ export default function EventPlanningTasksSection({
   updateTask,
   deleteTask,
   onFeedback,
+  initialQuickAddOpen = false,
+  onQuickAddOpened,
 }: EventPlanningTasksSectionProps) {
   const { user } = useAuthContext();
   const [expanded, setExpanded] = useState(true);
@@ -479,6 +483,13 @@ export default function EventPlanningTasksSection({
   const [templateSaving, setTemplateSaving] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
+
+  useEffect(() => {
+    if (!initialQuickAddOpen) return;
+    setExpanded(true);
+    setShowQuickAdd(true);
+    onQuickAddOpened?.();
+  }, [initialQuickAddOpen, onQuickAddOpened]);
 
   const activeMembers = useMemo(
     () => members.filter((member) => member.status === "active"),
