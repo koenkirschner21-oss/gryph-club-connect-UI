@@ -802,9 +802,11 @@ function HomeEventClubLogo({
 function HomeUpcomingEventCard({
   event,
   onOpen,
+  compact = false,
 }: {
   event: HomeCampusEvent;
   onOpen: () => void;
+  compact?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -833,8 +835,8 @@ function HomeUpcomingEventCard({
         background: "#1a1a1a",
         border: `1px solid ${hovered ? "#333333" : "#242424"}`,
         borderRadius: "10px",
-        padding: "16px 20px",
-        marginBottom: "10px",
+        padding: compact ? "12px 16px" : "16px 20px",
+        marginBottom: compact ? "8px" : "10px",
         cursor: "pointer",
         transition: "all 0.15s ease",
         transform: hovered ? "translateY(-1px)" : undefined,
@@ -905,7 +907,11 @@ function HomeUpcomingEventCard({
 
 const HOME_UPCOMING_EVENTS_LIMIT = 5;
 
-function HomeUpcomingEventsBlock() {
+function HomeUpcomingEventsBlock({
+  savedClubList,
+}: {
+  savedClubList?: Club[];
+}) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const [events, setEvents] = useState<HomeCampusEvent[]>([]);
@@ -913,6 +919,7 @@ function HomeUpcomingEventsBlock() {
   const seeAllPath = user
     ? "/events"
     : `/signup?redirect=${encodeURIComponent("/events")}`;
+  const combinedLayout = Boolean(savedClubList && savedClubList.length > 0);
 
   useEffect(() => {
     let cancelled = false;
@@ -999,11 +1006,11 @@ function HomeUpcomingEventsBlock() {
     }
   }
 
-  if (!loading && events.length === 0) return null;
+  if (!loading && events.length === 0 && !combinedLayout) return null;
 
-  return (
-    <section className="mx-auto max-w-[1100px] px-4 py-[60px]">
-      <div style={{ marginBottom: 28 }}>
+  const eventsColumn = (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ marginBottom: combinedLayout ? 20 : 28 }}>
         <h2
           style={{
             fontWeight: 700,
@@ -1028,6 +1035,10 @@ function HomeUpcomingEventsBlock() {
 
       {loading ? (
         <Spinner label="Loading events…" />
+      ) : events.length === 0 ? (
+        <p style={{ fontSize: 13, color: "#555555", margin: 0 }}>
+          No upcoming public events right now.
+        </p>
       ) : (
         <>
           <div>
@@ -1036,6 +1047,7 @@ function HomeUpcomingEventsBlock() {
                 key={ev.id}
                 event={ev}
                 onOpen={() => openEvent(ev)}
+                compact={combinedLayout}
               />
             ))}
           </div>
@@ -1044,7 +1056,7 @@ function HomeUpcomingEventsBlock() {
             style={{
               fontSize: "13px",
               color: "#E51937",
-              textAlign: "center",
+              textAlign: combinedLayout ? "left" : "center",
               marginTop: "16px",
               display: "block",
               textDecoration: "none",
@@ -1054,6 +1066,57 @@ function HomeUpcomingEventsBlock() {
           </Link>
         </>
       )}
+    </div>
+  );
+
+  const savedClubsColumn =
+    combinedLayout && savedClubList ? (
+      <div style={{ minWidth: 0 }}>
+        <div style={{ marginBottom: 20 }}>
+          <h2
+            className="text-3xl font-extrabold text-white"
+            style={{ margin: 0 }}
+          >
+            Your Saved Clubs
+          </h2>
+          <p className="mt-3 text-muted" style={{ marginBottom: 0 }}>
+            Clubs you&apos;ve bookmarked for later
+          </p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {savedClubList.map((club) => (
+            <HomeFeaturedClubCard key={club.id} club={club} />
+          ))}
+        </div>
+        <p style={{ marginTop: 16, marginBottom: 0 }}>
+          <Link
+            to="/explore"
+            style={{
+              color: "#E51937",
+              fontSize: 13,
+              textDecoration: "none",
+            }}
+          >
+            Explore 260+ clubs →
+          </Link>
+        </p>
+      </div>
+    ) : null;
+
+  if (combinedLayout) {
+    return (
+      <section className="mx-auto max-w-[1100px] px-4 py-[60px]">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          {eventsColumn}
+          {savedClubsColumn}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mx-auto max-w-[1100px] px-4 py-[60px]">
+      {eventsColumn}
     </section>
   );
 }
@@ -1364,38 +1427,9 @@ export default function Home() {
         </div>
       </section>
 
-      <HomeUpcomingEventsBlock />
-
-      {/* Saved Clubs */}
-      {user && savedClubList.length > 0 ? (
-        <section className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8">
-          <div className="mb-10 text-center">
-            <h2 className="text-3xl font-extrabold text-white">Your Saved Clubs</h2>
-            <p className="mt-3 text-muted">
-              Clubs you&apos;ve bookmarked for later
-            </p>
-          </div>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {savedClubList.map((club) => (
-              <HomeFeaturedClubCard key={club.id} club={club} />
-            ))}
-          </div>
-          {savedClubList.length < 3 && (
-            <p className="text-center" style={{ marginTop: 16 }}>
-              <Link
-                to="/explore"
-                style={{
-                  color: "#E51937",
-                  fontSize: 13,
-                  textDecoration: "none",
-                }}
-              >
-                Explore 260+ clubs →
-              </Link>
-            </p>
-          )}
-        </section>
-      ) : null}
+      <HomeUpcomingEventsBlock
+        savedClubList={user && savedClubList.length > 0 ? savedClubList : undefined}
+      />
 
       {/* CTA Section */}
       <CtaSection />
@@ -1421,35 +1455,37 @@ function CtaSection() {
 
   return (
     <section
-      className="px-4 py-[60px] text-center sm:px-10"
+      className="px-4 py-8 text-center sm:px-10 md:py-[30px]"
       style={{
         borderTop: "1px solid #2a2a2a",
         background: "linear-gradient(to bottom, #141414, #0f0f0f)",
       }}
     >
-      <div className="mx-auto max-w-7xl">
-        <h2
-          style={{
-            fontSize: "32px",
-            fontWeight: 800,
-            color: "#ffffff",
-            margin: 0,
-          }}
-        >
-          Your campus. Your clubs.
-        </h2>
-        <p
-          style={{
-            fontSize: "15px",
-            color: "#555555",
-            marginTop: "8px",
-            marginBottom: 0,
-          }}
-        >
-          Join thousands of Guelph students managing their club life on
-          GryphClubConnect.
-        </p>
-        <div className="mt-6 flex w-full flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="mx-auto flex max-w-7xl flex-col items-center gap-5 md:flex-row md:items-center md:justify-between md:gap-8 md:text-left">
+        <div className="flex flex-col">
+          <h2
+            style={{
+              fontSize: "32px",
+              fontWeight: 800,
+              color: "#ffffff",
+              margin: 0,
+            }}
+          >
+            Your campus. Your clubs.
+          </h2>
+          <p
+            style={{
+              fontSize: "15px",
+              color: "#555555",
+              marginTop: "8px",
+              marginBottom: 0,
+            }}
+          >
+            Join thousands of Guelph students managing their club life on
+            GryphClubConnect.
+          </p>
+        </div>
+        <div className="flex w-full flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center md:w-auto md:shrink-0">
           <Link
             to="/signup"
             className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-7 py-3 text-sm font-semibold text-white no-underline sm:w-auto"
