@@ -68,25 +68,11 @@ const BOARD_COLUMNS: TaskStatus[] = ["todo", "in_progress", "done"];
 
 type ViewMode = "board" | "list";
 
-type TaskFilterChip =
-  | "all"
-  | "assigned_to_me"
-  | "assigned_by_me"
-  | "overdue"
-  | "high_priority"
-  | "completed";
+type AssignmentTab = "assigned_to_me" | "assigned_by_me";
 
-const privilegedFilterChips: { id: TaskFilterChip; label: string }[] = [
-  { id: "all", label: "All Tasks" },
-  { id: "assigned_to_me", label: "Assigned to Me" },
-  { id: "assigned_by_me", label: "Assigned by Me" },
-  { id: "overdue", label: "Overdue" },
-  { id: "high_priority", label: "High Priority" },
-  { id: "completed", label: "Completed" },
-];
+type TaskQuickFilter = "overdue" | "high_priority" | "completed";
 
-const memberFilterChips: { id: TaskFilterChip; label: string }[] = [
-  { id: "all", label: "All Tasks" },
+const quickFilterChips: { id: TaskQuickFilter; label: string }[] = [
   { id: "overdue", label: "Overdue" },
   { id: "high_priority", label: "High Priority" },
   { id: "completed", label: "Completed" },
@@ -149,45 +135,6 @@ function TaskLinkedLabel({ task }: { task: Task }) {
         </p>
       ) : null}
     </>
-  );
-}
-
-function TaskTypeFilterChipBar({
-  active,
-  onChange,
-}: {
-  active: TaskTypeFilter;
-  onChange: (chip: TaskTypeFilter) => void;
-}) {
-  return (
-    <div>
-      <p style={{ margin: "0 0 8px", fontSize: "11px", color: "#555555" }}>Type:</p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        {TASK_TYPE_FILTER_CHIPS.map((chip) => {
-          const isActive = active === chip.id;
-          return (
-            <button
-              key={chip.id}
-              type="button"
-              onClick={() => onChange(chip.id)}
-              style={{
-                background: isActive ? "#E51937" : "transparent",
-                color: isActive ? "#ffffff" : "#999999",
-                border: isActive ? "1px solid #E51937" : "1px solid #333333",
-                borderRadius: "20px",
-                padding: "6px 14px",
-                fontSize: "12px",
-                fontWeight: 500,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {chip.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -784,9 +731,9 @@ function TaskFilterChipBar({
   active,
   onChange,
 }: {
-  chips: { id: TaskFilterChip; label: string }[];
-  active: TaskFilterChip;
-  onChange: (chip: TaskFilterChip) => void;
+  chips: { id: TaskQuickFilter; label: string }[];
+  active: TaskQuickFilter | null;
+  onChange: (chip: TaskQuickFilter | null) => void;
 }) {
   return (
     <div
@@ -794,7 +741,6 @@ function TaskFilterChipBar({
         display: "flex",
         flexWrap: "wrap",
         gap: "8px",
-        marginBottom: "16px",
       }}
     >
       {chips.map((chip) => {
@@ -803,7 +749,7 @@ function TaskFilterChipBar({
           <button
             key={chip.id}
             type="button"
-            onClick={() => onChange(chip.id)}
+            onClick={() => onChange(isActive ? null : chip.id)}
             style={{
               background: isActive ? "#E51937" : "transparent",
               color: isActive ? "#ffffff" : "#999999",
@@ -817,6 +763,56 @@ function TaskFilterChipBar({
             }}
           >
             {chip.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AssignmentTabToggle({
+  active,
+  onChange,
+  showAssignedByMe,
+}: {
+  active: AssignmentTab;
+  onChange: (tab: AssignmentTab) => void;
+  showAssignedByMe: boolean;
+}) {
+  const tabs: { id: AssignmentTab; label: string }[] = [
+    { id: "assigned_to_me", label: "Assigned to Me" },
+    ...(showAssignedByMe
+      ? [{ id: "assigned_by_me" as const, label: "Assigned by Me" }]
+      : []),
+  ];
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Assignment view"
+      style={{ display: "flex", gap: "6px", marginBottom: "20px" }}
+    >
+      {tabs.map((tab) => {
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(tab.id)}
+            style={{
+              background: isActive ? "#E51937" : "#1a1a1a",
+              color: isActive ? "#ffffff" : "#777777",
+              border: isActive ? "none" : "1px solid #333333",
+              borderRadius: "6px",
+              padding: "6px 16px",
+              fontSize: "13px",
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            {tab.label}
           </button>
         );
       })}
@@ -977,15 +973,26 @@ export default function ClubTasksPage() {
     [tasks, eventLinkOptions, meetingLinkOptions, hiringLinkOptions],
   );
 
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [assignmentTab, setAssignmentTab] = useState<AssignmentTab>("assigned_to_me");
+  const [activeQuickFilter, setActiveQuickFilter] = useState<TaskQuickFilter | null>(null);
+  const [activeTypeFilter, setActiveTypeFilter] = useState<TaskTypeFilter>("all");
+
   const visibleTasks = useMemo(() => {
     const activeTasks = enrichedTasks.filter((task) => task.status !== "cancelled");
-    if (isPrivileged) return activeTasks;
-    return activeTasks.filter((t) => t.assignedTo === user?.id);
-  }, [enrichedTasks, isPrivileged, user?.id]);
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [activeFilter, setActiveFilter] = useState<TaskFilterChip>("all");
-  const [activeTypeFilter, setActiveTypeFilter] = useState<TaskTypeFilter>("all");
+    if (assignmentTab === "assigned_by_me") {
+      return activeTasks.filter(
+        (task) =>
+          task.createdBy === user?.id &&
+          task.assignedTo &&
+          task.assignedTo !== user?.id,
+      );
+    }
+
+    return activeTasks.filter((task) => task.assignedTo === user?.id);
+  }, [enrichedTasks, assignmentTab, user?.id]);
+
   const effectiveViewMode: ViewMode = isPrivileged ? viewMode : "list";
   const [showForm, setShowForm] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -1015,6 +1022,16 @@ export default function ClubTasksPage() {
   const handleCommentCountChange = useCallback((taskId: string, count: number) => {
     setCommentCounts((prev) => ({ ...prev, [taskId]: count }));
   }, []);
+
+  useEffect(() => {
+    if (!isPrivileged && assignmentTab === "assigned_by_me") {
+      setAssignmentTab("assigned_to_me");
+    }
+  }, [isPrivileged, assignmentTab]);
+
+  useEffect(() => {
+    setActiveQuickFilter(null);
+  }, [assignmentTab]);
 
   useEffect(() => {
     if (visibleTasks.length === 0) {
@@ -1057,16 +1074,9 @@ export default function ClubTasksPage() {
   }, [visibleTasks, activeTypeFilter]);
 
   const filteredTasks = useMemo(() => {
-    switch (activeFilter) {
-      case "assigned_to_me":
-        return typeFilteredTasks.filter((t) => t.assignedTo === user?.id);
-      case "assigned_by_me":
-        return typeFilteredTasks.filter(
-          (t) =>
-            t.createdBy === user?.id &&
-            t.assignedTo &&
-            t.assignedTo !== user?.id,
-        );
+    if (!activeQuickFilter) return typeFilteredTasks;
+
+    switch (activeQuickFilter) {
       case "overdue":
         return typeFilteredTasks.filter(isTaskOverdue);
       case "high_priority":
@@ -1076,7 +1086,7 @@ export default function ClubTasksPage() {
       default:
         return typeFilteredTasks;
     }
-  }, [typeFilteredTasks, activeFilter, user?.id]);
+  }, [typeFilteredTasks, activeQuickFilter]);
 
   const filteredDoneCount = filteredTasks.filter((t) => t.status === "done").length;
   const filteredTotalCount = filteredTasks.length;
@@ -1102,13 +1112,12 @@ export default function ClubTasksPage() {
   );
 
   const listFooterLabel = useMemo(() => {
-    const chips = isPrivileged ? privilegedFilterChips : memberFilterChips;
-    if (activeFilter === "all" && activeTypeFilter === "all") {
+    if (!activeQuickFilter && activeTypeFilter === "all") {
       return "Showing all tasks";
     }
     const parts: string[] = [];
-    if (activeFilter !== "all") {
-      const chip = chips.find((c) => c.id === activeFilter);
+    if (activeQuickFilter) {
+      const chip = quickFilterChips.find((c) => c.id === activeQuickFilter);
       parts.push(chip?.label.toLowerCase() ?? "filtered");
     }
     if (activeTypeFilter !== "all") {
@@ -1116,7 +1125,7 @@ export default function ClubTasksPage() {
       parts.push(typeChip?.label.toLowerCase() ?? activeTypeFilter);
     }
     return `Showing ${parts.join(" · ")} tasks`;
-  }, [activeFilter, activeTypeFilter, isPrivileged]);
+  }, [activeQuickFilter, activeTypeFilter]);
 
   const tasksByStatus = useMemo(() => {
     const grouped: Record<TaskStatus, Task[]> = {
@@ -1942,6 +1951,12 @@ export default function ClubTasksPage() {
         </div>
       </div>
 
+      <AssignmentTabToggle
+        active={assignmentTab}
+        onChange={setAssignmentTab}
+        showAssignedByMe={isPrivileged}
+      />
+
       <TasksListStatCards
         doneCount={filteredDoneCount}
         totalCount={filteredTotalCount}
@@ -1950,25 +1965,20 @@ export default function ClubTasksPage() {
         isMobile={isMobile}
       />
 
-      <TaskFilterChipBar
-        chips={isPrivileged ? privilegedFilterChips : memberFilterChips}
-        active={activeFilter}
-        onChange={setActiveFilter}
-      />
-
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "flex-start",
+          alignItems: "center",
           gap: "12px",
           flexWrap: "wrap",
           marginBottom: "16px",
         }}
       >
-        <TaskTypeFilterChipBar
-          active={activeTypeFilter}
-          onChange={setActiveTypeFilter}
+        <TaskFilterChipBar
+          chips={quickFilterChips}
+          active={activeQuickFilter}
+          onChange={setActiveQuickFilter}
         />
         <TaskTypeFilterDropdown
           value={activeTypeFilter}

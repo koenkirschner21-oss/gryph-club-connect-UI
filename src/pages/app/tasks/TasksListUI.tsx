@@ -55,6 +55,7 @@ export function CircularProgress({ percent }: { percent: number }) {
         strokeDasharray={circumference}
         strokeDashoffset={offset}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ transition: "none", animation: "none" }}
       />
       <text
         x="50%"
@@ -127,6 +128,7 @@ export function TasksListStatCards({
                 width: `${fillPercent}%`,
                 background: GOLD,
                 borderRadius: "2px",
+                transition: "none",
               }}
             />
           </div>
