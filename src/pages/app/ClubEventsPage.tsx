@@ -46,6 +46,7 @@ import {
   type EventCategory,
 } from "../../lib/eventCategories";
 import EventPlanningTasksSection from "../../components/club/EventPlanningTasksSection";
+import { EventManageView } from "./events/EventManageView";
 import { useClubMembers } from "../../hooks/useClubMembers";
 
 type EventFilter = "all" | "public" | "my_rsvps";
@@ -968,6 +969,7 @@ function EventCard({
   onAddPlanningTask,
   attendeePreview,
   onRsvp,
+  onManage,
   onStartEdit,
   onDelete,
   onCopyRsvpLink,
@@ -998,6 +1000,7 @@ function EventCard({
     status: RsvpStatus;
   }>;
   onRsvp: (eventId: string, status: RsvpStatus) => void;
+  onManage: (event: ClubEvent) => void;
   onStartEdit: (event: ClubEvent) => void;
   onDelete: (eventId: string) => void;
   onCopyRsvpLink: (eventId: string) => void;
@@ -1403,7 +1406,7 @@ function EventCard({
             {isPrivileged && !past ? (
               <button
                 type="button"
-                onClick={() => onStartEdit(event)}
+                onClick={() => onManage(event)}
                 style={{
                   background: "none",
                   border: "none",
@@ -1883,6 +1886,7 @@ export default function ClubEventsPage() {
   const [planningQuickAddEventId, setPlanningQuickAddEventId] = useState<string | null>(
     null,
   );
+  const [focusRsvpPanel, setFocusRsvpPanel] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const routerLocation = useLocation();
@@ -2169,28 +2173,23 @@ export default function ClubEventsPage() {
 
   useEffect(() => {
     const eventId = searchParams.get("manageEvent");
-    if (!eventId || !isPrivileged || loading) return;
-
-    const event = visibleEvents.find((item) => item.id === eventId);
-    if (!event) return;
-
-    startEdit(event);
-    const next = new URLSearchParams(searchParams);
-    next.delete("manageEvent");
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading, visibleEvents]);
+    if (!eventId || loading) return;
+    if (!isPrivileged) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("manageEvent");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, isPrivileged, loading]);
 
   useEffect(() => {
     const eventId = searchParams.get("viewRsvps");
     if (!eventId || !isPrivileged || loading) return;
 
-    void (async () => {
-      await loadAttendees(eventId);
-      setExpandedAttendees(eventId);
-    })();
-
+    void loadAttendees(eventId);
+    setFocusRsvpPanel(true);
     const next = new URLSearchParams(searchParams);
     next.delete("viewRsvps");
+    next.set("manageEvent", eventId);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, isPrivileged, loading, loadAttendees]);
 
@@ -2818,19 +2817,133 @@ export default function ClubEventsPage() {
     }
   }, [upcomingDisplayList, pastEvents, counts, attendees, loadAttendees]);
 
-  function openPlanningTasks(event: ClubEvent) {
+  function openManageEvent(event: ClubEvent) {
+    const next = new URLSearchParams(searchParams);
+    next.set("manageEvent", event.id);
+    setSearchParams(next);
+  }
+
+  function closeManageView() {
+    setPlanningQuickAddEventId(null);
+    setFocusRsvpPanel(false);
+    const next = new URLSearchParams(searchParams);
+    next.delete("manageEvent");
+    setSearchParams(next);
+  }
+
+  function handleEditFromManage(event: ClubEvent) {
+    closeManageView();
     startEdit(event);
+  }
+
+  function openPlanningTasks(event: ClubEvent) {
+    openManageEvent(event);
   }
 
   function openPlanningTaskQuickAdd(event: ClubEvent) {
     setPlanningQuickAddEventId(event.id);
-    startEdit(event);
+    openManageEvent(event);
   }
+
+  const manageEventId = searchParams.get("manageEvent");
+  const manageEvent = manageEventId
+    ? visibleEvents.find((item) => item.id === manageEventId)
+    : undefined;
+  const planningTasksForManageEvent = useMemo(() => {
+    if (!manageEventId) return [];
+    return tasks.filter(
+      (task) => task.taskType === "event" && task.linkedEventId === manageEventId,
+    );
+  }, [tasks, manageEventId]);
 
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <Spinner label="Loading events…" />
+      </div>
+    );
+  }
+
+  if (manageEventId && isPrivileged) {
+    if (!manageEvent) {
+      return (
+        <div
+          style={{
+            backgroundColor: "#0f0f0f",
+            padding: isMobile ? "16px" : "24px",
+          }}
+        >
+          <p style={{ color: "#777777", margin: 0 }}>Event not found.</p>
+          <button
+            type="button"
+            onClick={closeManageView}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#E51937",
+              cursor: "pointer",
+              marginTop: "12px",
+              padding: 0,
+              fontSize: "14px",
+            }}
+          >
+            Back to Events
+          </button>
+        </div>
+      );
+    }
+
+    const manageCounts = counts[manageEvent.id] ?? {
+      going: 0,
+      maybe: 0,
+      not_going: 0,
+    };
+
+    return (
+      <div
+        style={{
+          backgroundColor: "#0f0f0f",
+          padding: isMobile ? "16px" : "24px",
+        }}
+      >
+        {feedback ? (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              background: feedback.type === "success" ? "#0a1a0a" : "#1a0a0a",
+              color: feedback.type === "success" ? "#4ade80" : "#E51937",
+              border: `1px solid ${feedback.type === "success" ? "#22c55e" : "#E51937"}`,
+            }}
+          >
+            {feedback.text}
+          </div>
+        ) : null}
+        <EventManageView
+          event={manageEvent}
+          category={getEventCategory(manageEvent.id)}
+          recurringMeta={eventRecurring[manageEvent.id]}
+          isRecurring={isEventRecurring(manageEvent.id)}
+          isPrivileged={isPrivileged}
+          isMobile={isMobile}
+          counts={manageCounts}
+          attendeeList={attendees[manageEvent.id]}
+          planningTasks={planningTasksForManageEvent}
+          members={members}
+          createTask={createTask}
+          updateTask={updateTask}
+          deleteTask={deleteTask}
+          onFeedback={setFeedback}
+          onEdit={handleEditFromManage}
+          onBack={closeManageView}
+          focusRsvpPanel={focusRsvpPanel}
+          onRsvpPanelFocused={() => setFocusRsvpPanel(false)}
+          initialPlanningQuickAdd={planningQuickAddEventId === manageEvent.id}
+          onPlanningQuickAddOpened={() => setPlanningQuickAddEventId(null)}
+          loadAttendees={loadAttendees}
+        />
       </div>
     );
   }
@@ -2947,7 +3060,7 @@ export default function ClubEventsPage() {
             padding: "12px 16px",
             fontSize: "13px",
             border:
-              feedback.type === "success"
+            feedback.type === "success"
                 ? "1px solid #3a2a00"
                 : "1px solid #3a1a1a",
             background: feedback.type === "success" ? "#1a1500" : "#1a0505",
@@ -2963,8 +3076,8 @@ export default function ClubEventsPage() {
         <Card className="mb-6 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-white">
-              {editingId ? "Edit Event" : "Create New Event"}
-            </h3>
+            {editingId ? "Edit Event" : "Create New Event"}
+          </h3>
             {!editingId ? (
               <button
                 type="button"
@@ -3216,6 +3329,7 @@ export default function ClubEventsPage() {
                 onAddPlanningTask={openPlanningTaskQuickAdd}
                 attendeePreview={attendees[event.id]}
                 onRsvp={handleRsvp}
+                onManage={openManageEvent}
                 onStartEdit={startEdit}
                 onDelete={handleDelete}
                 onCopyRsvpLink={copyRsvpLink}
@@ -3230,7 +3344,7 @@ export default function ClubEventsPage() {
               />
             );
           })}
-        </div>
+                </div>
       )}
 
       {/* Past Events */}
@@ -3256,6 +3370,7 @@ export default function ClubEventsPage() {
                 onAddPlanningTask={openPlanningTaskQuickAdd}
                 attendeePreview={attendees[event.id]}
                 onRsvp={handleRsvp}
+                onManage={openManageEvent}
                 onStartEdit={startEdit}
                 onDelete={handleDelete}
                 onCopyRsvpLink={copyRsvpLink}
@@ -3266,7 +3381,7 @@ export default function ClubEventsPage() {
                 hasFormResponses={false}
               />
             ))}
-          </div>
+                  </div>
         </>
       )}
 
@@ -3305,8 +3420,8 @@ export default function ClubEventsPage() {
               RSVP to this event
             </p>
 
-            <button
-              type="button"
+                      <button
+                        type="button"
               disabled={rsvpSubmitting}
               onClick={() => void submitRsvpWithForm()}
               style={{
@@ -3324,7 +3439,7 @@ export default function ClubEventsPage() {
               }}
             >
               {rsvpSubmitting ? "Submitting…" : "Confirm RSVP"}
-            </button>
+                      </button>
 
             {filterRsvpQuestionsForLoggedInUser(
               eventQuestionsMap[rsvpModalEvent.id] ?? [],
@@ -3402,8 +3517,8 @@ export default function ClubEventsPage() {
                 marginTop: "8px",
               }}
             >
-              <button
-                type="button"
+                    <button
+                      type="button"
                 disabled={rsvpSubmitting}
                 onClick={() => setRsvpModalEvent(null)}
                 style={{
@@ -3417,7 +3532,7 @@ export default function ClubEventsPage() {
                 }}
               >
                 Cancel
-              </button>
+                    </button>
             </div>
           </div>
         </div>
@@ -3502,15 +3617,15 @@ export default function ClubEventsPage() {
                       {respondent.avatarUrl ? (
                         <img
                           src={respondent.avatarUrl}
-                          alt=""
+                                alt=""
                           style={{
                             width: 32,
                             height: 32,
                             borderRadius: "50%",
                             objectFit: "cover",
                           }}
-                        />
-                      ) : (
+                              />
+                            ) : (
                         <div
                           style={{
                             width: 32,
@@ -3526,9 +3641,9 @@ export default function ClubEventsPage() {
                           }}
                         >
                           {respondent.fullName.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span
+                              </div>
+                            )}
+                            <span
                         style={{
                           fontSize: "14px",
                           fontWeight: 600,
@@ -3536,8 +3651,8 @@ export default function ClubEventsPage() {
                         }}
                       >
                         {respondent.fullName}
-                      </span>
-                    </div>
+                            </span>
+                          </div>
                     {respondent.answers.map((a) => (
                       <div key={`${respondent.userId}-${a.question}`} style={{ marginBottom: "8px" }}>
                         <p
@@ -3557,12 +3672,12 @@ export default function ClubEventsPage() {
                           }}
                         >
                           {a.answer || "—"}
-                        </p>
-                      </div>
+                    </p>
+                  </div>
                     ))}
                   </div>
-                ))}
-              </div>
+            ))}
+          </div>
             )}
           </div>
         </div>
