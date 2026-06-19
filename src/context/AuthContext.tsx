@@ -11,6 +11,7 @@ import { supabase } from "../lib/supabaseClient";
 import { AuthContext, type AuthContextValue } from "./authContextValue";
 
 const ALLOWED_EMAIL_DOMAIN = "uoguelph.ca";
+void ALLOWED_EMAIL_DOMAIN; // preserved for UofG email restriction restore
 
 let notifyOnboardingCompletedRef: (() => void) | null = null;
 
@@ -123,12 +124,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, onboardingCompleted]);
 
   const signUp = useCallback(async (email: string, password: string) => {
-    const domain = email.split("@")[1]?.toLowerCase();
-    if (domain !== ALLOWED_EMAIL_DOMAIN) {
-      throw new Error(
-        `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
-      );
-    }
+    // TODO: re-enable UofG email restriction before launch — disabled temporarily for multi-account testing
+    // const domain = email.split("@")[1]?.toLowerCase();
+    // if (domain !== ALLOWED_EMAIL_DOMAIN) {
+    //   throw new Error(
+    //     `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
+    //   );
+    // }
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

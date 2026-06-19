@@ -4,11 +4,16 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 
 const UOFG_EMAIL_PATTERN = /@uoguelph\.ca$/i;
+void UOFG_EMAIL_PATTERN; // preserved for UofG email restriction restore
 const UOFG_EMAIL_ERROR =
   "Please enter a valid UofG email address ending in @uoguelph.ca.";
 
 function isValidUofGEmail(email: string): boolean {
-  return UOFG_EMAIL_PATTERN.test(email.trim());
+  const trimmed = email.trim();
+  if (!trimmed) return false;
+  // TODO: re-enable UofG email restriction before launch — disabled temporarily for multi-account testing
+  return true;
+  // return UOFG_EMAIL_PATTERN.test(trimmed);
 }
 
 type ClubInviteModalProps = {

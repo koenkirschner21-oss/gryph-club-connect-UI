@@ -308,6 +308,8 @@ function AuthPasswordField({
 const ALLOWED_DOMAIN = "uoguelph.ca";
 const EMAIL_DOMAIN_ERROR =
   "Only University of Guelph email addresses are accepted (@uoguelph.ca)";
+void ALLOWED_DOMAIN;
+void EMAIL_DOMAIN_ERROR; // preserved for UofG email restriction restore
 
 export default function Signup() {
   const { signUp } = useAuthContext();
@@ -331,10 +333,11 @@ export default function Signup() {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail.endsWith(`@${ALLOWED_DOMAIN}`)) {
-      setEmailError(EMAIL_DOMAIN_ERROR);
-      return;
-    }
+    // TODO: re-enable UofG email restriction before launch — disabled temporarily for multi-account testing
+    // if (!normalizedEmail.endsWith(`@${ALLOWED_DOMAIN}`)) {
+    //   setEmailError(EMAIL_DOMAIN_ERROR);
+    //   return;
+    // }
 
     setEmailError(null);
     setLoading(true);
