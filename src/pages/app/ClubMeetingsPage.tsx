@@ -377,7 +377,7 @@ export default function ClubMeetingsPage() {
   const hasAnyMeetings = meetings.length > 0;
 
   return (
-    <div style={{ padding: isMobile ? "20px 16px" : "24px 28px", maxWidth: "1200px" }}>
+    <div style={{ padding: isMobile ? "16px" : "24px", width: "100%" }}>
       <div
         style={{
           display: "flex",

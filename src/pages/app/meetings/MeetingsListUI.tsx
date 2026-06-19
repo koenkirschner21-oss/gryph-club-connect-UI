@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useClubMembers } from "../../../hooks/useClubMembers";
+import { useWindowWidth } from "../../../hooks/useWindowWidth";
 import { formatRelativeTime } from "../../../lib/formatRelativeTime";
 import {
   inviteeCountLabel,
@@ -272,6 +273,7 @@ export function MeetingsStatCards({
         gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
         gap: "16px",
         marginBottom: "24px",
+        width: "100%",
       }}
     >
       <StatCard
@@ -349,6 +351,8 @@ export function NextMeetingHero({
 }) {
   const navigate = useNavigate();
   const { members } = useClubMembers(clubId);
+  const windowWidth = useWindowWidth();
+  const stackedLayout = isMobile || windowWidth <= 1024;
   const { metadata } = parseMeetingNotes(meeting.notes);
   const agendaItems = parseAgendaItems(meeting.agenda);
   const formatLabel = meetingFormatLabel(meeting);
@@ -369,16 +373,18 @@ export function NextMeetingHero({
         borderRadius: "10px",
         padding: "20px",
         marginBottom: "24px",
+        width: "100%",
       }}
     >
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.2fr) minmax(0, 0.8fr)",
+          display: "flex",
+          flexDirection: stackedLayout ? "column" : "row",
           gap: "24px",
+          width: "100%",
         }}
       >
-        <div>
+        <div style={{ flex: stackedLayout ? undefined : 1.5, minWidth: 0 }}>
           <p
             style={{
               margin: "0 0 12px",
@@ -473,7 +479,7 @@ export function NextMeetingHero({
           </div>
         </div>
 
-        <div>
+        <div style={{ flex: stackedLayout ? undefined : 1, minWidth: 0 }}>
           <p
             style={{
               margin: "0 0 10px",
@@ -879,6 +885,9 @@ export function MeetingsUpcomingLayout({
   onViewAllActions: () => void;
   onViewAllNotes: () => void;
 }) {
+  const windowWidth = useWindowWidth();
+  const stackedLayout = isMobile || windowWidth <= 1024;
+
   return (
     <>
       {nextMeeting ? (
@@ -893,12 +902,19 @@ export function MeetingsUpcomingLayout({
       <div
         style={{
           display: "flex",
-          flexDirection: isMobile ? "column" : "row",
+          flexDirection: stackedLayout ? "column" : "row",
           gap: "24px",
           alignItems: "flex-start",
+          width: "100%",
         }}
       >
-        <div style={{ flex: "1 1 60%", minWidth: 0 }}>
+        <div
+          style={{
+            flex: stackedLayout ? undefined : 2,
+            minWidth: 0,
+            width: stackedLayout ? "100%" : undefined,
+          }}
+        >
           {listMeetings.length === 0 && !nextMeeting ? (
             <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
               No upcoming meetings scheduled.
@@ -920,7 +936,15 @@ export function MeetingsUpcomingLayout({
             ))
           )}
         </div>
-        <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
+        <div
+          style={{
+            flex: stackedLayout ? undefined : 1,
+            minWidth: 0,
+            maxWidth: stackedLayout ? "100%" : "360px",
+            width: stackedLayout ? "100%" : undefined,
+            flexShrink: 0,
+          }}
+        >
           <ActionItemsDueSoonPanel items={actionItemsDueSoon} onViewAll={onViewAllActions} />
           <RecentMeetingNotesPanel
             meetings={recentNotesMeetings}
