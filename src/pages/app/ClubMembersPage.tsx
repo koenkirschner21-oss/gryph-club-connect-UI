@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Search, Users } from "lucide-react";
+import { Search } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
-import { membershipUsesApplicationQueue } from "../../lib/clubJoinUtils";
 import {
   ACCESS_LEVEL_OPTIONS,
   ROLE_TITLE_CUSTOM,
@@ -21,7 +20,6 @@ import {
   roleTitleGroupForAccessLevel,
   roleTitleOptionsForAccessLevel,
 } from "../../lib/memberRoleTitle";
-import { notifyUsers } from "../../lib/notifyUsers";
 import {
   notifyJoinRequestApproved,
   notifyJoinRequestRejected,
@@ -369,18 +367,7 @@ function MemberAvatar({
   );
 }
 
-type ViewMode = "list" | "orgChart" | "applications" | "pendingRequests" | "invites";
-type ApplicationFilter = "pending" | "approved" | "rejected";
-
-interface JoinApplicationRow {
-  id: string;
-  applicantId: string;
-  answers: JoinAnswer[];
-  status: "pending" | "approved" | "rejected";
-  createdAt: string;
-  fullName: string;
-  avatarUrl?: string;
-}
+type ViewMode = "list" | "orgChart" | "pendingRequests" | "invites";
 
 interface OrgChartMember {
   id: string;
@@ -530,7 +517,19 @@ function OrgChartCard({
   );
 }
 
-function OrgChartView({ members }: { members: OrgChartMember[] }) {
+function OrgChartView({
+  members,
+  totalMemberCount,
+  canInviteExecutive,
+  onInviteExecutive,
+  onSwitchToMembers,
+}: {
+  members: OrgChartMember[];
+  totalMemberCount: number;
+  canInviteExecutive: boolean;
+  onInviteExecutive: () => void;
+  onSwitchToMembers: () => void;
+}) {
   const presidents = members.filter((m) => m.role === "owner");
   const executives = members.filter((m) => m.role === "executive");
   const leaderIds = new Set([
@@ -557,6 +556,12 @@ function OrgChartView({ members }: { members: OrgChartMember[] }) {
   const hasChart =
     presidents.length > 0 || executives.length > 0 || teamMembers.length > 0;
 
+  const isSinglePresidentOnly =
+    totalMemberCount <= 1 &&
+    presidents.length === 1 &&
+    executives.length === 0 &&
+    teamMembers.length === 0;
+
   if (!hasChart) {
     return (
       <div
@@ -577,6 +582,74 @@ function OrgChartView({ members }: { members: OrgChartMember[] }) {
 
   return (
     <div style={{ paddingBottom: "24px" }}>
+      {isSinglePresidentOnly ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            maxWidth: "420px",
+            margin: "0 auto",
+          }}
+        >
+          <OrgChartCard member={presidents[0]!} tier="president" />
+          <div
+            style={{
+              marginTop: "24px",
+              textAlign: "center",
+              padding: "20px 16px",
+              background: "#141414",
+              border: "1px solid #2a2a2a",
+              borderRadius: "10px",
+              width: "100%",
+            }}
+          >
+            <p style={{ fontSize: "15px", fontWeight: 600, color: "#cccccc", margin: "0 0 8px" }}>
+              Your org chart is just getting started
+            </p>
+            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px", lineHeight: 1.5 }}>
+              {presidents[0]!.fullName || "Your president"} is currently the only listed leader.
+              Invite executives, coordinators, and team leads to build out your club structure.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
+              {canInviteExecutive ? (
+                <button
+                  type="button"
+                  onClick={onInviteExecutive}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #E51937",
+                    color: "#E51937",
+                    borderRadius: "6px",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Invite Executive
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onSwitchToMembers}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#777777",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                Switch to Members
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
       {presidents.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div
@@ -677,6 +750,8 @@ function OrgChartView({ members }: { members: OrgChartMember[] }) {
           </div>
         </div>
       ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -690,7 +765,6 @@ export default function ClubMembersPage() {
 
   const role = getUserRole(clubId ?? "");
   const isOwner = role === "owner";
-  const isExecutive = role === "executive";
   /** Admin or owner may change member roles / remove members; exec sees queue only. */
   const canReorderRoster = isTopClubModeratorRole(role);
   const canUseMembershipQueue = isPrivilegedClubRole(role);
@@ -698,7 +772,6 @@ export default function ClubMembersPage() {
   const {
     members,
     pendingMembers,
-    membershipType,
     loading,
     removeMember,
     approveRequest,
@@ -707,7 +780,7 @@ export default function ClubMembersPage() {
   } = useClubMembers(clubId);
   const isMobile = useIsMobile();
 
-  const [viewMode, setViewMode] = useState<ViewMode>("orgChart");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [searchParams, setSearchParams] = useSearchParams();
   const [orgChartMembers, setOrgChartMembers] = useState<OrgChartMember[]>([]);
   const [orgChartLoading, setOrgChartLoading] = useState(true);
@@ -738,10 +811,9 @@ export default function ClubMembersPage() {
     null,
   );
 
-  const [applications, setApplications] = useState<JoinApplicationRow[]>([]);
-  const [applicationsLoading, setApplicationsLoading] = useState(false);
-  const [applicationFilter, setApplicationFilter] = useState<ApplicationFilter>("pending");
-  const [expandedApplicationId, setExpandedApplicationId] = useState<string | null>(null);
+  const isSmallClub = members.length <= 3;
+  const showInviteCodeSection =
+    Boolean(club?.joinCode) && (!isSmallClub || viewMode === "list");
 
   const roleOrder: Record<MemberRole, number> = {
     owner: 0,
@@ -895,76 +967,6 @@ export default function ClubMembersPage() {
     }
   }, [canUseMembershipQueue, loadExecutiveInvites, viewMode]);
 
-  const loadApplications = useCallback(async () => {
-    if (!clubId) return;
-    setApplicationsLoading(true);
-
-    const { data, error } = await supabase
-      .from("club_join_applications")
-      .select("id, applicant_id, answers, status, created_at")
-      .eq("club_id", clubId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Failed to load join applications:", error.message);
-      setApplications([]);
-      setApplicationsLoading(false);
-      return;
-    }
-
-    const applicantIds = [
-      ...new Set((data ?? []).map((row) => row.applicant_id as string)),
-    ];
-
-    let profileMap: Record<string, { fullName: string; avatarUrl?: string }> =
-      {};
-    if (applicantIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url")
-        .in("id", applicantIds);
-      profileMap = Object.fromEntries(
-        (profiles ?? []).map((row) => [
-          row.id as string,
-          {
-            fullName: (row.full_name as string)?.trim() || "Unknown",
-            avatarUrl: (row.avatar_url as string) ?? undefined,
-          },
-        ]),
-      );
-    }
-
-    const mapped: JoinApplicationRow[] = (data ?? []).map((row) => {
-      const applicantId = row.applicant_id as string;
-      const profile = profileMap[applicantId];
-      const answersRaw = row.answers;
-      const answers = Array.isArray(answersRaw)
-        ? (answersRaw as JoinAnswer[])
-        : [];
-      return {
-        id: row.id as string,
-        applicantId,
-        answers,
-        status: row.status as JoinApplicationRow["status"],
-        createdAt: row.created_at as string,
-        fullName: profile?.fullName ?? "Unknown",
-        avatarUrl: profile?.avatarUrl,
-      };
-    });
-
-    setApplications(mapped);
-    setApplicationsLoading(false);
-  }, [clubId]);
-
-  useEffect(() => {
-    if (
-      viewMode === "applications" &&
-      membershipUsesApplicationQueue(membershipType)
-    ) {
-      void loadApplications();
-    }
-  }, [viewMode, membershipType, loadApplications]);
-
   useEffect(() => {
     if (searchParams.get("tab") !== "pending" || !canUseMembershipQueue) return;
     setViewMode("pendingRequests");
@@ -972,79 +974,6 @@ export default function ClubMembersPage() {
     next.delete("tab");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, canUseMembershipQueue]);
-
-  const filteredApplications = applications.filter(
-    (app) => app.status === applicationFilter,
-  );
-
-  async function admitApplicant(application: JoinApplicationRow) {
-    if (!clubId || !club) return;
-
-    const { error: memberError } = await supabase.from("club_members").upsert(
-      {
-        club_id: clubId,
-        user_id: application.applicantId,
-        role: "member",
-        status: "active",
-      },
-      { onConflict: "club_id,user_id" },
-    );
-
-    if (memberError) {
-      console.error("Failed to admit member:", memberError.message);
-      setFeedback({ type: "error", text: "Failed to admit member." });
-      return;
-    }
-
-    const { error: updateError } = await supabase
-      .from("club_join_applications")
-      .update({ status: "approved" })
-      .eq("id", application.id);
-
-    if (updateError) {
-      console.error("Failed to update application:", updateError.message);
-    }
-
-    await notifyUsers([
-      {
-        user_id: application.applicantId,
-        type: "join_approved",
-        message: `Your application to join ${club.name} has been approved! Welcome aboard.`,
-        club_id: clubId,
-        reference_id: application.id,
-      },
-    ]);
-
-    void refresh();
-    void loadApplications();
-  }
-
-  async function rejectApplication(application: JoinApplicationRow) {
-    if (!clubId || !club) return;
-
-    const { error } = await supabase
-      .from("club_join_applications")
-      .update({ status: "rejected" })
-      .eq("id", application.id);
-
-    if (error) {
-      console.error("Failed to reject application:", error.message);
-      setFeedback({ type: "error", text: "Failed to decline application." });
-      return;
-    }
-
-    await notifyUsers([
-      {
-        user_id: application.applicantId,
-        type: "club_update",
-        message: `Your application to join ${club.name} was not approved at this time.`,
-        club_id: clubId,
-        reference_id: application.id,
-      },
-    ]);
-
-    void loadApplications();
-  }
 
   const loadOrgChartMembers = useCallback(async () => {
     if (!clubId) return;
@@ -1453,6 +1382,18 @@ export default function ClubMembersPage() {
           >
             Manage club members, roles, and team access.
           </p>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#444444",
+              marginTop: "6px",
+              marginBottom: 0,
+              lineHeight: 1.4,
+            }}
+          >
+            President leads the club; Executives manage teams; General Members participate in
+            club activities.
+          </p>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
           {isOwner ? (
@@ -1491,21 +1432,6 @@ export default function ClubMembersPage() {
               Invite Executive
             </button>
           ) : null}
-          {viewToggleButton("list", "List")}
-          {viewToggleButton("orgChart", "Org Chart")}
-          {canUseMembershipQueue
-            ? viewToggleButton(
-                "pendingRequests",
-                pendingMembers.length > 0
-                  ? `Pending Requests (${pendingMembers.length})`
-                  : "Pending Requests",
-              )
-            : null}
-          {canUseMembershipQueue &&
-          membershipUsesApplicationQueue(membershipType)
-            ? viewToggleButton("applications", "Applications")
-            : null}
-          {canUseMembershipQueue ? viewToggleButton("invites", "Invites") : null}
         </div>
       </div>
 
@@ -1532,68 +1458,55 @@ export default function ClubMembersPage() {
         />
       </div>
 
-      {club?.joinCode ? (
+      {showInviteCodeSection ? (
         <div
           style={{
-            background: "#141414",
-            borderTop: "1px solid #2a2a2a",
-            borderRight: "1px solid #2a2a2a",
-            borderBottom: "1px solid #2a2a2a",
-            borderLeft: "3px solid #FFC429",
-            borderRadius: "12px",
-            padding: "20px 24px",
-            marginBottom: "20px",
+            background: "#121212",
+            border: "1px solid #242424",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            marginBottom: "16px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             flexWrap: "wrap",
-            gap: "16px",
+            gap: "12px",
           }}
         >
           <div>
             <p
               style={{
-                fontSize: "14px",
-                fontWeight: 700,
-                color: "#ffffff",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#aaaaaa",
                 margin: 0,
               }}
             >
               Invite Code
             </p>
-            <p
-              style={{
-                fontSize: "12px",
-                color: "#555555",
-                marginTop: "2px",
-                marginBottom: 0,
-              }}
-            >
-              Share this code or link to invite new members.
-            </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
             <span
               style={{
-                fontSize: "22px",
-                fontWeight: 800,
+                fontSize: "16px",
+                fontWeight: 700,
                 color: "#FFC429",
-                letterSpacing: "0.12em",
+                letterSpacing: "0.1em",
               }}
             >
-              {club.joinCode}
+              {club!.joinCode}
             </span>
             <button
               type="button"
               onClick={handleCopyCode}
               style={{
-                background: "#1a1200",
-                border: "1px solid #FFC429",
+                background: "transparent",
+                border: "1px solid #3a3000",
                 color: "#FFC429",
-                borderRadius: "8px",
-                padding: "8px 16px",
+                borderRadius: "6px",
+                padding: "6px 12px",
                 fontSize: "12px",
-                fontWeight: 600,
+                fontWeight: 500,
                 cursor: "pointer",
               }}
             >
@@ -1606,13 +1519,13 @@ export default function ClubMembersPage() {
                 background: "transparent",
                 border: "1px solid #2a2a2a",
                 color: "#777777",
-                borderRadius: "8px",
-                padding: "8px 16px",
+                borderRadius: "6px",
+                padding: "6px 12px",
                 fontSize: "12px",
                 cursor: "pointer",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#555555";
+                e.currentTarget.style.borderColor = "#444444";
                 e.currentTarget.style.color = "#aaaaaa";
               }}
               onMouseLeave={(e) => {
@@ -1631,12 +1544,14 @@ export default function ClubMembersPage() {
                   background: "none",
                   border: "none",
                   color: "#444444",
-                  fontSize: "12px",
+                  fontSize: "11px",
                   cursor: regeneratingCode ? "not-allowed" : "pointer",
-                  padding: 0,
+                  padding: "0 4px",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "2px",
                 }}
                 onMouseEnter={(e) => {
-                  if (!regeneratingCode) e.currentTarget.style.color = "#777777";
+                  if (!regeneratingCode) e.currentTarget.style.color = "#666666";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.color = "#444444";
@@ -1669,6 +1584,27 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+          marginBottom: "20px",
+        }}
+      >
+        {viewToggleButton("list", "Members")}
+        {canUseMembershipQueue
+          ? viewToggleButton(
+              "pendingRequests",
+              pendingMembers.length > 0
+                ? `Pending Requests (${pendingMembers.length})`
+                : "Pending Requests",
+            )
+          : null}
+        {canUseMembershipQueue ? viewToggleButton("invites", "Invites") : null}
+        {viewToggleButton("orgChart", "Org Chart")}
+      </div>
+
       {viewMode === "pendingRequests" && canUseMembershipQueue ? (
         <div>
           {pendingMembers.length === 0 ? (
@@ -1689,7 +1625,7 @@ export default function ClubMembersPage() {
                   margin: 0,
                 }}
               >
-                No pending requests
+                No pending requests.
               </p>
               <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
                 New join requests will appear here for review.
@@ -1790,6 +1726,64 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
+      {viewMode === "list" && isSmallClub ? (
+        <div
+          style={{
+            textAlign: "center",
+            padding: "20px 16px",
+            background: "#141414",
+            border: "1px solid #2a2a2a",
+            borderRadius: "10px",
+            marginBottom: "16px",
+          }}
+        >
+          <p style={{ fontSize: "15px", fontWeight: 600, color: "#cccccc", margin: "0 0 8px" }}>
+            Your team is just getting started
+          </p>
+          <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px", lineHeight: 1.5 }}>
+            Invite members or executives to start building your club structure.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => setShowInviteModal(true)}
+                style={{
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Invite Member
+              </button>
+            ) : null}
+            {canUseMembershipQueue ? (
+              <button
+                type="button"
+                onClick={() => setShowExecutiveInviteModal(true)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #E51937",
+                  color: "#E51937",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Invite Executive
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {viewMode === "list" ? (
         <div
           style={{
@@ -1868,292 +1862,14 @@ export default function ClubMembersPage() {
             <Spinner label="Loading org chart…" />
           </div>
         ) : (
-          <>
-            <OrgChartView members={orgChartMembers} />
-            {members.length === 1 ? (
-              <div style={{ textAlign: "center", padding: "32px 24px", color: "#333333" }}>
-                <Users
-                  size={32}
-                  color="#2a2a2a"
-                  aria-hidden
-                  style={{ marginBottom: "10px" }}
-                />
-                <p style={{ fontSize: "14px", fontWeight: 600, color: "#333333", margin: 0 }}>
-                  Your org chart is just getting started
-                </p>
-                <p style={{ fontSize: "12px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
-                  Invite executives, coordinators, and team leads to build out your club
-                  structure.
-                </p>
-              </div>
-            ) : null}
-          </>
+          <OrgChartView
+            members={orgChartMembers}
+            totalMemberCount={members.length}
+            canInviteExecutive={canUseMembershipQueue}
+            onInviteExecutive={() => setShowExecutiveInviteModal(true)}
+            onSwitchToMembers={() => setViewMode("list")}
+          />
         )
-      ) : null}
-
-      {viewMode === "applications" ? (
-        <div>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "8px",
-              marginBottom: "20px",
-            }}
-          >
-            {(
-              [
-                { value: "pending", label: "Pending" },
-                { value: "approved", label: "Approved" },
-                { value: "rejected", label: "Rejected" },
-              ] as const
-            ).map((pill) => (
-              <button
-                key={pill.value}
-                type="button"
-                onClick={() => setApplicationFilter(pill.value)}
-                style={{
-                  background:
-                    applicationFilter === pill.value ? "#E51937" : "#1a1a1a",
-                  border:
-                    applicationFilter === pill.value
-                      ? "1px solid #E51937"
-                      : "1px solid #333333",
-                  color: applicationFilter === pill.value ? "#ffffff" : "#777777",
-                  borderRadius: "20px",
-                  padding: "6px 16px",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                }}
-              >
-                {pill.label}
-              </button>
-            ))}
-          </div>
-
-          {applicationsLoading ? (
-            <div className="flex min-h-[200px] items-center justify-center">
-              <Spinner label="Loading applications…" />
-            </div>
-          ) : filteredApplications.length === 0 ? (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "48px 16px",
-                background: "#1a1a1a",
-                border: "1px solid #242424",
-                borderRadius: "10px",
-              }}
-            >
-              <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-                No applications yet
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {filteredApplications.map((application) => {
-                const expanded = expandedApplicationId === application.id;
-
-                return (
-                  <div
-                    key={application.id}
-                    style={{
-                      background: "#1a1a1a",
-                      border: "1px solid #242424",
-                      borderRadius: "10px",
-                      padding: "20px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {application.avatarUrl ? (
-                        <img
-                          src={application.avatarUrl}
-                          alt=""
-                          style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            objectFit: "cover",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            background: "#2a2a2a",
-                            color: "#888888",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          {application.fullName.slice(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            color: "#ffffff",
-                          }}
-                        >
-                          {application.fullName}
-                        </p>
-                        <p
-                          style={{
-                            margin: "4px 0 0",
-                            fontSize: "12px",
-                            color: "#555555",
-                          }}
-                        >
-                          Applied{" "}
-                          {new Date(application.createdAt).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric", year: "numeric" },
-                          )}
-                        </p>
-                      </div>
-                      {application.status === "approved" ? (
-                        <span
-                          style={{
-                            background: "#1a1200",
-                            border: "1px solid #FFC429",
-                            color: "#FFC429",
-                            borderRadius: "20px",
-                            padding: "4px 10px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Admitted
-                        </span>
-                      ) : null}
-                      {application.status === "rejected" ? (
-                        <span
-                          style={{
-                            background: "#1a1a1a",
-                            border: "1px solid #333333",
-                            color: "#747676",
-                            borderRadius: "20px",
-                            padding: "4px 10px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Declined
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {application.answers.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedApplicationId(
-                            expanded ? null : application.id,
-                          )
-                        }
-                        style={{
-                          marginTop: "12px",
-                          background: "transparent",
-                          border: "none",
-                          color: "#777777",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
-                      >
-                        {expanded ? "Hide answers" : "Show answers"}
-                      </button>
-                    ) : null}
-
-                    {expanded && application.answers.length > 0 ? (
-                      <div style={{ marginTop: "12px" }}>
-                        {application.answers.map((answer, index) => (
-                          <div key={`${application.id}-${index}`} style={{ marginBottom: "10px" }}>
-                            <p
-                              style={{
-                                margin: "0 0 4px",
-                                fontSize: "12px",
-                                color: "#777777",
-                              }}
-                            >
-                              {answer.question}
-                            </p>
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: "14px",
-                                color: "#ffffff",
-                                lineHeight: 1.5,
-                              }}
-                            >
-                              {answer.answer}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {application.status === "pending" &&
-                    membershipUsesApplicationQueue(membershipType) &&
-                    (isOwner || isExecutive) ? (
-                      <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
-                        <button
-                          type="button"
-                          disabled={actionLoading === application.id}
-                          onClick={() => void admitApplicant(application)}
-                          style={{
-                            background: "#E51937",
-                            color: "#ffffff",
-                            border: "none",
-                            borderRadius: "6px",
-                            padding: "7px 18px",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actionLoading === application.id}
-                          onClick={() => void rejectApplication(application)}
-                          style={{
-                            background: "#1a1a1a",
-                            border: "1px solid #333333",
-                            color: "#747676",
-                            borderRadius: "6px",
-                            padding: "7px 18px",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
       ) : null}
 
       {viewMode === "invites" && canUseMembershipQueue ? (
@@ -2173,7 +1889,7 @@ export default function ClubMembersPage() {
               }}
             >
               <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-                No executive invites sent yet
+                No invites sent yet.
               </p>
             </div>
           ) : (
@@ -2293,7 +2009,7 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
-      {viewMode === "list" && sortedMembers.length === 0 ? (
+      {viewMode === "list" && sortedMembers.length === 0 && !isSmallClub ? (
         <div
           style={{
             textAlign: "center",
@@ -2307,13 +2023,31 @@ export default function ClubMembersPage() {
             No members yet. Share the join code to invite people.
           </p>
         </div>
-      ) : viewMode === "list" && filteredMembers.length === 0 ? (
+      ) : viewMode === "list" && filteredMembers.length === 0 && searchQuery.trim() ? (
         <div style={{ textAlign: "center", padding: "48px 24px" }}>
           <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
             No members match your search
           </p>
           <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px" }}>
             Try a different filter or search term.
+          </p>
+        </div>
+      ) : viewMode === "list" && filteredMembers.length === 0 && memberRoleFilter === "executives" ? (
+        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+          <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+            No executives added yet.
+          </p>
+        </div>
+      ) : viewMode === "list" && filteredMembers.length === 0 && memberRoleFilter === "members" ? (
+        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+          <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+            No general members yet.
+          </p>
+        </div>
+      ) : viewMode === "list" && filteredMembers.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+          <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+            No members match your filters.
           </p>
         </div>
       ) : viewMode === "list" ? (
