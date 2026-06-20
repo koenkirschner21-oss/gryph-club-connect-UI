@@ -78,6 +78,7 @@ import {
   ThisWeekEventCard,
   WeekAchievementCard,
   WeekCalendarStrip,
+  WeekClubLogo,
 } from "../dashboard/ThisWeekTabUI";
 
 // ---------------------------------------------------------------------------
@@ -1375,7 +1376,7 @@ function WeekTaskCard({
           transform: hovered ? "translateY(-1px)" : undefined,
         }}
       >
-        <ClubBadge name={task.clubName} size="sm" logoUrl={logoUrl} />
+        <WeekClubLogo name={task.clubName} logoUrl={logoUrl} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <p
             style={{
@@ -1650,6 +1651,22 @@ function ThisWeekTab({
 
   return (
     <div>
+      <div style={{ marginBottom: "20px" }}>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: "24px",
+            fontWeight: 800,
+            color: "#ffffff",
+          }}
+        >
+          This Week
+        </h2>
+        <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#777777" }}>
+          Your tasks, events, and activity from this week.
+        </p>
+      </div>
+
       <WeekCalendarStrip
         weekDays={weekDays}
         todayKey={todayKey}
@@ -1658,6 +1675,12 @@ function ThisWeekTab({
         onPrevWeek={() => setWeekOffset((prev) => prev - 1)}
         onNextWeek={() => setWeekOffset((prev) => prev + 1)}
         onDayClick={handleDayClick}
+      />
+
+      <WeekAchievementCard
+        displayName={displayName}
+        completedCount={monthlyCompleted}
+        totalCount={monthlyTotal}
       />
 
       <div ref={weekItemsRef}>
@@ -1672,7 +1695,7 @@ function ThisWeekTab({
           Tasks This Week
         </h3>
         {weekTasks.length === 0 ? (
-          <TasksWeekEmptyState />
+          <TasksWeekEmptyState onViewAllTasks={onViewAllTasks} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
             {previewTasks.map((task) => (
@@ -1722,12 +1745,6 @@ function ThisWeekTab({
             </div>
           </div>
         )}
-
-        <WeekAchievementCard
-          displayName={displayName}
-          completedCount={monthlyCompleted}
-          totalCount={monthlyTotal}
-        />
       </div>
     </div>
   );

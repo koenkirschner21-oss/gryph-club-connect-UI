@@ -51,9 +51,10 @@ export function WeekCalendarStrip({
     <div
       style={{
         display: "flex",
-        gap: "8px",
-        alignItems: "center",
+        alignItems: "stretch",
+        width: "100%",
         marginBottom: "24px",
+        gap: "8px",
       }}
     >
       <button
@@ -69,10 +70,10 @@ export function WeekCalendarStrip({
 
       <div
         style={{
-          display: "flex",
-          gap: "8px",
           flex: 1,
-          overflowX: "auto",
+          display: "grid",
+          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+          gap: "6px",
           minWidth: 0,
         }}
       >
@@ -103,14 +104,14 @@ export function WeekCalendarStrip({
               onMouseEnter={() => setHoveredDay(day.dateKey)}
               onMouseLeave={() => setHoveredDay(null)}
               style={{
-                padding: "12px 8px",
-                minWidth: "80px",
+                padding: "10px 4px",
+                width: "100%",
                 textAlign: "center",
                 cursor: "pointer",
                 background,
                 border,
                 borderRadius: "8px",
-                flexShrink: 0,
+                minWidth: 0,
               }}
             >
               <div
@@ -124,13 +125,27 @@ export function WeekCalendarStrip({
               >
                 {day.label.slice(0, 3)}
               </div>
+              {isToday ? (
+                <div
+                  style={{
+                    fontSize: "9px",
+                    fontWeight: 700,
+                    color: ACCENT_RED,
+                    letterSpacing: "0.04em",
+                    marginTop: "2px",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  Today
+                </div>
+              ) : null}
               <div
                 style={{
                   fontSize: "18px",
                   fontWeight: 700,
                   color: "#ffffff",
                   lineHeight: 1.2,
-                  marginTop: "4px",
+                  marginTop: isToday ? "2px" : "4px",
                 }}
               >
                 {day.dayNum}
@@ -139,17 +154,18 @@ export function WeekCalendarStrip({
                 style={{
                   display: "flex",
                   justifyContent: "center",
-                  minHeight: "10px",
+                  minHeight: "12px",
                   marginTop: "6px",
                 }}
               >
                 {hasDot ? (
                   <span
                     style={{
-                      width: "6px",
-                      height: "6px",
+                      width: "8px",
+                      height: "8px",
                       background: ACCENT_RED,
                       borderRadius: "50%",
+                      boxShadow: "0 0 0 2px rgba(229, 25, 55, 0.25)",
                     }}
                   />
                 ) : null}
@@ -173,7 +189,11 @@ export function WeekCalendarStrip({
   );
 }
 
-export function TasksWeekEmptyState() {
+export function TasksWeekEmptyState({
+  onViewAllTasks,
+}: {
+  onViewAllTasks?: () => void;
+}) {
   const sparkles = [
     { top: "8px", left: "12px", fontSize: "10px" },
     { top: "4px", right: "16px", fontSize: "12px" },
@@ -184,8 +204,10 @@ export function TasksWeekEmptyState() {
   return (
     <div
       style={{
-        paddingTop: "32px",
-        paddingBottom: "32px",
+        background: "#141414",
+        border: "1px solid #2a2a2a",
+        borderRadius: "10px",
+        padding: "32px 24px",
         textAlign: "center",
         marginBottom: "24px",
       }}
@@ -229,6 +251,24 @@ export function TasksWeekEmptyState() {
         You&apos;re all caught up!
       </p>
       <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>No tasks due this week.</p>
+      {onViewAllTasks ? (
+        <button
+          type="button"
+          onClick={onViewAllTasks}
+          style={{
+            marginTop: "16px",
+            color: "#E51937",
+            fontSize: "13px",
+            fontWeight: 500,
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+          }}
+        >
+          View All Tasks →
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -306,7 +346,7 @@ function EventDateBlock({ date }: { date: string }) {
   );
 }
 
-function WeekEventClubLogo({
+export function WeekClubLogo({
   name,
   logoUrl,
 }: {
@@ -393,22 +433,22 @@ export function ThisWeekEventCard({
         style={{
           display: "flex",
           alignItems: "flex-start",
-          gap: "14px",
+          gap: "10px",
           background: "#1a1a1a",
           border: `1px solid ${hovered ? "#333333" : "#242424"}`,
           borderRadius: "10px",
-          padding: "16px 20px",
-          marginBottom: "10px",
+          padding: "12px 14px",
+          marginBottom: "8px",
           transition: "border-color 0.15s ease, transform 0.15s ease",
           transform: hovered ? "translateY(-1px)" : undefined,
         }}
       >
         <EventDateBlock date={event.dateKey} />
-        <WeekEventClubLogo name={event.clubName} logoUrl={logoUrl} />
+        <WeekClubLogo name={event.clubName} logoUrl={logoUrl} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p
             style={{
-              margin: "0 0 4px",
+              margin: "0 0 2px",
               fontSize: "14px",
               fontWeight: 700,
               color: "#ffffff",
@@ -421,7 +461,7 @@ export function ThisWeekEventCard({
           </p>
           <p
             style={{
-              margin: "0 0 6px",
+              margin: "0 0 4px",
               fontSize: "12px",
               color: "#777777",
               overflow: "hidden",
@@ -434,12 +474,12 @@ export function ThisWeekEventCard({
           {timeLabel ? (
             <p
               style={{
-                margin: "0 0 4px",
+                margin: "0 0 2px",
                 fontSize: "12px",
                 color: "#555555",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
+                gap: "4px",
               }}
             >
               <Clock size={12} aria-hidden />
@@ -468,11 +508,12 @@ export function ThisWeekEventCard({
         <span
           style={{
             flexShrink: 0,
+            alignSelf: "flex-start",
             fontSize: "11px",
             color: "#777777",
             border: "1px solid #333333",
             borderRadius: "12px",
-            padding: "4px 10px",
+            padding: "3px 8px",
             background: "transparent",
             whiteSpace: "nowrap",
           }}
@@ -499,7 +540,7 @@ export function WeekAchievementCard({
   return (
     <div
       style={{
-        marginTop: "24px",
+        marginBottom: "24px",
         background: "linear-gradient(135deg, #1a1200 0%, #141414 100%)",
         border: "1px solid #3a2a00",
         borderRadius: "12px",
