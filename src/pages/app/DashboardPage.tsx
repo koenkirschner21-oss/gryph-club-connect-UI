@@ -19,6 +19,8 @@ import {
   Users,
 } from "lucide-react";
 import type { InboxMessage } from "../../lib/inboxUtils";
+import { resolveInboxLink } from "../../lib/inboxUtils";
+import { normalizeInboxUiType } from "../../components/inbox/inboxMessageUi";
 import { supabase } from "../../lib/supabaseClient";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
@@ -511,7 +513,7 @@ export default function DashboardPage() {
           }
         />
         <StatCard
-          label="UNREAD"
+          label="UNREAD ALERTS"
           accentColor="#747676"
           iconColor="#747676"
           value={unreadNotificationCount}
@@ -937,6 +939,96 @@ function formatOverviewEventTime(timeStr: string): string | null {
   return t;
 }
 
+function formatOverviewTaskDueLabel(dueDate: string): { text: string; color: string } {
+  const trimmed = dueDate.trim();
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T00:00:00`)
+    : new Date(trimmed);
+  if (Number.isNaN(due.getTime())) {
+    return { text: formatTaskDate(dueDate), color: "#777777" };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDay = new Date(due);
+  dueDay.setHours(0, 0, 0, 0);
+  const diffMs = dueDay.getTime() - today.getTime();
+
+  if (diffMs < 0) {
+    return { text: "Overdue", color: "#E51937" };
+  }
+  if (diffMs === 0) {
+    return { text: "Due Today", color: "#777777" };
+  }
+
+  const month = due.toLocaleDateString("en-US", { month: "short" });
+  const day = due.getDate();
+  return { text: `Due ${month} ${day}`, color: "#777777" };
+}
+
+function truncateOverviewPreview(text: string, maxLength = 140): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxLength) return normalized;
+
+  const slice = normalized.slice(0, maxLength);
+  const sentenceBreak = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
+  if (sentenceBreak > 40) {
+    return `${slice.slice(0, sentenceBreak + 1).trim()}…`;
+  }
+
+  const lastSpace = slice.lastIndexOf(" ");
+  const trimmed = lastSpace > 40 ? slice.slice(0, lastSpace) : slice;
+  return `${trimmed.trim()}…`;
+}
+
+function resolveOverviewInboxAction(message: InboxMessage): { label: string; href: string } {
+  const uiType = normalizeInboxUiType(message);
+  const href = resolveInboxLink(message);
+
+  switch (uiType) {
+    case "join_approved":
+    case "claim_approved":
+      return { label: "Open →", href };
+    case "new_join_request":
+    case "new_claim_request":
+    case "application_update":
+      return { label: "Review →", href };
+    case "join_rejected":
+    case "claim_rejected":
+      return { label: "View Club →", href };
+    case "claim_submitted":
+      return { label: "Read More →", href };
+    default:
+      if (message.actionRequired && !message.actionCompleted) {
+        return { label: "Review →", href };
+      }
+      return { label: "Read More →", href };
+  }
+}
+
+function overviewClubRoleBadgeStyle(role: import("../../types").MemberRole | null): CSSProperties {
+  const roleDisplay = formatClubRoleDisplay(role);
+  const background =
+    roleDisplay.color === "#FFC429"
+      ? "#1a1200"
+      : roleDisplay.color === "#E51937"
+        ? "#1a0505"
+        : "#1a1a1a";
+
+  return {
+    display: "inline-block",
+    fontSize: "11px",
+    fontWeight: 600,
+    color: roleDisplay.color,
+    background,
+    border: `1px solid ${roleDisplay.color}`,
+    borderRadius: "12px",
+    padding: "2px 10px",
+    marginTop: "2px",
+  };
+}
+
 function OverviewViewAllLink({
   label,
   onClick,
@@ -971,9 +1063,14 @@ function OverviewCompactTaskRow({
           </p>
           <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>{task.clubName}</p>
           {task.dueDate?.trim() ? (
-            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#777777" }}>
-              {formatTaskDate(task.dueDate)}
-            </p>
+            (() => {
+              const dueLabel = formatOverviewTaskDueLabel(task.dueDate);
+              return (
+                <p style={{ margin: "2px 0 0", fontSize: "11px", color: dueLabel.color }}>
+                  {dueLabel.text}
+                </p>
+              );
+            })()
           ) : null}
         </div>
         <span style={dashboardTaskStatusBadgeStyle(task.status)}>
@@ -987,12 +1084,15 @@ function OverviewCompactTaskRow({
 function OverviewCompactEventRow({
   event,
   rsvpStatus,
+  logoUrl,
 }: {
   event: DashboardEvent;
   rsvpStatus?: string;
+  logoUrl?: string;
 }) {
   const timeLabel = formatOverviewEventTime(event.time);
   const locationLabel = hasEventLocation(event.location) ? event.location.trim() : null;
+  const metaParts = [locationLabel, timeLabel].filter(Boolean);
 
   return (
     <Link
@@ -1000,20 +1100,27 @@ function OverviewCompactEventRow({
       style={{ textDecoration: "none", display: "block" }}
     >
       <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
-        <OverviewCompactEventDateBadge date={event.date} />
+        <OverviewClubLogo
+          name={event.clubName}
+          abbreviation={event.clubAbbreviation}
+          logoUrl={logoUrl}
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
             {event.title}
           </p>
-          {locationLabel ? (
-            <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>{locationLabel}</p>
-          ) : null}
-          {timeLabel ? (
-            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#777777" }}>{timeLabel}</p>
+          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>{event.clubName}</p>
+          {metaParts.length > 0 ? (
+            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#777777" }}>
+              {metaParts.join(" · ")}
+            </p>
           ) : null}
         </div>
+        <OverviewCompactEventDateBadge date={event.date} />
         {rsvpStatus === "going" ? (
           <span style={dashboardEventRsvpBadgeStyle("going")}>Going</span>
+        ) : rsvpStatus === "maybe" ? (
+          <span style={dashboardEventRsvpBadgeStyle("maybe")}>Maybe</span>
         ) : null}
       </div>
     </Link>
@@ -1023,11 +1130,11 @@ function OverviewCompactEventRow({
 function OverviewCompactClubRow({
   club,
   logoUrl,
-  roleLabel,
+  userRole,
 }: {
   club: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"][number];
   logoUrl?: string;
-  roleLabel: string;
+  userRole: import("../../types").MemberRole | null;
 }) {
   return (
     <Link
@@ -1044,7 +1151,9 @@ function OverviewCompactClubRow({
           <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
             {club.name}
           </p>
-          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#E51937" }}>{roleLabel}</p>
+          <span style={overviewClubRoleBadgeStyle(userRole)}>
+            {formatClubRoleDisplay(userRole).label}
+          </span>
         </div>
         <ChevronRight size={16} color="#555555" aria-hidden style={{ flexShrink: 0 }} />
       </div>
@@ -1053,6 +1162,10 @@ function OverviewCompactClubRow({
 }
 
 function OverviewCompactInboxRow({ message }: { message: InboxMessage }) {
+  const navigate = useNavigate();
+  const action = resolveOverviewInboxAction(message);
+  const preview = truncateOverviewPreview(message.message);
+
   return (
     <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1062,38 +1175,82 @@ function OverviewCompactInboxRow({ message }: { message: InboxMessage }) {
         <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>
           {message.clubName ?? "Gryph Club Connect"}
         </p>
+        <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#555555" }}>
+          {formatTimeAgo(message.createdAt)}
+        </p>
+        {preview ? (
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: "12px",
+              color: "#777777",
+              lineHeight: 1.45,
+            }}
+          >
+            {preview}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => navigate(action.href)}
+          style={{
+            ...viewAllLinkStyle,
+            marginTop: "6px",
+            display: "inline-block",
+          }}
+        >
+          {action.label}
+        </button>
       </div>
-      <span style={{ fontSize: "11px", color: "#555555", whiteSpace: "nowrap", flexShrink: 0 }}>
-        {formatTimeAgo(message.createdAt)}
-      </span>
     </div>
   );
 }
 
 function OverviewCompactAnnouncementRow({
   announcement,
+  logoUrl,
 }: {
   announcement: OverviewAnnouncement;
+  logoUrl?: string;
 }) {
+  const preview = truncateOverviewPreview(announcement.content);
+
   return (
-    <Link
-      to={`/app/clubs/${announcement.clubId}/announcements`}
-      style={{ textDecoration: "none", display: "block" }}
-    >
-      <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: "12px", color: "#E51937", fontWeight: 600 }}>
-            {announcement.clubName}
-          </p>
-          <p style={{ margin: "2px 0 0", fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
-            {announcement.title}
-          </p>
-        </div>
-        <span style={{ fontSize: "11px", color: "#555555", whiteSpace: "nowrap", flexShrink: 0 }}>
+    <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
+      <OverviewClubLogo
+        name={announcement.clubName}
+        logoUrl={logoUrl}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
+          {announcement.title}
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>
+          {announcement.clubName}
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#555555" }}>
           {formatTimeAgo(announcement.createdAt)}
-        </span>
+        </p>
+        {preview ? (
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: "12px",
+              color: "#777777",
+              lineHeight: 1.45,
+            }}
+          >
+            {preview}
+          </p>
+        ) : null}
+        <Link
+          to={`/app/clubs/${announcement.clubId}/announcements`}
+          style={{ ...viewAllLinkStyle, marginTop: "6px", display: "inline-block" }}
+        >
+          Read More →
+        </Link>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -1676,6 +1833,9 @@ function formatClubRoleDisplay(
   if (role === "executive") {
     return { label: "Executive", color: "#E51937" };
   }
+  if (role == null) {
+    return { label: "Pending", color: "#777777" };
+  }
   return { label: "Member", color: "#747676" };
 }
 
@@ -1685,6 +1845,7 @@ type OverviewAnnouncement = {
   clubId: string;
   title: string;
   clubName: string;
+  content: string;
   createdAt: string;
 };
 
@@ -2021,6 +2182,7 @@ function OverviewTab({
         id,
         club_id,
         title,
+        content,
         created_at,
         clubs:club_id ( name )
       `)
@@ -2044,6 +2206,7 @@ function OverviewTab({
                 clubId: row.club_id as string,
                 title: (row.title as string) ?? "",
                 clubName: (club.name as string) ?? "",
+                content: (row.content as string) ?? "",
                 createdAt: (row.created_at as string) ?? "",
               };
             }),
@@ -2110,6 +2273,7 @@ function OverviewTab({
               key={event.id}
               event={event}
               rsvpStatus={myRsvps[event.id]}
+              logoUrl={clubLogos[event.clubId ?? ""]}
             />
           ))}
         </div>
@@ -2134,7 +2298,7 @@ function OverviewTab({
               key={club.id}
               club={club}
               logoUrl={clubLogos[club.id] ?? club.logoUrl}
-              roleLabel={formatClubRoleDisplay(getUserRole(club.id)).label}
+              userRole={getUserRole(club.id)}
             />
           ))}
         </div>
@@ -2199,6 +2363,7 @@ function OverviewTab({
             <OverviewCompactAnnouncementRow
               key={announcement.id}
               announcement={announcement}
+              logoUrl={clubLogos[announcement.clubId]}
             />
           ))}
         </div>
