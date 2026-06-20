@@ -8,6 +8,7 @@ import {
   CheckSquare,
   ChevronRight,
   Inbox,
+  Lightbulb,
   Mail,
   Megaphone,
   Shield,
@@ -17,7 +18,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { OUTLINED_BUTTON_STYLE } from "../../components/inbox/inboxMessageUi";
-import { WeekAchievementCard } from "./ThisWeekTabUI";
 
 const GOLD = "#FFC429";
 const RED = "#E51937";
@@ -40,24 +40,60 @@ export type InboxOverviewStats = {
   admin: number;
 };
 
+export type InboxOverviewFilterTarget =
+  | "all"
+  | "unread"
+  | "action_required"
+  | "applications"
+  | "invites"
+  | "club_updates"
+  | "admin";
+
 function OverviewRow({
   icon: Icon,
   label,
   count,
   countColor = "#cccccc",
+  onClick,
 }: {
   icon: LucideIcon;
   label: string;
   count: number;
   countColor?: string;
+  onClick?: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const interactive = Boolean(onClick);
+
   return (
     <div
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
         alignItems: "center",
         gap: "8px",
         marginBottom: "10px",
+        borderRadius: "6px",
+        padding: interactive ? "4px 6px" : undefined,
+        marginLeft: interactive ? "-6px" : undefined,
+        marginRight: interactive ? "-6px" : undefined,
+        background: interactive && hovered ? "#1a1a1a" : "transparent",
+        cursor: interactive ? "pointer" : "default",
+        transition: "background 0.15s ease",
       }}
     >
       <Icon size={14} color="#555555" aria-hidden style={{ flexShrink: 0 }} />
@@ -69,10 +105,10 @@ function OverviewRow({
 
 export function InboxOverviewCard({
   stats,
-  onViewAll,
+  onFilterSelect,
 }: {
   stats: InboxOverviewStats;
-  onViewAll: () => void;
+  onFilterSelect: (target: InboxOverviewFilterTarget) => void;
 }) {
   return (
     <div style={SIDEBAR_CARD_STYLE}>
@@ -90,40 +126,50 @@ export function InboxOverviewCard({
         </h3>
       </div>
 
-      <OverviewRow icon={Inbox} label="Total Messages" count={stats.total} />
+      <OverviewRow
+        icon={Inbox}
+        label="Total Messages"
+        count={stats.total}
+        onClick={() => onFilterSelect("all")}
+      />
       <OverviewRow
         icon={Mail}
         label="Unread"
         count={stats.unread}
         countColor={stats.unread > 0 ? RED : "#555555"}
+        onClick={() => onFilterSelect("unread")}
       />
       <OverviewRow
         icon={Bell}
         label="Action Required"
         count={stats.actionRequired}
         countColor={stats.actionRequired > 0 ? GOLD : "#555555"}
+        onClick={() => onFilterSelect("action_required")}
       />
-      <OverviewRow icon={Briefcase} label="Applications" count={stats.applications} />
-      <OverviewRow icon={Star} label="Invites" count={stats.invites} />
-      <OverviewRow icon={Users} label="Club Updates" count={stats.clubUpdates} />
-      <OverviewRow icon={Shield} label="Admin / Support" count={stats.admin} />
-
-      <button
-        type="button"
-        onClick={onViewAll}
-        style={{
-          marginTop: "4px",
-          background: "transparent",
-          border: "none",
-          color: RED,
-          fontSize: "12px",
-          fontWeight: 600,
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        View all messages →
-      </button>
+      <OverviewRow
+        icon={Briefcase}
+        label="Applications"
+        count={stats.applications}
+        onClick={() => onFilterSelect("applications")}
+      />
+      <OverviewRow
+        icon={Star}
+        label="Invites"
+        count={stats.invites}
+        onClick={() => onFilterSelect("invites")}
+      />
+      <OverviewRow
+        icon={Users}
+        label="Club Updates"
+        count={stats.clubUpdates}
+        onClick={() => onFilterSelect("club_updates")}
+      />
+      <OverviewRow
+        icon={Shield}
+        label="Admin / Support"
+        count={stats.admin}
+        onClick={() => onFilterSelect("admin")}
+      />
     </div>
   );
 }
@@ -338,22 +384,49 @@ export function InboxQuickActionsCard({
   );
 }
 
-export function InboxAchievementSidebarCard({
-  displayName,
-  completedCount,
-  totalCount,
-}: {
-  displayName: string;
-  completedCount: number;
-  totalCount: number;
-}) {
+export function InboxTipsCard() {
+  const tips = [
+    "Use Action Required to find messages needing attention",
+    "Use category filters to narrow message types",
+    "Open a message to view full details",
+  ];
+
   return (
-    <div style={{ marginBottom: 0 }}>
-      <WeekAchievementCard
-        displayName={displayName}
-        completedCount={completedCount}
-        totalCount={totalCount}
-      />
+    <div style={SIDEBAR_CARD_STYLE}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          marginBottom: "12px",
+        }}
+      >
+        <Lightbulb size={16} color={GOLD} aria-hidden />
+        <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
+          Inbox Tips
+        </h3>
+      </div>
+
+      <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#999999", lineHeight: 1.5 }}>
+        Messages with action buttons may require you to review requests, open clubs, respond to
+        invites, or check important updates.
+      </p>
+
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: "18px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+        }}
+      >
+        {tips.map((tip) => (
+          <li key={tip} style={{ fontSize: "12px", color: "#777777", lineHeight: 1.45 }}>
+            {tip}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

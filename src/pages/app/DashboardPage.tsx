@@ -681,7 +681,6 @@ export default function DashboardPage() {
         <InboxTab
           {...inbox}
           clubLogos={clubLogos}
-          displayName={displayName}
           joinedClubs={myClubs.map((club) => ({ id: club.id, name: club.name }))}
           onViewMyClubs={() => setActiveTab("clubs")}
         />

@@ -189,6 +189,40 @@ function inboxAvatarIcon(message: InboxMessage): AvatarIconConfig {
   }
 }
 
+const AVATAR_SIZE = 44;
+const AVATAR_RADIUS = "8px";
+
+export type InboxActionButton = {
+  label: string;
+  variant: "solid" | "outlined" | "link";
+};
+
+export function resolveActionButtons(message: InboxMessage): InboxActionButton[] {
+  const uiType = normalizeInboxUiType(message);
+
+  switch (uiType) {
+    case "claim_approved":
+    case "join_approved":
+      return [{ label: "Open Club Dashboard", variant: "solid" }];
+    case "claim_rejected":
+      return [{ label: "View Club Profile", variant: "outlined" }];
+    case "claim_submitted":
+      return [{ label: "View Status", variant: "outlined" }];
+    case "join_rejected":
+      return [{ label: "Read More →", variant: "link" }];
+    case "new_join_request":
+      return [{ label: "Review Request", variant: "outlined" }];
+    case "executive_invite":
+      return [{ label: "Review Invite", variant: "outlined" }];
+    case "application_update":
+      return [{ label: "Review Application", variant: "outlined" }];
+    case "new_claim_request":
+      return [{ label: "Review in Admin", variant: "outlined" }];
+    default:
+      return [{ label: "Read More →", variant: "link" }];
+  }
+}
+
 export function InboxMessageAvatar({
   message,
   logoUrl,
@@ -204,9 +238,10 @@ export function InboxMessageAvatar({
         src={logoUrl}
         alt=""
         style={{
-          width: "44px",
-          height: "44px",
-          borderRadius: "50%",
+          width: `${AVATAR_SIZE}px`,
+          height: `${AVATAR_SIZE}px`,
+          borderRadius: AVATAR_RADIUS,
+          border: "1px solid #2a2a2a",
           objectFit: "cover",
           flexShrink: 0,
           background: "#2a2a2a",
@@ -219,16 +254,17 @@ export function InboxMessageAvatar({
     return (
       <div
         style={{
-          width: "44px",
-          height: "44px",
-          borderRadius: "50%",
+          width: `${AVATAR_SIZE}px`,
+          height: `${AVATAR_SIZE}px`,
+          borderRadius: AVATAR_RADIUS,
+          border: "1px solid #2a2a2a",
           background: "#2a2a2a",
-          color: "#ffffff",
+          color: "#888888",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           fontSize: "12px",
-          fontWeight: 700,
+          fontWeight: 600,
           flexShrink: 0,
         }}
       >
@@ -242,9 +278,10 @@ export function InboxMessageAvatar({
   return (
     <div
       style={{
-        width: "44px",
-        height: "44px",
-        borderRadius: "50%",
+        width: `${AVATAR_SIZE}px`,
+        height: `${AVATAR_SIZE}px`,
+        borderRadius: AVATAR_RADIUS,
+        border: "1px solid #2a2a2a",
         background,
         display: "flex",
         alignItems: "center",

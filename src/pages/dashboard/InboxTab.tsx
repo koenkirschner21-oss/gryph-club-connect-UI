@@ -1,42 +1,86 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Spinner from "../../components/ui/Spinner";
-import { inboxEmptyMessage, type InboxFilter } from "../../lib/inboxUtils";
+import {
+  filterInboxMessages,
+  inboxEmptyMessage,
+  type InboxFilter,
+  type InboxMessage,
+} from "../../lib/inboxUtils";
 import type { UseInboxReturn } from "../../hooks/useInbox";
 import { useIsMobile } from "../../hooks/useWindowWidth";
-import { supabase } from "../../lib/supabaseClient";
 import InboxMessageCard from "../../components/inbox/InboxMessageCard";
+import InboxMessageDetailModal from "../../components/inbox/InboxMessageDetailModal";
+import { normalizeInboxUiType } from "../../components/inbox/inboxMessageUi";
 import {
-  InboxAchievementSidebarCard,
   InboxOverviewCard,
   InboxQuickActionsCard,
+  InboxTipsCard,
+  type InboxOverviewFilterTarget,
   type InboxOverviewStats,
 } from "./InboxTabUI";
 
-const FILTER_CHIPS: { id: InboxFilter; label: string }[] = [
+const STATUS_FILTERS: { id: "all" | "unread" | "action_required"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
   { id: "action_required", label: "Action Required" },
+];
+
+export type InboxCategoryFilter =
+  | "all"
+  | "applications"
+  | "invites"
+  | "club_updates"
+  | "admin"
+  | "club_claims"
+  | "tasks"
+  | "events";
+
+const CATEGORY_OPTIONS: { id: InboxCategoryFilter; label: string }[] = [
+  { id: "all", label: "All Categories" },
   { id: "applications", label: "Applications" },
   { id: "invites", label: "Invites" },
   { id: "club_updates", label: "Club Updates" },
-  { id: "admin", label: "Admin/Support" },
+  { id: "admin", label: "Admin / Support" },
+  { id: "club_claims", label: "Club Claims" },
+  { id: "tasks", label: "Tasks" },
+  { id: "events", label: "Events" },
 ];
+
+const CLAIM_UI_TYPES = new Set([
+  "claim_approved",
+  "claim_rejected",
+  "claim_submitted",
+  "new_claim_request",
+]);
+
+function filterByCategory(
+  messages: InboxMessage[],
+  category: InboxCategoryFilter,
+): InboxMessage[] {
+  if (category === "all") return messages;
+
+  if (category === "club_claims") {
+    return messages.filter((message) => CLAIM_UI_TYPES.has(normalizeInboxUiType(message)));
+  }
+
+  if (category === "tasks") {
+    return messages.filter((message) => message.referenceType === "task");
+  }
+
+  if (category === "events") {
+    return messages.filter((message) => message.referenceType === "event");
+  }
+
+  return filterInboxMessages(messages, category as InboxFilter);
+}
 
 type ClubOption = { id: string; name: string };
 
 type InboxTabProps = UseInboxReturn & {
   clubLogos?: Record<string, string>;
-  displayName?: string;
   joinedClubs?: ClubOption[];
   onViewMyClubs?: () => void;
 };
-
-function localIsoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 export default function InboxTab({
   loading,
@@ -48,19 +92,19 @@ export default function InboxTab({
   actionRequiredMessages,
   refresh,
   clubLogos = {},
-  displayName = "there",
   joinedClubs = [],
   onViewMyClubs,
 }: InboxTabProps) {
   const isMobile = useIsMobile();
-  const [activeFilter, setActiveFilter] = useState<InboxFilter>("all");
-  const [monthlyCompleted, setMonthlyCompleted] = useState(0);
-  const [monthlyTotal, setMonthlyTotal] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "action_required">("all");
+  const [categoryFilter, setCategoryFilter] = useState<InboxCategoryFilter>("all");
+  const [selectedMessage, setSelectedMessage] = useState<InboxMessage | null>(null);
 
-  const visibleMessages = useMemo(
-    () => filterMessages(activeFilter),
-    [activeFilter, filterMessages],
-  );
+  const visibleMessages = useMemo(() => {
+    const statusFiltered =
+      statusFilter === "all" ? messages : filterMessages(statusFilter as InboxFilter);
+    return filterByCategory(statusFiltered, categoryFilter);
+  }, [categoryFilter, filterMessages, messages, statusFilter]);
 
   const overviewStats = useMemo<InboxOverviewStats>(
     () => ({
@@ -75,46 +119,25 @@ export default function InboxTab({
     [actionRequiredMessages.length, filterMessages, messages.length, unreadCount],
   );
 
-  const joinedClubIds = useMemo(() => joinedClubs.map((club) => club.id), [joinedClubs]);
-
-  useEffect(() => {
-    if (isMobile || joinedClubIds.length === 0) {
-      setMonthlyCompleted(0);
-      setMonthlyTotal(0);
+  function handleOverviewFilterSelect(target: InboxOverviewFilterTarget) {
+    if (target === "all") {
+      setStatusFilter("all");
+      setCategoryFilter("all");
       return;
     }
 
-    let cancelled = false;
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    const monthStartIso = localIsoDate(monthStart);
-    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-    const monthEndIso = localIsoDate(monthEnd);
+    if (target === "unread" || target === "action_required") {
+      setStatusFilter(target);
+      setCategoryFilter("all");
+      return;
+    }
 
-    supabase
-      .from("tasks")
-      .select("status")
-      .in("club_id", joinedClubIds)
-      .gte("due_date", monthStartIso)
-      .lte("due_date", monthEndIso)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to load monthly task stats:", error.message);
-          setMonthlyCompleted(0);
-          setMonthlyTotal(0);
-          return;
-        }
+    setStatusFilter("all");
+    setCategoryFilter(target);
+  }
 
-        const rows = data ?? [];
-        setMonthlyTotal(rows.length);
-        setMonthlyCompleted(rows.filter((row) => row.status === "done").length);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMobile, joinedClubIds]);
+  const selectedCategoryLabel =
+    CATEGORY_OPTIONS.find((option) => option.id === categoryFilter)?.label ?? "All Categories";
 
   return (
     <div>
@@ -161,17 +184,18 @@ export default function InboxTab({
         style={{
           display: "flex",
           flexWrap: "wrap",
+          alignItems: "center",
           gap: "8px",
           marginBottom: "20px",
         }}
       >
-        {FILTER_CHIPS.map((chip) => {
-          const selected = activeFilter === chip.id;
+        {STATUS_FILTERS.map((chip) => {
+          const selected = statusFilter === chip.id;
           return (
             <button
               key={chip.id}
               type="button"
-              onClick={() => setActiveFilter(chip.id)}
+              onClick={() => setStatusFilter(chip.id)}
               style={{
                 background: selected ? "#E51937" : "#111111",
                 border: `1px solid ${selected ? "#E51937" : "#2a2a2a"}`,
@@ -186,6 +210,41 @@ export default function InboxTab({
             </button>
           );
         })}
+
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            marginLeft: "4px",
+          }}
+        >
+          <span style={{ fontSize: "12px", color: "#777777" }}>Category:</span>
+          <select
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value as InboxCategoryFilter)}
+            aria-label="Filter by category"
+            style={{
+              background: "#111111",
+              border: "1px solid #2a2a2a",
+              borderRadius: "8px",
+              color: "#cccccc",
+              cursor: "pointer",
+              fontSize: "12px",
+              padding: "6px 10px",
+            }}
+          >
+            {CATEGORY_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {categoryFilter !== "all" ? (
+          <span style={{ fontSize: "11px", color: "#555555" }}>{selectedCategoryLabel}</span>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
@@ -207,13 +266,7 @@ export default function InboxTab({
               {inboxEmptyMessage()}
             </p>
           ) : (
-            <div
-              style={{
-                border: "1px solid #1a1a1a",
-                borderRadius: "10px",
-                overflow: "hidden",
-              }}
-            >
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {visibleMessages.map((message) => (
                 <InboxMessageCard
                   key={message.id}
@@ -221,6 +274,7 @@ export default function InboxTab({
                   onMarkAsRead={markAsRead}
                   onRefresh={refresh}
                   clubLogoUrl={message.clubId ? clubLogos[message.clubId] : undefined}
+                  onOpenDetail={setSelectedMessage}
                 />
               ))}
             </div>
@@ -229,22 +283,27 @@ export default function InboxTab({
 
         {!isMobile ? (
           <aside style={{ width: "260px", flexShrink: 0 }}>
-            <InboxOverviewCard
-              stats={overviewStats}
-              onViewAll={() => setActiveFilter("all")}
-            />
+            <InboxOverviewCard stats={overviewStats} onFilterSelect={handleOverviewFilterSelect} />
             <InboxQuickActionsCard
               clubs={joinedClubs}
               onViewMyClubs={() => onViewMyClubs?.()}
             />
-            <InboxAchievementSidebarCard
-              displayName={displayName}
-              completedCount={monthlyCompleted}
-              totalCount={monthlyTotal}
-            />
+            <InboxTipsCard />
           </aside>
         ) : null}
       </div>
+
+      {selectedMessage ? (
+        <InboxMessageDetailModal
+          message={selectedMessage}
+          clubLogoUrl={
+            selectedMessage.clubId ? clubLogos[selectedMessage.clubId] : undefined
+          }
+          onMarkAsRead={markAsRead}
+          onRefresh={refresh}
+          onClose={() => setSelectedMessage(null)}
+        />
+      ) : null}
     </div>
   );
 }

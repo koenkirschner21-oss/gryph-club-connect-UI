@@ -22,7 +22,7 @@ import {
   SOLID_RED_BUTTON_STYLE,
   inboxCategoryLabel,
   inboxStatusBadge,
-  normalizeInboxUiType,
+  resolveActionButtons,
 } from "./inboxMessageUi";
 
 function formatInboxTimestamp(dateStr: string): string {
@@ -38,33 +38,15 @@ function formatInboxTimestamp(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-type ActionButtonConfig = {
-  label: string;
-  variant: "solid" | "outlined" | "link";
-};
-
-function resolveActionButtons(message: InboxMessage): ActionButtonConfig[] {
-  const uiType = normalizeInboxUiType(message);
-
-  switch (uiType) {
-    case "claim_approved":
-    case "join_approved":
-      return [{ label: "Open Club Dashboard", variant: "solid" }];
-    case "claim_rejected":
-      return [{ label: "View Club Profile", variant: "outlined" }];
-    case "claim_submitted":
-      return [{ label: "View Status", variant: "outlined" }];
-    case "join_rejected":
-      return [{ label: "View Club", variant: "outlined" }];
-    case "new_join_request":
-      return [{ label: "Review Request", variant: "outlined" }];
-    case "application_update":
-      return [{ label: "View Application", variant: "outlined" }];
-    case "new_claim_request":
-      return [{ label: "Review in Admin", variant: "outlined" }];
-    default:
-      return [{ label: "Open →", variant: "link" }];
-  }
+function formatInboxFullTimestamp(dateStr: string): string {
+  return new Date(dateStr).toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 interface InboxMessageCardProps {
@@ -72,14 +54,14 @@ interface InboxMessageCardProps {
   onMarkAsRead: (id: string) => Promise<void>;
   onRefresh: () => void;
   clubLogoUrl?: string;
+  onOpenDetail: (message: InboxMessage) => void;
 }
 
-export default function InboxMessageCard({
-  message,
-  onMarkAsRead,
-  onRefresh,
-  clubLogoUrl,
-}: InboxMessageCardProps) {
+function useInboxMessageActions(
+  message: InboxMessage,
+  onMarkAsRead: (id: string) => Promise<void>,
+  onRefresh: () => void,
+) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const [acting, setActing] = useState(false);
@@ -109,10 +91,6 @@ export default function InboxMessageCard({
     typeof message.actionData.invitedBy === "string"
       ? message.actionData.invitedBy
       : message.senderId;
-
-  const statusBadge = inboxStatusBadge(message);
-  const categoryLabel = inboxCategoryLabel(message);
-  const clubLabel = message.clubName?.trim() || "Gryph Club Connect";
 
   async function handleNavigate() {
     if (!message.read) {
@@ -252,7 +230,7 @@ export default function InboxMessageCard({
           justifyContent: "flex-end",
           flexWrap: "wrap",
           gap: "8px",
-          marginTop: "10px",
+          marginTop: "14px",
         }}
       >
         {buttons.map((button) => {
@@ -305,15 +283,254 @@ export default function InboxMessageCard({
     );
   }
 
+  function renderPendingActions() {
+    if (!hasPendingActions) return null;
+
+    if (message.actionType === "executive_invite_response") {
+      return (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "14px",
+          }}
+        >
+          <button
+            type="button"
+            disabled={acting}
+            style={SOLID_RED_BUTTON_STYLE}
+            onClick={() => void handleAcceptExecutiveInvite()}
+          >
+            {acting ? "Working…" : "Accept"}
+          </button>
+          <button
+            type="button"
+            disabled={acting}
+            style={OUTLINED_BUTTON_STYLE}
+            onClick={() => void handleDeclineExecutiveInvite()}
+          >
+            Decline
+          </button>
+        </div>
+      );
+    }
+
+    if (message.actionType === "ownership_transfer_response") {
+      return (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "14px",
+          }}
+        >
+          <button
+            type="button"
+            disabled={acting}
+            style={SOLID_RED_BUTTON_STYLE}
+            onClick={() => void handleAcceptOwnership()}
+          >
+            {acting ? "Working…" : "Accept Ownership"}
+          </button>
+          <button
+            type="button"
+            disabled={acting}
+            style={OUTLINED_BUTTON_STYLE}
+            onClick={() => void handleDeclineOwnership()}
+          >
+            Decline
+          </button>
+        </div>
+      );
+    }
+
+    if (message.actionType === "former_owner_role_choice") {
+      return (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "8px",
+            marginTop: "14px",
+          }}
+        >
+          {FORMER_OWNER_CHOICE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              disabled={acting}
+              style={{
+                ...OUTLINED_BUTTON_STYLE,
+                minWidth: "220px",
+                textAlign: "left",
+              }}
+              onClick={() => void handleFormerOwnerChoice(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  return {
+    actionError,
+    hasPendingActions,
+    renderDefaultActions,
+    renderPendingActions,
+  };
+}
+
+export function InboxMessageDetailView({
+  message,
+  onMarkAsRead,
+  onRefresh,
+  clubLogoUrl,
+}: {
+  message: InboxMessage;
+  onMarkAsRead: (id: string) => Promise<void>;
+  onRefresh: () => void;
+  clubLogoUrl?: string;
+}) {
+  const statusBadge = inboxStatusBadge(message);
+  const categoryLabel = inboxCategoryLabel(message);
+  const clubLabel = message.clubName?.trim() || "Gryph Club Connect";
+  const { actionError, hasPendingActions, renderDefaultActions, renderPendingActions } =
+    useInboxMessageActions(message, onMarkAsRead, onRefresh);
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
+      <InboxMessageAvatar message={message} logoUrl={clubLogoUrl} />
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginBottom: "8px",
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: "15px",
+              fontWeight: 700,
+              color: "#ffffff",
+              lineHeight: 1.4,
+              flex: "1 1 100%",
+            }}
+          >
+            {message.title}
+          </p>
+          {statusBadge ? <InboxStatusBadgePill badge={statusBadge} /> : null}
+          {message.actionRequired && !message.actionCompleted ? (
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 600,
+                color: "#FFC429",
+                border: "1px solid #3a2f00",
+                background: "#1a1500",
+                borderRadius: "4px",
+                padding: "2px 6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Action Required
+            </span>
+          ) : null}
+        </div>
+
+        <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#555555" }}>
+          {formatInboxFullTimestamp(message.createdAt)}
+        </p>
+
+        <p style={{ margin: "0 0 12px", fontSize: "12px", lineHeight: 1.4 }}>
+          <span style={{ color: "#E51937" }}>{clubLabel}</span>
+          <span style={{ color: "#555555" }}> · {categoryLabel}</span>
+        </p>
+
+        <p
+          style={{
+            margin: 0,
+            fontSize: "14px",
+            color: "#cccccc",
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {message.message}
+        </p>
+
+        {actionError ? (
+          <p style={{ margin: "12px 0 0", fontSize: "12px", color: "#E51937" }}>{actionError}</p>
+        ) : null}
+
+        {hasPendingActions ? renderPendingActions() : renderDefaultActions()}
+      </div>
+    </div>
+  );
+}
+
+export default function InboxMessageCard({
+  message,
+  onMarkAsRead,
+  clubLogoUrl,
+  onOpenDetail,
+}: InboxMessageCardProps) {
+  const [hovered, setHovered] = useState(false);
+
+  const statusBadge = inboxStatusBadge(message);
+  const categoryLabel = inboxCategoryLabel(message);
+  const clubLabel = message.clubName?.trim() || "Gryph Club Connect";
+
+  async function handleOpen() {
+    if (!message.read) {
+      await onMarkAsRead(message.id);
+    }
+    onOpenDetail(message);
+  }
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={() => void handleOpen()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          void handleOpen();
+        }
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
         alignItems: "flex-start",
         gap: "12px",
         padding: "16px",
-        borderBottom: "1px solid #1a1a1a",
-        background: message.read ? "#141414" : "#161616",
+        border: `1px solid ${hovered ? "#333333" : "#2a2a2a"}`,
+        borderRadius: "10px",
+        background: hovered
+          ? message.read
+            ? "#181818"
+            : "#1a1a1a"
+          : message.read
+            ? "#141414"
+            : "#161616",
+        cursor: "pointer",
+        transition: "border-color 0.15s ease, background 0.15s ease",
       }}
     >
       <InboxMessageAvatar message={message} logoUrl={clubLogoUrl} />
@@ -385,7 +602,10 @@ export default function InboxMessageCard({
             fontSize: "13px",
             color: "#777777",
             lineHeight: 1.5,
-            whiteSpace: "pre-wrap",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
           }}
         >
           {message.message}
@@ -395,98 +615,6 @@ export default function InboxMessageCard({
           <span style={{ color: "#E51937" }}>{clubLabel}</span>
           <span style={{ color: "#555555" }}> · {categoryLabel}</span>
         </p>
-
-        {actionError ? (
-          <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#E51937" }}>{actionError}</p>
-        ) : null}
-
-        {hasPendingActions && message.actionType === "executive_invite_response" ? (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              flexWrap: "wrap",
-              gap: "8px",
-              marginTop: "10px",
-            }}
-          >
-            <button
-              type="button"
-              disabled={acting}
-              style={SOLID_RED_BUTTON_STYLE}
-              onClick={() => void handleAcceptExecutiveInvite()}
-            >
-              {acting ? "Working…" : "Accept"}
-            </button>
-            <button
-              type="button"
-              disabled={acting}
-              style={OUTLINED_BUTTON_STYLE}
-              onClick={() => void handleDeclineExecutiveInvite()}
-            >
-              Decline
-            </button>
-          </div>
-        ) : null}
-
-        {hasPendingActions && message.actionType === "ownership_transfer_response" ? (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              flexWrap: "wrap",
-              gap: "8px",
-              marginTop: "10px",
-            }}
-          >
-            <button
-              type="button"
-              disabled={acting}
-              style={SOLID_RED_BUTTON_STYLE}
-              onClick={() => void handleAcceptOwnership()}
-            >
-              {acting ? "Working…" : "Accept Ownership"}
-            </button>
-            <button
-              type="button"
-              disabled={acting}
-              style={OUTLINED_BUTTON_STYLE}
-              onClick={() => void handleDeclineOwnership()}
-            >
-              Decline
-            </button>
-          </div>
-        ) : null}
-
-        {hasPendingActions && message.actionType === "former_owner_role_choice" ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: "8px",
-              marginTop: "10px",
-            }}
-          >
-            {FORMER_OWNER_CHOICE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                disabled={acting}
-                style={{
-                  ...OUTLINED_BUTTON_STYLE,
-                  minWidth: "220px",
-                  textAlign: "left",
-                }}
-                onClick={() => void handleFormerOwnerChoice(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {!hasPendingActions ? renderDefaultActions() : null}
       </div>
 
       <div
