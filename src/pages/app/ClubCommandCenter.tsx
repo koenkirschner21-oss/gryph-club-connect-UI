@@ -323,11 +323,16 @@ function ProfileCompletionUrgentCard({
   percent,
   missingLabels,
   onAction,
+  actionLabel,
 }: {
   percent: number;
   missingLabels: string[];
   onAction: () => void;
+  actionLabel?: string;
 }) {
+  const label =
+    actionLabel ?? (percent < 100 ? "Finish Setup →" : "View Setup →");
+
   return (
     <div
       style={{
@@ -364,11 +369,9 @@ function ProfileCompletionUrgentCard({
             All setup items complete.
           </p>
         )}
-        {percent < 100 ? (
-          <button type="button" onClick={onAction} style={textLinkStyle}>
-            Finish Setup →
-          </button>
-        ) : null}
+        <button type="button" onClick={onAction} style={textLinkStyle}>
+          {label}
+        </button>
       </div>
     </div>
   );
@@ -487,6 +490,7 @@ export interface ClubCommandCenterProps {
   eventRsvpCounts: Record<string, RsvpCounts>;
   isMobile: boolean;
   onOpenTask: (task: Task) => void;
+  onOpenSetupChecklist: () => void;
 }
 
 export default function ClubCommandCenter({
@@ -501,6 +505,7 @@ export default function ClubCommandCenter({
   eventRsvpCounts,
   isMobile,
   onOpenTask,
+  onOpenSetupChecklist,
 }: ClubCommandCenterProps) {
   const navigate = useNavigate();
   const { pendingMembers, loading: membersLoading } = useClubMembers(clubId);
@@ -1150,7 +1155,7 @@ export default function ClubCommandCenter({
             <ProfileCompletionUrgentCard
               percent={profileCompletion}
               missingLabels={profileMissingLabels}
-              onAction={() => navigate(`${settingsPath}?section=profile`)}
+              onAction={onOpenSetupChecklist}
             />
             <UrgentCountCard
               title="Pending Requests"

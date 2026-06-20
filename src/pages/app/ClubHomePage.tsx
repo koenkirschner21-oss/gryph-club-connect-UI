@@ -40,7 +40,7 @@ import type {
   TaskStatus,
 } from "../../types";
 import Spinner from "../../components/ui/Spinner";
-import SetupChecklist from "../../components/club/SetupChecklist";
+import SetupChecklist, { SetupChecklistModal } from "../../components/club/SetupChecklist";
 import ClubCommandCenter from "./ClubCommandCenter";
 
 const CARD_BG = "#141414";
@@ -1251,6 +1251,7 @@ export default function ClubHomePage() {
   const { tasks, loading: tasksLoading, updateTask, deleteTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
   const [checklistClub, setChecklistClub] = useState<Club | null>(null);
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
 
   useEffect(() => {
     if (club) setChecklistClub(club);
@@ -1680,6 +1681,18 @@ export default function ClubHomePage() {
         />
       ) : null}
 
+      {setupModalOpen && checklistClub ? (
+        <SetupChecklistModal
+          club={checklistClub}
+          postsCount={posts.length}
+          eventsCount={events.length}
+          contentLoading={postsLoading || eventsLoading}
+          onPublish={handlePublishClub}
+          onRefetch={refetchClubData}
+          onClose={() => setSetupModalOpen(false)}
+        />
+      ) : null}
+
       {isPresidentCommandCenter ? (
         <ClubCommandCenter
           club={club}
@@ -1693,6 +1706,7 @@ export default function ClubHomePage() {
           eventRsvpCounts={eventRsvpCounts}
           isMobile={isMobile}
           onOpenTask={setSelectedTask}
+          onOpenSetupChecklist={() => setSetupModalOpen(true)}
         />
       ) : (
         <>
@@ -1833,16 +1847,16 @@ export default function ClubHomePage() {
                 ))}
               </div>
             )}
-          </div>
+      </div>
 
           <div style={dashboardSectionBlockFixed}>
             <div style={sectionBlockHeader}>
               <h2 style={sectionHeading}>Recent Announcements</h2>
             </div>
-            {postsLoading ? (
-              <div className="flex justify-center py-8">
-                <Spinner label="Loading announcements…" />
-              </div>
+        {postsLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner label="Loading announcements…" />
+          </div>
             ) : memberAnnouncements.length === 0 ? (
               <div
                 style={{
@@ -1854,8 +1868,8 @@ export default function ClubHomePage() {
                 }}
               >
                 <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
-                  No announcements yet. Check back soon!
-                </p>
+              No announcements yet. Check back soon!
+            </p>
               </div>
             ) : (
               <div style={dashboardListStack}>
@@ -1917,9 +1931,9 @@ export default function ClubHomePage() {
                     onClick={() => setSelectedTask(task)}
                   />
                 ))}
-              </div>
-            )}
           </div>
+        )}
+      </div>
 
           <div style={dashboardSectionBlock}>
             <div style={sectionBlockHeader}>
@@ -1948,8 +1962,8 @@ export default function ClubHomePage() {
                   No upcoming events scheduled.
                 </p>
                 <Link to={eventsPath} className="mt-3 inline-block" style={viewAllLink}>
-                  View Events Page →
-                </Link>
+                View Events Page →
+            </Link>
               </div>
             ) : (
               <div style={dashboardListStack}>
@@ -1999,8 +2013,8 @@ export default function ClubHomePage() {
               >
                 <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
                   No upcoming events scheduled.
-                </p>
-              </div>
+                  </p>
+                </div>
             )}
           </div>
 
@@ -2032,8 +2046,8 @@ export default function ClubHomePage() {
               >
                 <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
                   No announcements yet. Check back soon!
-                </p>
-              </div>
+                  </p>
+                </div>
             ) : (
               <div style={{ ...dashboardListStack, flex: 1 }}>
                 {previewPosts.map((post) => (
@@ -2046,9 +2060,9 @@ export default function ClubHomePage() {
                     isPinned={isPostPinned(post)}
                   />
                 ))}
-              </div>
-            )}
           </div>
+        )}
+      </div>
         </div>
       </div>
       )}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import type { Club } from "../../types";
 
 const CARD_BG = "#141414";
@@ -284,6 +284,8 @@ export interface SetupChecklistProps {
   contentLoading?: boolean;
   onPublish: () => Promise<void>;
   onRefetch?: () => void;
+  variant?: "inline" | "modal";
+  onClose?: () => void;
 }
 
 export default function SetupChecklist({
@@ -293,6 +295,8 @@ export default function SetupChecklist({
   contentLoading = false,
   onPublish,
   onRefetch,
+  variant = "inline",
+  onClose,
 }: SetupChecklistProps) {
   const navigate = useNavigate();
   const [publishing, setPublishing] = useState(false);
@@ -339,15 +343,16 @@ export default function SetupChecklist({
   }
 
   const sections: SectionKey[] = ["profile", "launch", "live"];
+  const isModal = variant === "modal";
 
   return (
     <div
       style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderRadius: "12px",
-        padding: "24px",
-        marginBottom: "24px",
+        background: isModal ? "transparent" : CARD_BG,
+        border: isModal ? "none" : `1px solid ${CARD_BORDER}`,
+        borderRadius: isModal ? 0 : "12px",
+        padding: isModal ? 0 : "24px",
+        marginBottom: isModal ? 0 : "24px",
       }}
     >
       <div
@@ -360,23 +365,49 @@ export default function SetupChecklist({
           marginBottom: "16px",
         }}
       >
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h2
             style={{
               margin: 0,
-              fontSize: "18px",
+              fontSize: isModal ? "16px" : "18px",
               fontWeight: 700,
               color: "#ffffff",
             }}
           >
-            Finish setting up {club.name}
+            {isModal ? "Finish Club Setup" : `Finish setting up ${club.name}`}
           </h2>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#777777" }}>
-            {contentLoading
-              ? "Checking your progress…"
-              : `${completedCount} of ${totalCount} complete · ${progressPercent}%`}
+            {isModal
+              ? "Complete the remaining setup steps to make your club profile ready for members."
+              : contentLoading
+                ? "Checking your progress…"
+                : `${completedCount} of ${totalCount} complete · ${progressPercent}%`}
           </p>
+          {isModal ? (
+            <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#555555" }}>
+              {contentLoading
+                ? "Checking your progress…"
+                : `${completedCount} of ${totalCount} complete · ${progressPercent}%`}
+            </p>
+          ) : null}
         </div>
+        {isModal && onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close setup checklist"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#777777",
+              cursor: "pointer",
+              padding: "4px",
+              flexShrink: 0,
+            }}
+          >
+            <X size={18} aria-hidden />
+          </button>
+        ) : null}
       </div>
 
       <div
@@ -511,6 +542,55 @@ export default function SetupChecklist({
             {publishing ? "Publishing…" : "Publish Club Profile"}
           </button>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function SetupChecklistModal({
+  onClose,
+  ...checklistProps
+}: SetupChecklistProps & { onClose: () => void }) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px",
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal
+        aria-label="Finish Club Setup"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: "560px",
+          maxHeight: "85vh",
+          overflowY: "auto",
+          background: CARD_BG,
+          border: `1px solid ${CARD_BORDER}`,
+          borderRadius: "12px",
+          padding: "20px",
+        }}
+      >
+        <SetupChecklist {...checklistProps} variant="modal" onClose={onClose} />
       </div>
     </div>
   );
