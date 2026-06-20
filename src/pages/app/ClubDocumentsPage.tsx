@@ -70,6 +70,7 @@ interface ResourceLink {
   description: string | null;
   added_by: string | null;
   created_at: string;
+  addedByName?: string;
 }
 
 const inputStyle: CSSProperties = {
@@ -444,7 +445,7 @@ function CategoryPills({
         >
           <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
             <Plus size={14} aria-hidden />
-            Category
+            New Category
           </span>
         </button>
       ) : null}
@@ -548,7 +549,33 @@ export default function ClubDocumentsPage() {
       console.error("Failed to load resource links:", error.message);
       setResourceLinks([]);
     } else {
-      setResourceLinks((data ?? []) as ResourceLink[]);
+      const rows = (data ?? []) as ResourceLink[];
+      const adderIds = [
+        ...new Set(rows.map((row) => row.added_by).filter(Boolean)),
+      ] as string[];
+
+      let profileMap: Record<string, string> = {};
+      if (adderIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", adderIds);
+        profileMap = Object.fromEntries(
+          (profiles ?? []).map((p) => [
+            p.id as string,
+            (p.full_name as string) ?? "Unknown",
+          ]),
+        );
+      }
+
+      setResourceLinks(
+        rows.map((row) => ({
+          ...row,
+          addedByName: row.added_by
+            ? profileMap[row.added_by] ?? "Unknown"
+            : undefined,
+        })),
+      );
     }
 
     setLinksLoading(false);
@@ -983,7 +1010,7 @@ export default function ClubDocumentsPage() {
             Documents
           </h1>
           <p style={{ fontSize: "14px", color: "#555555", marginTop: "4px", marginBottom: 0 }}>
-            Access club files, meeting notes, resources, and shared links.
+            Find club files, resources, meeting notes, and important links all in one place.
           </p>
           <p style={{ fontSize: "12px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
             {documents.length} files · {resourceLinks.length} links
@@ -1004,7 +1031,7 @@ export default function ClubDocumentsPage() {
               cursor: "pointer",
             }}
           >
-            Upload Document
+            Upload File
           </button>
         ) : null}
       </Box>
@@ -1075,17 +1102,55 @@ export default function ClubDocumentsPage() {
       </div>
 
       <Box style={{ marginBottom: "20px" }}>
-        <CategoryPills
-          value={filterCategory}
-          onChange={setFilterCategory}
-          categories={allCategories}
-          includeAll
-          customValues={customCategoryValues}
-          onDeleteCustom={isPrivileged ? handleDeleteCustomCategory : undefined}
-          onAddClick={
-            isPrivileged ? () => setShowCreateCategoryModal(true) : undefined
-          }
-        />
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "12px",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <CategoryPills
+              value={filterCategory}
+              onChange={setFilterCategory}
+              categories={allCategories}
+              includeAll
+              customValues={customCategoryValues}
+              onDeleteCustom={isPrivileged ? handleDeleteCustomCategory : undefined}
+              onAddClick={
+                isPrivileged ? () => setShowCreateCategoryModal(true) : undefined
+              }
+            />
+          </div>
+          {isPrivileged ? (
+            <button
+              type="button"
+              onClick={() => setShowCreateCategoryModal(true)}
+              style={{
+                background: "transparent",
+                border: "1px solid #2a2a2a",
+                color: "#777777",
+                borderRadius: "6px",
+                padding: "6px 12px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#E51937";
+                e.currentTarget.style.color = "#E51937";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.color = "#777777";
+              }}
+            >
+              Manage Categories
+            </button>
+          ) : null}
+        </div>
       </Box>
 
       <Box
@@ -1155,7 +1220,7 @@ export default function ClubDocumentsPage() {
             <ResourceLinksEmptyState onAddLink={() => setShowAddLinkModal(true)} />
           ) : (
             <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
-              No resource links yet. Add a Google Drive folder, website, or other link.
+              No resource links added yet.
             </p>
           )
         ) : (
@@ -1232,17 +1297,21 @@ export default function ClubDocumentsPage() {
           <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
             {documents.length === 0 && !searchActive && !categoryFiltered
               ? "No documents yet"
-              : "No files found"}
+              : categoryFiltered && !searchActive
+                ? "No files in this category yet."
+                : "No files found"}
           </p>
           <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
             {searchActive
-              ? "Try a different category or upload a new document."
+              ? "Try a different search or category."
               : categoryFiltered &&
                   !documents.some((doc) => doc.category === filterCategory)
                 ? categoryEmptySubtext(filterCategory)
                 : documents.length === 0 && !searchActive && !categoryFiltered
-                  ? "Upload your first document to get started."
-                  : "Try a different category or upload a new document."}
+                  ? "Upload a file or add a link to get started."
+                  : categoryFiltered
+                    ? "Upload a file or add a link to get started."
+                    : "Try a different category or upload a new file."}
           </p>
           {isPrivileged &&
           documents.length === 0 &&
@@ -1260,7 +1329,7 @@ export default function ClubDocumentsPage() {
                 marginTop: "12px",
               }}
             >
-              Upload your first document
+              Upload File
             </button>
           ) : null}
         </div>
@@ -1284,10 +1353,7 @@ export default function ClubDocumentsPage() {
         </div>
       )}
 
-      <DocumentsTipBar
-        isPrivileged={isPrivileged}
-        onManageCategories={() => setShowCreateCategoryModal(true)}
-      />
+      <DocumentsTipBar />
 
       {showAddLinkModal && isPrivileged ? (
         <div
@@ -1423,7 +1489,7 @@ export default function ClubDocumentsPage() {
                 margin: "0 0 16px",
               }}
             >
-              Upload Document
+              Upload File
             </h2>
 
             <label

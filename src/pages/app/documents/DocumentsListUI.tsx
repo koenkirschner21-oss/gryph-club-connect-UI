@@ -51,6 +51,9 @@ export interface ResourceLinkItem {
   title: string;
   url: string;
   description: string | null;
+  added_by?: string | null;
+  created_at?: string;
+  addedByName?: string;
 }
 
 export type CategoryOption = { value: string; label: string };
@@ -175,6 +178,72 @@ type ServiceKind =
   | "github"
   | "other";
 
+function linkTypeLabel(url: string): string {
+  const lower = url.toLowerCase();
+  if (lower.includes("drive.google.com")) return "Drive";
+  if (lower.includes("forms.google.com")) return "Form";
+  if (lower.includes("docs.google.com") || lower.includes("sheets.google.com")) {
+    return "Resource";
+  }
+  if (
+    lower.includes("linkedin.com") ||
+    lower.includes("instagram.com") ||
+    lower.includes("twitter.com") ||
+    lower.includes("x.com") ||
+    lower.includes("facebook.com") ||
+    lower.includes("tiktok.com")
+  ) {
+    return "Social Link";
+  }
+  return "Website";
+}
+
+function linkTypeBadgeStyle(label: string): CSSProperties {
+  const styles: Record<string, CSSProperties> = {
+    Drive: { background: "rgba(15,157,88,0.12)", border: "1px solid #0F9D58", color: "#4ade80" },
+    Form: { background: "rgba(255,196,41,0.12)", border: "1px solid #FFC429", color: "#FFC429" },
+    Resource: { background: "rgba(59,130,246,0.12)", border: "1px solid #3B82F6", color: "#93c5fd" },
+    "Social Link": { background: "#1a1a1a", border: "1px solid #555555", color: "#999999" },
+    Website: { background: "#1a1a1a", border: "1px solid #444444", color: "#777777" },
+  };
+  return {
+    borderRadius: "4px",
+    padding: "2px 8px",
+    fontSize: "10px",
+    fontWeight: 600,
+    display: "inline-block",
+    ...(styles[label] ?? styles.Website),
+  };
+}
+
+export function linkDisplayLabel(url: string): string {
+  try {
+    const normalized = url.trim().match(/^https?:\/\//i) ? url.trim() : `https://${url.trim()}`;
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.replace(/^www\./i, "").toLowerCase();
+
+    if (host === "drive.google.com") return "Google Drive link";
+    if (host === "docs.google.com") return "Google Docs link";
+    if (host === "sheets.google.com") return "Google Sheets link";
+    if (host === "forms.google.com") return "Google Form link";
+
+    return host;
+  } catch {
+    return "External link";
+  }
+}
+
+function formatLinkDate(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function detectService(url: string): ServiceKind {
   const lower = url.toLowerCase();
   if (lower.includes("drive.google.com")) return "google_drive";
@@ -259,12 +328,13 @@ export function FileTypeIcon({
 }) {
   const kind = getFileTypeKind(name, fileType);
   const color = fileTypeColor(kind);
-  const iconSize = size <= 40 ? 18 : 20;
+  const iconSize = size <= 40 ? 18 : size <= 56 ? 26 : 20;
+  const pdfFontSize = size <= 40 ? "11px" : "13px";
 
   let content: ReactNode;
   if (kind === "pdf") {
     content = (
-      <span style={{ fontSize: "11px", fontWeight: 800, color: "#ffffff", letterSpacing: "0.02em" }}>
+      <span style={{ fontSize: pdfFontSize, fontWeight: 800, color: "#ffffff", letterSpacing: "0.02em" }}>
         PDF
       </span>
     );
@@ -512,13 +582,25 @@ export function DocumentCard({
           style={{
             height: "120px",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            background: "#111111",
+            gap: "8px",
+            background: `${typeColor}14`,
             borderBottom: `1px solid ${CARD_BORDER}`,
           }}
         >
-          <FileTypeIcon name={doc.name} fileType={doc.file_type} />
+          <FileTypeIcon name={doc.name} fileType={doc.file_type} size={56} />
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: typeColor,
+              letterSpacing: "0.04em",
+            }}
+          >
+            {fileTypeLabel(doc.name, doc.file_type)}
+          </span>
         </div>
       )}
 
@@ -552,22 +634,20 @@ export function DocumentCard({
           {formatFileSize(doc.file_size)}
         </p>
 
-        {doc.description ? (
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#777777",
-              margin: 0,
-              lineHeight: 1.5,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {doc.description}
-          </p>
-        ) : null}
+        <p
+          style={{
+            fontSize: "12px",
+            color: doc.description?.trim() ? "#777777" : "#555555",
+            margin: 0,
+            lineHeight: 1.5,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {doc.description?.trim() || "No description added yet."}
+        </p>
 
         <div style={{ display: "flex", gap: "8px", marginTop: "auto", paddingTop: "4px" }}>
           {previewKind ? (
@@ -629,6 +709,12 @@ export function ResourceLinkRow({
 }) {
   const [openHovered, setOpenHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const typeLabel = linkTypeLabel(link.url);
+  const displayUrl = linkDisplayLabel(link.url);
+  const addedDate = formatLinkDate(link.created_at);
+  const metaParts: string[] = [];
+  if (link.addedByName) metaParts.push(`Added by ${link.addedByName}`);
+  if (addedDate) metaParts.push(`Added ${addedDate}`);
 
   function openLink() {
     window.open(link.url, "_blank", "noopener,noreferrer");
@@ -638,7 +724,7 @@ export function ResourceLinkRow({
     <div
       style={{
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         gap: "14px",
         padding: "14px 0",
         borderBottom: isLast ? "none" : `1px solid #1a1a1a`,
@@ -646,32 +732,57 @@ export function ResourceLinkRow({
     >
       <ServiceIcon url={link.url} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p
+        <div
           style={{
-            fontSize: "14px",
-            fontWeight: 700,
-            color: "#ffffff",
-            margin: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "4px",
           }}
         >
-          {link.title}
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
+              flex: "1 1 auto",
+            }}
+          >
+            {link.title}
+          </p>
+          <span style={linkTypeBadgeStyle(typeLabel)}>{typeLabel}</span>
+        </div>
+        <p
+          style={{
+            fontSize: "12px",
+            color: link.description?.trim() ? "#777777" : "#555555",
+            margin: "0 0 4px",
+            lineHeight: 1.45,
+          }}
+        >
+          {link.description?.trim() || "No description added yet."}
         </p>
         <p
           style={{
             fontSize: "12px",
             color: "#555555",
-            marginTop: "2px",
-            marginBottom: 0,
+            margin: "0 0 2px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
         >
-          {link.url}
+          {displayUrl}
         </p>
+        {metaParts.length > 0 ? (
+          <p style={{ fontSize: "11px", color: "#444444", margin: 0 }}>{metaParts.join(" · ")}</p>
+        ) : null}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
         <button
@@ -829,13 +940,7 @@ export function SortDropdown({
   );
 }
 
-export function DocumentsTipBar({
-  isPrivileged,
-  onManageCategories,
-}: {
-  isPrivileged: boolean;
-  onManageCategories: () => void;
-}) {
+export function DocumentsTipBar() {
   return (
     <div
       style={{
@@ -854,24 +959,6 @@ export function DocumentsTipBar({
       <p style={{ flex: 1, margin: 0, fontSize: "13px", color: "#777777", minWidth: 0 }}>
         Tip: Add documents to the right category to help members find them faster.
       </p>
-      {isPrivileged ? (
-        <button
-          type="button"
-          onClick={onManageCategories}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: ACCENT_RED,
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: "pointer",
-            padding: 0,
-            flexShrink: 0,
-          }}
-        >
-          Manage Categories
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -879,8 +966,11 @@ export function DocumentsTipBar({
 export function ResourceLinksEmptyState({ onAddLink }: { onAddLink: () => void }) {
   return (
     <div style={{ padding: "20px 0 8px", textAlign: "center" }}>
-      <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 12px" }}>
-        No resource links yet. Add a Google Drive folder, website, or other link.
+      <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 8px" }}>
+        No resource links added yet.
+      </p>
+      <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 12px" }}>
+        Upload a file or add a link to get started.
       </p>
       <button
         type="button"
@@ -909,7 +999,12 @@ export function UploadedFilesEmptyState({ onUpload }: { onUpload: () => void }) 
   return (
     <div style={{ textAlign: "center", padding: "48px 24px" }}>
       <File size={36} color="#555555" aria-hidden style={{ margin: "0 auto 12px", display: "block" }} />
-      <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>No files uploaded yet.</p>
+      <p style={{ fontSize: "14px", color: "#555555", margin: "0 0 8px" }}>
+        No files uploaded yet.
+      </p>
+      <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 12px" }}>
+        Upload a file or add a link to get started.
+      </p>
       <button
         type="button"
         onClick={onUpload}
@@ -919,10 +1014,9 @@ export function UploadedFilesEmptyState({ onUpload }: { onUpload: () => void }) 
           color: ACCENT_RED,
           fontSize: "14px",
           cursor: "pointer",
-          marginTop: "12px",
         }}
       >
-        Upload Document
+        Upload File
       </button>
     </div>
   );
