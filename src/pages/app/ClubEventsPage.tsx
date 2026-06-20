@@ -9,6 +9,8 @@ import {
   Calendar,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Clock,
   MapPin,
@@ -800,6 +802,272 @@ const pastSectionHeadingStyle: CSSProperties = {
   marginBottom: "12px",
 };
 
+const CALENDAR_WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function eventCalendarDateKey(date: string): string {
+  return date.slice(0, 10);
+}
+
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatNextEventDateLabel(date: string | undefined): string {
+  if (!date) return "—";
+  const parsed = new Date(`${date.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function EventCalendarSidebar({
+  month,
+  onMonthChange,
+  eventDateKeys,
+  selectedDay,
+  onDayClick,
+  stats,
+  fullWidth = false,
+}: {
+  month: Date;
+  onMonthChange: (next: Date) => void;
+  eventDateKeys: Set<string>;
+  selectedDay: string | null;
+  onDayClick: (dateKey: string) => void;
+  stats: {
+    upcoming: number;
+    publicCount: number;
+    myRsvps: number;
+    nextEventDate: string;
+  };
+  fullWidth?: boolean;
+}) {
+  const todayKey = localDateKey(new Date());
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const monthLabel = month.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+  const firstDay = new Date(year, monthIndex, 1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+
+  const cells: Array<{ day: number | null; dateKey: string | null }> = [];
+  for (let i = 0; i < startOffset; i += 1) {
+    cells.push({ day: null, dateKey: null });
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    cells.push({ day, dateKey });
+  }
+
+  const statRows: Array<{ label: string; value: string | number }> = [
+    { label: "Upcoming events", value: stats.upcoming },
+    { label: "Public events", value: stats.publicCount },
+    { label: "My RSVPs", value: stats.myRsvps },
+    { label: "Next event", value: stats.nextEventDate },
+  ];
+
+  return (
+    <div
+      style={{
+        width: fullWidth ? "100%" : "280px",
+        flexShrink: 0,
+        background: "#141414",
+        border: "1px solid #2a2a2a",
+        borderRadius: "14px",
+        padding: "16px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "14px",
+        }}
+      >
+        <h3
+          style={{
+            margin: 0,
+            fontSize: "14px",
+            fontWeight: 700,
+            color: "#ffffff",
+          }}
+        >
+          Event Calendar
+        </h3>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <button
+            type="button"
+            aria-label="Previous month"
+            onClick={() =>
+              onMonthChange(new Date(year, monthIndex - 1, 1))
+            }
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#777777",
+              cursor: "pointer",
+              padding: "2px",
+              display: "flex",
+            }}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span
+            style={{
+              fontSize: "12px",
+              color: "#777777",
+              minWidth: "108px",
+              textAlign: "center",
+            }}
+          >
+            {monthLabel}
+          </span>
+          <button
+            type="button"
+            aria-label="Next month"
+            onClick={() =>
+              onMonthChange(new Date(year, monthIndex + 1, 1))
+            }
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#777777",
+              cursor: "pointer",
+              padding: "2px",
+              display: "flex",
+            }}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(7, 1fr)",
+          gap: "4px",
+          marginBottom: "16px",
+        }}
+      >
+        {CALENDAR_WEEKDAY_LABELS.map((label) => (
+          <div
+            key={label}
+            style={{
+              fontSize: "10px",
+              fontWeight: 600,
+              color: "#555555",
+              textAlign: "center",
+              paddingBottom: "4px",
+            }}
+          >
+            {label}
+          </div>
+        ))}
+        {cells.map((cell, index) => {
+          if (cell.day === null || cell.dateKey === null) {
+            return <div key={`empty-${index}`} />;
+          }
+
+          const hasEvents = eventDateKeys.has(cell.dateKey);
+          const isToday = cell.dateKey === todayKey;
+          const isSelected = cell.dateKey === selectedDay;
+
+          return (
+            <button
+              key={cell.dateKey}
+              type="button"
+              onClick={() => onDayClick(cell.dateKey!)}
+              style={{
+                position: "relative",
+                aspectRatio: "1",
+                borderRadius: "6px",
+                border: isSelected
+                  ? "1px solid #E51937"
+                  : "1px solid transparent",
+                background: hasEvents
+                  ? "rgba(229, 25, 55, 0.12)"
+                  : isToday
+                    ? "#1a1a1a"
+                    : "transparent",
+                color: isToday ? "#ffffff" : hasEvents ? "#ffffff" : "#777777",
+                fontSize: "12px",
+                fontWeight: isToday ? 600 : 400,
+                cursor: "pointer",
+                padding: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {cell.day}
+              {hasEvents ? (
+                <span
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    bottom: "3px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    width: "4px",
+                    height: "4px",
+                    borderRadius: "50%",
+                    background: "#E51937",
+                  }}
+                />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          borderTop: "1px solid #1a1a1a",
+          paddingTop: "14px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+        }}
+      >
+        {statRows.map((row) => (
+          <div
+            key={row.label}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+            }}
+          >
+            <span style={{ fontSize: "12px", color: "#555555" }}>{row.label}</span>
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#cccccc",
+                textAlign: "right",
+              }}
+            >
+              {row.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 async function fetchExistingRsvp(
   eventId: string,
   userId: string,
@@ -911,26 +1179,32 @@ function CompactEventRow({
   myStatus,
   rsvpAccess,
   onRsvp,
+  highlighted = false,
 }: {
   event: ClubEvent;
   myStatus?: RsvpStatus;
   rsvpAccess: RsvpAccessResult;
   onRsvp: (eventId: string, status: RsvpStatus) => void;
+  highlighted?: boolean;
 }) {
   const timeLabel = formatEventTime(event.time);
   const locationLabel = cleanEventLocation(event.location);
 
   return (
     <div
+      data-event-id={event.id}
+      data-event-date={eventCalendarDateKey(event.date)}
       style={{
         display: "flex",
         alignItems: "center",
         gap: "12px",
         padding: "10px 16px",
         background: "#0d0d0d",
-        border: "1px solid #1a1a1a",
+        border: highlighted ? "1px solid #E51937" : "1px solid #1a1a1a",
         borderRadius: "8px",
         marginBottom: "8px",
+        boxShadow: highlighted ? "0 0 0 1px rgba(229, 25, 55, 0.35)" : undefined,
+        transition: "border-color 0.2s ease, box-shadow 0.2s ease",
       }}
     >
       <EventDateBlock date={event.date} />
@@ -979,6 +1253,7 @@ function EventCard({
   attendeesList,
   onOpenResponses,
   hasFormResponses,
+  highlighted = false,
 }: {
   event: ClubEvent;
   category: string;
@@ -1016,6 +1291,7 @@ function EventCard({
   }>;
   onOpenResponses: (event: ClubEvent) => void;
   hasFormResponses: boolean;
+  highlighted?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const timeLabel = formatEventTime(event.time);
@@ -1023,13 +1299,23 @@ function EventCard({
   const attendeeCountLabel = formatAttendeeCounts(counts);
   const hasAttendeeAvatars =
     (attendeePreview?.some((a) => a.status === "going" && a.avatarUrl?.trim()) ?? false);
+  const showOptionsMenu = isPrivileged;
 
   return (
     <div
+      data-event-id={event.id}
+      data-event-date={eventCalendarDateKey(event.date)}
       onMouseLeave={() => setMenuOpen(false)}
       style={{
         ...eventCardStyle,
         ...(past ? { opacity: 0.6 } : null),
+        ...(highlighted
+          ? {
+              borderColor: "#E51937",
+              boxShadow: "0 0 0 1px rgba(229, 25, 55, 0.35)",
+            }
+          : null),
+        transition: "border-color 0.2s ease, box-shadow 0.2s ease",
       }}
     >
       <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
@@ -1300,7 +1586,7 @@ function EventCard({
             flexShrink: 0,
           }}
         >
-          {isPrivileged ? (
+          {showOptionsMenu ? (
             <div style={{ position: "relative", alignSelf: "flex-end", marginBottom: "8px" }}>
               <button
                 type="button"
@@ -1954,6 +2240,13 @@ export default function ClubEventsPage() {
   const [showAllRecurring, setShowAllRecurring] = useState<Record<string, boolean>>(
     {},
   );
+  const [showPastEvents, setShowPastEvents] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null);
+  const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
 
   const loadAllEventQuestions = useCallback(async () => {
     if (eventIds.length === 0) {
@@ -2799,6 +3092,78 @@ export default function ClubEventsPage() {
     .filter((e) => new Date(e.date) < now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  const calendarEventDateKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    for (const event of visibleEvents) {
+      const key = eventCalendarDateKey(event.date);
+      const parsed = new Date(`${key}T12:00:00`);
+      if (
+        !Number.isNaN(parsed.getTime()) &&
+        parsed.getFullYear() === year &&
+        parsed.getMonth() === month
+      ) {
+        keys.add(key);
+      }
+    }
+    return keys;
+  }, [visibleEvents, calendarMonth]);
+
+  const calendarSidebarStats = useMemo(
+    () => ({
+      upcoming: eventFilterCounts.all,
+      publicCount: eventFilterCounts.public,
+      myRsvps: eventFilterCounts.my_rsvps,
+      nextEventDate: formatNextEventDateLabel(upcomingEvents[0]?.date),
+    }),
+    [eventFilterCounts, upcomingEvents],
+  );
+
+  const scrollToEventInList = useCallback((eventId: string) => {
+    window.requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-event-id="${eventId}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedEventId(eventId);
+      window.setTimeout(() => setHighlightedEventId(null), 2000);
+    });
+  }, []);
+
+  const handleCalendarDayClick = useCallback(
+    (dateKey: string) => {
+      setSelectedCalendarDay(dateKey);
+      if (!calendarEventDateKeys.has(dateKey)) return;
+
+      const match = filteredUpcomingEvents.find(
+        (event) => eventCalendarDateKey(event.date) === dateKey,
+      );
+      if (!match) return;
+
+      const sameTitleCount = filteredUpcomingEvents.filter(
+        (event) => event.title === match.title,
+      ).length;
+      const needsExpand =
+        sameTitleCount > 1 && !(showAllRecurring[match.title] ?? false);
+      const firstInGroup = filteredUpcomingEvents.find(
+        (event) => event.title === match.title,
+      );
+
+      if (needsExpand && firstInGroup && firstInGroup.id !== match.id) {
+        setShowAllRecurring((prev) => ({ ...prev, [match.title]: true }));
+        window.setTimeout(() => scrollToEventInList(match.id), 80);
+        return;
+      }
+
+      scrollToEventInList(match.id);
+    },
+    [
+      calendarEventDateKeys,
+      filteredUpcomingEvents,
+      scrollToEventInList,
+      showAllRecurring,
+    ],
+  );
+
   useEffect(() => {
     const idsToPrefetch = new Set<string>();
     for (const item of upcomingDisplayList) {
@@ -3206,6 +3571,15 @@ export default function ClubEventsPage() {
         </Card>
       )}
 
+      <div
+        style={{
+          display: "flex",
+          gap: "24px",
+          alignItems: "flex-start",
+          flexDirection: isMobile ? "column" : "row",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0, width: "100%" }}>
       <div style={upcomingSectionHeadingStyle}>
         Upcoming · {filteredUpcomingEvents.length} event
         {filteredUpcomingEvents.length !== 1 ? "s" : ""}
@@ -3304,6 +3678,7 @@ export default function ClubEventsPage() {
                   myStatus={myRsvps[event.id]}
                   rsvpAccess={getRsvpAccessForEvent(event)}
                   onRsvp={handleRsvp}
+                  highlighted={highlightedEventId === event.id}
                 />
               );
             }
@@ -3341,49 +3716,95 @@ export default function ClubEventsPage() {
                 }
                 onOpenResponses={openResponsesModal}
                 hasFormResponses={(eventQuestionsMap[event.id]?.length ?? 0) > 0}
+                highlighted={highlightedEventId === event.id}
               />
             );
           })}
-                </div>
+        </div>
       )}
 
-      {/* Past Events */}
-      {pastEvents.length > 0 && (
-        <>
-          <h2 style={pastSectionHeadingStyle}>Past Events</h2>
-          <div className="space-y-3">
-            {pastEvents.map((event) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                category={getEventCategory(event.id)}
-                clubLogoUrl={clubBrand.logoUrl}
-                clubAbbreviation={clubBrand.abbreviation}
-                isRecurring={isEventRecurring(event.id)}
-                isPrivileged={isPrivileged}
-                rsvpAccess={getRsvpAccessForEvent(event)}
-                past
-                counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}
-                copiedEventId={copiedEventId}
-                planningTaskCount={planningTaskCountByEvent[event.id] ?? 0}
-                onPlanningTasksClick={openPlanningTasks}
-                onAddPlanningTask={openPlanningTaskQuickAdd}
-                attendeePreview={attendees[event.id]}
-                onRsvp={handleRsvp}
-                onManage={openManageEvent}
-                onStartEdit={startEdit}
-                onDelete={handleDelete}
-                onCopyRsvpLink={copyRsvpLink}
-                onAddToCalendar={downloadEventIcs}
-                showViewAttendees={false}
-                onToggleAttendees={toggleAttendees}
-                onOpenResponses={openResponsesModal}
-                hasFormResponses={false}
-              />
-            ))}
-                  </div>
-        </>
-      )}
+      {pastEvents.length > 0 ? (
+        <section style={{ opacity: 0.85 }}>
+          <button
+            type="button"
+            onClick={() => setShowPastEvents((value) => !value)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "transparent",
+              border: "none",
+              color: "#555555",
+              cursor: "pointer",
+              fontSize: "13px",
+              fontWeight: 600,
+              padding: 0,
+              marginBottom: showPastEvents ? "12px" : 0,
+            }}
+          >
+            <span style={pastSectionHeadingStyle}>Past Events</span>
+            <span style={{ fontSize: "12px", color: "#444444" }}>
+              ({pastEvents.length})
+            </span>
+            <ChevronDown
+              size={16}
+              style={{
+                transform: showPastEvents ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.15s ease",
+              }}
+            />
+          </button>
+          {showPastEvents ? (
+            <div className="space-y-3">
+              {pastEvents.map((event) => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  category={getEventCategory(event.id)}
+                  clubLogoUrl={clubBrand.logoUrl}
+                  clubAbbreviation={clubBrand.abbreviation}
+                  isRecurring={isEventRecurring(event.id)}
+                  isPrivileged={isPrivileged}
+                  rsvpAccess={getRsvpAccessForEvent(event)}
+                  past
+                  counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}
+                  copiedEventId={copiedEventId}
+                  planningTaskCount={planningTaskCountByEvent[event.id] ?? 0}
+                  onPlanningTasksClick={openPlanningTasks}
+                  onAddPlanningTask={openPlanningTaskQuickAdd}
+                  attendeePreview={attendees[event.id]}
+                  onRsvp={handleRsvp}
+                  onManage={openManageEvent}
+                  onStartEdit={startEdit}
+                  onDelete={handleDelete}
+                  onCopyRsvpLink={copyRsvpLink}
+                  onAddToCalendar={downloadEventIcs}
+                  showViewAttendees={false}
+                  onToggleAttendees={toggleAttendees}
+                  onOpenResponses={openResponsesModal}
+                  hasFormResponses={false}
+                />
+              ))}
+            </div>
+          ) : (
+            <p style={{ margin: 0, fontSize: "13px", color: "#444444" }}>
+              Past events are collapsed. Tap above to expand.
+            </p>
+          )}
+        </section>
+      ) : null}
+        </div>
+
+        <EventCalendarSidebar
+          month={calendarMonth}
+          onMonthChange={setCalendarMonth}
+          eventDateKeys={calendarEventDateKeys}
+          selectedDay={selectedCalendarDay}
+          onDayClick={handleCalendarDayClick}
+          stats={calendarSidebarStats}
+          fullWidth={isMobile}
+        />
+      </div>
 
       {rsvpModalEvent ? (
         <div
