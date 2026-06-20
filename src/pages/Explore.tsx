@@ -49,7 +49,7 @@ function ExploreSearchBar({
   fullWidth?: boolean;
 }) {
   return (
-    <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "560px" }}>
+    <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "720px", width: "100%" }}>
       <svg
         className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2"
         style={{ color: "#555555" }}
@@ -77,9 +77,9 @@ function ExploreSearchBar({
           borderRadius: "10px",
           padding: "0 20px 0 48px",
           color: "#ffffff",
-          fontSize: "16px",
+          fontSize: "17px",
           width: "100%",
-          height: "56px",
+          height: "60px",
           boxSizing: "border-box",
           outline: "none",
         }}
@@ -234,6 +234,38 @@ function CategoryFilterDropdown({
       ) : null}
     </div>
   );
+}
+
+const PREFERRED_QUICK_CHIP_LABELS = [
+  "Academic",
+  "Social",
+  "Cultural",
+  "Sports",
+  "Professional",
+  "Arts",
+] as const;
+
+const QUICK_CHIP_CATEGORY_ALIASES: Record<string, string[]> = {
+  Academic: ["Academic", "Science"],
+  Social: ["Social", "Community"],
+  Cultural: ["Cultural", "Culture"],
+  Sports: ["Sports"],
+  Professional: ["Professional", "Business"],
+  Arts: ["Arts", "Art"],
+};
+
+function resolveQuickCategoryChips(
+  categories: string[],
+): { label: string; value: string }[] {
+  const nonAll = categories.filter((category) => category !== "All");
+
+  return PREFERRED_QUICK_CHIP_LABELS.flatMap((label) => {
+    const aliases = QUICK_CHIP_CATEGORY_ALIASES[label] ?? [label];
+    const match = nonAll.find((category) =>
+      aliases.some((alias) => category.toLowerCase() === alias.toLowerCase()),
+    );
+    return match ? [{ label, value: match }] : [];
+  });
 }
 
 function HorizontalClubRow({
@@ -427,23 +459,19 @@ export default function Explore() {
     return [...unclaimed, ...claimed];
   }, [filteredClubs, claimMode]);
 
+  const categoryCount = Math.max(categories.length - 1, 0);
+  const clubCountLabel =
+    clubs.length >= 260 ? "260+" : clubs.length > 0 ? String(clubs.length) : "0";
+  const quickCategoryChips = useMemo(
+    () => resolveQuickCategoryChips(categories),
+    [categories],
+  );
+
   const emptyStateMessage = useMemo(() => {
-    if (search && activeCategory !== "All") {
+    if (search || activeCategory !== "All") {
       return {
-        title: "No matching clubs",
-        description: `No clubs match "${search}" in the ${activeCategory} category.`,
-      };
-    }
-    if (search) {
-      return {
-        title: "No search results",
-        description: `No search results for "${search}". Try a different search term.`,
-      };
-    }
-    if (activeCategory !== "All") {
-      return {
-        title: "No clubs in this category",
-        description: `There are no clubs in the ${activeCategory} category yet.`,
+        title: "No clubs found",
+        description: "Try searching a different keyword or clearing your filters.",
       };
     }
     return {
@@ -452,24 +480,22 @@ export default function Explore() {
     };
   }, [search, activeCategory]);
 
-  const categoryCount = Math.max(categories.length - 1, 0);
-
   return (
     <div style={{ backgroundColor: PAGE_BG, minHeight: "100%" }}>
       {/* Hero */}
       <section style={{ backgroundColor: PAGE_BG }}>
         <div
           style={{
-            padding: isMobile ? "48px 16px 40px" : "120px 48px 88px",
+            padding: isMobile ? "28px 16px 20px" : "48px 48px 24px",
             textAlign: "left",
           }}
         >
           <h1
             style={{
-              fontSize: isMobile ? "36px" : "64px",
+              fontSize: isMobile ? "32px" : "52px",
               fontWeight: 800,
               color: "#ffffff",
-              lineHeight: 1,
+              lineHeight: 1.05,
               margin: 0,
             }}
           >
@@ -477,51 +503,98 @@ export default function Explore() {
           </h1>
           <p
             style={{
-              fontSize: "16px",
+              fontSize: "15px",
               color: "#555555",
-              marginTop: "12px",
+              marginTop: "8px",
               marginBottom: 0,
-              lineHeight: 1.5,
+              lineHeight: 1.45,
             }}
           >
-            Browse 260+ student organizations at the University of Guelph
+            Browse {clubCountLabel} student organizations at the University of Guelph
           </p>
 
-          <div style={{ marginTop: "28px", width: "100%" }}>
+          <div
+            style={{
+              marginTop: "16px",
+              width: "100%",
+              maxWidth: "720px",
+            }}
+          >
             <ExploreSearchBar
               value={search}
               onChange={setSearch}
-              placeholder="Search clubs by name, tag, or keyword…"
-              fullWidth={isMobile}
+              placeholder="Search clubs by name, interest, category, or keyword..."
+              fullWidth
             />
-          </div>
 
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#444444",
-              marginTop: "16px",
-              marginBottom: 0,
-            }}
-          >
-            260+ clubs · {categoryCount} categories
-          </p>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "10px",
+                marginTop: "10px",
+              }}
+            >
+              <CategoryFilterDropdown
+                categories={categories}
+                activeCategory={activeCategory}
+                onSelect={setActiveCategory}
+              />
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "#444444",
+                  margin: 0,
+                }}
+              >
+                {clubCountLabel} clubs · {categoryCount} categories
+              </p>
+            </div>
+
+            {quickCategoryChips.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                  marginTop: "10px",
+                }}
+              >
+                {quickCategoryChips.map((chip) => {
+                  const active = activeCategory === chip.value;
+                  return (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      onClick={() =>
+                        setActiveCategory(active ? "All" : chip.value)
+                      }
+                      style={{
+                        background: active ? "rgba(229, 25, 55, 0.12)" : "#1a1a1a",
+                        border: active ? `1px solid ${ACCENT_RED}` : "1px solid #2a2a2a",
+                        color: active ? ACCENT_RED : "#777777",
+                        borderRadius: "20px",
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        fontWeight: active ? 600 : 400,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
       </section>
 
       <div
         className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
-        style={{ backgroundColor: PAGE_BG, paddingTop: isMobile ? "8px" : "16px" }}
+        style={{ backgroundColor: PAGE_BG, paddingTop: isMobile ? "4px" : "8px" }}
       >
-        <div style={{ marginBottom: "24px" }}>
-          <CategoryFilterDropdown
-            categories={categories}
-            activeCategory={activeCategory}
-            onSelect={setActiveCategory}
-            fullWidth={isMobile}
-          />
-        </div>
-
         {claimMode ? (
           <div
             style={{
@@ -560,15 +633,38 @@ export default function Explore() {
         {!loading && !hasActiveFilters ? (
           <>
             {mostActiveClubs.length > 0 ? (
-              <section className="mb-12" style={{ backgroundColor: PAGE_BG }}>
-                <h2 style={sectionHeadingStyle}>Most Active Clubs</h2>
-                <p style={{ ...sectionSubheadingStyle, marginBottom: "14px" }}>
-                  Ranked by member activity
-                </p>
+              <section className="mb-10" style={{ backgroundColor: PAGE_BG }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "flex-end",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  <div>
+                    <h2 style={sectionHeadingStyle}>Most Active Clubs</h2>
+                    <p style={sectionSubheadingStyle}>Ranked by member count</p>
+                  </div>
+                  <a
+                    href="#all-clubs"
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: ACCENT_RED,
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Jump to All Clubs →
+                  </a>
+                </div>
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
                     gap: "20px",
                     width: "100%",
                   }}
@@ -598,7 +694,7 @@ export default function Explore() {
         ) : null}
 
         {/* Main grid */}
-        <div className="pb-12 pt-2" style={{ backgroundColor: PAGE_BG }}>
+        <div id="all-clubs" className="pb-12 pt-2" style={{ backgroundColor: PAGE_BG }}>
           {error ? (
             <div
               role="alert"
@@ -629,7 +725,8 @@ export default function Explore() {
                   </h2>
                   <p style={sectionSubheadingStyle}>
                     Showing{" "}
-                    <span style={{ fontWeight: 600, color: "#ffffff" }}>260+</span> clubs
+                    <span style={{ fontWeight: 600, color: "#ffffff" }}>{clubCountLabel}</span>{" "}
+                    clubs
                     {activeCategory !== "All" ? (
                       <span>
                         {" "}
