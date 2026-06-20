@@ -10,6 +10,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
   Calendar,
+  Check,
   ChevronDown,
   ChevronLeft,
   Clock,
@@ -19,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuthContext } from "../context/useAuthContext";
+import { useEventRsvps } from "../hooks/useEventRsvps";
 import { supabase } from "../lib/supabaseClient";
 import {
   EVENT_CATEGORIES,
@@ -27,6 +29,7 @@ import {
 } from "../lib/eventCategories";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
+import type { RsvpStatus } from "../types";
 
 type TimeFilter = "week" | "month" | "all" | "custom";
 type ViewMode = "grid" | "grouped";
@@ -218,66 +221,6 @@ const smallPillStyle = (active: boolean) => ({
   fontWeight: 500,
   cursor: "pointer",
 });
-
-const periodNavPillStyle = (active: boolean): CSSProperties => ({
-  background: "transparent",
-  border: "1px solid #E51937",
-  color: active ? "#ffffff" : "#cccccc",
-  borderRadius: "6px",
-  padding: "6px 16px",
-  fontSize: "12px",
-  fontWeight: 500,
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-});
-
-function PeriodNavLinks({
-  pageView,
-  onWeek,
-  onMonth,
-}: {
-  pageView: EventsPageView;
-  onWeek: () => void;
-  onMonth: () => void;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-        flexWrap: "wrap",
-      }}
-    >
-      <button
-        type="button"
-        onClick={onWeek}
-        style={periodNavPillStyle(pageView === "week")}
-        onMouseEnter={(e) => {
-          if (pageView !== "week") e.currentTarget.style.color = "#ffffff";
-        }}
-        onMouseLeave={(e) => {
-          if (pageView !== "week") e.currentTarget.style.color = "#cccccc";
-        }}
-      >
-        This week
-      </button>
-      <button
-        type="button"
-        onClick={onMonth}
-        style={periodNavPillStyle(pageView === "month")}
-        onMouseEnter={(e) => {
-          if (pageView !== "month") e.currentTarget.style.color = "#ffffff";
-        }}
-        onMouseLeave={(e) => {
-          if (pageView !== "month") e.currentTarget.style.color = "#cccccc";
-        }}
-      >
-        This month
-      </button>
-    </div>
-  );
-}
 
 const fieldStyle: CSSProperties = {
   backgroundColor: "#111111",
@@ -542,14 +485,115 @@ function computeEventCardDescriptionPreview(
   }
 }
 
+const PAGE_BG = "#0f0f0f";
+
+function PublicEventSignUpButton({
+  status,
+  hovered,
+  onClick,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  status?: RsvpStatus;
+  hovered: boolean;
+  onClick: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const baseStyle: CSSProperties = {
+    borderRadius: "6px",
+    padding: "6px 14px",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  };
+
+  if (status === "going") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          ...baseStyle,
+          background: "#FFC429",
+          color: "#000000",
+          border: "none",
+          borderRadius: "20px",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+        }}
+      >
+        Going
+        <Check size={14} aria-hidden />
+      </button>
+    );
+  }
+
+  if (status === "maybe") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          ...baseStyle,
+          background: "transparent",
+          border: "1px solid #FFC429",
+          color: "#FFC429",
+        }}
+      >
+        Maybe
+      </button>
+    );
+  }
+
+  if (status === "not_going") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          ...baseStyle,
+          background: "transparent",
+          border: "1px solid #555555",
+          color: "#555555",
+          fontWeight: 500,
+        }}
+      >
+        Not Going
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
+        ...baseStyle,
+        background: hovered ? "#E51937" : "transparent",
+        color: hovered ? "#ffffff" : "#E51937",
+        border: "1px solid #E51937",
+      }}
+    >
+      Sign Up
+    </button>
+  );
+}
+
 function EventDetailModal({
   event,
   user,
+  myRsvpStatus,
   onClose,
   onSignUp,
 }: {
   event: PublicEventDisplay;
   user: { id: string } | null;
+  myRsvpStatus?: RsvpStatus;
   onClose: () => void;
   onSignUp: (eventId: string) => void;
 }) {
@@ -744,17 +788,36 @@ function EventDetailModal({
             onClick={() => onSignUp(event.id)}
             style={{
               width: "100%",
-              background: "#E51937",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "8px",
+              background:
+                myRsvpStatus === "going"
+                  ? "#FFC429"
+                  : myRsvpStatus === "maybe"
+                    ? "transparent"
+                    : "#E51937",
+              color:
+                myRsvpStatus === "going"
+                  ? "#000000"
+                  : myRsvpStatus === "maybe"
+                    ? "#FFC429"
+                    : "#ffffff",
+              border:
+                myRsvpStatus === "maybe" ? "1px solid #FFC429" : "none",
+              borderRadius: myRsvpStatus === "going" ? "999px" : "8px",
               padding: "14px",
               fontSize: "15px",
               fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            {user ? "Sign Up for this Event" : "Sign In to RSVP"}
+            {!user
+              ? "Sign In to RSVP"
+              : myRsvpStatus === "going"
+                ? "Going ✓"
+                : myRsvpStatus === "maybe"
+                  ? "RSVP: Maybe"
+                  : myRsvpStatus === "not_going"
+                    ? "Update RSVP"
+                    : "Sign Up for this Event"}
           </button>
         </div>
       </div>
@@ -764,10 +827,12 @@ function EventDetailModal({
 
 function PublicEventCard({
   event,
+  myRsvpStatus,
   onViewDetails,
   onSignUp,
 }: {
   event: PublicEventDisplay;
+  myRsvpStatus?: RsvpStatus;
   onViewDetails: (event: PublicEventDisplay) => void;
   onSignUp: (eventId: string) => void;
 }) {
@@ -983,25 +1048,13 @@ function PublicEventCard({
         >
           View Details
         </button>
-        <button
-          type="button"
+        <PublicEventSignUpButton
+          status={myRsvpStatus}
+          hovered={signUpHovered}
           onClick={() => onSignUp(event.id)}
           onMouseEnter={() => setSignUpHovered(true)}
           onMouseLeave={() => setSignUpHovered(false)}
-          style={{
-            background: signUpHovered ? "#E51937" : "transparent",
-            color: signUpHovered ? "#ffffff" : "#E51937",
-            border: "1px solid #E51937",
-            borderRadius: "6px",
-            padding: "6px 14px",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
-        >
-          Sign Up
-        </button>
+        />
       </div>
     </article>
   );
@@ -1010,11 +1063,13 @@ function PublicEventCard({
 function EventCardsGrid({
   events,
   isMobile,
+  myRsvps,
   onViewDetails,
   onSignUp,
 }: {
   events: PublicEventDisplay[];
   isMobile: boolean;
+  myRsvps: Record<string, RsvpStatus>;
   onViewDetails: (event: PublicEventDisplay) => void;
   onSignUp: (eventId: string) => void;
 }) {
@@ -1024,6 +1079,7 @@ function EventCardsGrid({
         <PublicEventCard
           key={ev.id}
           event={ev}
+          myRsvpStatus={myRsvps[ev.id]}
           onViewDetails={onViewDetails}
           onSignUp={onSignUp}
         />
@@ -1190,6 +1246,9 @@ export default function PublicEventsPage() {
     return result;
   }, [events]);
 
+  const eventIds = useMemo(() => events.map((event) => event.id), [events]);
+  const { myRsvps } = useEventRsvps(eventIds);
+
   const clubCategories = useMemo(() => {
     const set = new Set<string>();
     for (const ev of eventsWithStartTime) {
@@ -1316,27 +1375,29 @@ export default function PublicEventsPage() {
   const horizontalPad = isMobile ? "16px" : "48px";
 
   return (
-    <div style={{ background: "#000000", minHeight: "100vh" }}>
+    <div style={{ background: PAGE_BG, minHeight: "100vh" }}>
       <header
         style={{
-          padding: isMobile ? "40px 16px 24px" : "48px 48px 24px",
+          padding: isMobile ? "28px 16px 12px" : "40px 48px 12px",
+          backgroundColor: PAGE_BG,
         }}
       >
         <h1
           style={{
-            fontSize: isMobile ? "36px" : "56px",
+            fontSize: isMobile ? "32px" : "52px",
             fontWeight: 800,
             color: "#ffffff",
             margin: 0,
-            lineHeight: 1.0,
+            lineHeight: 1.05,
           }}
         >
           Campus <span style={{ color: "#E51937" }}>Events</span>
         </h1>
         <div
           style={{
-            marginTop: "20px",
+            marginTop: "12px",
             width: "100%",
+            maxWidth: "720px",
           }}
         >
           <input
@@ -1354,29 +1415,11 @@ export default function PublicEventsPage() {
             }}
           />
         </div>
-        {pageView === "home" ? (
-          <div style={{ marginTop: "14px" }}>
-            <p
-              style={{
-                fontSize: "14px",
-                color: "#555555",
-                margin: "0 0 8px",
-              }}
-            >
-              Browse by
-            </p>
-            <PeriodNavLinks
-              pageView={pageView}
-              onWeek={openWeekView}
-              onMonth={openMonthView}
-            />
-          </div>
-        ) : null}
       </header>
 
-      <div style={{ padding: `0 ${horizontalPad} 60px` }}>
+      <div style={{ padding: `0 ${horizontalPad} 48px`, backgroundColor: PAGE_BG }}>
         {pageView !== "home" ? (
-          <div style={{ marginBottom: "24px", paddingTop: "8px" }}>
+          <div style={{ marginBottom: "16px" }}>
             <button
               type="button"
               onClick={goToEventsHome}
@@ -1391,7 +1434,7 @@ export default function PublicEventsPage() {
                 fontWeight: 500,
                 cursor: "pointer",
                 padding: 0,
-                marginBottom: "16px",
+                marginBottom: "12px",
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.color = "#ffffff";
@@ -1403,13 +1446,6 @@ export default function PublicEventsPage() {
               <ChevronLeft size={16} aria-hidden />
               All events
             </button>
-            <div style={{ marginBottom: "16px" }}>
-              <PeriodNavLinks
-                pageView={pageView}
-                onWeek={openWeekView}
-                onMonth={openMonthView}
-              />
-            </div>
             <h2
               style={{
                 fontSize: isMobile ? "24px" : "32px",
@@ -1427,7 +1463,7 @@ export default function PublicEventsPage() {
               style={{
                 fontSize: "14px",
                 color: "#555555",
-                marginTop: "8px",
+                marginTop: "6px",
                 marginBottom: 0,
               }}
             >
@@ -1441,10 +1477,62 @@ export default function PublicEventsPage() {
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: "12px",
             flexWrap: "wrap",
-            marginBottom: "24px",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "10px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={openWeekView}
+            style={smallPillStyle(pageView === "week" || timeFilter === "week")}
+          >
+            This Week
+          </button>
+          <button
+            type="button"
+            onClick={openMonthView}
+            style={smallPillStyle(pageView === "month" || timeFilter === "month")}
+          >
+            This Month
+          </button>
+          {pageView === "home" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  goToEventsHome();
+                  setTimeFilter("all");
+                }}
+                style={smallPillStyle(timeFilter === "all" && pageView === "home")}
+              >
+                All Upcoming
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPageView("home");
+                  setTimeFilter("custom");
+                }}
+                style={smallPillStyle(timeFilter === "custom")}
+              >
+                Custom Dates
+              </button>
+            </>
+          ) : null}
+          <div style={{ marginLeft: isMobile ? undefined : "auto" }}>
+            <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+            gap: "12px",
+            marginBottom: timeFilter === "custom" && pageView === "home" ? "10px" : "16px",
           }}
         >
           <div style={{ minWidth: isMobile ? "100%" : "180px", flex: isMobile ? undefined : "0 1 200px" }}>
@@ -1481,45 +1569,6 @@ export default function PublicEventsPage() {
               ))}
             </StyledSelect>
           </div>
-          {pageView === "home" ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                flexWrap: "wrap",
-                marginLeft: isMobile ? undefined : "auto",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  goToEventsHome();
-                  setTimeFilter("all");
-                }}
-                style={smallPillStyle(timeFilter === "all" && pageView === "home")}
-              >
-                All Upcoming
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPageView("home");
-                  setTimeFilter("custom");
-                }}
-                style={{
-                  ...smallPillStyle(timeFilter === "custom"),
-                  background:
-                    timeFilter === "custom" ? "#E51937" : "transparent",
-                  border:
-                    timeFilter === "custom" ? "none" : "1px solid #333333",
-                  color: timeFilter === "custom" ? "#ffffff" : "#777777",
-                }}
-              >
-                Custom Dates
-              </button>
-            </div>
-          ) : null}
           {hasActiveFilters ? (
             <button
               type="button"
@@ -1530,6 +1579,7 @@ export default function PublicEventsPage() {
                 border: "1px solid #E51937",
                 background: "transparent",
                 fontWeight: 600,
+                marginBottom: isMobile ? undefined : "2px",
               }}
             >
               Clear filters
@@ -1543,7 +1593,7 @@ export default function PublicEventsPage() {
               display: "grid",
               gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 220px))",
               gap: "12px",
-              marginBottom: "24px",
+              marginBottom: "16px",
             }}
           >
             <div>
@@ -1613,50 +1663,33 @@ export default function PublicEventsPage() {
           </div>
         ) : (
           <>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "16px",
-                marginBottom: "20px",
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ marginBottom: "12px" }}>
               <p
                 style={{
-                  fontSize: "13px",
+                  fontSize: "14px",
                   fontWeight: 600,
-                  margin: 0,
+                  margin: "0 0 4px",
+                  color: "#ffffff",
                 }}
               >
-                <span style={{ color: "#ffffff", fontWeight: 700 }}>
-                  {filtered.length}
-                </span>
-                <span style={{ color: "#555555" }}>
-                  {" "}
-                  upcoming event{filtered.length === 1 ? "" : "s"}
-                </span>
+                {filtered.length} upcoming event{filtered.length === 1 ? "" : "s"}
               </p>
-              <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
-            </div>
-
-            {pageView === "home" ? (
               <p
                 style={{
                   fontSize: "13px",
                   color: "#555555",
-                  margin: "0 0 16px",
+                  margin: 0,
                 }}
               >
-                Browse upcoming events at the University of Guelph
+                Browse upcoming events at the University of Guelph.
               </p>
-            ) : null}
+            </div>
 
             {viewMode === "grid" ? (
               <EventCardsGrid
                 events={filtered}
                 isMobile={isMobile}
+                myRsvps={myRsvps}
                 onViewDetails={setSelectedEvent}
                 onSignUp={handleSignUp}
               />
@@ -1694,6 +1727,7 @@ export default function PublicEventsPage() {
                     <EventCardsGrid
                       events={groupedEvents[groupKey]}
                       isMobile={isMobile}
+                      myRsvps={myRsvps}
                       onViewDetails={setSelectedEvent}
                       onSignUp={handleSignUp}
                     />
@@ -1709,6 +1743,7 @@ export default function PublicEventsPage() {
         <EventDetailModal
           event={selectedEvent}
           user={user}
+          myRsvpStatus={myRsvps[selectedEvent.id]}
           onClose={() => setSelectedEvent(null)}
           onSignUp={(eventId) => {
             setSelectedEvent(null);
