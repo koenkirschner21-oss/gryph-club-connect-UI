@@ -246,32 +246,58 @@ export function TaskTypeFilterDropdown({
   );
 }
 
-function StatusCircleIcon({ status }: { status: TaskStatus }) {
+function StatusCircleIcon({
+  status,
+  isUpdating = false,
+}: {
+  status: TaskStatus;
+  isUpdating?: boolean;
+}) {
+  if (isUpdating) {
+    return (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        aria-hidden
+        style={{ animation: "taskStatusSpin 0.8s linear infinite", flexShrink: 0 }}
+      >
+        <style>{`@keyframes taskStatusSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          fill="none"
+          stroke="#2a2a2a"
+          strokeWidth="3"
+        />
+        <path
+          fill="none"
+          stroke={GOLD}
+          strokeWidth="3"
+          strokeLinecap="round"
+          d="M12 2a10 10 0 0 1 10 10"
+        />
+      </svg>
+    );
+  }
+
   if (status === "done") {
     return <CheckCircle size={18} color={GOLD} aria-hidden />;
   }
 
   if (status === "in_progress") {
     return (
-      <>
-        <style>{`@keyframes taskStatusSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 18 18"
-          aria-hidden
-          style={{ animation: "taskStatusSpin 1.2s linear infinite", flexShrink: 0 }}
-        >
-          <circle cx="9" cy="9" r="7" fill="none" stroke="#2a2a2a" strokeWidth="2" />
-          <path
-            d="M9 2 A7 7 0 0 1 16 9"
-            fill="none"
-            stroke={GOLD}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      </>
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden style={{ flexShrink: 0 }}>
+        <circle cx="9" cy="9" r="7" fill="none" stroke="#2a2a2a" strokeWidth="2" />
+        <path
+          d="M9 2 A7 7 0 0 1 16 9"
+          fill="none"
+          stroke={GOLD}
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
     );
   }
 
@@ -298,6 +324,34 @@ export function parseTaskDueDay(dueDate: string): Date | null {
   if (Number.isNaN(due.getTime())) return null;
   due.setHours(0, 0, 0, 0);
   return due;
+}
+
+export function formatDueDateSubLabel(
+  dueDate: string | undefined,
+  status: TaskStatus,
+): { text: string; color: string } | null {
+  if (!dueDate?.trim() || status === "done") return null;
+  const dueDay = parseTaskDueDay(dueDate);
+  if (!dueDay) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays < 0) {
+    const days = Math.abs(diffDays);
+    return {
+      text: `Overdue by ${days} day${days === 1 ? "" : "s"}`,
+      color: ACCENT_RED,
+    };
+  }
+  if (diffDays === 0) {
+    return { text: "Due today", color: "#777777" };
+  }
+  return {
+    text: `${diffDays} day${diffDays === 1 ? "" : "s"} left`,
+    color: "#777777",
+  };
 }
 
 export function formatRelativeDueLabel(
@@ -586,6 +640,7 @@ export function TasksListTableRow({
   onViewDetails,
   menu,
   linkedLabel,
+  statusUpdating = false,
 }: {
   task: Task;
   isDone: boolean;
@@ -603,33 +658,33 @@ export function TasksListTableRow({
   onViewDetails: () => void;
   menu: ReactNode;
   linkedLabel?: ReactNode;
+  statusUpdating?: boolean;
 }) {
-  const relativeDue = formatRelativeDueLabel(task.dueDate, task.status);
+  const dueSubLabel = formatDueDateSubLabel(task.dueDate, task.status);
 
   return (
     <div
       onClick={onRowClick}
-      onMouseEnter={() => undefined}
       style={{
         display: "grid",
         gridTemplateColumns: LIST_GRID_COLUMNS,
         gap: "8px",
         alignItems: "center",
-        background: CARD_BG,
+        background: isHovered ? "#181818" : CARD_BG,
         border: `1px solid ${isHovered ? "#333333" : CARD_BORDER}`,
         borderRadius: "8px",
         padding: "12px 14px",
         marginBottom: "8px",
         opacity: isDone ? 0.65 : 1,
         cursor: "pointer",
-        transition: "border-color 0.15s ease, opacity 0.15s ease",
+        transition: "border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease",
       }}
     >
       <GripVertical size={16} color="#333333" aria-hidden style={{ flexShrink: 0 }} />
 
       <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
         <div style={{ marginTop: "2px" }}>
-          <StatusCircleIcon status={task.status} />
+          <StatusCircleIcon status={task.status} isUpdating={statusUpdating} />
         </div>
         <div style={{ minWidth: 0 }}>
           <p
@@ -672,11 +727,11 @@ export function TasksListTableRow({
         {task.dueDate ? (
           <>
             <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
-              {formatTaskDate(task.dueDate)}
+              Due: {formatTaskDate(task.dueDate)}
             </p>
-            {relativeDue ? (
-              <p style={{ margin: "2px 0 0", fontSize: "11px", color: relativeDue.color }}>
-                {relativeDue.text}
+            {dueSubLabel ? (
+              <p style={{ margin: "2px 0 0", fontSize: "11px", color: dueSubLabel.color }}>
+                {dueSubLabel.text}
               </p>
             ) : null}
           </>
@@ -733,6 +788,7 @@ export function TasksListMobileCard({
   menu,
   linkedLabel,
   commentsSection,
+  statusUpdating = false,
 }: {
   task: Task;
   isDone: boolean;
@@ -749,6 +805,7 @@ export function TasksListMobileCard({
   menu: ReactNode;
   linkedLabel?: ReactNode;
   commentsSection?: ReactNode;
+  statusUpdating?: boolean;
 }) {
   return (
     <div
@@ -757,7 +814,7 @@ export function TasksListMobileCard({
         display: "flex",
         alignItems: "center",
         gap: "12px",
-        background: CARD_BG,
+        background: isHovered ? "#181818" : CARD_BG,
         borderTop: `1px solid ${isHovered ? "#333333" : CARD_BORDER}`,
         borderRight: `1px solid ${isHovered ? "#333333" : CARD_BORDER}`,
         borderBottom: `1px solid ${isHovered ? "#333333" : CARD_BORDER}`,
@@ -766,7 +823,7 @@ export function TasksListMobileCard({
         padding: "14px 16px",
         marginBottom: "8px",
         opacity: isDone ? 0.65 : 1,
-        transition: "opacity 0.15s ease, border-color 0.15s ease",
+        transition: "opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease",
         cursor: "pointer",
       }}
     >
@@ -780,7 +837,7 @@ export function TasksListMobileCard({
             marginBottom: "4px",
           }}
         >
-          <StatusCircleIcon status={task.status} />
+          <StatusCircleIcon status={task.status} isUpdating={statusUpdating} />
           <p
             style={{
               fontSize: "15px",

@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   MessageSquare,
-  MoreHorizontal,
   Send,
   X,
-  Circle,
   CheckCircle,
 } from "lucide-react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubTasks } from "../../hooks/useClubTasks";
@@ -16,14 +14,9 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
-import {
-  formatTaskDate,
-  getTaskDueUrgency,
-  taskDueDateColor,
-} from "../../lib/taskDueUrgency";
+import { formatTaskDate } from "../../lib/taskDueUrgency";
 import type { MemberRole, Task, TaskStatus, TaskPriority, TaskType } from "../../types";
 import {
-  TASK_TYPE_BADGE_LABELS,
   TASK_TYPE_FILTER_CHIPS,
   TASK_TYPE_FORM_OPTIONS,
   type TaskTypeFilter,
@@ -45,43 +38,21 @@ import {
   TasksListStatCards,
   TasksListTableRow,
   TaskTypeFilterDropdown,
-  formatRelativeDueLabel,
+  formatDueDateSubLabel,
   parseTaskDueDay,
   sortTasksByDueDate,
 } from "./tasks/TasksListUI";
 
-const statusLabels: Record<TaskStatus, string> = {
-  todo: "To Do",
-  in_progress: "In Progress",
-  done: "Done",
-  cancelled: "Cancelled",
-};
-
-const boardColumnHeaderColor: Record<TaskStatus, string> = {
-  todo: "#777777",
-  in_progress: "#FFC429",
-  done: "#777777",
-  cancelled: "#555555",
-};
-
-const BOARD_COLUMNS: TaskStatus[] = ["todo", "in_progress", "done"];
-
-type ViewMode = "board" | "list";
-
 type AssignmentTab = "assigned_to_me" | "assigned_by_me";
 
-type TaskQuickFilter = "overdue" | "high_priority" | "completed";
+type TaskQuickFilter = "all" | "overdue" | "high_priority" | "completed";
 
 const quickFilterChips: { id: TaskQuickFilter; label: string }[] = [
+  { id: "all", label: "All" },
   { id: "overdue", label: "Overdue" },
   { id: "high_priority", label: "High Priority" },
   { id: "completed", label: "Completed" },
 ];
-
-const viewModeLabels: Record<ViewMode, string> = {
-  board: "Board",
-  list: "List",
-};
 
 function normalizeUserRole(role: string): MemberRole {
   if (role === "owner") return "owner";
@@ -99,27 +70,6 @@ function isTaskOverdue(task: Task): boolean {
   return due < today;
 }
 
-function TaskTypeBadge({ taskType }: { taskType: TaskType }) {
-  if (taskType === "general") return null;
-  return (
-    <span
-      style={{
-        background: "transparent",
-        border: "1px solid #333333",
-        color: "#777777",
-        borderRadius: "4px",
-        padding: "2px 8px",
-        fontSize: "10px",
-        fontWeight: 600,
-        flexShrink: 0,
-        lineHeight: 1.2,
-      }}
-    >
-      {TASK_TYPE_BADGE_LABELS[taskType]}
-    </span>
-  );
-}
-
 function TaskLinkedLabel({ task }: { task: Task }) {
   return (
     <>
@@ -135,43 +85,6 @@ function TaskLinkedLabel({ task }: { task: Task }) {
         </p>
       ) : null}
     </>
-  );
-}
-
-function PriorityPill({
-  priority,
-  muted = false,
-}: {
-  priority: TaskPriority;
-  muted?: boolean;
-}) {
-  const config: Record<
-    TaskPriority,
-    { border: string; color: string; label: string }
-  > = {
-    high: { border: "#E51937", color: "#E51937", label: "High Priority" },
-    medium: { border: "#FFC429", color: "#FFC429", label: "Medium Priority" },
-    low: { border: "#555", color: "#555", label: "Low Priority" },
-  };
-  const { border, color, label } = muted
-    ? { border: "#555", color: "#555", label: config[priority].label }
-    : config[priority];
-  return (
-    <span
-      style={{
-        background: "transparent",
-        border: `1px solid ${border}`,
-        color,
-        borderRadius: "4px",
-        padding: "2px 8px",
-        fontSize: "11px",
-        fontWeight: 500,
-        flexShrink: 0,
-        lineHeight: 1.2,
-      }}
-    >
-      {label}
-    </span>
   );
 }
 
@@ -209,44 +122,6 @@ function getSectionNextDue(
 function nextStatus(status: TaskStatus): TaskStatus | null {
   if (status === "todo") return "in_progress";
   if (status === "in_progress") return "done";
-  return null;
-}
-
-function prevStatus(status: TaskStatus): TaskStatus | null {
-  if (status === "in_progress") return "todo";
-  if (status === "done") return "in_progress";
-  return null;
-}
-
-const kanbanForwardButtonStyle: CSSProperties = {
-  fontSize: "12px",
-  borderRadius: "6px",
-  padding: "6px 12px",
-  background: "transparent",
-  border: "1px solid #333333",
-  color: "#777777",
-  cursor: "pointer",
-};
-
-const kanbanBackButtonStyle: CSSProperties = {
-  fontSize: "11px",
-  borderRadius: "20px",
-  padding: "4px 10px",
-  background: "transparent",
-  border: "1px solid #333333",
-  color: "#777777",
-  cursor: "pointer",
-};
-
-function kanbanForwardLabel(status: TaskStatus): string | null {
-  if (status === "todo") return "Start Task →";
-  if (status === "in_progress") return "Mark Done →";
-  return null;
-}
-
-function kanbanBackLabel(status: TaskStatus): string | null {
-  if (status === "in_progress") return "← Back to To Do";
-  if (status === "done") return "← Back to In Progress";
   return null;
 }
 
@@ -294,26 +169,6 @@ const viewDetailsActionStyle: CSSProperties = {
   whiteSpace: "nowrap",
   fontFamily: "inherit",
 };
-
-const viewDetailsPlainStyle: CSSProperties = {
-  background: "transparent",
-  border: "none",
-  color: "#555555",
-  fontSize: "12px",
-  fontWeight: 500,
-  cursor: "pointer",
-  padding: 0,
-  fontFamily: "inherit",
-};
-
-const viewDetailsLinkStyle: CSSProperties = {
-  ...viewDetailsPlainStyle,
-  marginTop: "8px",
-};
-
-function dueDateColor(dueDate: string | undefined, status: TaskStatus): string {
-  return taskDueDateColor(getTaskDueUrgency(dueDate, status));
-}
 
 interface TaskComment {
   id: string;
@@ -732,8 +587,8 @@ function TaskFilterChipBar({
   onChange,
 }: {
   chips: { id: TaskQuickFilter; label: string }[];
-  active: TaskQuickFilter | null;
-  onChange: (chip: TaskQuickFilter | null) => void;
+  active: TaskQuickFilter;
+  onChange: (chip: TaskQuickFilter) => void;
 }) {
   return (
     <div
@@ -741,6 +596,8 @@ function TaskFilterChipBar({
         display: "flex",
         flexWrap: "wrap",
         gap: "8px",
+        flex: 1,
+        minWidth: 0,
       }}
     >
       {chips.map((chip) => {
@@ -749,7 +606,7 @@ function TaskFilterChipBar({
           <button
             key={chip.id}
             type="button"
-            onClick={() => onChange(isActive ? null : chip.id)}
+            onClick={() => onChange(chip.id)}
             style={{
               background: isActive ? "#E51937" : "transparent",
               color: isActive ? "#ffffff" : "#999999",
@@ -813,48 +670,6 @@ function AssignmentTabToggle({
             }}
           >
             {tab.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ViewToggle({
-  mode,
-  onChange,
-}: {
-  mode: ViewMode;
-  onChange: (mode: ViewMode) => void;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Task view"
-      style={{ display: "flex", gap: "6px" }}
-    >
-      {(["board", "list"] as const).map((option) => {
-        const active = mode === option;
-        const label = viewModeLabels[option];
-        return (
-          <button
-            key={option}
-            type="button"
-            onClick={() => onChange(option)}
-            aria-pressed={active}
-            aria-label={`${label} view`}
-            style={{
-              background: active ? "#E51937" : "#1a1a1a",
-              color: active ? "#ffffff" : "#777777",
-              border: active ? "none" : "1px solid #333333",
-              borderRadius: "6px",
-              padding: "6px 16px",
-              fontSize: "13px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            {label}
           </button>
         );
       })}
@@ -973,9 +788,8 @@ export default function ClubTasksPage() {
     [tasks, eventLinkOptions, meetingLinkOptions, hiringLinkOptions],
   );
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [assignmentTab, setAssignmentTab] = useState<AssignmentTab>("assigned_to_me");
-  const [activeQuickFilter, setActiveQuickFilter] = useState<TaskQuickFilter | null>(null);
+  const [activeQuickFilter, setActiveQuickFilter] = useState<TaskQuickFilter>("all");
   const [activeTypeFilter, setActiveTypeFilter] = useState<TaskTypeFilter>("all");
 
   const visibleTasks = useMemo(() => {
@@ -993,7 +807,7 @@ export default function ClubTasksPage() {
     return activeTasks.filter((task) => task.assignedTo === user?.id);
   }, [enrichedTasks, assignmentTab, user?.id]);
 
-  const effectiveViewMode: ViewMode = isPrivileged ? viewMode : "list";
+
   const [showForm, setShowForm] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1030,7 +844,7 @@ export default function ClubTasksPage() {
   }, [isPrivileged, assignmentTab]);
 
   useEffect(() => {
-    setActiveQuickFilter(null);
+    setActiveQuickFilter("all");
   }, [assignmentTab]);
 
   useEffect(() => {
@@ -1074,7 +888,7 @@ export default function ClubTasksPage() {
   }, [visibleTasks, activeTypeFilter]);
 
   const filteredTasks = useMemo(() => {
-    if (!activeQuickFilter) return typeFilteredTasks;
+    if (activeQuickFilter === "all") return typeFilteredTasks;
 
     switch (activeQuickFilter) {
       case "overdue":
@@ -1112,11 +926,11 @@ export default function ClubTasksPage() {
   );
 
   const listFooterLabel = useMemo(() => {
-    if (!activeQuickFilter && activeTypeFilter === "all") {
+    if (activeQuickFilter === "all" && activeTypeFilter === "all") {
       return "Showing all tasks";
     }
     const parts: string[] = [];
-    if (activeQuickFilter) {
+    if (activeQuickFilter !== "all") {
       const chip = quickFilterChips.find((c) => c.id === activeQuickFilter);
       parts.push(chip?.label.toLowerCase() ?? "filtered");
     }
@@ -1126,19 +940,6 @@ export default function ClubTasksPage() {
     }
     return `Showing ${parts.join(" · ")} tasks`;
   }, [activeQuickFilter, activeTypeFilter]);
-
-  const tasksByStatus = useMemo(() => {
-    const grouped: Record<TaskStatus, Task[]> = {
-      todo: [],
-      in_progress: [],
-      done: [],
-      cancelled: [],
-    };
-    for (const task of filteredTasks) {
-      grouped[task.status].push(task);
-    }
-    return grouped;
-  }, [filteredTasks]);
 
   function toggleComments(taskId: string) {
     setExpandedComments((prev) => ({
@@ -1207,9 +1008,9 @@ export default function ClubTasksPage() {
 
     const priority: TaskPriority = highImportance ? "high" : "medium";
     const taskFields = {
-      title: title.trim(),
-      description: description.trim(),
-      priority,
+        title: title.trim(),
+        description: description.trim(),
+        priority,
       assignedTo: assignedTo || undefined,
       dueDate: dueDate || undefined,
       taskType,
@@ -1320,319 +1121,24 @@ export default function ClubTasksPage() {
     return task.assigneeName ?? member?.fullName ?? "Unassigned";
   }
 
-  function renderTaskMenu(task: Task) {
-    if (!isPrivileged) return null;
-    return (
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <button
-          type="button"
-          aria-label="Task options"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpenMenuTaskId((prev) => (prev === task.id ? null : task.id));
-          }}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#555555",
-            cursor: "pointer",
-            padding: "2px",
-            display: "flex",
-          }}
-        >
-          <MoreHorizontal size={16} aria-hidden />
-        </button>
-        {openMenuTaskId === task.id ? (
-          <div
-            style={{
-              position: "absolute",
-              right: 0,
-              top: "100%",
-              marginTop: "4px",
-              background: "#151515",
-              border: "1px solid #2a2a2a",
-              borderRadius: "8px",
-              minWidth: "120px",
-              zIndex: 20,
-              overflow: "hidden",
-            }}
-          >
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                openTaskDetail(task);
-              }}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                background: "transparent",
-                border: "none",
-                color: "#cccccc",
-                padding: "9px 12px",
-                fontSize: "12px",
-                cursor: "pointer",
-              }}
-            >
-              View Details
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                startEdit(task);
-              }}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                background: "transparent",
-                border: "none",
-                color: "#cccccc",
-                padding: "9px 12px",
-                fontSize: "12px",
-                cursor: "pointer",
-              }}
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleDelete(task.id);
-              }}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                background: "transparent",
-                border: "none",
-                color: "#E51937",
-                padding: "9px 12px",
-                fontSize: "12px",
-                cursor: "pointer",
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        ) : null}
-      </div>
-    );
+  function emptyTabMessage(): string {
+    if (assignmentTab === "assigned_by_me") {
+      return "No tasks assigned by you yet.";
+    }
+    return "No tasks yet";
   }
 
-  function renderBoardCard(task: Task) {
-    const isDone = task.status === "done";
-    const isHovered = hoveredTaskId === task.id;
-    const canChangeStatus = isPrivileged || task.assignedTo === user?.id;
-    const canViewComments = isPrivileged || task.assignedTo === user?.id;
-    const canComment = isPrivileged || task.assignedTo === user?.id;
-    const backTarget = prevStatus(task.status);
-    const forwardTarget = nextStatus(task.status);
-    const backLabel = kanbanBackLabel(task.status);
-    const forwardLabel = kanbanForwardLabel(task.status);
-    const assigneeName = assigneeDisplayFor(task);
-    const commentCount = commentCounts[task.id] ?? 0;
-    const isAnimating = statusAnimatingId === task.id;
-
-    return (
-      <div
-        key={`${task.id}-${task.status}`}
-        onMouseEnter={() => setHoveredTaskId(task.id)}
-        onMouseLeave={() => {
-          setHoveredTaskId((prev) => (prev === task.id ? null : prev));
-          if (openMenuTaskId === task.id) setOpenMenuTaskId(null);
-        }}
-        onClick={() => openTaskDetail(task)}
-        style={{
-          background: "#141414",
-          border: `1px solid ${isHovered ? "#333333" : "#2a2a2a"}`,
-          borderRadius: "12px",
-          padding: "14px",
-          marginBottom: "8px",
-          cursor: "pointer",
-          opacity: isDone ? 0.65 : isAnimating ? 0.5 : 1,
-          transform: isHovered ? "translateY(-1px)" : undefined,
-          transition: "border-color 0.15s ease, transform 0.15s ease, opacity 0.2s ease",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "8px",
-              flex: 1,
-              minWidth: 0,
-              flexWrap: "wrap",
-            }}
-          >
-            <p
-              style={{
-                fontSize: "14px",
-                fontWeight: 600,
-                color: "#ffffff",
-                textDecoration: isDone ? "line-through" : "none",
-                margin: 0,
-                minWidth: 0,
-                flex: 1,
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                lineHeight: 1.35,
-              }}
-            >
-              {task.title}
-            </p>
-            <PriorityPill priority={task.priority} muted={isDone} />
-            <TaskTypeBadge taskType={task.taskType ?? "general"} />
-          </div>
-          <TaskLinkedLabel task={task} />
-          {isHovered ? renderTaskMenu(task) : null}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginTop: "10px",
-            gap: "8px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-            <AvatarCircle
-              name={assigneeName}
-              avatarUrl={assigneeAvatarFor(task)}
-              size={28}
-            />
-            <span style={{ fontSize: "11px", color: "#555555" }}>
-              {task.assignedTo ? (
-                <Link
-                  to={`/app/profile/${task.assignedTo}`}
-                  style={{ color: "#555555", textDecoration: "none" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {assigneeName}
-                </Link>
-              ) : (
-                assigneeName
-              )}
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-            {task.dueDate ? (
-              <span
-                style={{
-                  fontSize: "11px",
-                  color: dueDateColor(task.dueDate, task.status),
-                }}
-              >
-                Due {formatTaskDate(task.dueDate)}
-              </span>
-            ) : null}
-            {canViewComments ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleComments(task.id);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  color: "#555555",
-                  fontSize: "11px",
-                }}
-              >
-                <MessageSquare size={12} strokeWidth={2} aria-hidden />
-                {commentCount}
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            openTaskDetail(task);
-          }}
-          style={viewDetailsLinkStyle}
-        >
-          View Details
-        </button>
-
-        {isHovered && canChangeStatus && (backTarget || forwardTarget) ? (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "6px",
-              marginTop: "10px",
-            }}
-          >
-            {backTarget && backLabel ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleStatusChange(task.id, backTarget);
-                }}
-                style={kanbanBackButtonStyle}
-              >
-                {backLabel}
-              </button>
-            ) : null}
-            {forwardTarget && forwardLabel ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleStatusChange(task.id, forwardTarget);
-                }}
-                style={kanbanForwardButtonStyle}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#555555";
-                  e.currentTarget.style.color = "#cccccc";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#333333";
-                  e.currentTarget.style.color = "#777777";
-                }}
-              >
-                {forwardLabel}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-
-        {canViewComments && expandedComments[task.id] ? (
-          <div onClick={(e) => e.stopPropagation()}>
-            <TaskCommentsSection
-              taskId={task.id}
-              taskTitle={task.title}
-              assigneeId={task.assignedTo}
-              clubId={clubId}
-              commenterName={myCommenterName}
-              userId={user?.id}
-              expanded
-              onToggle={() => toggleComments(task.id)}
-              commentCount={commentCount}
-              onCommentCountChange={handleCommentCountChange}
-              canComment={canComment}
-              canDeleteAnyComment={isPrivileged}
-            />
-          </div>
-        ) : null}
-      </div>
-    );
+  function emptyFilterMessage(): string {
+    switch (activeQuickFilter) {
+      case "overdue":
+        return "No overdue tasks.";
+      case "high_priority":
+        return "No high-priority tasks.";
+      case "completed":
+        return "No completed tasks yet.";
+      default:
+        return "No matching tasks";
+    }
   }
 
   function renderListSectionHeader(
@@ -1666,7 +1172,7 @@ export default function ClubTasksPage() {
     );
   }
 
-  function renderListSectionsEmpty() {
+  function renderListSectionsEmpty(message = "No tasks yet") {
     return (
       <div style={{ textAlign: "center", padding: "48px 24px" }}>
         <CheckCircle
@@ -1680,14 +1186,16 @@ export default function ClubTasksPage() {
             fontSize: "15px",
             fontWeight: 600,
             color: "#555555",
-            margin: "0 0 6px",
+            margin: 0,
           }}
         >
-          No tasks yet
+          {message}
         </p>
-        <p style={{ fontSize: "13px", color: "#444444", margin: 0 }}>
-          Create a task to get started
-        </p>
+        {message === "No tasks yet" ? (
+          <p style={{ fontSize: "13px", color: "#444444", margin: "6px 0 0" }}>
+            Create a task to get started
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -1730,9 +1238,9 @@ export default function ClubTasksPage() {
     const leftBorder = listRowLeftBorder(task.status);
     const metaParts: string[] = [assigneeName];
     if (task.dueDate) {
-      metaParts.push(formatTaskDate(task.dueDate));
-      const relative = formatRelativeDueLabel(task.dueDate, task.status);
-      if (relative) metaParts.push(relative.text);
+      metaParts.push(`Due: ${formatTaskDate(task.dueDate)}`);
+      const dueSub = formatDueDateSubLabel(task.dueDate, task.status);
+      if (dueSub) metaParts.push(dueSub.text);
     }
     if (canViewComments) {
       metaParts.push(
@@ -1818,6 +1326,7 @@ export default function ClubTasksPage() {
             menu={menu}
             linkedLabel={linkedLabel}
             commentsSection={commentsSection}
+            statusUpdating={statusAnimatingId === task.id}
           />
         </div>
       );
@@ -1855,6 +1364,7 @@ export default function ClubTasksPage() {
           onViewDetails={() => openTaskDetail(task)}
           menu={menu}
           linkedLabel={linkedLabel}
+          statusUpdating={statusAnimatingId === task.id}
         />
       </div>
     );
@@ -1924,9 +1434,6 @@ export default function ClubTasksPage() {
           }}
         >
           {isPrivileged ? (
-            <ViewToggle mode={viewMode} onChange={setViewMode} />
-          ) : null}
-          {isPrivileged ? (
             <button
               type="button"
             onClick={() => {
@@ -1943,7 +1450,7 @@ export default function ClubTasksPage() {
                 fontWeight: 600,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
-              }}
+            }}
           >
             {showForm ? "Cancel" : "+ New Task"}
             </button>
@@ -1968,11 +1475,11 @@ export default function ClubTasksPage() {
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
           gap: "12px",
           flexWrap: "wrap",
           marginBottom: "16px",
+          width: "100%",
         }}
       >
         <TaskFilterChipBar
@@ -1980,10 +1487,12 @@ export default function ClubTasksPage() {
           active={activeQuickFilter}
           onChange={setActiveQuickFilter}
         />
-        <TaskTypeFilterDropdown
-          value={activeTypeFilter}
-          onChange={setActiveTypeFilter}
-        />
+        <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+          <TaskTypeFilterDropdown
+            value={activeTypeFilter}
+            onChange={setActiveTypeFilter}
+          />
+        </div>
       </div>
 
       {feedback ? (
@@ -2003,8 +1512,8 @@ export default function ClubTasksPage() {
         <Card className="mb-6 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-white">
-              {editingId ? "Edit Task" : "Create New Task"}
-            </h3>
+            {editingId ? "Edit Task" : "Create New Task"}
+          </h3>
             {!editingId ? (
               <button
                 type="button"
@@ -2041,13 +1550,13 @@ export default function ClubTasksPage() {
               />
             </div>
             <div>
-              <label
+                <label
                 htmlFor="taskType"
-                className="mb-1 block text-sm font-medium text-white"
-              >
+                  className="mb-1 block text-sm font-medium text-white"
+                >
                 Task Type
-              </label>
-              <select
+                </label>
+                <select
                 id="taskType"
                 value={taskType}
                 onChange={(e) => {
@@ -2057,15 +1566,15 @@ export default function ClubTasksPage() {
                   if (next !== "meeting") setLinkedMeetingId("");
                   if (next !== "hiring") setLinkedHiringListingId("");
                 }}
-                className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
-              >
+                  className="w-full rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 transition-colors"
+                >
                 {TASK_TYPE_FORM_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
-              </select>
-            </div>
+                </select>
+              </div>
             {taskType === "event" ? (
               <div>
                 <label
@@ -2224,115 +1733,9 @@ export default function ClubTasksPage() {
       ) : null}
 
       {visibleTasks.length === 0 ? (
-        renderListSectionsEmpty()
+        renderListSectionsEmpty(emptyTabMessage())
       ) : filteredTasks.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "48px 24px" }}>
-          <p
-            style={{
-              fontSize: "15px",
-              fontWeight: 600,
-              color: "#555555",
-              margin: "0 0 6px",
-            }}
-          >
-            No matching tasks
-          </p>
-          <p style={{ fontSize: "13px", color: "#444444", margin: 0 }}>
-            Try a different filter to see more tasks.
-          </p>
-        </div>
-      ) : effectiveViewMode === "board" ? (
-        <div
-          style={
-            isMobile
-              ? {
-                  display: "flex",
-                  gap: "12px",
-                  overflowX: "auto",
-                  paddingBottom: "8px",
-                  WebkitOverflowScrolling: "touch",
-                  alignItems: "flex-start",
-                }
-              : {
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                  gap: "12px",
-                  alignItems: "flex-start",
-                }
-          }
-        >
-          {BOARD_COLUMNS.map((columnStatus) => (
-            <div
-              key={columnStatus}
-              style={{
-                background: "#111111",
-                borderRadius: "10px",
-                padding: "12px",
-                display: "flex",
-                flexDirection: "column",
-                alignSelf: "flex-start",
-                width: "100%",
-                ...(isMobile
-                  ? {
-                      minWidth: "260px",
-                      flexShrink: 0,
-                      width: "260px",
-                    }
-                  : {}),
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "12px",
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    color: boardColumnHeaderColor[columnStatus],
-                  }}
-                >
-                  {statusLabels[columnStatus]}
-                </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: boardColumnHeaderColor[columnStatus],
-                    background: "#1a1a1a",
-                    borderRadius: "20px",
-                    padding: "2px 8px",
-                  }}
-                >
-                  {tasksByStatus[columnStatus].length}
-                </span>
-              </div>
-              {tasksByStatus[columnStatus].length === 0 ? (
-                <div style={{ textAlign: "center", padding: "20px 12px" }}>
-                  <Circle
-                    size={18}
-                    color="#555555"
-                    style={{ margin: "0 auto 6px", display: "block" }}
-                    aria-hidden
-                  />
-                  <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
-                    No tasks here
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  {tasksByStatus[columnStatus].map((task) => renderBoardCard(task))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        renderListSectionsEmpty(emptyFilterMessage())
       ) : (
         renderListSections(filteredTasks)
       )}
