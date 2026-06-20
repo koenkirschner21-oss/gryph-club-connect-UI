@@ -65,13 +65,13 @@ import {
 import {
   MyClubsFilterBar,
   MyClubsGrid,
+  MyClubsHeader,
   MyClubsPagination,
   filterMyClubs,
   paginateClubs,
   sortMyClubs,
   type ClubFilterOption,
   type ClubSortOption,
-  type ClubViewMode,
 } from "../dashboard/MyClubsTabUI";
 import {
   TasksWeekEmptyState,
@@ -103,7 +103,7 @@ export default function DashboardPage() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
-  const { clubs, joinedClubs, savedClubs, loading, getUserRole } = useClubContext();
+  const { clubs, joinedClubs, savedClubs, loading, getUserRole, isPending } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const inbox = useInbox();
 
@@ -665,6 +665,7 @@ export default function DashboardPage() {
           mySavedClubs={mySavedClubs}
           clubLogos={clubLogos}
           getUserRole={getUserRole}
+          isPending={isPending}
           isMobile={isMobile}
         />
       )}
@@ -1842,15 +1843,15 @@ function hasEventLocation(location: string | null | undefined): boolean {
 
 function formatClubRoleDisplay(
   role: import("../../types").MemberRole | null | undefined,
-): { label: string; color: string } {
+): { label: string; color: string; borderColor?: string } {
   if (role === "owner") {
     return { label: "President", color: "#FFC429" };
   }
   if (role === "executive") {
-    return { label: "Executive", color: "#E51937" };
+    return { label: "Executive", color: "#E51937", borderColor: "#FFC429" };
   }
   if (role == null) {
-    return { label: "Pending", color: "#777777" };
+    return { label: "Pending", color: "#999988", borderColor: "#666655" };
   }
   return { label: "Member", color: "#747676" };
 }
@@ -1888,24 +1889,27 @@ function MyClubsTab({
   mySavedClubs,
   clubLogos,
   getUserRole,
+  isPending,
   isMobile,
 }: {
   myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   mySavedClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   clubLogos: Record<string, string>;
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
+  isPending: (clubId: string) => boolean;
   isMobile: boolean;
 }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClubFilterOption>("all");
   const [sort, setSort] = useState<ClubSortOption>("recent");
-  const [viewMode, setViewMode] = useState<ClubViewMode>("grid");
   const [page, setPage] = useState(1);
 
+  const sourceClubs = filter === "saved" ? mySavedClubs : myClubs;
+
   const filteredClubs = useMemo(
-    () => filterMyClubs(myClubs, search, filter, getUserRole),
-    [myClubs, search, filter, getUserRole],
+    () => filterMyClubs(sourceClubs, search, filter, getUserRole),
+    [sourceClubs, search, filter, getUserRole],
   );
   const sortedClubs = useMemo(
     () => sortMyClubs(filteredClubs, sort, getUserRole),
@@ -1926,7 +1930,7 @@ function MyClubsTab({
     }
   }, [page, pagination.totalPages]);
 
-  if (myClubs.length === 0) {
+  if (myClubs.length === 0 && mySavedClubs.length === 0) {
     return (
       <div
         className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-4 py-10 text-center"
@@ -1946,6 +1950,7 @@ function MyClubsTab({
 
   return (
     <>
+      <MyClubsHeader />
       <MyClubsFilterBar
         search={search}
         onSearchChange={setSearch}
@@ -1953,8 +1958,6 @@ function MyClubsTab({
         onFilterChange={setFilter}
         sort={sort}
         onSortChange={setSort}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
       />
 
       {sortedClubs.length === 0 ? (
@@ -1978,6 +1981,7 @@ function MyClubsTab({
             clubLogos={clubLogos}
             getUserRole={getUserRole}
             formatClubRoleDisplay={formatClubRoleDisplay}
+            isPendingMembership={isPending}
             onOpenWorkspace={(clubId) => navigate(`/app/clubs/${clubId}`)}
             isMobile={isMobile}
           />
@@ -1991,69 +1995,7 @@ function MyClubsTab({
           />
         </>
       )}
-
-      {mySavedClubs.length > 0 ? (
-      <div style={{ marginTop: "32px" }}>
-        <h2
-          style={{
-            fontSize: "16px",
-            fontWeight: 700,
-            color: "#ffffff",
-            margin: "0 0 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <svg
-            className="h-4 w-4 text-muted"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
-            />
-          </svg>
-          Saved Clubs
-        </h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap: "16px",
-          }}
-        >
-          {mySavedClubs.map((club) => (
-            <Link
-              key={club.id}
-              to={`/clubs/${club.slug}`}
-              className="flex items-start gap-3 no-underline"
-              style={{
-                background: "#141414",
-                border: "1px solid #2a2a2a",
-                borderRadius: "10px",
-                padding: "16px",
-                cursor: "pointer",
-              }}
-            >
-              <ClubBadge abbreviation={club.abbreviation} name={club.name} />
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">
-                  {club.name}
-                </p>
-                <p className="text-xs text-muted">{club.category}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    ) : null}
-  </>
+    </>
   );
 }
 
@@ -2949,54 +2891,6 @@ function StatCardContent({
       </p>
       <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>{sublabel}</p>
     </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Club Badge (abbreviation circle)
-// ---------------------------------------------------------------------------
-function ClubBadge({
-  abbreviation,
-  name,
-  size = "md",
-  logoUrl,
-}: {
-  abbreviation?: string;
-  name: string;
-  size?: "sm" | "md";
-  logoUrl?: string;
-}) {
-  const abbr = abbreviation || deriveAbbreviation(name);
-  const sizeClass = size === "sm" ? "h-8 w-8 text-[10px]" : "h-10 w-10 text-xs";
-
-  if (logoUrl) {
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        className="shrink-0"
-        style={{
-          width: "40px",
-          height: "40px",
-          borderRadius: "8px",
-          objectFit: "cover",
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      className={`${sizeClass} flex shrink-0 items-center justify-center font-bold`}
-      style={{
-        backgroundColor: "#2a2a2a",
-        color: "#888888",
-        border: "1px solid #333",
-        borderRadius: "8px",
-      }}
-    >
-      {abbr}
-    </div>
   );
 }
 

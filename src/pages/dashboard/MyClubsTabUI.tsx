@@ -1,10 +1,10 @@
 import type { CSSProperties } from "react";
 import {
+  Bookmark,
   ChevronLeft,
   ChevronRight,
   Crown,
   Grid3x3,
-  LayoutList,
   MoreVertical,
   Search,
   Star,
@@ -37,11 +37,16 @@ const CONTROL_STYLE: CSSProperties = {
   fontSize: "13px",
 };
 
-export type ClubFilterOption = "all" | "managed" | "member" | "president";
+export type ClubFilterOption = "all" | "managed" | "member" | "president" | "saved";
 export type ClubSortOption = "recent" | "name" | "role" | "members";
-export type ClubViewMode = "grid" | "list";
 
 export type MyClubsTabClub = Club;
+
+export type ClubRoleDisplay = {
+  label: string;
+  color: string;
+  borderColor?: string;
+};
 
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
@@ -73,6 +78,32 @@ function isClubActive(club: Club): boolean {
   return true;
 }
 
+function formatClubCardDescription(club: Club): string | null {
+  const raw = club.shortDescription?.trim() || club.description?.trim();
+  if (!raw) return null;
+
+  const sentenceMatches = raw.match(/[^.!?]+[.!?]+/g);
+  if (sentenceMatches && sentenceMatches.length > 0) {
+    const truncated = sentenceMatches.slice(0, 2).join(" ").trim();
+    if (truncated.length < raw.length) return truncated;
+  }
+
+  if (raw.length > 160) {
+    return `${raw.slice(0, 157).trim()}…`;
+  }
+
+  return raw;
+}
+
+function resolveClubStatusLabel(club: Club, isPendingMembership: boolean): string | null {
+  if (club.claimStatus === "claim_pending") return "Claim Pending";
+  if (isPendingMembership) return "Pending";
+  if (club.isPublished === false) return "Archived";
+  if (club.setupCompleted === false) return "Inactive";
+  if (!isClubActive(club)) return "Inactive";
+  return null;
+}
+
 export function filterMyClubs(
   clubs: MyClubsTabClub[],
   search: string,
@@ -84,9 +115,11 @@ export function filterMyClubs(
   return clubs.filter((club) => {
     const role = getUserRole(club.id);
 
-    if (filter === "president" && role !== "owner") return false;
-    if (filter === "managed" && role !== "owner") return false;
-    if (filter === "member" && role !== "member") return false;
+    if (filter !== "all" && filter !== "saved") {
+      if (filter === "president" && role !== "owner") return false;
+      if (filter === "managed" && role !== "owner") return false;
+      if (filter === "member" && role !== "member") return false;
+    }
 
     if (query && !club.name.toLowerCase().includes(query)) return false;
     return true;
@@ -139,6 +172,26 @@ export function paginateClubs<T>(clubs: T[], page: number, perPage = CLUBS_PER_P
   };
 }
 
+export function MyClubsHeader() {
+  return (
+    <div style={{ marginBottom: "20px" }}>
+      <h2
+        style={{
+          margin: "0 0 6px",
+          fontSize: "22px",
+          fontWeight: 700,
+          color: "#ffffff",
+        }}
+      >
+        My Clubs
+      </h2>
+      <p style={{ margin: 0, fontSize: "13px", color: "#777777", lineHeight: 1.5 }}>
+        Clubs you&apos;ve joined, manage, or saved for later.
+      </p>
+    </div>
+  );
+}
+
 function MyClubsTabClubAvatar({
   name,
   abbreviation,
@@ -156,9 +209,10 @@ function MyClubsTabClubAvatar({
         src={logoUrl}
         alt=""
         style={{
-          width: "48px",
-          height: "48px",
-          borderRadius: "50%",
+          width: "44px",
+          height: "44px",
+          borderRadius: "8px",
+          border: "1px solid #2a2a2a",
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -169,13 +223,13 @@ function MyClubsTabClubAvatar({
   return (
     <div
       style={{
-        width: "48px",
-        height: "48px",
-        borderRadius: "50%",
-        border: "1px solid #333333",
+        width: "44px",
+        height: "44px",
+        borderRadius: "8px",
+        border: "1px solid #2a2a2a",
         background: "#2a2a2a",
         color: "#888888",
-        fontSize: "13px",
+        fontSize: "12px",
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
@@ -197,6 +251,7 @@ const FILTER_OPTIONS: {
   { value: "managed", label: "Managed by Me", icon: Crown },
   { value: "member", label: "Member", icon: User },
   { value: "president", label: "President", icon: Star },
+  { value: "saved", label: "Saved", icon: Bookmark },
 ];
 
 export function MyClubsFilterBar({
@@ -206,8 +261,6 @@ export function MyClubsFilterBar({
   onFilterChange,
   sort,
   onSortChange,
-  viewMode,
-  onViewModeChange,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -215,8 +268,6 @@ export function MyClubsFilterBar({
   onFilterChange: (value: ClubFilterOption) => void;
   sort: ClubSortOption;
   onSortChange: (value: ClubSortOption) => void;
-  viewMode: ClubViewMode;
-  onViewModeChange: (value: ClubViewMode) => void;
 }) {
   return (
     <div style={{ marginBottom: "16px" }}>
@@ -303,38 +354,6 @@ export function MyClubsFilterBar({
           <option value="role">Role</option>
           <option value="members">Member Count</option>
         </select>
-
-        <button
-          type="button"
-          aria-label="Grid view"
-          onClick={() => onViewModeChange("grid")}
-          style={{
-            ...CONTROL_STYLE,
-            padding: "8px 10px",
-            background: viewMode === "grid" ? "#E51937" : "#1a1a1a",
-            border: viewMode === "grid" ? "1px solid #E51937" : "1px solid #2a2a2a",
-            color: viewMode === "grid" ? "#ffffff" : "#999999",
-            cursor: "pointer",
-          }}
-        >
-          <Grid3x3 size={16} aria-hidden />
-        </button>
-
-        <button
-          type="button"
-          aria-label="List view"
-          onClick={() => onViewModeChange("list")}
-          style={{
-            ...CONTROL_STYLE,
-            padding: "8px 10px",
-            background: viewMode === "list" ? "#E51937" : "#1a1a1a",
-            border: viewMode === "list" ? "1px solid #E51937" : "1px solid #2a2a2a",
-            color: viewMode === "list" ? "#ffffff" : "#999999",
-            cursor: "pointer",
-          }}
-        >
-          <LayoutList size={16} aria-hidden />
-        </button>
       </div>
     </div>
   );
@@ -344,15 +363,20 @@ function MyClubsTabCard({
   club,
   logoUrl,
   roleDisplay,
+  statusLabel,
   onOpenWorkspace,
+  isMobile,
 }: {
   club: MyClubsTabClub;
   logoUrl?: string;
-  roleDisplay: { label: string; color: string };
+  roleDisplay: ClubRoleDisplay;
+  statusLabel: string | null;
   onOpenWorkspace: () => void;
+  isMobile: boolean;
 }) {
   const categorySubtitle = formatCategorySubtitle(club);
-  const active = isClubActive(club);
+  const description = formatClubCardDescription(club);
+  const roleBorderColor = roleDisplay.borderColor ?? roleDisplay.color;
 
   return (
     <div
@@ -360,7 +384,7 @@ function MyClubsTabCard({
         background: "#141414",
         border: "1px solid #2a2a2a",
         borderRadius: "10px",
-        padding: "20px",
+        padding: "14px",
       }}
     >
       <div
@@ -368,7 +392,7 @@ function MyClubsTabCard({
           display: "flex",
           alignItems: "flex-start",
           gap: "12px",
-          marginBottom: "12px",
+          marginBottom: "10px",
         }}
       >
         <MyClubsTabClubAvatar
@@ -388,7 +412,7 @@ function MyClubsTabCard({
             <p
               style={{
                 margin: 0,
-                fontSize: "16px",
+                fontSize: "15px",
                 fontWeight: 700,
                 color: "#ffffff",
                 lineHeight: 1.3,
@@ -409,7 +433,7 @@ function MyClubsTabCard({
                 flexShrink: 0,
               }}
             >
-              <MoreVertical size={18} aria-hidden />
+              <MoreVertical size={16} aria-hidden />
             </button>
           </div>
 
@@ -418,114 +442,143 @@ function MyClubsTabCard({
               display: "flex",
               flexWrap: "wrap",
               alignItems: "center",
-              gap: "8px",
-              marginTop: "8px",
+              gap: "6px",
+              marginTop: "6px",
             }}
           >
             <span
               style={{
                 display: "inline-block",
                 borderRadius: "20px",
-                padding: "2px 10px",
-                fontSize: "11px",
-                fontWeight: 500,
+                padding: "2px 8px",
+                fontSize: "10px",
+                fontWeight: 600,
                 color: roleDisplay.color,
-                border: `1px solid ${roleDisplay.color}`,
+                border: `1px solid ${roleBorderColor}`,
                 background: "transparent",
               }}
             >
               {roleDisplay.label}
             </span>
             {categorySubtitle ? (
-              <span style={{ fontSize: "13px", color: "#777777" }}>{categorySubtitle}</span>
+              <span style={{ fontSize: "12px", color: "#777777" }}>{categorySubtitle}</span>
             ) : null}
           </div>
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onOpenWorkspace}
-        style={{
-          background: "#E51937",
-          color: "#ffffff",
-          borderRadius: "8px",
-          padding: "10px",
-          fontSize: "13px",
-          fontWeight: 600,
-          width: "100%",
-          textAlign: "center",
-          cursor: "pointer",
-          border: "none",
-          display: "block",
-        }}
-      >
-        Open Workspace
-      </button>
-
-      <Link
-        to={`/clubs/${club.slug}`}
-        style={{
-          display: "block",
-          marginTop: "8px",
-          border: "1px solid #2a2a2a",
-          background: "transparent",
-          color: "#cccccc",
-          borderRadius: "8px",
-          padding: "10px",
-          fontSize: "13px",
-          fontWeight: 500,
-          width: "100%",
-          textAlign: "center",
-          textDecoration: "none",
-          boxSizing: "border-box",
-        }}
-      >
-        View Profile
-      </Link>
+      {description ? (
+        <p
+          style={{
+            margin: "0 0 10px",
+            fontSize: "12px",
+            color: "#999999",
+            lineHeight: 1.5,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {description}
+        </p>
+      ) : (
+        <p
+          style={{
+            margin: "0 0 10px",
+            fontSize: "12px",
+            color: "#555555",
+            fontStyle: "italic",
+            lineHeight: 1.5,
+          }}
+        >
+          No description added yet.
+        </p>
+      )}
 
       <div
         style={{
-          borderTop: "1px solid #1a1a1a",
-          paddingTop: "10px",
-          marginTop: "12px",
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+          marginBottom: "10px",
         }}
       >
         <span
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: "6px",
-            fontSize: "12px",
+            gap: "5px",
+            fontSize: "11px",
             color: "#777777",
           }}
         >
-          <Users size={14} aria-hidden />
+          <Users size={13} aria-hidden />
           {club.memberCount} Member{club.memberCount === 1 ? "" : "s"}
         </span>
-        <span
+        {statusLabel ? (
+          <span
+            style={{
+              fontSize: "11px",
+              color: "#888888",
+              fontWeight: 500,
+            }}
+          >
+            {statusLabel}
+          </span>
+        ) : null}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "stretch" : "center",
+          gap: "8px",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onOpenWorkspace}
+          style={{
+            background: "#E51937",
+            color: "#ffffff",
+            borderRadius: "6px",
+            padding: "7px 12px",
+            fontSize: "12px",
+            fontWeight: 600,
+            flex: isMobile ? undefined : 1,
+            textAlign: "center",
+            cursor: "pointer",
+            border: "none",
+          }}
+        >
+          Open Workspace
+        </button>
+
+        <Link
+          to={`/clubs/${club.slug}`}
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: "6px",
+            justifyContent: "center",
+            border: "1px solid #2a2a2a",
+            background: "transparent",
+            color: "#999999",
+            borderRadius: "6px",
+            padding: "7px 12px",
             fontSize: "12px",
-            color: "#777777",
+            fontWeight: 500,
+            flex: isMobile ? undefined : "0 0 auto",
+            textAlign: "center",
+            textDecoration: "none",
+            boxSizing: "border-box",
+            whiteSpace: "nowrap",
           }}
         >
-          <span
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "50%",
-              background: active ? "#22C55E" : "#555555",
-              flexShrink: 0,
-            }}
-          />
-          {active ? "Active" : "Inactive"}
-        </span>
+          View Profile
+        </Link>
       </div>
     </div>
   );
@@ -536,15 +589,15 @@ export function MyClubsGrid({
   clubLogos,
   getUserRole,
   formatClubRoleDisplay,
+  isPendingMembership,
   onOpenWorkspace,
   isMobile,
 }: {
   clubs: MyClubsTabClub[];
   clubLogos: Record<string, string>;
   getUserRole: (clubId: string) => MemberRole | null;
-  formatClubRoleDisplay: (
-    role: MemberRole | null | undefined,
-  ) => { label: string; color: string };
+  formatClubRoleDisplay: (role: MemberRole | null | undefined) => ClubRoleDisplay;
+  isPendingMembership: (clubId: string) => boolean;
   onOpenWorkspace: (clubId: string) => void;
   isMobile: boolean;
 }) {
@@ -552,8 +605,8 @@ export function MyClubsGrid({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-        gap: "16px",
+        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))",
+        gap: "12px",
       }}
     >
       {clubs.map((club) => (
@@ -562,7 +615,9 @@ export function MyClubsGrid({
           club={club}
           logoUrl={clubLogos[club.id] ?? club.logoUrl}
           roleDisplay={formatClubRoleDisplay(getUserRole(club.id))}
+          statusLabel={resolveClubStatusLabel(club, isPendingMembership(club.id))}
           onOpenWorkspace={() => onOpenWorkspace(club.id)}
+          isMobile={isMobile}
         />
       ))}
     </div>
