@@ -3,16 +3,16 @@ import {
   Calendar,
   CheckSquare,
   FileText,
+  Lightbulb,
   Link2,
   MapPin,
   MoreHorizontal,
   Users,
   Video,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useClubMembers } from "../../../hooks/useClubMembers";
 import { useWindowWidth } from "../../../hooks/useWindowWidth";
-import { formatRelativeTime } from "../../../lib/formatRelativeTime";
 import {
   inviteeCountLabel,
   parseAgendaItems,
@@ -45,49 +45,68 @@ const panelCardStyle: CSSProperties = {
   padding: "16px",
 };
 
-function DateBadge({
+export function MeetingDateBadge({
   iso,
-  compact = false,
+  muted = false,
 }: {
   iso: string;
-  compact?: boolean;
+  muted?: boolean;
 }) {
   const parsed = new Date(iso);
-  const month = Number.isNaN(parsed.getTime())
+  const monthLabel = Number.isNaN(parsed.getTime())
     ? "---"
     : parsed.toLocaleString("en-US", { month: "short" }).toUpperCase();
-  const day = Number.isNaN(parsed.getTime()) ? "?" : String(parsed.getDate());
-  const weekday = Number.isNaN(parsed.getTime())
+  const dayLabel = Number.isNaN(parsed.getTime()) ? "?" : String(parsed.getDate());
+  const weekdayLabel = Number.isNaN(parsed.getTime())
     ? ""
     : parsed.toLocaleString("en-US", { weekday: "short" });
 
   return (
     <div
       style={{
-        background: "rgba(229,25,55,0.12)",
-        border: `1px solid ${ACCENT_RED}`,
-        borderRadius: compact ? "6px" : "8px",
-        padding: compact ? "6px 8px" : "8px 10px",
+        background: muted ? "#333333" : ACCENT_RED,
+        borderRadius: "10px",
+        padding: "8px 12px",
         textAlign: "center",
-        minWidth: compact ? "44px" : "52px",
+        minWidth: "52px",
         flexShrink: 0,
       }}
     >
-      <div style={{ fontSize: compact ? "9px" : "10px", fontWeight: 700, color: ACCENT_RED }}>
-        {month}
-      </div>
-      <div
+      <span
         style={{
-          fontSize: compact ? "16px" : "20px",
-          fontWeight: 800,
+          display: "block",
+          fontSize: "11px",
+          fontWeight: 700,
+          textTransform: "uppercase",
           color: "#ffffff",
           lineHeight: 1.1,
         }}
       >
-        {day}
-      </div>
-      {!compact && weekday ? (
-        <div style={{ fontSize: "10px", color: "#777777", marginTop: "2px" }}>{weekday}</div>
+        {monthLabel}
+      </span>
+      <span
+        style={{
+          display: "block",
+          fontSize: "22px",
+          fontWeight: 800,
+          color: "#ffffff",
+          lineHeight: 1,
+        }}
+      >
+        {dayLabel}
+      </span>
+      {weekdayLabel ? (
+        <span
+          style={{
+            display: "block",
+            fontSize: "10px",
+            fontWeight: 500,
+            color: "rgba(255,255,255,0.75)",
+            marginTop: "2px",
+          }}
+        >
+          {weekdayLabel}
+        </span>
       ) : null}
     </div>
   );
@@ -114,11 +133,6 @@ function isDueOverdue(dueDate: string | null): boolean {
 function formatNextMeetingSubtext(nextMeeting: ClubMeeting | null): string {
   if (!nextMeeting) return "No upcoming meetings";
   return `Next: ${formatMeetingDateTime(nextMeeting.date)}`;
-}
-
-function meetingHasNotes(meeting: ClubMeeting): boolean {
-  const { meetingNotes } = parseMeetingNotes(meeting.notes);
-  return Boolean(meetingNotes.trim());
 }
 
 function meetingFormatLabel(meeting: ClubMeeting): string {
@@ -258,12 +272,14 @@ export function MeetingsStatCards({
   nextMeeting,
   openActionItemCount,
   dueThisWeekCount,
+  completedCount,
   isMobile = false,
 }: {
   upcomingCount: number;
   nextMeeting: ClubMeeting | null;
   openActionItemCount: number;
   dueThisWeekCount: number;
+  completedCount: number;
   isMobile?: boolean;
 }) {
   return (
@@ -289,10 +305,10 @@ export function MeetingsStatCards({
         subtext={`${dueThisWeekCount} due this week`}
       />
       <StatCard
-        icon={<Users size={20} color="#555555" aria-hidden />}
-        label="Avg Attendance"
-        value="—"
-        subtext="Coming soon"
+        icon={<Users size={20} color="#777777" aria-hidden />}
+        label="Completed Meetings"
+        value={String(completedCount)}
+        subtext="Past meetings on record"
       />
     </div>
   );
@@ -336,24 +352,28 @@ function StatCard({
   );
 }
 
-export function NextMeetingHero({
+function MeetingListCard({
   meeting,
   clubId,
   isPrivileged,
-  isMobile = false,
+  featured = false,
+  isPast = false,
   onEdit,
+  onCancel,
 }: {
   meeting: ClubMeeting;
   clubId: string;
   isPrivileged: boolean;
-  isMobile?: boolean;
+  featured?: boolean;
+  isPast?: boolean;
   onEdit: (meeting: ClubMeeting) => void;
+  onCancel: (meeting: ClubMeeting) => void;
 }) {
   const navigate = useNavigate();
   const { members } = useClubMembers(clubId);
   const windowWidth = useWindowWidth();
-  const stackedLayout = isMobile || windowWidth <= 1024;
-  const { metadata } = parseMeetingNotes(meeting.notes);
+  const stackedLayout = windowWidth <= 768;
+  const { metadata, meetingNotes } = parseMeetingNotes(meeting.notes);
   const agendaItems = parseAgendaItems(meeting.agenda);
   const formatLabel = meetingFormatLabel(meeting);
   const locationLine = meetingLocationLine(meeting);
@@ -363,191 +383,268 @@ export function NextMeetingHero({
     metadata.customInviteeIds,
   );
   const timeLabel = formatMeetingDateTime(meeting.date);
+  const decisionsText = metadata.decisions?.trim() ?? "";
+  const hasNotes = Boolean(meetingNotes.trim());
+  const hasDecisions = Boolean(decisionsText);
+  const agendaPreview = agendaItems.find((item) => item.trim()) ?? "";
+
+  const contextCounts: string[] = [];
+  if (agendaItems.length > 0) {
+    contextCounts.push(
+      `${agendaItems.length} agenda item${agendaItems.length === 1 ? "" : "s"}`,
+    );
+  }
+  if (meeting.actionItemCount > 0) {
+    contextCounts.push(
+      `${meeting.actionItemCount} action item${meeting.actionItemCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (hasNotes) contextCounts.push("Notes recorded");
+  if (hasDecisions) contextCounts.push("Decisions recorded");
 
   return (
     <div
       style={{
-        background: "#161616",
+        background: featured ? "#161616" : CARD_BG,
         border: `1px solid ${CARD_BORDER}`,
-        borderLeft: `3px solid ${GOLD}`,
+        borderLeft: featured ? `3px solid ${GOLD}` : `1px solid ${CARD_BORDER}`,
         borderRadius: "10px",
-        padding: "20px",
-        marginBottom: "24px",
+        padding: "16px 18px",
+        marginBottom: featured ? "16px" : "10px",
         width: "100%",
+        opacity: isPast ? 0.75 : 1,
       }}
     >
+      {featured ? (
+        <p
+          style={{
+            margin: "0 0 12px",
+            fontSize: "11px",
+            fontWeight: 700,
+            color: "#777777",
+            letterSpacing: "0.06em",
+          }}
+        >
+          NEXT MEETING
+        </p>
+      ) : null}
+
       <div
         style={{
           display: "flex",
           flexDirection: stackedLayout ? "column" : "row",
-          gap: "24px",
-          width: "100%",
+          gap: stackedLayout ? "14px" : "20px",
+          alignItems: "flex-start",
         }}
       >
-        <div style={{ flex: stackedLayout ? undefined : 1.5, minWidth: 0 }}>
-          <p
-            style={{
-              margin: "0 0 12px",
-              fontSize: "11px",
-              fontWeight: 700,
-              color: "#777777",
-              letterSpacing: "0.06em",
-            }}
-          >
-            NEXT MEETING
-          </p>
-          <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-            <DateBadge iso={meeting.date} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <h2
+        <div
+          style={{
+            display: "flex",
+            gap: "14px",
+            flex: stackedLayout ? undefined : 1.4,
+            minWidth: 0,
+            width: stackedLayout ? "100%" : undefined,
+          }}
+        >
+          <MeetingDateBadge iso={meeting.date} muted={isPast} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "8px",
+                marginBottom: "6px",
+              }}
+            >
+              <h3
                 style={{
-                  margin: "0 0 8px",
-                  fontSize: "20px",
-                  fontWeight: 800,
+                  margin: 0,
+                  fontSize: featured ? "18px" : "15px",
+                  fontWeight: 700,
                   color: "#ffffff",
+                  minWidth: 0,
                 }}
               >
                 {meeting.title}
-              </h2>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
-                <MeetingTypeBadge type={meeting.meetingType} />
-                {recurrenceLabel(meeting) ? (
-                  <span
-                    style={{
-                      border: "1px solid #333333",
-                      color: "#999999",
-                      borderRadius: "4px",
-                      padding: "2px 8px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {recurrenceLabel(meeting)}
-                  </span>
-                ) : null}
-              </div>
-              <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#999999" }}>
-                {timeLabel} · {formatLabel} · {inviteeLabel}
-              </p>
-              {locationLine ? (
-                <p
+              </h3>
+              {isPast ? (
+                <span
                   style={{
-                    margin: 0,
-                    fontSize: "13px",
+                    fontSize: "10px",
+                    fontWeight: 600,
                     color: "#777777",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
+                    border: "1px solid #333333",
+                    borderRadius: "4px",
+                    padding: "2px 8px",
                   }}
                 >
-                  {metadata.format === "online" || metadata.format === "hybrid" ? (
-                    <Video size={14} aria-hidden />
-                  ) : (
-                    <MapPin size={14} aria-hidden />
-                  )}
-                  {locationLine}
-                  {meeting.meetingLink?.trim() ? <Link2 size={12} aria-hidden /> : null}
-                </p>
+                  Completed
+                </span>
               ) : null}
             </div>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "16px" }}>
-            <button
-              type="button"
-              style={primaryButtonStyle}
-              onClick={() => navigate(`/app/clubs/${clubId}/meetings/${meeting.id}`)}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginBottom: "8px",
+              }}
             >
-              Open Agenda
-            </button>
-            {isPrivileged ? (
-              <button
-                type="button"
-                style={outlinedButtonStyle()}
-                onClick={() => onEdit(meeting)}
+              <MeetingTypeBadge type={meeting.meetingType} />
+              {recurrenceLabel(meeting) ? (
+                <span
+                  style={{
+                    border: "1px solid #333333",
+                    color: "#999999",
+                    borderRadius: "4px",
+                    padding: "2px 8px",
+                    fontSize: "10px",
+                    fontWeight: 600,
+                  }}
+                >
+                  {recurrenceLabel(meeting)}
+                </span>
+              ) : null}
+            </div>
+            <p style={{ margin: "0 0 4px", fontSize: "13px", color: "#999999" }}>{timeLabel}</p>
+            <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#777777" }}>
+              {formatLabel} · {inviteeLabel}
+            </p>
+            {locationLine ? (
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "12px",
+                  color: "#777777",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
               >
-                Manage Meeting
-              </button>
-            ) : (
-              <button
-                type="button"
-                style={outlinedButtonStyle()}
-                onClick={() => navigate(`/app/clubs/${clubId}/meetings/${meeting.id}`)}
-              >
-                Manage Meeting
-              </button>
-            )}
+                {metadata.format === "online" || metadata.format === "hybrid" ? (
+                  <Video size={13} aria-hidden />
+                ) : (
+                  <MapPin size={13} aria-hidden />
+                )}
+                {locationLine}
+                {meeting.meetingLink?.trim() ? <Link2 size={11} aria-hidden /> : null}
+              </p>
+            ) : null}
           </div>
         </div>
 
-        <div style={{ flex: stackedLayout ? undefined : 1, minWidth: 0 }}>
+        <div
+          style={{
+            flex: stackedLayout ? undefined : 1,
+            minWidth: 0,
+            width: stackedLayout ? "100%" : undefined,
+            paddingLeft: stackedLayout ? 0 : "8px",
+            borderLeft: stackedLayout ? "none" : `1px solid #222222`,
+          }}
+        >
           <p
             style={{
-              margin: "0 0 10px",
-              fontSize: "11px",
+              margin: "0 0 8px",
+              fontSize: "10px",
               fontWeight: 700,
-              color: "#777777",
+              color: "#555555",
               letterSpacing: "0.06em",
+              textTransform: "uppercase",
             }}
           >
-            AGENDA PREVIEW
+            Context
           </p>
-          {agendaItems.length > 0 ? (
-            <>
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: "18px",
-                  color: "#cccccc",
-                  fontSize: "13px",
-                  lineHeight: 1.6,
-                }}
-              >
-                {agendaItems.slice(0, 3).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-              {agendaItems.length > 3 ? (
-                <Link
-                  to={`/app/clubs/${clubId}/meetings/${meeting.id}`}
-                  style={{
-                    display: "inline-block",
-                    marginTop: "10px",
-                    fontSize: "13px",
-                    color: ACCENT_RED,
-                    textDecoration: "none",
-                    fontWeight: 600,
-                  }}
-                >
-                  View full agenda →
-                </Link>
-              ) : null}
-            </>
+          {agendaPreview ? (
+            <p
+              style={{
+                margin: "0 0 8px",
+                fontSize: "13px",
+                color: "#cccccc",
+                lineHeight: 1.45,
+                overflow: "hidden",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+              }}
+            >
+              {agendaPreview}
+            </p>
           ) : (
-            <>
-              <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>No agenda set yet</p>
-              {isPrivileged ? (
-                <button
-                  type="button"
-                  onClick={() => onEdit(meeting)}
-                  style={{
-                    marginTop: "10px",
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    color: ACCENT_RED,
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Add agenda items →
-                </button>
-              ) : null}
-            </>
+            <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#555555" }}>
+              No agenda set yet
+            </p>
           )}
+          {contextCounts.length > 0 ? (
+            <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
+              {contextCounts.join(" · ")}
+            </p>
+          ) : null}
         </div>
+
+        {isPrivileged && meeting.status !== "cancelled" && !isPast ? (
+          <MeetingRowMenu onEdit={() => onEdit(meeting)} onCancel={() => onCancel(meeting)} />
+        ) : null}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "10px",
+          marginTop: "16px",
+          paddingTop: "14px",
+          borderTop: `1px solid #222222`,
+        }}
+      >
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          onClick={() => navigate(`/app/clubs/${clubId}/meetings/${meeting.id}`)}
+        >
+          Open Agenda
+        </button>
+        {isPrivileged ? (
+          <button type="button" style={outlinedButtonStyle()} onClick={() => onEdit(meeting)}>
+            Manage Meeting
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={outlinedButtonStyle()}
+            onClick={() => navigate(`/app/clubs/${clubId}/meetings/${meeting.id}`)}
+          >
+            View Meeting
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+export function NextMeetingHero({
+  meeting,
+  clubId,
+  isPrivileged,
+  onEdit,
+  onCancel,
+}: {
+  meeting: ClubMeeting;
+  clubId: string;
+  isPrivileged: boolean;
+  isMobile?: boolean;
+  onEdit: (meeting: ClubMeeting) => void;
+  onCancel?: (meeting: ClubMeeting) => void;
+}) {
+  return (
+    <MeetingListCard
+      meeting={meeting}
+      clubId={clubId}
+      isPrivileged={isPrivileged}
+      featured
+      onEdit={onEdit}
+      onCancel={onCancel ?? onEdit}
+    />
   );
 }
 
@@ -566,123 +663,15 @@ export function CompactMeetingRow({
   onEdit: (meeting: ClubMeeting) => void;
   onCancel: (meeting: ClubMeeting) => void;
 }) {
-  const { members } = useClubMembers(clubId);
-  const { metadata } = parseMeetingNotes(meeting.notes);
-  const inviteeLabel = inviteeCountLabel(
-    metadata.inviteeGroup,
-    members,
-    metadata.customInviteeIds,
-  );
-  const formatLabel = meetingFormatLabel(meeting);
-  const locationLine = meetingLocationLine(meeting);
-  const parsedDate = new Date(meeting.date);
-  const timeOnly = Number.isNaN(parsedDate.getTime())
-    ? ""
-    : parsedDate.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
-  const hasNotes = meetingHasNotes(meeting);
-
   return (
-    <div
-      style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderRadius: "8px",
-        padding: "14px 16px",
-        marginBottom: "8px",
-        display: "flex",
-        alignItems: "center",
-        gap: "14px",
-      }}
-    >
-      <DateBadge iso={meeting.date} compact />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
-          <p
-            style={{
-              margin: 0,
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#ffffff",
-              minWidth: 0,
-            }}
-          >
-            {meeting.title}
-          </p>
-          {isPast ? (
-            <span
-              style={{
-                fontSize: "10px",
-                fontWeight: 600,
-                color: "#777777",
-                border: "1px solid #333333",
-                borderRadius: "4px",
-                padding: "2px 8px",
-              }}
-            >
-              Event Ended
-            </span>
-          ) : null}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: "8px",
-            marginTop: "6px",
-          }}
-        >
-          <MeetingTypeBadge type={meeting.meetingType} />
-          {recurrenceLabel(meeting) ? (
-            <span
-              style={{
-                border: "1px solid #333333",
-                color: "#999999",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "10px",
-                fontWeight: 600,
-              }}
-            >
-              {recurrenceLabel(meeting)}
-            </span>
-          ) : null}
-        </div>
-        <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#777777" }}>
-          {[timeOnly, formatLabel, locationLine].filter(Boolean).join(" · ")}
-        </p>
-        <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>{inviteeLabel}</p>
-        {isPast ? (
-          <p style={{ margin: "6px 0 0", fontSize: "11px", color: hasNotes ? "#777777" : "#555555" }}>
-            {hasNotes ? "Notes available" : "No notes"}
-          </p>
-        ) : null}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          flexShrink: 0,
-        }}
-      >
-        <Link
-          to={`/app/clubs/${clubId}/meetings/${meeting.id}`}
-          style={{
-            fontSize: "13px",
-            color: ACCENT_RED,
-            textDecoration: "none",
-            fontWeight: 600,
-            whiteSpace: "nowrap",
-          }}
-        >
-          Open Meeting
-        </Link>
-        {isPrivileged && meeting.status !== "cancelled" && !isPast ? (
-          <MeetingRowMenu onEdit={() => onEdit(meeting)} onCancel={() => onCancel(meeting)} />
-        ) : null}
-      </div>
-    </div>
+    <MeetingListCard
+      meeting={meeting}
+      clubId={clubId}
+      isPrivileged={isPrivileged}
+      isPast={isPast}
+      onEdit={onEdit}
+      onCancel={onCancel}
+    />
   );
 }
 
@@ -725,7 +714,9 @@ export function ActionItemsDueSoonPanel({
         </button>
       </div>
       {items.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>No action items due soon</p>
+        <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>
+          No action items due soon.
+        </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {items.map((item) => {
@@ -812,17 +803,24 @@ export function RecentMeetingNotesPanel({
         </button>
       </div>
       {meetings.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>No meeting notes yet</p>
+        <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>
+          No recent meeting notes yet.
+        </p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {meetings.map((meeting) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {meetings.map((meeting) => {
+            const { meetingNotes } = parseMeetingNotes(meeting.notes);
+            const preview = meetingNotes.trim().slice(0, 100);
+            const truncated = meetingNotes.trim().length > 100;
+
+            return (
             <button
               key={meeting.id}
               type="button"
               onClick={() => navigate(`/app/clubs/${clubId}/meetings/${meeting.id}`)}
               style={{
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-start",
                 gap: "12px",
                 width: "100%",
                 background: "transparent",
@@ -832,7 +830,7 @@ export function RecentMeetingNotesPanel({
                 textAlign: "left",
               }}
             >
-              <DateBadge iso={meeting.date} compact />
+              <MeetingDateBadge iso={meeting.date} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p
                   style={{
@@ -847,15 +845,74 @@ export function RecentMeetingNotesPanel({
                 >
                   {meeting.title}
                 </p>
-                <p style={{ margin: 0, fontSize: "11px", color: "#555555" }}>
-                  Notes added {formatRelativeTime(meeting.createdAt)}
+                {preview ? (
+                  <p
+                    style={{
+                      margin: "0 0 4px",
+                      fontSize: "12px",
+                      color: "#777777",
+                      lineHeight: 1.45,
+                      overflow: "hidden",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
+                    {preview}
+                    {truncated ? "…" : ""}
+                  </p>
+                ) : null}
+                <p style={{ margin: 0, fontSize: "11px", color: ACCENT_RED, fontWeight: 600 }}>
+                  Open meeting →
                 </p>
               </div>
               <FileText size={16} color="#555555" aria-hidden style={{ flexShrink: 0 }} />
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
+    </div>
+  );
+}
+
+export function MeetingTipsCard() {
+  const tips = [
+    "Add agenda items before the meeting.",
+    "Record decisions during the meeting.",
+    "Convert action items into tasks after the meeting.",
+  ];
+
+  return (
+    <div style={{ ...panelCardStyle, marginTop: "16px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          marginBottom: "12px",
+        }}
+      >
+        <Lightbulb size={16} color={GOLD} aria-hidden />
+        <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
+          Meeting Tips
+        </h3>
+      </div>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: "18px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+        }}
+      >
+        {tips.map((tip) => (
+          <li key={tip} style={{ fontSize: "12px", color: "#777777", lineHeight: 1.45 }}>
+            {tip}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -889,70 +946,72 @@ export function MeetingsUpcomingLayout({
   const stackedLayout = isMobile || windowWidth <= 1024;
 
   return (
-    <>
-      {nextMeeting ? (
-        <NextMeetingHero
-          meeting={nextMeeting}
-          clubId={clubId}
-          isPrivileged={isPrivileged}
-          isMobile={isMobile}
-          onEdit={onEdit}
-        />
-      ) : null}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: stackedLayout ? "column" : "row",
+        gap: "24px",
+        alignItems: "flex-start",
+        width: "100%",
+      }}
+    >
       <div
         style={{
-          display: "flex",
-          flexDirection: stackedLayout ? "column" : "row",
-          gap: "24px",
-          alignItems: "flex-start",
-          width: "100%",
+          flex: stackedLayout ? undefined : 2,
+          minWidth: 0,
+          width: stackedLayout ? "100%" : undefined,
         }}
       >
-        <div
-          style={{
-            flex: stackedLayout ? undefined : 2,
-            minWidth: 0,
-            width: stackedLayout ? "100%" : undefined,
-          }}
-        >
-          {listMeetings.length === 0 && !nextMeeting ? (
-            <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-              No upcoming meetings scheduled.
-            </p>
-          ) : listMeetings.length === 0 ? (
-            <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-              No additional upcoming meetings.
-            </p>
-          ) : (
-            listMeetings.map((meeting) => (
-              <CompactMeetingRow
-                key={meeting.id}
-                meeting={meeting}
-                clubId={clubId}
-                isPrivileged={isPrivileged}
-                onEdit={onEdit}
-                onCancel={onCancel}
-              />
-            ))
-          )}
-        </div>
-        <div
-          style={{
-            flex: stackedLayout ? undefined : 1,
-            minWidth: 0,
-            maxWidth: stackedLayout ? "100%" : "360px",
-            width: stackedLayout ? "100%" : undefined,
-            flexShrink: 0,
-          }}
-        >
-          <ActionItemsDueSoonPanel items={actionItemsDueSoon} onViewAll={onViewAllActions} />
-          <RecentMeetingNotesPanel
-            meetings={recentNotesMeetings}
+        {nextMeeting ? (
+          <NextMeetingHero
+            meeting={nextMeeting}
             clubId={clubId}
-            onViewAll={onViewAllNotes}
+            isPrivileged={isPrivileged}
+            onEdit={onEdit}
+            onCancel={onCancel}
           />
-        </div>
+        ) : null}
+        {listMeetings.length === 0 && !nextMeeting ? (
+          <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
+            No upcoming meetings scheduled.
+          </p>
+        ) : listMeetings.length === 0 ? (
+          <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
+            No additional upcoming meetings.
+          </p>
+        ) : (
+          listMeetings.map((meeting) => (
+            <CompactMeetingRow
+              key={meeting.id}
+              meeting={meeting}
+              clubId={clubId}
+              isPrivileged={isPrivileged}
+              onEdit={onEdit}
+              onCancel={onCancel}
+            />
+          ))
+        )}
       </div>
-    </>
+      <div
+        style={{
+          flex: stackedLayout ? undefined : 1,
+          minWidth: 0,
+          maxWidth: stackedLayout ? "100%" : "360px",
+          width: stackedLayout ? "100%" : undefined,
+          flexShrink: 0,
+          alignSelf: stackedLayout ? "stretch" : "flex-start",
+          position: stackedLayout ? "static" : "sticky",
+          top: stackedLayout ? undefined : "24px",
+        }}
+      >
+        <ActionItemsDueSoonPanel items={actionItemsDueSoon} onViewAll={onViewAllActions} />
+        <RecentMeetingNotesPanel
+          meetings={recentNotesMeetings}
+          clubId={clubId}
+          onViewAll={onViewAllNotes}
+        />
+        <MeetingTipsCard />
+      </div>
+    </div>
   );
 }

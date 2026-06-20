@@ -14,6 +14,7 @@ import {
 } from "../../../lib/meetingMetadata";
 import { supabase } from "../../../lib/supabaseClient";
 import { MeetingTypeBadge } from "./MeetingCard";
+import { MeetingDateBadge } from "./MeetingsListUI";
 import {
   CARD_BG,
   CARD_BORDER,
@@ -28,28 +29,49 @@ import {
   mapActionItemRow,
   mapMeetingRow,
   meetingLinkButtonLabel,
+  meetingTypeLabel,
 } from "./meetingUtils";
 
 function useDebouncedSave(
   value: string,
   onSave: (value: string) => Promise<void>,
   delay = 900,
-) {
-  const [saved, setSaved] = useState(true);
+): "saved" | "saving" | "error" {
+  const [status, setStatus] = useState<"saved" | "saving" | "error">("saved");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipInitialRef = useRef(true);
 
   useEffect(() => {
-    setSaved(false);
+    if (skipInitialRef.current) {
+      skipInitialRef.current = false;
+      return;
+    }
+
+    setStatus("saving");
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      void onSave(value).then(() => setSaved(true));
+      void onSave(value)
+        .then(() => setStatus("saved"))
+        .catch(() => setStatus("error"));
     }, delay);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [value, onSave, delay]);
 
-  return saved;
+  return status;
+}
+
+function saveStatusLabel(status: "saved" | "saving" | "error"): string {
+  if (status === "saved") return "Saved";
+  if (status === "error") return "Save failed";
+  return "Saving…";
+}
+
+function saveStatusColor(status: "saved" | "saving" | "error"): string {
+  if (status === "saved") return "#4ade80";
+  if (status === "error") return "#E51937";
+  return "#777777";
 }
 
 export function MeetingDetailView({
@@ -148,7 +170,11 @@ export function MeetingDetailView({
     async (items: string[]) => {
       if (!isPrivileged || !meeting) return;
       const serialized = serializeAgendaItems(items);
-      await supabase.from("club_meetings").update({ agenda: serialized }).eq("id", meeting.id);
+      const { error } = await supabase
+        .from("club_meetings")
+        .update({ agenda: serialized })
+        .eq("id", meeting.id);
+      if (error) throw error;
       setMeeting((current) => (current ? { ...current, agenda: serialized } : current));
     },
     [isPrivileged, meeting],
@@ -159,19 +185,23 @@ export function MeetingDetailView({
       if (!isPrivileged || !meeting || !metadata) return;
       const nextMetadata: MeetingMetadata = { ...metadata, decisions: decisions.trim() || undefined };
       const serialized = serializeMeetingNotes(nextMetadata, notes);
-      await supabase.from("club_meetings").update({ notes: serialized }).eq("id", meeting.id);
+      const { error } = await supabase
+        .from("club_meetings")
+        .update({ notes: serialized })
+        .eq("id", meeting.id);
+      if (error) throw error;
       setMetadata(nextMetadata);
       setMeeting((current) => (current ? { ...current, notes: serialized } : current));
     },
     [isPrivileged, meeting, metadata],
   );
 
-  const agendaSaved = useDebouncedSave(
+  const agendaSaveStatus = useDebouncedSave(
     JSON.stringify(agendaItems),
     async () => saveAgenda(agendaItems),
   );
 
-  const notesSaved = useDebouncedSave(
+  const notesSaveStatus = useDebouncedSave(
     `${notesDraft}|||${decisionsDraft}`,
     async () => saveNotesBundle(notesDraft, decisionsDraft),
   );
@@ -273,32 +303,52 @@ export function MeetingDetailView({
         Back to Meetings
       </button>
 
-      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "16px", marginBottom: "24px" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
-            <MeetingTypeBadge type={meeting.meetingType} />
-            {meeting.isRecurring && meeting.recurrencePattern ? (
-              <span style={{ fontSize: "11px", color: "#777777" }}>
-                Repeats {meeting.recurrencePattern}
-              </span>
-            ) : null}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "16px",
+          marginBottom: "24px",
+        }}
+      >
+        <div style={{ display: "flex", gap: "16px", alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+          <MeetingDateBadge iso={meeting.date} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "8px",
+              }}
+            >
+              <MeetingTypeBadge type={meeting.meetingType} />
+              {meeting.isRecurring && meeting.recurrencePattern ? (
+                <span style={{ fontSize: "11px", color: "#777777" }}>
+                  Repeats {meeting.recurrencePattern}
+                </span>
+              ) : null}
+            </div>
+            <h1 style={{ margin: "0 0 8px", fontSize: "24px", fontWeight: 800, color: "#ffffff" }}>
+              {meeting.title}
+            </h1>
+            <p style={{ margin: 0, fontSize: "14px", color: "#999999" }}>
+              {formatMeetingDateTime(meeting.date)}
+              {" · "}
+              {metadata.format === "online"
+                ? "Online"
+                : metadata.format === "hybrid"
+                  ? "Hybrid"
+                  : "In-Person"}
+              {" · "}
+              {inviteeLabel}
+            </p>
           </div>
-          <h1 style={{ margin: "0 0 8px", fontSize: "24px", fontWeight: 800, color: "#ffffff" }}>
-            {meeting.title}
-          </h1>
-          <p style={{ margin: 0, fontSize: "14px", color: "#999999" }}>
-            {formatMeetingDateTime(meeting.date)}
-            {" · "}
-            {metadata.format === "online"
-              ? "Online"
-              : metadata.format === "hybrid"
-                ? "Hybrid"
-                : "In-Person"}
-            {" · "}
-            {inviteeLabel}
-          </p>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
           {meeting.meetingLink?.trim() ? (
             <a
               href={meeting.meetingLink}
@@ -336,8 +386,13 @@ export function MeetingDetailView({
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
               <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>Agenda</h2>
               {isPrivileged ? (
-                <span style={{ fontSize: "11px", color: agendaSaved ? "#4ade80" : "#777777" }}>
-                  {agendaSaved ? "Saved" : "Saving…"}
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: saveStatusColor(agendaSaveStatus),
+                  }}
+                >
+                  {saveStatusLabel(agendaSaveStatus)}
                 </span>
               ) : null}
             </div>
@@ -378,8 +433,13 @@ export function MeetingDetailView({
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
               <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>Notes</h2>
               {isPrivileged ? (
-                <span style={{ fontSize: "11px", color: notesSaved ? "#4ade80" : "#777777" }}>
-                  {notesSaved ? "Saved" : "Saving…"}
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: saveStatusColor(notesSaveStatus),
+                  }}
+                >
+                  {saveStatusLabel(notesSaveStatus)}
                 </span>
               ) : null}
             </div>
@@ -521,12 +581,12 @@ export function MeetingDetailView({
 
         <div>
           <section style={sectionCardStyle}>
-            <h2 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
+            <h2 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
               Meeting Details
             </h2>
-            <dl style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
-              <DetailRow label="Type" value={meeting.meetingType.replace("_", " ")} />
-              <DetailRow label="Date" value={formatMeetingDateTime(meeting.date)} />
+            <dl style={{ margin: 0 }}>
+              <DetailRow label="Type" value={meetingTypeLabel(meeting.meetingType)} />
+              <DetailRow label="Date & time" value={formatMeetingDateTime(meeting.date)} />
               <DetailRow
                 label="Format"
                 value={
@@ -538,7 +598,9 @@ export function MeetingDetailView({
                 }
               />
               <DetailRow label="Invitees" value={inviteeLabel} />
-              {meeting.meetingLink ? <DetailRow label="Link" value={meeting.meetingLink} /> : null}
+              {meeting.meetingLink ? (
+                <DetailRow label="Meeting link" value={meeting.meetingLink} />
+              ) : null}
               {meeting.location ? <DetailRow label="Location" value={meeting.location} /> : null}
             </dl>
             {metadata.preparation ? (
@@ -605,9 +667,36 @@ export function MeetingDetailView({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ marginBottom: "10px" }}>
-      <dt style={{ margin: 0, fontSize: "11px", color: "#777777" }}>{label}</dt>
-      <dd style={{ margin: "4px 0 0", color: "#cccccc", wordBreak: "break-word" }}>{value}</dd>
+    <div
+      style={{
+        marginBottom: "14px",
+        paddingBottom: "14px",
+        borderBottom: "1px solid #222222",
+      }}
+    >
+      <dt
+        style={{
+          margin: 0,
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#777777",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {label}
+      </dt>
+      <dd
+        style={{
+          margin: "6px 0 0",
+          fontSize: "13px",
+          color: "#cccccc",
+          wordBreak: "break-word",
+          lineHeight: 1.45,
+        }}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

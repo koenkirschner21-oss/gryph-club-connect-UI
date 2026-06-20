@@ -242,6 +242,11 @@ export default function ClubMeetingsPage() {
     }).length;
   }, [myActionItems]);
 
+  const completedMeetingsCount = useMemo(
+    () => pastMeetings.filter((meeting) => meeting.status !== "cancelled").length,
+    [pastMeetings],
+  );
+
   const recentNotesMeetings = useMemo(() => {
     return meetings
       .filter((meeting) => {
@@ -411,6 +416,7 @@ export default function ClubMeetingsPage() {
           nextMeeting={nextMeeting}
           openActionItemCount={openActionItemCount}
           dueThisWeekCount={dueThisWeekCount}
+          completedCount={completedMeetingsCount}
           isMobile={isMobile}
         />
       ) : null}
@@ -469,7 +475,9 @@ export default function ClubMeetingsPage() {
           </button>
           {showPast ? (
             pastMeetings.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>No past meetings.</p>
+              <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
+                No past meetings yet.
+              </p>
             ) : (
               <div>
                 {pastMeetings.map((meeting) => (
@@ -617,7 +625,7 @@ function MyActionItemsSection({
   if (items.length === 0) {
     return (
       <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-        No action items assigned to you from meetings yet.
+        No action items assigned to you.
       </p>
     );
   }

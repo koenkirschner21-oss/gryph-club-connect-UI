@@ -45,7 +45,7 @@ function StatusBadge({ meeting }: { meeting: ClubMeeting }) {
       ? { bg: "#1a1a1a", border: "#333333", color: "#777777" }
       : label === "Completed"
         ? { bg: "rgba(34,197,94,0.1)", border: "#22c55e", color: "#4ade80" }
-        : { bg: "rgba(59,130,246,0.1)", border: "#3b82f6", color: "#60a5fa" };
+        : { bg: "#1a1a1a", border: "#555555", color: "#999999" };
 
   return (
     <span
