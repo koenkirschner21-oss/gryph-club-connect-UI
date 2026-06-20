@@ -49,6 +49,7 @@ const workspaceLinks: {
     Icon: Megaphone,
     badgeKey: "announcements",
   },
+  { to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
   { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare, badgeKey: "tasks" },
   { to: "events", label: "Events", end: false, Icon: Calendar },
   {
@@ -59,7 +60,6 @@ const workspaceLinks: {
       <LucideCalendar size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
     ),
   },
-  { to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
   {
     to: "documents",
     label: "Documents",
