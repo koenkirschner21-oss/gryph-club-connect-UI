@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowDown,
@@ -7,7 +7,6 @@ import {
   Calendar,
   CheckCircle,
   CheckSquare,
-  ChevronDown,
   Download,
   Info,
   Megaphone,
@@ -89,6 +88,7 @@ interface MemberRow {
 
 interface TaskRow {
   status: string;
+  created_at: string;
 }
 
 interface PostRow {
@@ -141,6 +141,93 @@ const chartEmptyStyle: CSSProperties = {
   color: "#555555",
   textAlign: "center",
 };
+
+function timeRangeStart(range: TimeRange): Date | null {
+  const now = new Date();
+  switch (range) {
+    case "30d":
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    case "semester": {
+      const start = new Date(now);
+      start.setMonth(start.getMonth() - 4);
+      return start;
+    }
+    case "year": {
+      const start = new Date(now);
+      start.setFullYear(start.getFullYear() - 1);
+      return start;
+    }
+    case "all":
+    default:
+      return null;
+  }
+}
+
+function filterRowsSince<T>(
+  rows: T[],
+  getDateValue: (row: T) => string,
+  rangeStart: Date | null,
+): T[] {
+  if (!rangeStart) return rows;
+  return rows.filter((row) => {
+    const parsed = new Date(getDateValue(row));
+    return !Number.isNaN(parsed.getTime()) && parsed >= rangeStart;
+  });
+}
+
+function AnalyticsBuildingMessage() {
+  return (
+    <div
+      style={{
+        ...chartEmptyStyle,
+        flexDirection: "column",
+        gap: "8px",
+        padding: "16px",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "14px",
+          fontWeight: 600,
+          color: "#555555",
+          margin: 0,
+        }}
+      >
+        Analytics are still building
+      </p>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#444444",
+          margin: 0,
+          lineHeight: 1.5,
+          maxWidth: "280px",
+        }}
+      >
+        As your club gets more members, RSVPs, announcements, and task activity, this
+        page will become more useful.
+      </p>
+    </div>
+  );
+}
+
+function memberGrowthIsSparse(totalMembers: number, chartData: { count: number }[]): boolean {
+  if (totalMembers <= 1) return true;
+  if (chartData.length === 0) return true;
+  const counts = chartData.map((point) => point.count);
+  const max = Math.max(...counts);
+  const min = Math.min(...counts);
+  return max <= 2 && max - min <= 1;
+}
+
+function eventAttendanceIsSparse(
+  attendance: { going: number; maybe: number; notGoing: number }[],
+): boolean {
+  if (attendance.length === 0) return true;
+  return !attendance.some(
+    (event) => event.going + event.maybe + event.notGoing > 0,
+  );
+}
 
 const chartCardStyle: CSSProperties = {
   background: CARD_BG,
@@ -676,83 +763,28 @@ function StatCard({
 }
 
 function ExportMenuButton() {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handleClick(event: MouseEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
   return (
-    <div ref={menuRef} style={{ position: "relative" }}>
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "8px",
-          background: "#1a1a1a",
-          border: "1px solid #2a2a2a",
-          borderRadius: "8px",
-          padding: "8px 16px",
-          color: "#ffffff",
-          fontSize: "13px",
-          cursor: "pointer",
-        }}
-      >
-        <Download size={16} aria-hidden />
-        Export
-        <ChevronDown size={14} aria-hidden />
-      </button>
-
-      {open ? (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            right: 0,
-            minWidth: "160px",
-            background: "#1a1a1a",
-            border: "1px solid #2a2a2a",
-            borderRadius: "8px",
-            padding: "6px",
-            zIndex: 20,
-          }}
-        >
-          {["Export as CSV", "Export as PDF"].map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setOpen(false)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                background: "transparent",
-                border: "none",
-                borderRadius: "6px",
-                padding: "8px 10px",
-                color: "#cccccc",
-                fontSize: "13px",
-                cursor: "pointer",
-              }}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      disabled
+      title="Export is coming soon"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "8px",
+        background: "#141414",
+        border: "1px solid #2a2a2a",
+        borderRadius: "8px",
+        padding: "8px 16px",
+        color: "#555555",
+        fontSize: "13px",
+        cursor: "not-allowed",
+        opacity: 0.85,
+      }}
+    >
+      <Download size={16} aria-hidden />
+      Export (Coming soon)
+    </button>
   );
 }
 
@@ -934,7 +966,7 @@ export default function ClubAnalyticsPage() {
           .select("created_at, role")
           .eq("club_id", clubId)
           .eq("status", "active"),
-        supabase.from("tasks").select("status").eq("club_id", clubId),
+        supabase.from("tasks").select("status, created_at").eq("club_id", clubId),
         supabase.from("posts").select("created_at").eq("club_id", clubId),
         supabase
           .from("events")
@@ -1011,7 +1043,38 @@ export default function ClubAnalyticsPage() {
     };
   }, [clubId, isPrivileged]);
 
-  const memberGrowth = useMemo(() => buildMemberGrowth(members), [members]);
+  const rangeStart = useMemo(() => timeRangeStart(timeRange), [timeRange]);
+
+  const scopedMembers = useMemo(
+    () => filterRowsSince(members, (row) => row.created_at, rangeStart),
+    [members, rangeStart],
+  );
+  const scopedTasks = useMemo(
+    () => filterRowsSince(tasks, (row) => row.created_at, rangeStart),
+    [tasks, rangeStart],
+  );
+  const scopedPosts = useMemo(
+    () => filterRowsSince(posts, (row) => row.created_at, rangeStart),
+    [posts, rangeStart],
+  );
+  const scopedEvents = useMemo(
+    () => filterRowsSince(events, (row) => row.date, rangeStart),
+    [events, rangeStart],
+  );
+  const scopedEventIds = useMemo(
+    () => new Set(scopedEvents.map((event) => event.id)),
+    [scopedEvents],
+  );
+  const scopedRsvps = useMemo(
+    () => rsvps.filter((row) => scopedEventIds.has(row.event_id)),
+    [rsvps, scopedEventIds],
+  );
+  const scopedDmMessages = useMemo(
+    () => filterRowsSince(dmMessages, (row) => row.created_at, rangeStart),
+    [dmMessages, rangeStart],
+  );
+
+  const memberGrowth = useMemo(() => buildMemberGrowth(scopedMembers), [scopedMembers]);
   const memberGrowthChartData = useMemo(
     () =>
       memberGrowthMode === "monthly"
@@ -1020,54 +1083,54 @@ export default function ClubAnalyticsPage() {
     [memberGrowth, memberGrowthMode],
   );
   const filteredEventsForAttendance = useMemo(() => {
+    let list = scopedEvents;
     if (attendanceFilter === "public") {
-      return events.filter((event) => event.visibility !== "members_only");
+      list = list.filter((event) => event.visibility !== "members_only");
+    } else if (attendanceFilter === "internal") {
+      list = list.filter((event) => event.visibility === "members_only");
     }
-    if (attendanceFilter === "internal") {
-      return events.filter((event) => event.visibility === "members_only");
-    }
-    return events;
-  }, [events, attendanceFilter]);
+    return list;
+  }, [scopedEvents, attendanceFilter]);
   const eventAttendance = useMemo(
-    () => buildEventAttendance(filteredEventsForAttendance, rsvps),
-    [filteredEventsForAttendance, rsvps],
+    () => buildEventAttendance(filteredEventsForAttendance, scopedRsvps),
+    [filteredEventsForAttendance, scopedRsvps],
   );
-  const taskBreakdown = useMemo(() => buildTaskBreakdown(tasks), [tasks]);
+  const taskBreakdown = useMemo(() => buildTaskBreakdown(scopedTasks), [scopedTasks]);
   const eventCategories = useMemo(
-    () => buildEventCategoryBreakdown(events),
-    [events],
+    () => buildEventCategoryBreakdown(scopedEvents),
+    [scopedEvents],
   );
   const insights = useMemo(
     () =>
       buildInsights({
-        members,
-        tasks,
-        events,
-        rsvps,
-        posts,
-        dmMessages,
+        members: scopedMembers,
+        tasks: scopedTasks,
+        events: scopedEvents,
+        rsvps: scopedRsvps,
+        posts: scopedPosts,
+        dmMessages: scopedDmMessages,
       }),
-    [members, tasks, events, rsvps, posts, dmMessages],
+    [scopedMembers, scopedTasks, scopedEvents, scopedRsvps, scopedPosts, scopedDmMessages],
   );
 
-  const totalMembers = members.length;
-  const totalEvents = events.length;
-  const totalAnnouncements = posts.length;
-  const totalTasks = tasks.length;
-  const doneTasks = tasks.filter((t) => t.status === "done").length;
+  const totalMembers = scopedMembers.length;
+  const totalEvents = scopedEvents.length;
+  const totalAnnouncements = scopedPosts.length;
+  const totalTasks = scopedTasks.length;
+  const doneTasks = scopedTasks.filter((t) => t.status === "done").length;
   const taskCompletionRate =
     totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  const announcementsThisMonth = countPostsThisMonth(posts);
+  const announcementsThisMonth = countPostsThisMonth(scopedPosts);
 
   const yearAgo = oneYearAgoDate();
-  const membersYearAgo = members.filter(
+  const membersYearAgo = scopedMembers.filter(
     (member) => new Date(member.created_at) <= yearAgo,
   ).length;
-  const eventsYearAgo = events.filter((event) => {
+  const eventsYearAgo = scopedEvents.filter((event) => {
     const eventDate = new Date(event.date);
     return !Number.isNaN(eventDate.getTime()) && eventDate <= yearAgo;
   }).length;
-  const announcementsYearAgo = posts.filter(
+  const announcementsYearAgo = scopedPosts.filter(
     (post) => new Date(post.created_at) <= yearAgo,
   ).length;
 
@@ -1339,8 +1402,8 @@ export default function ClubAnalyticsPage() {
             }
           />
           <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
-            {totalMembers === 0 ? (
-              <div style={chartEmptyStyle}>No data yet</div>
+            {memberGrowthIsSparse(totalMembers, memberGrowthChartData) ? (
+              <AnalyticsBuildingMessage />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
@@ -1384,8 +1447,8 @@ export default function ClubAnalyticsPage() {
             }
           />
           <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
-            {eventAttendance.length === 0 ? (
-              <div style={chartEmptyStyle}>No data yet</div>
+            {eventAttendanceIsSparse(eventAttendance) ? (
+              <AnalyticsBuildingMessage />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -1433,7 +1496,7 @@ export default function ClubAnalyticsPage() {
             style={{ width: "100%", minWidth: 0, height: "180px", position: "relative" }}
           >
             {totalTasks === 0 ? (
-              <div style={chartEmptyStyle}>No data yet</div>
+              <AnalyticsBuildingMessage />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -1484,8 +1547,8 @@ export default function ClubAnalyticsPage() {
               height: Math.max(180, eventCategories.length * 36),
             }}
           >
-            {eventCategories.length === 0 ? (
-              <div style={chartEmptyStyle}>No data yet</div>
+            {totalEvents === 0 ? (
+              <AnalyticsBuildingMessage />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart

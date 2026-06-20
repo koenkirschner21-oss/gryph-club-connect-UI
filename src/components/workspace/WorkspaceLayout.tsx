@@ -87,9 +87,15 @@ const analyticsLink = {
 
 const settingsLink = {
   to: "settings",
-  label: "Settings",
+  label: "Club Settings",
   Icon: Settings,
 } as const;
+
+function sidebarRoleLabel(role: MemberRole): string {
+  if (role === "owner") return "President";
+  if (role === "executive") return "Executive";
+  return "Member";
+}
 
 const badgeStyle: CSSProperties = {
   background: "#E51937",
@@ -453,8 +459,44 @@ export default function WorkspaceLayout() {
     "checking",
   );
   const [deniedClubSlug, setDeniedClubSlug] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<{
+    fullName: string;
+    avatarUrl?: string;
+    program?: string;
+    yearOfStudy?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUserProfile(null);
+      return;
+    }
+
+    void (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url, program, year_of_study")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!data) {
+        setUserProfile(null);
+        return;
+      }
+
+      setUserProfile({
+        fullName: (data.full_name as string | null)?.trim() || "Member",
+        avatarUrl: (data.avatar_url as string | null) ?? undefined,
+        program: (data.program as string | null)?.trim() || undefined,
+        yearOfStudy: (data.year_of_study as string | null)?.trim() || undefined,
+      });
+    })();
+  }, [user?.id]);
 
   const clubProfilePath = club?.slug ? `/clubs/${club.slug}` : "/explore";
+  const profileMeta = [userProfile?.program, userProfile?.yearOfStudy]
+    .filter(Boolean)
+    .join(" · ");
 
   if (loading) {
     return (
@@ -605,6 +647,76 @@ export default function WorkspaceLayout() {
       </nav>
 
       <div className="border-t p-3" style={{ borderColor: "#1e1e1e" }}>
+        {userProfile ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              padding: "8px 10px",
+              marginBottom: "8px",
+              borderRadius: "8px",
+              background: "#141414",
+            }}
+          >
+            {userProfile.avatarUrl ? (
+              <img
+                src={userProfile.avatarUrl}
+                alt=""
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: "#242424",
+                  color: "#E51937",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                  fontSize: "12px",
+                  flexShrink: 0,
+                }}
+              >
+                {userProfile.fullName.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {userProfile.fullName}
+              </p>
+              <p
+                style={{
+                  margin: "2px 0 0",
+                  fontSize: "11px",
+                  color: "#777777",
+                }}
+              >
+                {sidebarRoleLabel(userRole)}
+                {profileMeta ? ` · ${profileMeta}` : null}
+              </p>
+            </div>
+          </div>
+        ) : null}
         <NavLink
           to={`/clubs/${club.slug}`}
           className="flex items-center gap-1.5 rounded-[6px] px-[14px] py-2 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
