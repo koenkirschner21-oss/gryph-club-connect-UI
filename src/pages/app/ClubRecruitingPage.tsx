@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Briefcase, Clipboard, MoreHorizontal } from "lucide-react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -18,14 +18,17 @@ import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import CandidateReviewPanel, {
   type CandidateReviewPatch,
+  type CandidateReviewPendingAction,
 } from "../../components/club/CandidateReviewPanel";
 import {
   APPLICANT_PIPELINE_FILTER_OPTIONS,
+  applicantMoveStatusActions,
   matchesApplicantPipelineFilter,
   normalizeSubStatus,
   parseInterviewTimes,
   subStatusLabel,
   subStatusPillStyle,
+  type ApplicantMoveStatusAction,
   type ApplicantPipelineFilter,
 } from "../../lib/hiringPipelineUtils";
 import {
@@ -297,6 +300,58 @@ function daysAgoLabel(iso: string): string {
   if (days <= 0) return "Applied today";
   if (days === 1) return "Applied 1 day ago";
   return `Applied ${days} days ago`;
+}
+
+function positionNeedsUrgentAttention(
+  position: ClubPosition,
+  status: ListingStatus,
+  deadline: { text: string; urgent: boolean } | null,
+): boolean {
+  if (status === "open" && position.pendingCount > 0) return true;
+  if (status === "open" && deadline?.urgent) return true;
+  return false;
+}
+
+function positionCardBorderStyle(
+  isSelected: boolean,
+  needsUrgent: boolean,
+): CSSProperties {
+  if (isSelected) {
+    return { border: "1px solid #E51937" };
+  }
+  if (needsUrgent) {
+    return {
+      border: "1px solid #2a2a2a",
+      borderLeft: "3px solid #E51937",
+    };
+  }
+  return { border: "1px solid #2a2a2a" };
+}
+
+function moveStatusActionLabel(action: ApplicantMoveStatusAction): string {
+  switch (action) {
+    case "mark_reviewed":
+      return "Mark Reviewed";
+    case "schedule":
+      return "Schedule Interview";
+    case "accept":
+      return "Accept Candidate";
+    case "reject":
+      return "Reject Candidate";
+    case "send_update":
+      return "Send Update";
+    default:
+      return action;
+  }
+}
+
+function toPendingPanelAction(
+  action: ApplicantMoveStatusAction,
+): CandidateReviewPendingAction {
+  if (action === "mark_reviewed") {
+    return { type: "mark_reviewed" };
+  }
+  return { type: "modal", modal: action };
 }
 
 function StatCard({
@@ -573,6 +628,16 @@ export default function ClubRecruitingPage() {
   const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(
     null,
   );
+  const [openApplicantMenuId, setOpenApplicantMenuId] = useState<string | null>(
+    null,
+  );
+  const [pendingApplicantAction, setPendingApplicantAction] = useState<{
+    appId: string;
+    action: CandidateReviewPendingAction;
+  } | null>(null);
+  const [applicationNoteCounts, setApplicationNoteCounts] = useState<
+    Record<string, number>
+  >({});
   const skipApplicantFilterResetRef = useRef(false);
 
   useEffect(() => {
@@ -958,7 +1023,37 @@ export default function ClubRecruitingPage() {
         positionHandling: (app.position_handling as string | null) ?? undefined,
       })),
     );
+
+    const applicationIds = rows.map((row) => row.id as string);
+    if (applicationIds.length > 0) {
+      const { data: noteRows } = await supabase
+        .from("application_notes")
+        .select("application_id")
+        .in("application_id", applicationIds);
+
+      const noteCounts: Record<string, number> = {};
+      (noteRows ?? []).forEach((row) => {
+        const appId = row.application_id as string;
+        noteCounts[appId] = (noteCounts[appId] ?? 0) + 1;
+      });
+      setApplicationNoteCounts(noteCounts);
+    } else {
+      setApplicationNoteCounts({});
+    }
+
     setAppsLoading(false);
+  }
+
+  function triggerApplicantAction(
+    appId: string,
+    action: ApplicantMoveStatusAction,
+  ) {
+    setSelectedApplicantId(appId);
+    setPendingApplicantAction({
+      appId,
+      action: toPendingPanelAction(action),
+    });
+    setOpenApplicantMenuId(null);
   }
 
   async function toggleApplications(position: ClubPosition) {
@@ -1015,8 +1110,7 @@ export default function ClubRecruitingPage() {
               margin: "4px auto 16px",
             }}
           >
-            Post executive roles, committee positions, or volunteer opportunities to build
-            your team.
+            Post your first role to start receiving applications from students.
           </p>
           <button
             type="button"
@@ -1032,7 +1126,7 @@ export default function ClubRecruitingPage() {
               cursor: "pointer",
             }}
           >
-            + Post Position
+            Post Position
           </button>
         </div>
       ) : (
@@ -1061,6 +1155,8 @@ export default function ClubRecruitingPage() {
       const menuOpen = openMenuId === position.id;
       const cardHovered = hoveredCardId === position.id;
       const status = listingStatus(position);
+      const needsUrgent = positionNeedsUrgentAttention(position, status, deadline);
+      const showClosingSoonBadge = status === "open" && Boolean(deadline?.urgent);
 
       const metaSegments: ReactNode[] = [];
       if (closeDate) metaSegments.push(`Closes ${closeDate}`);
@@ -1091,14 +1187,7 @@ export default function ClubRecruitingPage() {
             borderRadius: "12px",
             padding: "20px 24px",
             marginBottom: "12px",
-            ...(isPrivileged && isExpanded
-              ? { border: "1px solid #E51937" }
-              : {
-                  borderTop: "1px solid #2a2a2a",
-                  borderRight: "1px solid #2a2a2a",
-                  borderBottom: "1px solid #2a2a2a",
-                  borderLeft: "3px solid #E51937",
-                }),
+            ...positionCardBorderStyle(isExpanded, needsUrgent),
           }}
         >
           <div
@@ -1138,6 +1227,22 @@ export default function ClubRecruitingPage() {
                 <span style={statusPillStyle(status)}>
                   {statusPillLabel(status)}
                 </span>
+                {showClosingSoonBadge ? (
+                  <span
+                    style={{
+                      background: "#1a1200",
+                      border: "1px solid #FFC429",
+                      color: "#FFC429",
+                      borderRadius: "4px",
+                      padding: "2px 8px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      display: "inline-block",
+                    }}
+                  >
+                    Closing Soon
+                  </span>
+                ) : null}
               </div>
             </div>
 
@@ -1238,7 +1343,34 @@ export default function ClubRecruitingPage() {
               >
                 Review Applicants ({position.applicantCount})
               </button>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {position.isOpen ? (
+                  <Link
+                    to={`/hiring?listing=${position.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      background: "transparent",
+                      border: "1px solid #2a2a2a",
+                      color: "#555555",
+                      borderRadius: "8px",
+                      padding: "8px 18px",
+                      fontSize: "13px",
+                      textDecoration: "none",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#555555";
+                      e.currentTarget.style.color = "#aaaaaa";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "#2a2a2a";
+                      e.currentTarget.style.color = "#555555";
+                    }}
+                  >
+                    View Public Posting
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void openEditModal(position)}
@@ -1440,6 +1572,18 @@ export default function ClubRecruitingPage() {
                 width: isMobile ? "100%" : undefined,
               }}
             >
+              <h2
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#777777",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  margin: "0 0 12px",
+                }}
+              >
+                Open Positions
+              </h2>
               {renderPositionsList()}
             </div>
 
@@ -1455,6 +1599,19 @@ export default function ClubRecruitingPage() {
                 minHeight: "600px",
               }}
             >
+              <h2
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#777777",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  margin: "0 0 16px",
+                }}
+              >
+                Applicants for Selected Position
+              </h2>
+
               {!expandedPositionId || !selectedPosition ? (
                 <div
                   style={{
@@ -1472,13 +1629,23 @@ export default function ClubRecruitingPage() {
                     aria-hidden
                     style={{ marginBottom: "12px" }}
                   />
-                  <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-                    Select a position to review applicants
+                  <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
+                    Select a position
+                  </p>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#444444",
+                      marginTop: "6px",
+                      maxWidth: "320px",
+                    }}
+                  >
+                    Choose a role to review applicants, internal notes, and next steps.
                   </p>
                 </div>
               ) : (
                 <>
-                  <h2
+                  <p
                     style={{
                       fontWeight: 700,
                       fontSize: "16px",
@@ -1487,7 +1654,7 @@ export default function ClubRecruitingPage() {
                     }}
                   >
                     {selectedPosition.title}
-                  </h2>
+                  </p>
 
                   <input
                     type="search"
@@ -1546,39 +1713,63 @@ export default function ClubRecruitingPage() {
                       Loading…
                     </p>
                   ) : applications.length === 0 ? (
-                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                      No applications yet.
-                    </p>
+                    <div style={{ textAlign: "center", padding: "48px 16px" }}>
+                      <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
+                        No applicants yet
+                      </p>
+                      <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
+                        Once students apply, their applications will appear here.
+                      </p>
+                    </div>
+                  ) : filteredApplications.length === 0 &&
+                    applicantStatusFilter === "pending" &&
+                    applications.length > 0 &&
+                    !applicantSearch.trim() &&
+                    !applications.some((app) =>
+                      matchesApplicantPipelineFilter(
+                        app.status,
+                        app.subStatus,
+                        "pending",
+                      ),
+                    ) ? (
+                    <div style={{ textAlign: "center", padding: "48px 16px" }}>
+                      <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
+                        No pending review
+                      </p>
+                      <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
+                        All applicants for this position have been reviewed.
+                      </p>
+                    </div>
                   ) : filteredApplications.length === 0 ? (
                     <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                      No applicants match your search.
+                      No applicants match your search or filter.
                     </p>
                   ) : (
                     <div>
                       {filteredApplications.map((app) => {
-                        const isSelected = selectedApplicantId === app.id;
+                        const isExpanded = selectedApplicantId === app.id;
+                        const moveActions = applicantMoveStatusActions(
+                          app.status,
+                          app.subStatus,
+                        );
+                        const noteCount = applicationNoteCounts[app.id] ?? 0;
+                        const menuOpen = openApplicantMenuId === app.id;
+
                         return (
-                          <div key={app.id} style={{ marginBottom: "6px" }}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedApplicantId((prev) =>
-                                  prev === app.id ? null : app.id,
-                                )
-                              }
+                          <div key={app.id} style={{ marginBottom: "10px" }}>
+                            <div
                               style={{
                                 display: "flex",
                                 alignItems: "center",
                                 gap: "10px",
                                 width: "100%",
                                 padding: "10px 12px",
-                                background: isSelected ? "#1a1a1a" : "transparent",
-                                border: isSelected
+                                background: isExpanded ? "#1a1a1a" : "transparent",
+                                border: isExpanded
                                   ? "1px solid #333"
                                   : "1px solid #2a2a2a",
-                                borderRadius: isSelected ? "8px 8px 0 0" : "8px",
-                                cursor: "pointer",
-                                textAlign: "left",
+                                borderRadius: isExpanded ? "8px 8px 0 0" : "8px",
+                                flexWrap: "wrap",
                               }}
                             >
                               {app.profile?.avatar_url ? (
@@ -1614,7 +1805,7 @@ export default function ClubRecruitingPage() {
                                     .toUpperCase()}
                                 </div>
                               )}
-                              <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ flex: 1, minWidth: "120px" }}>
                                 <p
                                   style={{
                                     fontSize: "14px",
@@ -1636,14 +1827,99 @@ export default function ClubRecruitingPage() {
                                   }}
                                 >
                                   {daysAgoLabel(app.createdAt)}
+                                  {noteCount > 0
+                                    ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}`
+                                    : null}
                                 </p>
                               </div>
                               <span style={subStatusPillStyle(app.subStatus)}>
                                 {subStatusLabel(app.subStatus)}
                               </span>
-                            </button>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedApplicantId((prev) =>
+                                      prev === app.id ? null : app.id,
+                                    )
+                                  }
+                                  style={{
+                                    background: "#E51937",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    padding: "7px 14px",
+                                    fontSize: "12px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  View Full Application
+                                </button>
+                                {moveActions.length > 0 ? (
+                                  <div style={{ position: "relative" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setOpenApplicantMenuId((prev) =>
+                                          prev === app.id ? null : app.id,
+                                        )
+                                      }
+                                      style={{
+                                        background: "transparent",
+                                        border: "1px solid #333333",
+                                        color: "#aaaaaa",
+                                        borderRadius: "6px",
+                                        padding: "7px 14px",
+                                        fontSize: "12px",
+                                        fontWeight: 500,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      Move Status ▾
+                                    </button>
+                                    {menuOpen ? (
+                                      <div
+                                        style={{
+                                          position: "absolute",
+                                          right: 0,
+                                          top: "100%",
+                                          marginTop: "4px",
+                                          background: "#151515",
+                                          border: "1px solid #2a2a2a",
+                                          borderRadius: "8px",
+                                          minWidth: "180px",
+                                          zIndex: 20,
+                                          overflow: "hidden",
+                                        }}
+                                      >
+                                        {moveActions.map((action) => (
+                                          <button
+                                            key={action}
+                                            type="button"
+                                            onClick={() =>
+                                              triggerApplicantAction(app.id, action)
+                                            }
+                                            style={menuItemStyle}
+                                          >
+                                            {moveStatusActionLabel(action)}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
 
-                            {isSelected && selectedPosition && clubId && user?.id ? (
+                            {isExpanded && selectedPosition && clubId && user?.id ? (
                               <div
                                 style={{
                                   background: "#1a1a1a",
@@ -1660,6 +1936,15 @@ export default function ClubRecruitingPage() {
                                   clubId={clubId}
                                   clubName={clubName}
                                   userId={user.id}
+                                  showActionBar={false}
+                                  pendingAction={
+                                    pendingApplicantAction?.appId === app.id
+                                      ? pendingApplicantAction.action
+                                      : null
+                                  }
+                                  onPendingActionHandled={() =>
+                                    setPendingApplicantAction(null)
+                                  }
                                   answerLabel={(questionId) =>
                                     answerLabel(
                                       questionId,
@@ -1678,6 +1963,32 @@ export default function ClubRecruitingPage() {
                           </div>
                         );
                       })}
+
+                      {selectedApplicantId === null ? (
+                        <div
+                          style={{
+                            textAlign: "center",
+                            padding: "32px 16px",
+                            marginTop: "8px",
+                            borderTop: "1px solid #242424",
+                          }}
+                        >
+                          <p
+                            style={{
+                              fontSize: "14px",
+                              fontWeight: 600,
+                              color: "#555555",
+                              margin: 0,
+                            }}
+                          >
+                            Select an applicant
+                          </p>
+                          <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
+                            Choose an applicant to review their application, notes, and next
+                            steps.
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
                   )}
                 </>

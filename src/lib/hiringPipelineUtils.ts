@@ -136,6 +136,43 @@ export function subStatusPillStyle(subStatus: string): CSSProperties {
   };
 }
 
+export type ApplicantMoveStatusAction =
+  | "mark_reviewed"
+  | "schedule"
+  | "accept"
+  | "reject"
+  | "send_update";
+
+export function applicantMoveStatusActions(
+  status: string,
+  subStatus: string,
+): ApplicantMoveStatusAction[] {
+  const normalized = normalizeSubStatus(subStatus);
+
+  if (
+    status === "rejected" ||
+    status === "accepted" ||
+    REJECTED_SUB_STATUSES.has(normalized) ||
+    normalized === "offer_accepted"
+  ) {
+    return [];
+  }
+
+  if (normalized === "offer_sent") {
+    return ["send_update"];
+  }
+
+  if (INTERVIEW_SUB_STATUSES.has(normalized)) {
+    return ["accept", "reject", "send_update"];
+  }
+
+  if (REVIEWED_SUB_STATUSES.has(normalized) || status === "reviewed") {
+    return ["schedule", "accept", "reject"];
+  }
+
+  return ["mark_reviewed", "schedule"];
+}
+
 export function matchesApplicantPipelineFilter(
   status: string,
   subStatus: string,

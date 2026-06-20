@@ -59,6 +59,12 @@ export type CandidateReviewPatch = Partial<
   >
 >;
 
+export type CandidateReviewModal = "schedule" | "send_update" | "accept" | "reject";
+
+export type CandidateReviewPendingAction =
+  | { type: "mark_reviewed" }
+  | { type: "modal"; modal: CandidateReviewModal };
+
 interface CandidateReviewPanelProps {
   application: CandidateReviewApplication;
   positionTitle: string;
@@ -69,9 +75,12 @@ interface CandidateReviewPanelProps {
   answerLabel: (questionId: string) => string;
   onApplicationUpdated: (patch: CandidateReviewPatch) => void;
   onStatusChanged: () => void;
+  showActionBar?: boolean;
+  pendingAction?: CandidateReviewPendingAction | null;
+  onPendingActionHandled?: () => void;
 }
 
-type ActiveModal = "schedule" | "send_update" | "accept" | "reject" | null;
+type ActiveModal = CandidateReviewModal | null;
 
 const actionButtonStyle: CSSProperties = {
   background: "#111111",
@@ -145,6 +154,9 @@ export default function CandidateReviewPanel({
   answerLabel,
   onApplicationUpdated,
   onStatusChanged,
+  showActionBar = true,
+  pendingAction = null,
+  onPendingActionHandled,
 }: CandidateReviewPanelProps) {
   const [notes, setNotes] = useState<ApplicationNoteRow[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -286,6 +298,18 @@ export default function CandidateReviewPanel({
     setAddingNote(false);
   }
 
+  useEffect(() => {
+    if (!pendingAction) return;
+
+    if (pendingAction.type === "mark_reviewed") {
+      void markReviewed().finally(() => onPendingActionHandled?.());
+      return;
+    }
+
+    setActiveModal(pendingAction.modal);
+    onPendingActionHandled?.();
+  }, [pendingAction, onPendingActionHandled]);
+
   return (
     <>
       {application.profile?.email ? (
@@ -326,55 +350,57 @@ export default function CandidateReviewPanel({
         addingNote={addingNote}
       />
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "8px",
-          marginTop: "16px",
-          paddingTop: "16px",
-          borderTop: "1px solid #2a2a2a",
-        }}
-      >
-        <button type="button" style={actionButtonStyle} onClick={() => void markReviewed()}>
-          Mark Reviewed
-        </button>
-        <button
-          type="button"
-          style={actionButtonStyle}
-          onClick={() => noteInputRef.current?.focus()}
+      {showActionBar ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "16px",
+            paddingTop: "16px",
+            borderTop: "1px solid #2a2a2a",
+          }}
         >
-          Add Internal Note
-        </button>
-        <button
-          type="button"
-          style={actionButtonStyle}
-          onClick={() => setActiveModal("schedule")}
-        >
-          Schedule Interview
-        </button>
-        <button
-          type="button"
-          style={actionButtonStyle}
-          onClick={() => setActiveModal("send_update")}
-        >
-          Send Update
-        </button>
-        <button
-          type="button"
-          style={primaryActionStyle}
-          onClick={() => setActiveModal("accept")}
-        >
-          Accept Candidate
-        </button>
-        <button
-          type="button"
-          style={{ ...actionButtonStyle, color: "#E51937", borderColor: "#E51937" }}
-          onClick={() => setActiveModal("reject")}
-        >
-          Reject Candidate
-        </button>
-      </div>
+          <button type="button" style={actionButtonStyle} onClick={() => void markReviewed()}>
+            Mark Reviewed
+          </button>
+          <button
+            type="button"
+            style={actionButtonStyle}
+            onClick={() => noteInputRef.current?.focus()}
+          >
+            Add Internal Note
+          </button>
+          <button
+            type="button"
+            style={actionButtonStyle}
+            onClick={() => setActiveModal("schedule")}
+          >
+            Schedule Interview
+          </button>
+          <button
+            type="button"
+            style={actionButtonStyle}
+            onClick={() => setActiveModal("send_update")}
+          >
+            Send Update
+          </button>
+          <button
+            type="button"
+            style={primaryActionStyle}
+            onClick={() => setActiveModal("accept")}
+          >
+            Accept Candidate
+          </button>
+          <button
+            type="button"
+            style={{ ...actionButtonStyle, color: "#E51937", borderColor: "#E51937" }}
+            onClick={() => setActiveModal("reject")}
+          >
+            Reject Candidate
+          </button>
+        </div>
+      ) : null}
 
       {activeModal === "schedule" ? (
         <ScheduleInterviewModal
@@ -636,7 +662,7 @@ function InternalNotesSection({
           letterSpacing: "0.04em",
         }}
       >
-        Internal Notes
+        Internal Notes — Visible only to executives
       </p>
 
       {loading ? (

@@ -8,7 +8,7 @@ import {
   type CSSProperties,
 } from "react";
 import { Search, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { getClubInitials } from "../../lib/clubUtils";
@@ -1835,6 +1835,7 @@ export default function HiringBoardPage() {
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [positions, setPositions] = useState<BoardPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1984,6 +1985,22 @@ export default function HiringBoardPage() {
       return filtered[0].id;
     });
   }, [filtered]);
+
+  useEffect(() => {
+    if (loading) return;
+    const listingId = searchParams.get("listing");
+    if (!listingId) return;
+
+    const match = filtered.find((position) => position.id === listingId);
+    if (!match) return;
+
+    setSelectedId(listingId);
+    if (isMobile) {
+      setMobileDetailOpen(true);
+    } else {
+      setDetailOverlayId(listingId);
+    }
+  }, [filtered, isMobile, loading, searchParams]);
 
   const activePosition =
     filtered.find((p) => p.id === selectedId) ?? filtered[0] ?? null;
