@@ -31,28 +31,32 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
-import type { MemberRole } from "../../types";
+import { useClubWorkspaceNav } from "../../hooks/useClubWorkspaceNav";
+import type { WorkspaceNavKey } from "../../lib/workspaceNavVisibility";
 import Spinner from "../ui/Spinner";
 
 const workspaceLinks: {
+  key: WorkspaceNavKey;
   to: string;
   label: string;
   end: boolean;
   Icon: (props: IconProps) => ReactElement;
   badgeKey?: "chat" | "tasks" | "announcements";
 }[] = [
-  { to: "", label: "Dashboard", end: true, Icon: LayoutDashboard },
+  { key: "dashboard", to: "", label: "Dashboard", end: true, Icon: LayoutDashboard },
   {
+    key: "announcements",
     to: "announcements",
     label: "Announcements",
     end: false,
     Icon: Megaphone,
     badgeKey: "announcements",
   },
-  { to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
-  { to: "tasks", label: "Tasks", end: false, Icon: CheckSquare, badgeKey: "tasks" },
-  { to: "events", label: "Events", end: false, Icon: Calendar },
+  { key: "chat", to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
+  { key: "tasks", to: "tasks", label: "Tasks", end: false, Icon: CheckSquare, badgeKey: "tasks" },
+  { key: "events", to: "events", label: "Events", end: false, Icon: Calendar },
   {
+    key: "meetings",
     to: "meetings",
     label: "Meetings",
     end: false,
@@ -61,6 +65,7 @@ const workspaceLinks: {
     ),
   },
   {
+    key: "documents",
     to: "documents",
     label: "Documents",
     end: false,
@@ -68,8 +73,9 @@ const workspaceLinks: {
       <FileText size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
     ),
   },
-  { to: "members", label: "Members", end: false, Icon: Users },
+  { key: "members", to: "members", label: "Members", end: false, Icon: Users },
   {
+    key: "recruiting",
     to: "recruiting",
     label: "Hiring",
     end: false,
@@ -91,9 +97,13 @@ const settingsLink = {
   Icon: Settings,
 } as const;
 
-function sidebarRoleLabel(role: MemberRole): string {
-  if (role === "owner") return "President";
-  if (role === "executive") return "Executive";
+function sidebarRoleLabel(
+  role: ReturnType<typeof useClubWorkspaceNav>["role"],
+  accessLevel: ReturnType<typeof useClubWorkspaceNav>["accessLevel"],
+): string {
+  if (accessLevel === "president" || role === "owner") return "President";
+  if (accessLevel === "managerial_executive") return "Managerial Executive";
+  if (accessLevel === "executive" || role === "executive") return "Executive";
   return "Member";
 }
 
@@ -128,12 +138,6 @@ function visitedTimestampForQuery(value: string | null): string | null {
   return value;
 }
 
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
-}
-
 function workspaceNavClass(isActive: boolean) {
   const base =
     "flex w-full items-center justify-between rounded-[6px] border-l-[3px] py-[9px] pr-[14px] text-[13px] font-normal transition-colors";
@@ -158,12 +162,10 @@ export default function WorkspaceLayout() {
   const { user } = useAuthContext();
   const { getClubById, loading, activeClubId, switchClub } = useClubContext();
   const resolvedClubId = clubId ?? activeClubId ?? "";
-  const [userRole, setUserRole] = useState<MemberRole>("member");
+  const workspaceNav = useClubWorkspaceNav(resolvedClubId);
   const [chatUnread, setChatUnread] = useState(0);
   const [tasksUnread, setTasksUnread] = useState(0);
   const [announcementsUnread, setAnnouncementsUnread] = useState(0);
-  const showAnalytics =
-    userRole === "owner" || userRole === "executive";
 
   const workspaceBasePath = resolvedClubId
     ? `/app/clubs/${resolvedClubId}`
@@ -280,27 +282,6 @@ export default function WorkspaceLayout() {
       switchClub(clubId);
     }
   }, [activeClubId, clubId, switchClub]);
-
-  useEffect(() => {
-    const previewRole = localStorage.getItem("previewRole");
-    if (previewRole) {
-      setUserRole(previewRole as MemberRole);
-      return;
-    }
-    const fetchRole = async () => {
-      if (!user?.id || !resolvedClubId) return;
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", resolvedClubId)
-        .eq("user_id", user.id)
-        .single();
-      if (data?.role) {
-        setUserRole(normalizeUserRole(data.role));
-      }
-    };
-    void fetchRole();
-  }, [resolvedClubId, user?.id]);
 
   useEffect(() => {
     void loadBadgeCounts();
@@ -594,7 +575,9 @@ export default function WorkspaceLayout() {
         className="flex flex-1 flex-col space-y-0.5 overflow-y-auto p-3"
         aria-label="Workspace navigation"
       >
-        {workspaceLinks.map(({ to, label, end, Icon, badgeKey }) => (
+        {workspaceLinks
+          .filter(({ key }) => workspaceNav.isLinkVisible(key))
+          .map(({ to, label, end, Icon, badgeKey }) => (
           <NavLink
             key={to}
             to={to}
@@ -626,7 +609,7 @@ export default function WorkspaceLayout() {
           </NavLink>
         ))}
         <div className="flex-1" aria-hidden />
-        {showAnalytics ? (
+        {workspaceNav.showAnalytics ? (
           <NavLink
             to={analyticsLink.to}
             className={({ isActive }) => workspaceNavClass(isActive)}
@@ -642,7 +625,7 @@ export default function WorkspaceLayout() {
           onClick={closeDrawer}
         >
           <settingsLink.Icon size={16} strokeWidth={2} aria-hidden />
-          {settingsLink.label}
+          {workspaceNav.settingsLabel}
         </NavLink>
       </nav>
 
@@ -711,7 +694,7 @@ export default function WorkspaceLayout() {
                   color: "#777777",
                 }}
               >
-                {sidebarRoleLabel(userRole)}
+                {sidebarRoleLabel(workspaceNav.role, workspaceNav.accessLevel)}
                 {profileMeta ? ` · ${profileMeta}` : null}
               </p>
             </div>

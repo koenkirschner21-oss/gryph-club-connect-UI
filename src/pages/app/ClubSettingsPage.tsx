@@ -37,6 +37,8 @@ import {
 import ImageUpload from "../../components/ui/ImageUpload";
 import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
+import MyMembershipPanel from "../../components/club/MyMembershipPanel";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import {
   cancelOwnershipTransfer,
   isPresidentMember,
@@ -937,11 +939,12 @@ export default function ClubSettingsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuthContext();
-  const { getClubById, updateClub, leaveClub } = useClubContext();
+  const { getClubById, updateClub } = useClubContext();
   const { members } = useClubMembers(clubId);
   const isMobile = useIsMobile();
 
   const club = getClubById(clubId ?? "");
+  const memberAccess = useClubMemberAccess(clubId);
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
   const [roleLoading, setRoleLoading] = useState(true);
@@ -999,9 +1002,6 @@ export default function ClubSettingsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleting, setDeleting] = useState(false);
-
-  const [showLeaveModal, setShowLeaveModal] = useState(false);
-  const [leaving, setLeaving] = useState(false);
 
   const [instagramUrl, setInstagramUrl] = useState("");
   const [linkedinUrl, setLinkedinUrl] = useState("");
@@ -1609,15 +1609,6 @@ export default function ClubSettingsPage() {
     navigate("/app", { replace: true });
   }
 
-  async function handleConfirmLeave() {
-    if (!clubId) return;
-    setLeaving(true);
-    leaveClub(clubId);
-    setLeaving(false);
-    setShowLeaveModal(false);
-    navigate("/app", { replace: true });
-  }
-
   async function handleSaveJoinQuestions() {
     if (!clubId) return;
     setSavingJoinQuestions(true);
@@ -1650,7 +1641,7 @@ export default function ClubSettingsPage() {
     return <Navigate to="/app" replace />;
   }
 
-  if (roleLoading) {
+  if (roleLoading || memberAccess.loading) {
     return (
       <div style={{ padding: isMobile ? "16px" : "24px" }}>
         <p className="text-sm text-muted">Loading settings…</p>
@@ -1658,8 +1649,19 @@ export default function ClubSettingsPage() {
     );
   }
 
-  if (!hasMembership) {
+  if (!hasMembership || !memberAccess.hasMembership) {
     return <Navigate to="/app" replace />;
+  }
+
+  if (!memberAccess.canManageClubSettings) {
+    return (
+      <MyMembershipPanel
+        club={club}
+        accessLevel={memberAccess.accessLevel}
+        memberTitle={memberAccess.memberTitle}
+        joinedAt={memberAccess.joinedAt}
+      />
+    );
   }
 
   const transferCandidates = members.filter(
@@ -1687,134 +1689,6 @@ export default function ClubSettingsPage() {
       day: "numeric",
       year: "numeric",
     });
-  }
-
-  if (userRole === "member") {
-    return (
-      <div style={{ padding: isMobile ? "16px" : "24px" }}>
-        <h1 className="mb-1 text-xl font-bold text-white">Personal Settings</h1>
-        <p className="mb-6 text-sm text-muted">
-          Manage your membership in this club.
-        </p>
-
-        {error && (
-          <div
-            role="alert"
-            className="mb-6 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary"
-          >
-            {error}
-          </div>
-        )}
-
-        <div
-          style={{
-            background: "#1a0a0a",
-            border: "1px solid #3a1a1a",
-            borderRadius: "8px",
-            padding: "20px",
-          }}
-        >
-          <h2
-            style={{
-              fontWeight: 600,
-              fontSize: "15px",
-              color: "#ffffff",
-              margin: "0 0 8px",
-            }}
-          >
-            Leave Club
-          </h2>
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#555555",
-              margin: "0 0 16px",
-            }}
-          >
-            You will lose access to this club workspace
-          </p>
-          <button
-            type="button"
-            onClick={() => setShowLeaveModal(true)}
-            style={{
-              background: "transparent",
-              border: "1px solid #E51937",
-              color: "#E51937",
-              borderRadius: "6px",
-              padding: "10px 24px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            Leave Club
-          </button>
-        </div>
-
-        {showLeaveModal ? (
-          <div
-            role="dialog"
-            aria-modal="true"
-            style={modalOverlayStyle}
-            onClick={() => !leaving && setShowLeaveModal(false)}
-          >
-            <div style={modalPanelStyle} onClick={(e) => e.stopPropagation()}>
-              <h3
-                style={{
-                  fontWeight: 600,
-                  fontSize: "16px",
-                  color: "#ffffff",
-                  margin: "0 0 12px",
-                }}
-              >
-                Leave club?
-              </h3>
-              <p
-                style={{
-                  fontSize: "13px",
-                  color: "#555555",
-                  margin: "0 0 20px",
-                }}
-              >
-                You will lose access to this club workspace.
-              </p>
-              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  disabled={leaving}
-                  onClick={() => setShowLeaveModal(false)}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #333",
-                    color: "#aaa",
-                    borderRadius: "6px",
-                    padding: "10px 20px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={leaving}
-                  onClick={() => void handleConfirmLeave()}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #E51937",
-                    color: "#E51937",
-                    borderRadius: "6px",
-                    padding: "10px 20px",
-                    cursor: "pointer",
-                  }}
-                >
-                  {leaving ? "Leaving…" : "Confirm"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    );
   }
 
   const categoryOptions = [

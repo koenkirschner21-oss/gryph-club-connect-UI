@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -13,7 +13,6 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import {
   Bar,
@@ -33,7 +32,8 @@ import {
   YAxis,
 } from "recharts";
 import { supabase } from "../../lib/supabaseClient";
-import type { MemberRole } from "../../types";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import Spinner from "../../components/ui/Spinner";
 
 const PAGE_BG = "#0f0f0f";
 const CARD_BG = "#141414";
@@ -360,12 +360,6 @@ const tooltipStyle = {
   labelStyle: { color: MUTED },
 };
 
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
-}
-
 function truncateLabel(value: string, max = 12): string {
   if (value.length <= max) return value;
   return `${value.slice(0, max)}...`;
@@ -636,25 +630,6 @@ function RecommendedActionIcon({
   }
 }
 
-function AnalyticsRestrictedIcon() {
-  return (
-    <svg
-      width="40"
-      height="40"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#555555"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3" y="11" width="18" height="11" rx="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
 function StatCard({
   label,
   value,
@@ -905,9 +880,9 @@ function ChartSkeleton() {
 export default function ClubAnalyticsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const isMobile = useIsMobile();
-  const { user } = useAuthContext();
-  const [userRole, setUserRole] = useState<MemberRole>("member");
-  const isPrivileged = userRole === "owner" || userRole === "executive";
+  const memberAccess = useClubMemberAccess(clubId);
+  const canViewAnalytics =
+    memberAccess.isPresident || memberAccess.can("view_analytics");
 
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -922,28 +897,7 @@ export default function ClubAnalyticsPage() {
   const [attendanceFilter, setAttendanceFilter] = useState<EventAttendanceFilter>("all");
 
   useEffect(() => {
-    const previewRole = localStorage.getItem("previewRole");
-    if (previewRole) {
-      setUserRole(previewRole as MemberRole);
-      return;
-    }
-    const fetchRole = async () => {
-      if (!user?.id || !clubId) return;
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .single();
-      if (data?.role) {
-        setUserRole(normalizeUserRole(data.role));
-      }
-    };
-    void fetchRole();
-  }, [clubId, user?.id]);
-
-  useEffect(() => {
-    if (!clubId || !isPrivileged) {
+    if (!clubId || !canViewAnalytics) {
       setLoading(false);
       return;
     }
@@ -1041,7 +995,7 @@ export default function ClubAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [clubId, isPrivileged]);
+  }, [clubId, canViewAnalytics]);
 
   const rangeStart = useMemo(() => timeRangeStart(timeRange), [timeRange]);
 
@@ -1153,35 +1107,16 @@ export default function ClubAnalyticsPage() {
     [taskCompletionRate, announcementsThisMonth, totalMembers],
   );
 
-  if (!isPrivileged) {
+  if (memberAccess.loading) {
     return (
       <div style={pageStyle(isMobile)}>
-        <div
-          style={{
-            background: CARD_BG,
-            border: `1px solid ${CARD_BORDER}`,
-            borderRadius: "8px",
-            padding: "40px",
-            textAlign: "center",
-            maxWidth: "480px",
-            margin: "48px auto",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              marginBottom: "16px",
-            }}
-          >
-            <AnalyticsRestrictedIcon />
-          </div>
-          <p style={{ color: MUTED, fontSize: "14px", margin: 0 }}>
-            Analytics are available to club executives and presidents only
-          </p>
-        </div>
+        <Spinner label="Loading analytics…" />
       </div>
     );
+  }
+
+  if (!canViewAnalytics) {
+    return <Navigate to={clubId ? `/app/clubs/${clubId}` : "/app"} replace />;
   }
 
   if (loading) {

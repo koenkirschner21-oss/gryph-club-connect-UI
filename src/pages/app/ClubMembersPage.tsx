@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import {
@@ -25,10 +26,7 @@ import {
   notifyJoinRequestRejected,
 } from "../../lib/notifications";
 import type { ClubMember, JoinAnswer, MemberRole, AccessLevel } from "../../types";
-import {
-  isPrivilegedClubRole,
-  isTopClubModeratorRole,
-} from "../../lib/clubRoles";
+import { isTopClubModeratorRole } from "../../lib/clubRoles";
 import ClubInviteModal from "../../components/club/ClubInviteModal";
 import InviteExecutiveModal from "../../components/club/InviteExecutiveModal";
 import Spinner from "../../components/ui/Spinner";
@@ -764,10 +762,11 @@ export default function ClubMembersPage() {
   const club = getClubById(clubId ?? "");
 
   const role = getUserRole(clubId ?? "");
+  const memberAccess = useClubMemberAccess(clubId);
   const isOwner = role === "owner";
-  /** Admin or owner may change member roles / remove members; exec sees queue only. */
-  const canReorderRoster = isTopClubModeratorRole(role);
-  const canUseMembershipQueue = isPrivilegedClubRole(role);
+  const canManageMembers = memberAccess.can("manage_members");
+  const canManageRoles = memberAccess.can("manage_roles") || memberAccess.isPresident;
+  const canUseMembershipQueue = canManageMembers;
 
   const {
     members,
@@ -813,7 +812,7 @@ export default function ClubMembersPage() {
 
   const isSmallClub = members.length <= 3;
   const showInviteCodeSection =
-    Boolean(club?.joinCode) && !(isSmallClub && viewMode === "list");
+    canManageMembers && Boolean(club?.joinCode) && !(isSmallClub && viewMode === "list");
 
   const roleOrder: Record<MemberRole, number> = {
     owner: 0,
@@ -1239,7 +1238,7 @@ export default function ClubMembersPage() {
   }
 
   async function handleRegenerateCode() {
-    if (!clubId || !isOwner) return;
+    if (!clubId || !canManageMembers) return;
     if (!window.confirm("Regenerate invite code? The old code will stop working.")) {
       return;
     }
@@ -1268,9 +1267,9 @@ export default function ClubMembersPage() {
     const isSelf = memberUserId === user?.id;
     const isOtherOwner = memberRole === "owner";
     const busy = actionLoading === memberId;
-    const canEditRole = isOwner && !isOtherOwner && !isSelf;
+    const canEditRole = canManageRoles && !isOtherOwner && !isSelf;
     const canRemove =
-      canReorderRoster && !isTopClubModeratorRole(memberRole) && !isSelf;
+      canManageMembers && !isTopClubModeratorRole(memberRole) && !isSelf;
     const canMessage = !isSelf && Boolean(clubId);
 
     if (isSelf && !canMessage) {
@@ -1394,12 +1393,13 @@ export default function ClubMembersPage() {
               lineHeight: 1.4,
             }}
           >
-            President leads the club; Executives manage teams; General Members participate in
-            club activities.
+            {canManageMembers
+              ? "President leads the club; Executives manage teams; General Members participate in club activities."
+              : "Browse the member directory and org chart."}
           </p>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          {isOwner ? (
+          {canManageMembers ? (
             <button
               type="button"
               onClick={() => setShowInviteModal(true)}
@@ -1438,6 +1438,7 @@ export default function ClubMembersPage() {
         </div>
       </div>
 
+      {canManageMembers ? (
       <div
         style={{
           display: "flex",
@@ -1460,6 +1461,7 @@ export default function ClubMembersPage() {
           valueColor="#FFC429"
         />
       </div>
+      ) : null}
 
       {showInviteCodeSection ? (
         <div
@@ -1538,7 +1540,7 @@ export default function ClubMembersPage() {
             >
               {copiedLink ? "Copied" : "Copy Link"}
             </button>
-            {isOwner ? (
+            {isOwner && canManageMembers ? (
               <button
                 type="button"
                 onClick={() => void handleRegenerateCode()}
@@ -1750,7 +1752,7 @@ export default function ClubMembersPage() {
             Invite members or executives to start building your club structure.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
-            {isOwner ? (
+            {canManageMembers ? (
               <button
                 type="button"
                 onClick={() => setShowInviteModal(true)}

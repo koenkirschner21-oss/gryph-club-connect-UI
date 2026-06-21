@@ -224,6 +224,13 @@ export function resolvePermissionRole(
   return "member";
 }
 
+export function isPresidentAccess(
+  accessLevel: PermissionRole | null | undefined,
+  memberRole: string | null | undefined,
+): boolean {
+  return resolvePermissionRole(accessLevel, memberRole) === "president";
+}
+
 export function hasClubPermission(
   permissions: ClubPermissions,
   accessLevel: PermissionRole | null | undefined,
