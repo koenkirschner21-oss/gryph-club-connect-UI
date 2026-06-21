@@ -33,6 +33,7 @@ import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubWorkspaceNav } from "../../hooks/useClubWorkspaceNav";
 import type { WorkspaceNavKey } from "../../lib/workspaceNavVisibility";
+import { formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import Spinner from "../ui/Spinner";
 
 const workspaceLinks: {
@@ -100,11 +101,9 @@ const settingsLink = {
 function sidebarRoleLabel(
   role: ReturnType<typeof useClubWorkspaceNav>["role"],
   accessLevel: ReturnType<typeof useClubWorkspaceNav>["accessLevel"],
+  memberTitle?: string | null,
 ): string {
-  if (accessLevel === "president" || role === "owner") return "President";
-  if (accessLevel === "managerial_executive") return "Managerial Executive";
-  if (accessLevel === "executive" || role === "executive") return "Executive";
-  return "Member";
+  return formatAccessLevelWithMemberTitle(accessLevel, role, memberTitle);
 }
 
 const badgeStyle: CSSProperties = {
@@ -629,15 +628,15 @@ export default function WorkspaceLayout() {
         </NavLink>
       </nav>
 
-      <div className="border-t p-3" style={{ borderColor: "#1e1e1e" }}>
+      <div className="border-t px-2 py-2" style={{ borderColor: "#1e1e1e" }}>
         {userProfile ? (
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "8px 10px",
-              marginBottom: "8px",
+              alignItems: "flex-start",
+              gap: "8px",
+              padding: "8px",
+              marginBottom: "6px",
               borderRadius: "8px",
               background: "#141414",
             }}
@@ -647,8 +646,8 @@ export default function WorkspaceLayout() {
                 src={userProfile.avatarUrl}
                 alt=""
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 28,
+                  height: 28,
                   borderRadius: "50%",
                   objectFit: "cover",
                   flexShrink: 0,
@@ -657,8 +656,8 @@ export default function WorkspaceLayout() {
             ) : (
               <div
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 28,
+                  height: 28,
                   borderRadius: "50%",
                   background: "#242424",
                   color: "#E51937",
@@ -666,7 +665,7 @@ export default function WorkspaceLayout() {
                   alignItems: "center",
                   justifyContent: "center",
                   fontWeight: 700,
-                  fontSize: "12px",
+                  fontSize: "11px",
                   flexShrink: 0,
                 }}
               >
@@ -683,6 +682,7 @@ export default function WorkspaceLayout() {
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
+                  lineHeight: 1.3,
                 }}
               >
                 {userProfile.fullName}
@@ -690,26 +690,45 @@ export default function WorkspaceLayout() {
               <p
                 style={{
                   margin: "2px 0 0",
-                  fontSize: "11px",
-                  color: "#777777",
+                  fontSize: "10px",
+                  color: "#888888",
+                  lineHeight: 1.35,
                 }}
               >
-                {sidebarRoleLabel(workspaceNav.role, workspaceNav.accessLevel)}
-                {profileMeta ? ` · ${profileMeta}` : null}
+                {sidebarRoleLabel(
+                  workspaceNav.role,
+                  workspaceNav.accessLevel,
+                  workspaceNav.memberTitle,
+                )}
               </p>
+              {profileMeta ? (
+                <p
+                  style={{
+                    margin: "2px 0 0",
+                    fontSize: "10px",
+                    color: "#555555",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {profileMeta}
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}
         <NavLink
           to={`/clubs/${club.slug}`}
-          className="flex items-center gap-1.5 rounded-[6px] px-[14px] py-2 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
+          className="flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
           style={{
-            fontSize: "12px",
+            fontSize: "11px",
             color: "#555555",
           }}
           onClick={closeDrawer}
         >
-          <ExternalLink size={14} strokeWidth={2} aria-hidden />
+          <ExternalLink size={13} strokeWidth={2} aria-hidden />
           View Public Profile
         </NavLink>
       </div>

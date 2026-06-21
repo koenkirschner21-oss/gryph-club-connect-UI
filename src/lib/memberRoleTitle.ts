@@ -132,6 +132,34 @@ export function roleTitleOptionsForRole(role: MemberRole): string[] {
   return Array.from(titles);
 }
 
+export function formatAccessLevelWithMemberTitle(
+  accessLevel: AccessLevel,
+  role: MemberRole | string,
+  memberTitle?: string | null,
+): string {
+  let base: string;
+  if (accessLevel === "president" || role === "owner") {
+    base = "President";
+  } else if (accessLevel === "managerial_executive") {
+    base = "Managerial Executive";
+  } else if (
+    accessLevel === "executive" ||
+    role === "executive" ||
+    role === "exec"
+  ) {
+    base = "Executive";
+  } else {
+    base = "Member";
+  }
+
+  const trimmed = memberTitle?.trim();
+  if (!trimmed || trimmed.toLowerCase() === base.toLowerCase()) {
+    return base;
+  }
+
+  return `${base} · ${trimmed}`;
+}
+
 export function formatMemberDisplayRole(
   role: MemberRole | string,
   roleTitle?: string | null,

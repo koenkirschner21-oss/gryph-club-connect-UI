@@ -24,7 +24,7 @@ import {
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { filterByVisibility } from "../../lib/contentVisibility";
-import { formatNameWithRoleTitle, accessLevelFromMember } from "../../lib/memberRoleTitle";
+import { formatNameWithRoleTitle, accessLevelFromMember, formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
@@ -267,7 +267,7 @@ function ClubLogoMark({
   circular?: boolean;
 }) {
   const abbr = abbreviation?.trim() || deriveAbbreviation(name);
-  const radius = circular ? "50%" : "6px";
+  const radius = circular ? "50%" : "8px";
 
   if (logoUrl) {
     return (
@@ -278,6 +278,7 @@ function ClubLogoMark({
           width: `${CLUB_LOGO_SIZE}px`,
           height: `${CLUB_LOGO_SIZE}px`,
           borderRadius: radius,
+          border: circular ? undefined : "1px solid #2a2a2a",
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -907,7 +908,6 @@ function UpcomingEventRow({
         name={clubName}
         abbreviation={clubAbbreviation}
         logoUrl={clubLogoUrl}
-        circular
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p
@@ -1567,10 +1567,8 @@ export default function ClubHomePage() {
   );
 
   const rolePillLabel = !isPrivileged
-    ? "Member"
-    : userAccessLevel === "president" || userRole === "owner"
-      ? userRoleTitle || "President"
-      : userRoleTitle || "Executive";
+    ? formatAccessLevelWithMemberTitle("member", "member", userRoleTitle)
+    : formatAccessLevelWithMemberTitle(userAccessLevel, userRole, userRoleTitle);
   const rolePillColor = !isPrivileged
     ? "#555555"
     : userAccessLevel === "president" || userRole === "owner"
