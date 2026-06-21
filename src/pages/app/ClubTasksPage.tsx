@@ -1251,7 +1251,7 @@ export default function ClubTasksPage() {
     const actionStyle =
       task.status === "todo" ? startTaskButtonStyle : markDoneButtonStyle;
 
-    const menu = isPrivileged ? (
+    const menu = isPrivileged || canChangeStatus ? (
       <div style={{ position: "relative", flexShrink: 0 }}>
         <TasksListMenuButton
           onClick={(e) => {
@@ -1261,15 +1261,32 @@ export default function ClubTasksPage() {
         />
         <TasksListMenu
           open={openMenuTaskId === task.id}
+          taskStatus={task.status}
+          canChangeStatus={canChangeStatus}
+          onStatusChange={(status) => {
+            setOpenMenuTaskId(null);
+            void handleStatusChange(task.id, status);
+          }}
           onViewDetails={() => {
             setOpenMenuTaskId(null);
             openTaskDetail(task);
           }}
-          onEdit={() => startEdit(task)}
-          onDelete={() => {
-            setOpenMenuTaskId(null);
-            void handleDelete(task.id);
-          }}
+          onEdit={
+            isPrivileged
+              ? () => {
+                  setOpenMenuTaskId(null);
+                  startEdit(task);
+                }
+              : undefined
+          }
+          onDelete={
+            isPrivileged
+              ? () => {
+                  setOpenMenuTaskId(null);
+                  void handleDelete(task.id);
+                }
+              : undefined
+          }
         />
       </div>
     ) : null;

@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import type { Task, TaskPriority, TaskStatus, TaskType } from "../../../types";
 import { TASK_TYPE_BADGE_LABELS, TASK_TYPE_FILTER_CHIPS, type TaskTypeFilter } from "../../../lib/taskTypes";
 import { formatTaskDate } from "../../../lib/taskDueUrgency";
+import { getTaskStatusMenuItems } from "../../../lib/taskStatusActions";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
@@ -920,13 +921,36 @@ export function TasksListMenu({
   onViewDetails,
   onEdit,
   onDelete,
+  taskStatus,
+  canChangeStatus = false,
+  onStatusChange,
 }: {
   open: boolean;
   onViewDetails: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  taskStatus?: TaskStatus;
+  canChangeStatus?: boolean;
+  onStatusChange?: (status: TaskStatus) => void;
 }) {
   if (!open) return null;
+
+  const statusItems =
+    canChangeStatus && taskStatus && onStatusChange
+      ? getTaskStatusMenuItems(taskStatus)
+      : [];
+
+  const menuButtonStyle: React.CSSProperties = {
+    width: "100%",
+    textAlign: "left",
+    background: "transparent",
+    border: "none",
+    color: "#cccccc",
+    padding: "9px 12px",
+    fontSize: "12px",
+    cursor: "pointer",
+  };
+
   return (
     <div
       style={{
@@ -937,59 +961,41 @@ export function TasksListMenu({
         background: "#151515",
         border: `1px solid ${CARD_BORDER}`,
         borderRadius: "8px",
-        minWidth: "120px",
+        minWidth: "160px",
         zIndex: 20,
         overflow: "hidden",
       }}
     >
-      <button
-        type="button"
-        onClick={onViewDetails}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          background: "transparent",
-          border: "none",
-          color: "#cccccc",
-          padding: "9px 12px",
-          fontSize: "12px",
-          cursor: "pointer",
-        }}
-      >
+      <button type="button" onClick={onViewDetails} style={menuButtonStyle}>
         View Details
       </button>
-      <button
-        type="button"
-        onClick={onEdit}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          background: "transparent",
-          border: "none",
-          color: "#cccccc",
-          padding: "9px 12px",
-          fontSize: "12px",
-          cursor: "pointer",
-        }}
-      >
-        Edit
-      </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          background: "transparent",
-          border: "none",
-          color: ACCENT_RED,
-          padding: "9px 12px",
-          fontSize: "12px",
-          cursor: "pointer",
-        }}
-      >
-        Delete
-      </button>
+      {statusItems.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          onClick={() => onStatusChange!(item.status)}
+          style={menuButtonStyle}
+        >
+          {item.label}
+        </button>
+      ))}
+      {onEdit ? (
+        <button type="button" onClick={onEdit} style={menuButtonStyle}>
+          Edit
+        </button>
+      ) : null}
+      {onDelete ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          style={{
+            ...menuButtonStyle,
+            color: ACCENT_RED,
+          }}
+        >
+          Delete
+        </button>
+      ) : null}
     </div>
   );
 }

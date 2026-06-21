@@ -1,0 +1,30 @@
+import type { TaskStatus } from "../types";
+
+export interface TaskStatusMenuItem {
+  label: string;
+  status: TaskStatus;
+}
+
+/** Status transitions available from list/detail menus and modals. */
+export function getTaskStatusMenuItems(current: TaskStatus): TaskStatusMenuItem[] {
+  if (current === "cancelled") return [];
+
+  const items: TaskStatusMenuItem[] = [];
+
+  if (current === "todo") {
+    items.push({ label: "Mark In Progress", status: "in_progress" });
+    items.push({ label: "Mark Complete", status: "done" });
+  }
+
+  if (current === "in_progress") {
+    items.push({ label: "Move to To Do", status: "todo" });
+    items.push({ label: "Mark Complete", status: "done" });
+  }
+
+  if (current === "done") {
+    items.push({ label: "Reopen to In Progress", status: "in_progress" });
+    items.push({ label: "Move to To Do", status: "todo" });
+  }
+
+  return items;
+}

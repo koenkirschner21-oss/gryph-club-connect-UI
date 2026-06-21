@@ -4,6 +4,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import type { UseClubTasksReturn } from "../../hooks/useClubTasks";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
+import { getTaskStatusMenuItems } from "../../lib/taskStatusActions";
 import {
   EVENT_PLANNING_TASK_TITLES,
   TASK_TYPE_BADGE_LABELS,
@@ -399,21 +400,13 @@ function PlanningTaskRow({
               {[
                 { label: "View Details", action: onOpen },
                 { label: "Edit", action: onEdit },
-                {
-                  label: "Mark In Progress",
-                  action: () => onStatusChange("in_progress"),
-                  hidden: task.status === "in_progress" || task.status === "done",
-                },
-                {
-                  label: "Mark Complete",
-                  action: () => onStatusChange("done"),
-                  hidden: task.status === "done",
-                },
+                ...getTaskStatusMenuItems(task.status).map((item) => ({
+                  label: item.label,
+                  action: () => onStatusChange(item.status),
+                })),
                 { label: "Reassign", action: onReassign },
                 { label: "Delete", action: onDelete, danger: true },
-              ]
-                .filter((item) => !item.hidden)
-                .map((item) => (
+              ].map((item) => (
                   <button
                     key={item.label}
                     type="button"

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { Send, X } from "lucide-react";
 import LinkedMeetingCancelledLabel from "./LinkedMeetingCancelledLabel";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
+import { getTaskStatusMenuItems } from "../../lib/taskStatusActions";
 import { TASK_TYPE_BADGE_LABELS } from "../../lib/taskTypes";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
@@ -516,24 +517,22 @@ export default function TaskDetailModal({
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "20px" }}>
-          {canChangeStatus && task.status !== "in_progress" && task.status !== "done" ? (
-            <button
-              type="button"
-              onClick={() => onStatusChange("in_progress")}
-              style={actionButtonStyle}
-            >
-              Mark In Progress
-            </button>
-          ) : null}
-          {canChangeStatus && task.status !== "done" && task.status !== "cancelled" ? (
-            <button
-              type="button"
-              onClick={() => onStatusChange("done")}
-              style={{ ...actionButtonStyle, borderColor: GOLD, color: GOLD }}
-            >
-              Mark Complete
-            </button>
-          ) : null}
+          {canChangeStatus
+            ? getTaskStatusMenuItems(task.status).map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => onStatusChange(item.status)}
+                  style={
+                    item.status === "done"
+                      ? { ...actionButtonStyle, borderColor: GOLD, color: GOLD }
+                      : actionButtonStyle
+                  }
+                >
+                  {item.label}
+                </button>
+              ))
+            : null}
           {canEdit ? (
             <button type="button" onClick={onEdit} style={actionButtonStyle}>
               Edit
