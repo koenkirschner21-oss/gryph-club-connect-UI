@@ -12,6 +12,7 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export interface ConversationMember {
   userId: string;
   fullName?: string;
+  email?: string;
   avatarUrl?: string;
   mentionUsername: string;
 }
@@ -48,7 +49,7 @@ function parseMentionedUserIds(
 export interface DirectMessage {
   id: string;
   conversationId: string;
-  senderId: string;
+  senderId: string | null;
   content: string | null;
   attachmentUrl?: string | null;
   attachmentType?: string | null;
@@ -208,7 +209,7 @@ function mapMessageRow(row: Record<string, unknown>): DirectMessage {
   return {
     id: row.id as string,
     conversationId: row.conversation_id as string,
-    senderId: row.sender_id as string,
+    senderId: (row.sender_id as string | null) ?? null,
     content: (row.content as string | null) ?? null,
     attachmentUrl: (row.attachment_url as string | null) ?? null,
     attachmentType: (row.attachment_type as string | null) ?? null,
@@ -223,7 +224,7 @@ function mapMessageRow(row: Record<string, unknown>): DirectMessage {
 async function attachMessageSenders(
   messages: DirectMessage[],
 ): Promise<DirectMessage[]> {
-  const senderIds = [...new Set(messages.map((m) => m.senderId).filter(Boolean))];
+  const senderIds = [...new Set(messages.map((m) => m.senderId).filter(Boolean))] as string[];
   if (senderIds.length === 0) return messages;
 
   const { data: profiles } = await supabase
@@ -242,6 +243,7 @@ async function attachMessageSenders(
   );
 
   return messages.map((message) => {
+    if (!message.senderId) return message;
     const profile = profileMap[message.senderId];
     if (!profile) return message;
     return {
@@ -291,6 +293,7 @@ function mapMemberRow(row: Record<string, unknown>): ConversationMember {
   return {
     userId,
     fullName,
+    email: (profile.email as string) ?? undefined,
     avatarUrl: (profile.avatar_url as string) ?? undefined,
     mentionUsername: mentionUsernameFromProfile(fullName, userId),
   };
@@ -343,6 +346,22 @@ function sortConversationsByPriority(items: Conversation[]): Conversation[] {
     if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
     return conversationActivityAt(b) - conversationActivityAt(a);
   });
+}
+
+export function pickDefaultConversationId(
+  conversations: Conversation[],
+): string | null {
+  if (conversations.length === 0) return null;
+
+  const sorted = sortConversationsByPriority(conversations);
+  if (sorted.length === 1) return sorted[0].id;
+
+  const general = sorted.find(
+    (convo) =>
+      convo.type === "group" &&
+      convo.name.trim().toLowerCase() === "general",
+  );
+  return general?.id ?? sorted[0].id;
 }
 
 export interface UseConversationsReturn {
@@ -417,7 +436,8 @@ const MEMBER_SELECT = `
   user_id,
   member_profile:profiles!conversation_members_user_profile_fkey (
     full_name,
-    avatar_url
+    avatar_url,
+    email
   )
 `;
 
@@ -475,7 +495,8 @@ export function useConversations(
             user_id,
             member_profile:profiles!club_members_user_profile_fkey (
               full_name,
-              avatar_url
+              avatar_url,
+              email
             )
           `)
           .eq("club_id", clubId)
@@ -582,7 +603,8 @@ export function useConversations(
         }
 
         const unreadCount = (unreadMsgsRes.data ?? []).filter(
-          (m) => !(m.read_by ?? []).includes(user.id),
+          (m) =>
+            m.sender_id != null && !(m.read_by ?? []).includes(user.id),
         ).length;
 
         return {
@@ -610,6 +632,21 @@ export function useConversations(
   useEffect(() => {
     loadConversations();
   }, [loadConversations, refreshKey]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const activeStillExists =
+      activeConversationId != null &&
+      conversations.some((convo) => convo.id === activeConversationId);
+
+    if (activeStillExists) return;
+
+    const defaultId = pickDefaultConversationId(conversations);
+    if (defaultId) {
+      setActiveConversationId(defaultId);
+    }
+  }, [loading, conversations, activeConversationId]);
 
   useEffect(() => {
     if (!user?.id) return;

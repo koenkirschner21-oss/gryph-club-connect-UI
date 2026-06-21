@@ -37,6 +37,7 @@ import {
   type ConversationMember,
   type DirectMessage,
 } from "../../hooks/useConversations";
+import { parseChatSystemMessage } from "../../lib/chatSystemMessages";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { notifyUnreadCountRefresh } from "../../components/ui/NotificationsDropdown";
 import { supabase } from "../../lib/supabaseClient";
@@ -101,6 +102,50 @@ function formatConversationTime(iso: string): string {
   if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m`;
   if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h`;
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function SystemMessageRow({
+  text,
+  createdAt,
+}: {
+  text: string;
+  createdAt: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        margin: "16px 0",
+      }}
+    >
+      <div style={{ maxWidth: "85%", textAlign: "center" }}>
+        <span
+          style={{
+            display: "inline-block",
+            background: "#141414",
+            border: "1px solid #242424",
+            color: "#888888",
+            borderRadius: "999px",
+            padding: "6px 14px",
+            fontSize: "12px",
+            lineHeight: 1.4,
+          }}
+        >
+          {text}
+        </span>
+        <div
+          style={{
+            fontSize: "10px",
+            color: "#444444",
+            marginTop: "6px",
+          }}
+        >
+          {formatMessageTime(createdAt)}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function initials(name: string): string {
@@ -932,7 +977,7 @@ function MessageBubble({
   onToggleReaction?: (messageId: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const profilePath = `/app/profile/${msg.senderId}`;
+  const profilePath = msg.senderId ? `/app/profile/${msg.senderId}` : null;
   const liked = reaction?.liked ?? false;
   const reactionCount = reaction?.count ?? 0;
 
@@ -947,7 +992,15 @@ function MessageBubble({
         alignItems: "flex-end",
       }}
     >
-      <Link to={profilePath} style={{ display: "flex", flexShrink: 0 }}>
+      <Link
+        to={profilePath ?? "#"}
+        style={{
+          display: "flex",
+          flexShrink: 0,
+          pointerEvents: profilePath ? undefined : "none",
+        }}
+        onClick={profilePath ? undefined : (event) => event.preventDefault()}
+      >
         <Avatar
           url={msg.senderAvatar}
           name={msg.senderName ?? "User"}
@@ -964,7 +1017,7 @@ function MessageBubble({
           alignItems: isOwn ? "flex-end" : "flex-start",
         }}
       >
-        {!isOwn && (
+        {!isOwn && profilePath ? (
           <Link
             to={profilePath}
             style={{
@@ -977,7 +1030,7 @@ function MessageBubble({
           >
             {msg.senderName ?? "Unknown"}
           </Link>
-        )}
+        ) : null}
         <div
           style={{ position: "relative" }}
           onMouseEnter={() => setHovered(true)}
@@ -1195,13 +1248,28 @@ export default function ClubChatPage() {
 
   const isPrivileged = userRole === "owner" || userRole === "executive";
 
-  const filteredMembers = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return clubMembers;
-    return clubMembers.filter((m) =>
-      (m.fullName ?? "").toLowerCase().includes(q),
-    );
-  }, [clubMembers, memberSearch]);
+  const selectedMembersForPicker = useMemo(() => {
+    return selectedMemberIds
+      .map((userId) => clubMembers.find((member) => member.userId === userId))
+      .filter((member): member is ConversationMember => member != null);
+  }, [clubMembers, selectedMemberIds]);
+
+  const memberSearchMatches = useMemo(() => {
+    const query = memberSearch.trim().toLowerCase();
+    if (!query) return [];
+
+    return clubMembers.filter((member) => {
+      if (selectedMemberIds.includes(member.userId)) return false;
+      const name = (member.fullName ?? "").toLowerCase();
+      const email = (member.email ?? "").toLowerCase();
+      return name.includes(query) || email.includes(query);
+    });
+  }, [clubMembers, memberSearch, selectedMemberIds]);
+
+  const canCreateConversation =
+    chatType === "direct"
+      ? selectedMemberIds.length === 1
+      : groupName.trim().length > 0 && selectedMemberIds.length > 0;
 
   type ChatTimelineItem =
     | { kind: "message"; id: string; sortAt: string; message: DirectMessage }
@@ -1334,12 +1402,6 @@ export default function ClubChatPage() {
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [showMentionPopup]);
-
-  useEffect(() => {
-    if (!activeConversationId && conversations.length > 0) {
-      setActiveConversationId(conversations[0].id);
-    }
-  }, [activeConversationId, conversations, setActiveConversationId]);
 
   useEffect(() => {
     setReplyingTo(null);
@@ -1524,13 +1586,17 @@ export default function ClubChatPage() {
   function toggleMember(userId: string) {
     if (chatType === "direct") {
       setSelectedMemberIds([userId]);
+      setMemberSearch("");
       return;
     }
     setSelectedMemberIds((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId],
+      prev.includes(userId) ? prev : [...prev, userId],
     );
+    setMemberSearch("");
+  }
+
+  function removeSelectedMember(userId: string) {
+    setSelectedMemberIds((prev) => prev.filter((id) => id !== userId));
   }
 
   function openAvatarCrop(
@@ -2106,20 +2172,33 @@ export default function ClubChatPage() {
         </div>
 
         {!activeConversation ? (
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#555555",
-              fontSize: "14px",
-              padding: "24px",
-              textAlign: "center",
-            }}
-          >
-            Select a conversation
-          </div>
+          conversations.length > 0 ? (
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Spinner label="Opening conversation…" />
+            </div>
+          ) : (
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#555555",
+                fontSize: "14px",
+                padding: "24px",
+                textAlign: "center",
+              }}
+            >
+              Start a new conversation to message club members
+            </div>
+          )
         ) : (
           <>
             <header
@@ -2296,20 +2375,39 @@ export default function ClubChatPage() {
                   />
                 )
               ) : (
-                filteredChatTimeline.map((item) =>
-                  item.kind === "message" ? (
-                    <MessageBubble
-                      key={item.id}
-                      msg={item.message}
-                      isOwn={item.message.senderId === user?.id}
-                      isGroupChat={activeConversation.type === "group"}
-                      onReply={
-                        activeConversation.type === "group" ? startReply : undefined
-                      }
-                      reaction={messageReactions[item.message.id]}
-                      onToggleReaction={(id) => void toggleMessageReaction(id)}
-                    />
-                  ) : (
+                filteredChatTimeline.map((item) => {
+                  if (item.kind === "message") {
+                    const systemMessage = parseChatSystemMessage(
+                      item.message.content,
+                    );
+                    if (systemMessage) {
+                      return (
+                        <SystemMessageRow
+                          key={item.id}
+                          text={systemMessage.text}
+                          createdAt={item.message.createdAt}
+                        />
+                      );
+                    }
+
+                    return (
+                      <MessageBubble
+                        key={item.id}
+                        msg={item.message}
+                        isOwn={item.message.senderId === user?.id}
+                        isGroupChat={activeConversation.type === "group"}
+                        onReply={
+                          activeConversation.type === "group"
+                            ? startReply
+                            : undefined
+                        }
+                        reaction={messageReactions[item.message.id]}
+                        onToggleReaction={(id) => void toggleMessageReaction(id)}
+                      />
+                    );
+                  }
+
+                  return (
                     <PollBubble
                       key={item.id}
                       poll={item.poll}
@@ -2319,8 +2417,8 @@ export default function ClubChatPage() {
                       }
                       voting={votingPollId === item.poll.id}
                     />
-                  ),
-                )
+                  );
+                })
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -2843,7 +2941,7 @@ export default function ClubChatPage() {
               border: "1px solid #242424",
               borderRadius: "12px",
               padding: "24px",
-              maxWidth: "400px",
+              maxWidth: "440px",
               width: "100%",
             }}
             onClick={(e) => e.stopPropagation()}
@@ -2926,11 +3024,59 @@ export default function ClubChatPage() {
               </div>
             ) : (
               <div>
+                {selectedMembersForPicker.length > 0 ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                      marginBottom: "12px",
+                      paddingBottom: "12px",
+                      borderBottom: "1px solid #242424",
+                    }}
+                  >
+                    {selectedMembersForPicker.map((member) => (
+                      <span
+                        key={member.userId}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 10px",
+                          borderRadius: "999px",
+                          border: "1px solid #E51937",
+                          background: "#2a1518",
+                          color: "#ffffff",
+                          fontSize: "12px",
+                        }}
+                      >
+                        {member.fullName ?? member.email ?? "Member"}
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedMember(member.userId)}
+                          aria-label={`Remove ${member.fullName ?? "member"}`}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#cccccc",
+                            cursor: "pointer",
+                            padding: 0,
+                            lineHeight: 1,
+                            display: "flex",
+                          }}
+                        >
+                          <X size={14} aria-hidden />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
                 <input
                   type="text"
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
-                  placeholder="Search members…"
+                  placeholder="Search by name or email…"
                   style={{
                     width: "100%",
                     background: "#111111",
@@ -2939,10 +3085,77 @@ export default function ClubChatPage() {
                     padding: "10px 14px",
                     color: "#ffffff",
                     fontSize: "14px",
-                    marginBottom: "12px",
+                    marginBottom: "8px",
                     boxSizing: "border-box",
                   }}
                 />
+
+                {memberSearch.trim() ? (
+                  <div
+                    style={{
+                      maxHeight: "180px",
+                      overflowY: "auto",
+                      marginBottom: "12px",
+                      border: "1px solid #242424",
+                      borderRadius: "8px",
+                      background: "#111111",
+                    }}
+                  >
+                    {memberSearchMatches.length === 0 ? (
+                      <p
+                        style={{
+                          margin: 0,
+                          padding: "12px 14px",
+                          fontSize: "13px",
+                          color: "#666666",
+                        }}
+                      >
+                        No members match your search
+                      </p>
+                    ) : (
+                      memberSearchMatches.map((member) => (
+                        <button
+                          key={member.userId}
+                          type="button"
+                          onClick={() => toggleMember(member.userId)}
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-start",
+                            gap: "2px",
+                            padding: "10px 14px",
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: "1px solid #1e1e1e",
+                            color: "#ffffff",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <span style={{ fontSize: "13px", fontWeight: 600 }}>
+                            {member.fullName ?? "Member"}
+                          </span>
+                          {member.email ? (
+                            <span style={{ fontSize: "12px", color: "#777777" }}>
+                              {member.email}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <p
+                    style={{
+                      margin: "0 0 12px",
+                      fontSize: "12px",
+                      color: "#666666",
+                    }}
+                  >
+                    Type a name or email to find club members
+                  </p>
+                )}
 
                 {chatType === "group" ? (
                   <>
@@ -2988,41 +3201,6 @@ export default function ClubChatPage() {
                   </>
                 ) : null}
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "8px",
-                    maxHeight: "160px",
-                    overflowY: "auto",
-                    marginBottom: "16px",
-                  }}
-                >
-                  {filteredMembers.map((m) => {
-                    const selected = selectedMemberIds.includes(m.userId);
-                    return (
-                      <button
-                        key={m.userId}
-                        type="button"
-                        onClick={() => toggleMember(m.userId)}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "20px",
-                          border: selected
-                            ? "1px solid #E51937"
-                            : "1px solid #2a2a2a",
-                          background: selected ? "#2a1518" : "#111111",
-                          color: selected ? "#ffffff" : "#888888",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {m.fullName ?? "Member"}
-                      </button>
-                    );
-                  })}
-                </div>
-
                 <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
                   <button
                     type="button"
@@ -3040,12 +3218,7 @@ export default function ClubChatPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      creating ||
-                      (chatType === "direct"
-                        ? selectedMemberIds.length !== 1
-                        : !groupName.trim() || selectedMemberIds.length === 0)
-                    }
+                    disabled={creating || !canCreateConversation}
                     onClick={handleCreateConversation}
                     style={{
                       background: "#E51937",
@@ -3055,13 +3228,7 @@ export default function ClubChatPage() {
                       padding: "10px 24px",
                       fontWeight: 600,
                       cursor: "pointer",
-                      opacity:
-                        creating ||
-                        (chatType === "direct"
-                          ? selectedMemberIds.length !== 1
-                          : !groupName.trim() || selectedMemberIds.length === 0)
-                          ? 0.5
-                          : 1,
+                      opacity: creating || !canCreateConversation ? 0.5 : 1,
                     }}
                   >
                     {creating ? "Creating…" : "Create"}
