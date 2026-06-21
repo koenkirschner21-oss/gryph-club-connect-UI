@@ -47,3 +47,27 @@ export function computeClubProfileCompletionPercent(
   const complete = checks.filter(Boolean).length;
   return Math.round((complete / checks.length) * 100);
 }
+
+/** Deep-link to the first incomplete settings section for Command Center setup actions. */
+export function resolveClubSetupSettingsPath(
+  settingsPath: string,
+  club: Club,
+): string {
+  if (!club.logoUrl?.trim() || !club.bannerUrl?.trim()) {
+    return `${settingsPath}?section=branding&highlight=branding`;
+  }
+
+  if (
+    !club.contactEmail?.trim() ||
+    !club.shortDescription?.trim() ||
+    !club.meetingSchedule?.trim()
+  ) {
+    return `${settingsPath}?section=profile&highlight=profile`;
+  }
+
+  if (!hasSocialLinks(club.socialLinks)) {
+    return `${settingsPath}?section=social&highlight=social`;
+  }
+
+  return `${settingsPath}?section=profile&highlight=profile`;
+}

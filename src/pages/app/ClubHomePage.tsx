@@ -1706,7 +1706,6 @@ export default function ClubHomePage() {
           eventRsvpCounts={eventRsvpCounts}
           isMobile={isMobile}
           onOpenTask={setSelectedTask}
-          onOpenSetupChecklist={() => setSetupModalOpen(true)}
         />
       ) : (
         <>
