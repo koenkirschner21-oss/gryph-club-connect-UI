@@ -1352,10 +1352,8 @@ function HiringDetailPanel({
 
       <div
         style={{
-          maxWidth: "720px",
           width: "100%",
-          margin: "0 auto",
-          padding: "36px 32px 32px",
+          padding: "36px 24px 32px",
           boxSizing: "border-box",
         }}
       >
