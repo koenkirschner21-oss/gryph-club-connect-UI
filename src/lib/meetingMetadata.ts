@@ -169,6 +169,21 @@ export function resolveInviteeUserIds(
   }
 }
 
+export function isUserInvitedToMeeting(
+  userId: string | undefined,
+  members: ClubMember[],
+  metadata: MeetingMetadata,
+  isPrivileged: boolean,
+): boolean {
+  if (isPrivileged) return true;
+  if (!userId) return false;
+  return resolveInviteeUserIds(
+    metadata.inviteeGroup,
+    members,
+    metadata.customInviteeIds ?? [],
+  ).includes(userId);
+}
+
 export function inviteeCountLabel(
   group: InviteeGroup,
   members: ClubMember[],

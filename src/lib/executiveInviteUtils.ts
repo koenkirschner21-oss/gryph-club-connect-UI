@@ -300,7 +300,7 @@ export async function resendExecutiveInvite(
     invite.invitedUserId ??
     (await lookupUserIdByEmail(supabase, invite.invitedEmail));
 
-  if (!invitedUserId) return true;
+  if (!invitedUserId) return false;
 
   const roleLabel = invite.roleTitle || accessLevelBadgeLabel(invite.accessLevel);
   const invitePath = `/executive-invite/${invite.token}`;
@@ -383,6 +383,14 @@ export async function acceptExecutiveInvite(
 
   const clubId = data as string;
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", params.recipientUserId)
+    .maybeSingle();
+  const accepterName =
+    (profile?.full_name as string | undefined)?.trim() || "A member";
+
   if (params.inboxMessageId) {
     await supabase
       .from("inbox_messages")
@@ -397,7 +405,7 @@ export async function acceptExecutiveInvite(
       senderId: params.recipientUserId,
       type: "invite_accepted",
       title: `Executive invite accepted — ${params.clubName}`,
-      message: `Your executive invite for ${params.clubName} was accepted.`,
+      message: `${accepterName} accepted your invite.`,
       clubId,
       referenceId: invite.id,
       referenceType: "executive_invite",
@@ -406,7 +414,7 @@ export async function acceptExecutiveInvite(
     await createNotification(supabase, {
       userId: params.inviterUserId,
       type: "club_update",
-      message: `Your executive invite to ${params.clubName} was accepted.`,
+      message: `${accepterName} accepted your invite.`,
       clubId,
       referenceId: invite.id,
     });

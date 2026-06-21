@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Calendar, ChevronDown, Plus } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import type { MemberRole } from "../../types";
@@ -25,7 +26,7 @@ import {
   mapActionItemRow,
   mapMeetingRow,
 } from "./meetings/meetingUtils";
-import { parseMeetingNotes } from "../../lib/meetingMetadata";
+import { parseMeetingNotes, resolveInviteeUserIds } from "../../lib/meetingMetadata";
 import type { MeetingType } from "../../lib/meetingMetadata";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -43,6 +44,7 @@ export default function ClubMeetingsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
+  const { members } = useClubMembers(clubId);
   const isMobile = useIsMobile();
 
   const [userRole, setUserRole] = useState<MemberRole>("member");
@@ -188,20 +190,32 @@ export default function ClubMeetingsPage() {
     }
   }, [isCreateRoute, isPrivileged, presetType]);
 
+  const visibleMeetings = useMemo(() => {
+    if (isPrivileged || !user?.id) return meetings;
+    return meetings.filter((meeting) => {
+      const { metadata } = parseMeetingNotes(meeting.notes);
+      return resolveInviteeUserIds(
+        metadata.inviteeGroup,
+        members,
+        metadata.customInviteeIds ?? [],
+      ).includes(user.id);
+    });
+  }, [meetings, members, isPrivileged, user?.id]);
+
   const upcomingMeetings = useMemo(
     () =>
-      meetings
+      visibleMeetings
         .filter((meeting) => !isMeetingPast(meeting))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-    [meetings],
+    [visibleMeetings],
   );
 
   const pastMeetings = useMemo(
     () =>
-      meetings
+      visibleMeetings
         .filter((meeting) => isMeetingPast(meeting))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [meetings],
+    [visibleMeetings],
   );
 
   const nextMeeting = upcomingMeetings[0] ?? null;
@@ -211,10 +225,10 @@ export default function ClubMeetingsPage() {
 
   const openActionItemCount = useMemo(
     () =>
-      meetings
+      visibleMeetings
         .filter((meeting) => meeting.status !== "cancelled")
         .reduce((sum, meeting) => sum + meeting.actionItemCount, 0),
-    [meetings],
+    [visibleMeetings],
   );
 
   const actionItemsDueSoon = useMemo(() => {
@@ -248,14 +262,14 @@ export default function ClubMeetingsPage() {
   );
 
   const recentNotesMeetings = useMemo(() => {
-    return meetings
+    return visibleMeetings
       .filter((meeting) => {
         const { meetingNotes } = parseMeetingNotes(meeting.notes);
         return Boolean(meetingNotes.trim());
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 3);
-  }, [meetings]);
+  }, [visibleMeetings]);
 
   const openCreate = (type?: MeetingType) => {
     const params = new URLSearchParams();
@@ -429,7 +443,7 @@ export default function ClubMeetingsPage() {
           active={activeTab === "past"}
           onClick={() => {
             setActiveTab("past");
-            setShowPast(true);
+            setShowPast(false);
           }}
         >
           Past Meetings

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ExternalLink, MapPin, Video } from "lucide-react";
+import { ArrowLeft, ExternalLink, MapPin, Trash2, Video } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useClubMembers } from "../../../hooks/useClubMembers";
 import { useIsMobile } from "../../../hooks/useWindowWidth";
 import { formatNameWithRoleTitle } from "../../../lib/memberRoleTitle";
 import {
   inviteeCountLabel,
+  isUserInvitedToMeeting,
   parseAgendaItems,
   parseMeetingNotes,
   serializeAgendaItems,
@@ -102,11 +103,17 @@ export function MeetingDetailView({
   const [newItemAssignee, setNewItemAssignee] = useState("");
   const [newItemDueDate, setNewItemDueDate] = useState("");
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [convertError, setConvertError] = useState<string | null>(null);
 
   const activeMembers = useMemo(
     () => members.filter((member) => member.status === "active"),
     [members],
   );
+
+  const canViewMeeting = useMemo(() => {
+    if (!meeting || !metadata) return false;
+    return isUserInvitedToMeeting(userId, members, metadata, isPrivileged);
+  }, [meeting, metadata, userId, members, isPrivileged]);
 
   const loadMeeting = useCallback(async () => {
     setLoading(true);
@@ -235,6 +242,7 @@ export function MeetingDetailView({
   const convertToTask = async (item: MeetingActionItem) => {
     if (!isPrivileged || !userId || item.linkedTaskId || !meeting) return;
     setConvertingId(item.id);
+    setConvertError(null);
     const { data: taskRow, error } = await supabase
       .from("tasks")
       .insert({
@@ -252,12 +260,16 @@ export function MeetingDetailView({
       .select("id")
       .single();
 
-    if (!error && taskRow) {
-      await supabase
-        .from("meeting_action_items")
-        .update({ linked_task_id: taskRow.id as string })
-        .eq("id", item.id);
+    if (error || !taskRow) {
+      setConvertError("Could not create task from this action item. Please try again.");
+      setConvertingId(null);
+      return;
     }
+
+    await supabase
+      .from("meeting_action_items")
+      .update({ linked_task_id: taskRow.id as string })
+      .eq("id", item.id);
     setConvertingId(null);
     void loadActionItems();
   };
@@ -270,6 +282,15 @@ export function MeetingDetailView({
     return (
       <div style={{ padding: "24px" }}>
         <p style={{ color: "#777777" }}>Meeting not found.</p>
+        <Link to={`/app/clubs/${clubId}/meetings`} style={{ color: "#E51937" }}>Back to meetings</Link>
+      </div>
+    );
+  }
+
+  if (!canViewMeeting) {
+    return (
+      <div style={{ padding: "24px" }}>
+        <p style={{ color: "#777777" }}>You don&apos;t have access to this meeting.</p>
         <Link to={`/app/clubs/${clubId}/meetings`} style={{ color: "#E51937" }}>Back to meetings</Link>
       </div>
     );
@@ -399,18 +420,35 @@ export function MeetingDetailView({
             {isPrivileged ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {agendaItems.map((item, index) => (
-                  <input
-                    key={`detail-agenda-${index}`}
-                    style={inputStyle}
-                    value={item}
-                    onChange={(e) =>
-                      setAgendaItems((current) =>
-                        current.map((value, itemIndex) =>
-                          itemIndex === index ? e.target.value : value,
-                        ),
-                      )
-                    }
-                  />
+                  <div key={`detail-agenda-${index}`} style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      style={{ ...inputStyle, flex: 1 }}
+                      value={item}
+                      onChange={(e) =>
+                        setAgendaItems((current) =>
+                          current.map((value, itemIndex) =>
+                            itemIndex === index ? e.target.value : value,
+                          ),
+                        )
+                      }
+                    />
+                    <button
+                      type="button"
+                      aria-label="Remove agenda item"
+                      onClick={() =>
+                        setAgendaItems((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        )
+                      }
+                      style={{
+                        ...outlineButtonStyle,
+                        padding: "8px 10px",
+                        color: "#777777",
+                      }}
+                    >
+                      <Trash2 size={14} aria-hidden />
+                    </button>
+                  </div>
                 ))}
                 <button
                   type="button"
@@ -479,6 +517,9 @@ export function MeetingDetailView({
             <h2 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
               Action Items
             </h2>
+            {convertError ? (
+              <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#E51937" }}>{convertError}</p>
+            ) : null}
             {actionItems.length === 0 ? (
               <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#777777" }}>No action items yet.</p>
             ) : (

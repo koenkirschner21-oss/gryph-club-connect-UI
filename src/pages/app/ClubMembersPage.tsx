@@ -1145,7 +1145,10 @@ export default function ClubMembersPage() {
     setFeedback(
       ok
         ? { type: "success", text: "Reminder sent." }
-        : { type: "error", text: "Failed to resend invite." },
+        : {
+            type: "error",
+            text: "No Gryph account found for that email yet.",
+          },
     );
   }
 

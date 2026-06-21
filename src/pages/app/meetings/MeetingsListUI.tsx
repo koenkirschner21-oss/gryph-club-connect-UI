@@ -18,7 +18,7 @@ import {
   parseAgendaItems,
   parseMeetingNotes,
 } from "../../../lib/meetingMetadata";
-import { MeetingTypeBadge } from "./MeetingCard";
+import { MeetingTypeBadge, StatusBadge } from "./MeetingCard";
 import { primaryButtonStyle } from "./meetingStyles";
 import type { ClubMeeting, MeetingActionItem } from "./meetingTypes";
 import { formatMeetingDateTime } from "./meetingUtils";
@@ -468,20 +468,7 @@ function MeetingListCard({
               >
                 {meeting.title}
               </h3>
-              {isPast ? (
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    color: "#777777",
-                    border: "1px solid #333333",
-                    borderRadius: "4px",
-                    padding: "2px 8px",
-                  }}
-                >
-                  Completed
-                </span>
-              ) : null}
+              <StatusBadge meeting={meeting} />
             </div>
             <div
               style={{

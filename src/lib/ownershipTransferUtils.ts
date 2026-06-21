@@ -199,6 +199,13 @@ export async function cancelOwnershipTransfer(
   supabase: SupabaseClient,
   transferId: string,
 ): Promise<boolean> {
+  const { data: transferRow } = await supabase
+    .from("ownership_transfers")
+    .select("to_user_id, club_id")
+    .eq("id", transferId)
+    .eq("status", "pending")
+    .maybeSingle();
+
   const { error } = await supabase
     .from("ownership_transfers")
     .update({
@@ -211,6 +218,15 @@ export async function cancelOwnershipTransfer(
   if (error) {
     console.error("Failed to cancel ownership transfer:", error.message);
     return false;
+  }
+
+  if (transferRow?.to_user_id) {
+    await supabase
+      .from("inbox_messages")
+      .update({ action_completed: true, read: true })
+      .eq("reference_id", transferId)
+      .eq("recipient_id", transferRow.to_user_id as string)
+      .eq("action_completed", false);
   }
 
   return true;
@@ -240,15 +256,6 @@ export async function acceptOwnershipTransfer(
   const transfer = mapOwnershipTransferRow(transferRow as Record<string, unknown>);
   const now = new Date().toISOString();
 
-  const { error: transferError } = await supabase
-    .from("ownership_transfers")
-    .update({ status: "accepted", responded_at: now })
-    .eq("id", transfer.id);
-
-  if (transferError) {
-    return { ok: false, error: "Failed to accept ownership transfer." };
-  }
-
   const { error: memberError } = await supabase
     .from("club_members")
     .update({ role: "owner", access_level: "president" })
@@ -256,7 +263,7 @@ export async function acceptOwnershipTransfer(
     .eq("user_id", transfer.toUserId);
 
   if (memberError) {
-    return { ok: false, error: "Transfer accepted but member role could not be updated." };
+    return { ok: false, error: "Failed to accept ownership transfer." };
   }
 
   const recipientTitle =
@@ -266,6 +273,15 @@ export async function acceptOwnershipTransfer(
     .update({ title: recipientTitle })
     .eq("club_id", transfer.clubId)
     .eq("user_id", transfer.toUserId);
+
+  const { error: transferError } = await supabase
+    .from("ownership_transfers")
+    .update({ status: "accepted", responded_at: now })
+    .eq("id", transfer.id);
+
+  if (transferError) {
+    return { ok: false, error: "Member role updated but transfer could not be finalized." };
+  }
 
   if (params.inboxMessageId) {
     await markInboxActionCompleted(supabase, params.inboxMessageId, params.recipientUserId);

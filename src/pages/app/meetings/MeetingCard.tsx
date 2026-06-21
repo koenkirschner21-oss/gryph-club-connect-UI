@@ -38,7 +38,7 @@ export function MeetingTypeBadge({ type }: { type: MeetingType }) {
   );
 }
 
-function StatusBadge({ meeting }: { meeting: ClubMeeting }) {
+export function StatusBadge({ meeting }: { meeting: ClubMeeting }) {
   const label = meetingStatusLabel(meeting.status, meeting.date);
   const colors =
     label === "Cancelled"

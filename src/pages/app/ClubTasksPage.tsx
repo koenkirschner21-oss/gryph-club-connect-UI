@@ -795,6 +795,10 @@ export default function ClubTasksPage() {
   const visibleTasks = useMemo(() => {
     const activeTasks = enrichedTasks.filter((task) => task.status !== "cancelled");
 
+    if (isPrivileged && activeTypeFilter === "event") {
+      return activeTasks.filter((task) => (task.taskType ?? "general") === "event");
+    }
+
     if (assignmentTab === "assigned_by_me") {
       return activeTasks.filter(
         (task) =>
@@ -805,7 +809,7 @@ export default function ClubTasksPage() {
     }
 
     return activeTasks.filter((task) => task.assignedTo === user?.id);
-  }, [enrichedTasks, assignmentTab, user?.id]);
+  }, [enrichedTasks, assignmentTab, user?.id, isPrivileged, activeTypeFilter]);
 
 
   const [showForm, setShowForm] = useState(false);

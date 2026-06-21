@@ -390,7 +390,7 @@ export default function TaskDetailModal({
 
         {task.taskType === "event" && (task.linkedEventId || linkedEventFallback) ? (
           <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#555555" }}>
-            Linked event: {task.linkedEventTitle ?? linkedEventFallback ?? "Event"}
+            Linked to: {task.linkedEventTitle ?? linkedEventFallback ?? "Event"}
           </p>
         ) : null}
         {task.taskType === "meeting" && task.linkedMeetingId ? (
