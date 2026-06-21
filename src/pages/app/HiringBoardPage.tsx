@@ -2503,7 +2503,7 @@ export default function HiringBoardPage() {
     }
     setSelectedId((current) => {
       if (current && filtered.some((p) => p.id === current)) return current;
-      return null;
+      return filtered[0].id;
     });
   }, [filtered]);
 
