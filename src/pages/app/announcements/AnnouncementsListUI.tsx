@@ -306,6 +306,7 @@ export function AnnouncementCard({
   bookmarkActive,
   seenCount,
   isPrivileged,
+  canViewEngagement,
   showMenu,
   menuOpen,
   isMemberRole,
@@ -337,6 +338,7 @@ export function AnnouncementCard({
   bookmarkActive: boolean;
   seenCount: number;
   isPrivileged: boolean;
+  canViewEngagement: boolean;
   showMenu: boolean;
   menuOpen: boolean;
   isMemberRole: boolean;
@@ -632,11 +634,11 @@ export function AnnouncementCard({
           </button>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "12px", color: "#555555" }}>
-            Seen by {seenCount} members
-          </span>
-          {isPrivileged ? (
+        {canViewEngagement ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "12px", color: "#555555" }}>
+              Seen by {seenCount} members
+            </span>
             <button
               type="button"
               onClick={onViewSeenList}
@@ -652,8 +654,8 @@ export function AnnouncementCard({
             >
               View Seen List
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     </article>
   );

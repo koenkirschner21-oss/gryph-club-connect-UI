@@ -185,7 +185,14 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         for (const row of memberRows ?? []) {
           if (row.status === "active") {
             activeIds.push(row.club_id);
-            roles[row.club_id] = row.role as MemberRole;
+            const rawRole = (row.role as string) ?? "member";
+            if (rawRole === "owner" || rawRole === "admin") {
+              roles[row.club_id] = "owner";
+            } else if (rawRole === "executive" || rawRole === "exec") {
+              roles[row.club_id] = "executive";
+            } else {
+              roles[row.club_id] = "member";
+            }
           } else if (row.status === "pending") {
             pendingIds.push(row.club_id);
           }

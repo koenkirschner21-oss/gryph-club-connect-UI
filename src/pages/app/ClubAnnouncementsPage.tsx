@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Download } from "lucide-react";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
@@ -347,6 +348,9 @@ export default function ClubAnnouncementsPage() {
   const { getClubById } = useClubContext();
   const club = getClubById(clubId ?? "");
   const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
+  const memberAccess = useClubMemberAccess(clubId);
+  const canViewEngagement =
+    memberAccess.isPresident || memberAccess.can("manage_announcements");
 
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
@@ -382,6 +386,41 @@ export default function ClubAnnouncementsPage() {
   const [seenListPostId, setSeenListPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const reloadReactionMeta = useCallback(
+    async (postIds: string[]) => {
+      if (postIds.length === 0) return;
+
+      const { data, error } = await supabase
+        .from("post_reactions")
+        .select("post_id, user_id, reaction")
+        .in("post_id", postIds);
+
+      if (error) {
+        console.error("Failed to load announcement reactions:", error.message);
+        return;
+      }
+
+      const countsMap: Record<string, PostReactionState> = {};
+      const myMap: Record<string, PostReactionFlags> = {};
+      for (const postId of postIds) {
+        countsMap[postId] = { heart: 0, thumbs_up: 0, laugh: 0, bookmark: 0 };
+        myMap[postId] = { heart: false, thumbs_up: false, laugh: false, bookmark: false };
+      }
+      for (const row of data ?? []) {
+        const postId = row.post_id as string;
+        const reaction = row.reaction as ReactionName;
+        if (!countsMap[postId] || countsMap[postId][reaction] === undefined) continue;
+        countsMap[postId][reaction] += 1;
+        if (row.user_id === user?.id) {
+          myMap[postId][reaction] = true;
+        }
+      }
+      setReactionCountsByPost(countsMap);
+      setMyReactionsByPost(myMap);
+    },
+    [user?.id],
+  );
 
   useEffect(() => {
     if (!reportSuccessMessage) return;
@@ -523,6 +562,26 @@ export default function ClubAnnouncementsPage() {
       cancelled = true;
     };
   }, [clubId, posts, user?.id]);
+
+  useEffect(() => {
+    if (!clubId || posts.length === 0) return;
+
+    const postIds = posts.map((post) => post.id);
+    const channel = supabase
+      .channel(`club-post-reactions:${clubId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "post_reactions" },
+        () => {
+          void reloadReactionMeta(postIds);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [clubId, posts, reloadReactionMeta]);
 
   useEffect(() => {
     if (!clubId || !user?.id || posts.length === 0) return;
@@ -798,27 +857,6 @@ export default function ClubAnnouncementsPage() {
     if (!user?.id) return;
     const active = myReactionsByPost[postId]?.[reaction] ?? false;
 
-    setMyReactionsByPost((prev) => ({
-      ...prev,
-      [postId]: {
-        heart: prev[postId]?.heart ?? false,
-        thumbs_up: prev[postId]?.thumbs_up ?? false,
-        laugh: prev[postId]?.laugh ?? false,
-        bookmark: prev[postId]?.bookmark ?? false,
-        [reaction]: !active,
-      },
-    }));
-    setReactionCountsByPost((prev) => ({
-      ...prev,
-      [postId]: {
-        heart: prev[postId]?.heart ?? 0,
-        thumbs_up: prev[postId]?.thumbs_up ?? 0,
-        laugh: prev[postId]?.laugh ?? 0,
-        bookmark: prev[postId]?.bookmark ?? 0,
-        [reaction]: Math.max((prev[postId]?.[reaction] ?? 0) + (active ? -1 : 1), 0),
-      },
-    }));
-
     if (active) {
       const { error } = await supabase
         .from("post_reactions")
@@ -826,8 +864,10 @@ export default function ClubAnnouncementsPage() {
         .eq("post_id", postId)
         .eq("user_id", user.id)
         .eq("reaction", reaction);
-      if (error) console.error("Failed to remove reaction:", error.message);
-      else refresh();
+      if (error) {
+        console.error("Failed to remove reaction:", error.message);
+      }
+      await reloadReactionMeta([postId]);
       return;
     }
 
@@ -836,8 +876,10 @@ export default function ClubAnnouncementsPage() {
       user_id: user.id,
       reaction,
     });
-    if (error) console.error("Failed to add reaction:", error.message);
-    else refresh();
+    if (error) {
+      console.error("Failed to add reaction:", error.message);
+    }
+    await reloadReactionMeta([postId]);
   }
 
   async function handleDelete(postId: string) {
@@ -1107,7 +1149,7 @@ export default function ClubAnnouncementsPage() {
         </div>
       )}
 
-      {seenListPostId ? (
+      {seenListPostId && canViewEngagement ? (
         <SeenListModal
           postTitle={posts.find((p) => p.id === seenListPostId)?.title ?? "Announcement"}
           seenCount={viewCountByPost[seenListPostId] ?? 0}
@@ -1288,6 +1330,7 @@ export default function ClubAnnouncementsPage() {
         bookmarkActive={myReactions.bookmark}
         seenCount={viewCountByPost[post.id] ?? 0}
         isPrivileged={isPrivileged}
+        canViewEngagement={canViewEngagement}
         showMenu={showMenu}
         menuOpen={menuOpenPostId === post.id}
         isMemberRole={isMemberRole}

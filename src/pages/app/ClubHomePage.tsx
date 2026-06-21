@@ -38,6 +38,7 @@ import type {
   Task,
   TaskStatus,
 } from "../../types";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 import SetupChecklist, { SetupChecklistModal } from "../../components/club/SetupChecklist";
 import ClubCommandCenter from "./ClubCommandCenter";
@@ -1168,6 +1169,9 @@ export default function ClubHomePage() {
   const [eventRecurring, setEventRecurring] = useState<
     Record<string, EventRecurringMeta>
   >({});
+  const memberAccess = useClubMemberAccess(clubId);
+  const canManageTasks =
+    memberAccess.isPresident || memberAccess.can("manage_tasks");
   const [openTaskCount, setOpenTaskCount] = useState(0);
   const [openTasksPreview, setOpenTasksPreview] = useState<
     Pick<Task, "id" | "title" | "status" | "dueDate">[]
@@ -1384,7 +1388,7 @@ export default function ClubHomePage() {
   );
 
   useEffect(() => {
-    if (!clubId) {
+    if (!clubId || !user?.id) {
       setOpenTaskCount(0);
       return;
     }
@@ -1392,11 +1396,18 @@ export default function ClubHomePage() {
     let cancelled = false;
 
     async function loadOpenTaskCount() {
-      const { count, error } = await supabase
+      let query = supabase
         .from("tasks")
         .select("id", { count: "exact", head: true })
         .eq("club_id", clubId)
-        .neq("status", "done");
+        .neq("status", "done")
+        .neq("status", "cancelled");
+
+      if (!canManageTasks) {
+        query = query.eq("assigned_to", user!.id);
+      }
+
+      const { count, error } = await query;
 
       if (cancelled) return;
       if (error) {
@@ -1411,7 +1422,7 @@ export default function ClubHomePage() {
     return () => {
       cancelled = true;
     };
-  }, [clubId, tasks.length]);
+  }, [clubId, tasks.length, user?.id, canManageTasks]);
 
   useEffect(() => {
     if (!clubId) {
@@ -1756,22 +1767,26 @@ export default function ClubHomePage() {
 
       <div
         className={`grid items-stretch gap-4 ${
-          isMobile
-            ? "grid-cols-2"
-            : isPrivileged
-              ? "grid-cols-1 sm:grid-cols-3"
-              : "grid-cols-1 sm:grid-cols-2"
+          isMobile ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"
         }`}
       >
-        {isPrivileged ? (
+        {canManageTasks ? (
           <ClubStatCard
-            label="Open Tasks"
+            label="Club Open Tasks"
             value={openTaskCount}
-            sublabel="Incomplete tasks"
+            sublabel="Incomplete club tasks"
             borderAccentColor="#E51937"
             to={tasksPath}
           />
-        ) : null}
+        ) : (
+          <ClubStatCard
+            label="My Open Tasks"
+            value={openTaskCount}
+            sublabel="Assigned to you"
+            borderAccentColor="#E51937"
+            to={tasksPath}
+          />
+        )}
         <ClubStatCard
           label="Events This Month"
           value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}

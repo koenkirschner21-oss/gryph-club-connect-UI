@@ -680,6 +680,8 @@ export default function ClubRecruitingPage() {
     memberAccess.isPresident ||
     memberAccess.can("manage_hiring") ||
     isListingReviewer;
+  const canDeleteHiring =
+    memberAccess.isPresident || memberAccess.can("manage_hiring");
   const isPrivileged = canManageHiring;
 
   const [loading, setLoading] = useState(true);
@@ -709,6 +711,10 @@ export default function ClubRecruitingPage() {
 
   const [applyPosition, setApplyPosition] = useState<ClubPosition | null>(null);
   const [viewRolePosition, setViewRolePosition] = useState<ClubPosition | null>(null);
+  const [deleteConfirmPosition, setDeleteConfirmPosition] =
+    useState<ClubPosition | null>(null);
+  const [deletingPositionId, setDeletingPositionId] = useState<string | null>(null);
+  const [deletePositionError, setDeletePositionError] = useState<string | null>(null);
   const [savedRoleIds, setSavedRoleIds] = useState<Set<string>>(new Set());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
@@ -1129,19 +1135,30 @@ export default function ClubRecruitingPage() {
   }
 
   async function deletePosition(positionId: string) {
-    if (!window.confirm("Delete this position and all applications?")) return;
+    setDeletingPositionId(positionId);
+    setDeletePositionError(null);
+
     const { error } = await supabase
       .from("hiring_listings")
       .delete()
       .eq("id", positionId);
-    if (!error) {
-      if (expandedPositionId === positionId) {
-        setExpandedPositionId(null);
-        setApplications([]);
-      }
-      void loadPositions();
+
+    setDeletingPositionId(null);
+
+    if (error) {
+      console.error("Failed to delete position:", error.message);
+      setDeletePositionError(error.message || "Could not delete this position.");
+      return;
     }
+
+    if (expandedPositionId === positionId) {
+      setExpandedPositionId(null);
+      setApplications([]);
+      setSelectedApplicantId(null);
+    }
+    setDeleteConfirmPosition(null);
     setOpenMenuId(null);
+    void loadPositions();
   }
 
   async function loadApplicationsForPosition(listingId: string) {
@@ -1360,6 +1377,18 @@ export default function ClubRecruitingPage() {
       return (
         <div
           key={position.id}
+          role={canManageHiring ? "button" : undefined}
+          tabIndex={canManageHiring ? 0 : undefined}
+          onClick={() => {
+            if (canManageHiring) void toggleApplications(position);
+          }}
+          onKeyDown={(event) => {
+            if (!canManageHiring) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              void toggleApplications(position);
+            }
+          }}
           onMouseEnter={() => setHoveredCardId(position.id)}
           onMouseLeave={() => {
             setHoveredCardId((prev) => (prev === position.id ? null : prev));
@@ -1370,6 +1399,7 @@ export default function ClubRecruitingPage() {
             borderRadius: "12px",
             padding: "20px 24px",
             marginBottom: "12px",
+            cursor: canManageHiring ? "pointer" : undefined,
             ...positionCardBorderStyle(isExpanded),
           }}
         >
@@ -1529,7 +1559,10 @@ export default function ClubRecruitingPage() {
             >
               <button
                 type="button"
-                onClick={() => void toggleApplications(position)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void toggleApplications(position);
+                }}
                 style={{
                   background: isExpanded ? "transparent" : "#E51937",
                   color: isExpanded ? "#cccccc" : "#ffffff",
@@ -1599,11 +1632,12 @@ export default function ClubRecruitingPage() {
                     <button
                       type="button"
                       aria-label="Position options"
-                      onClick={() =>
+                      onClick={(event) => {
+                        event.stopPropagation();
                         setOpenMenuId((prev) =>
                           prev === position.id ? null : position.id,
-                        )
-                      }
+                        );
+                      }}
                       style={{
                         background: "transparent",
                         border: "none",
@@ -1639,13 +1673,19 @@ export default function ClubRecruitingPage() {
                             Close Position
                           </button>
                         ) : null}
+                        {canDeleteHiring ? (
                         <button
                           type="button"
-                          onClick={() => void deletePosition(position.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleteConfirmPosition(position);
+                            setDeletePositionError(null);
+                          }}
                           style={{ ...menuItemStyle, color: "#E51937" }}
                         >
                           Delete
                         </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -2568,6 +2608,91 @@ export default function ClubRecruitingPage() {
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteConfirmPosition ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={modalOverlayStyle}
+          onClick={() => {
+            if (deletingPositionId) return;
+            setDeleteConfirmPosition(null);
+            setDeletePositionError(null);
+          }}
+        >
+          <div
+            style={{
+              background: "#141414",
+              border: "1px solid #2a2a2a",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "440px",
+              width: "100%",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2
+              style={{
+                margin: "0 0 8px",
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#ffffff",
+              }}
+            >
+              Delete position?
+            </h2>
+            <p style={{ margin: "0 0 16px", fontSize: "14px", color: "#888888", lineHeight: 1.5 }}>
+              This will permanently remove{" "}
+              <strong style={{ color: "#cccccc" }}>{deleteConfirmPosition.title}</strong> and
+              all associated applications.
+            </p>
+            {deletePositionError ? (
+              <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#E51937" }}>
+                {deletePositionError}
+              </p>
+            ) : null}
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                disabled={Boolean(deletingPositionId)}
+                onClick={() => {
+                  setDeleteConfirmPosition(null);
+                  setDeletePositionError(null);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#cccccc",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: deletingPositionId ? "default" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(deletingPositionId)}
+                onClick={() => void deletePosition(deleteConfirmPosition.id)}
+                style={{
+                  background: "#E51937",
+                  border: "none",
+                  color: "#ffffff",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: deletingPositionId ? "default" : "pointer",
+                  opacity: deletingPositionId ? 0.7 : 1,
+                }}
+              >
+                {deletingPositionId ? "Deleting…" : "Delete Position"}
               </button>
             </div>
           </div>

@@ -207,7 +207,7 @@ export default function EventRSVPPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { isJoined, isSaved, toggleSaveClub } = useClubContext();
+  const { isJoined, isPending, isSaved, toggleSaveClub } = useClubContext();
   const [loading, setLoading] = useState(true);
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -472,11 +472,7 @@ export default function EventRSVPPage() {
       });
 
       setSubmitted(true);
-      if (
-        event.visibility === "public" &&
-        !isActiveMember &&
-        !isJoined(event.clubId)
-      ) {
+      if (!isActiveMember && !isJoined(event.clubId)) {
         setShowPostRsvpCta(true);
       }
       return;
@@ -509,6 +505,88 @@ export default function EventRSVPPage() {
     }
 
     setSubmitted(true);
+  }
+
+  const clubJoined = event
+    ? isJoined(event.clubId) || isActiveMember
+    : false;
+  const clubJoinPending = event ? isPending(event.clubId) : false;
+
+  function renderMembershipPrimaryAction(disabled = false) {
+    if (!event) return null;
+
+    if (clubJoined) {
+      return (
+        <button
+          type="button"
+          onClick={() => navigate(`/app/clubs/${event.clubId}`)}
+          style={{
+            width: "100%",
+            background: "#E51937",
+            color: "#ffffff",
+            border: "none",
+            borderRadius: "6px",
+            padding: "11px 20px",
+            fontSize: "14px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Open Club Workspace
+        </button>
+      );
+    }
+
+    if (clubJoinPending) {
+      return (
+        <button
+          type="button"
+          disabled
+          style={{
+            width: "100%",
+            background: "#1a1200",
+            color: "#FFC429",
+            border: "1px solid #FFC429",
+            borderRadius: "6px",
+            padding: "11px 20px",
+            fontSize: "14px",
+            fontWeight: 600,
+            cursor: "default",
+            opacity: disabled ? 0.85 : 1,
+          }}
+        >
+          Join Request Pending
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (clubSlug) {
+            navigate(`/clubs/${clubSlug}`);
+            return;
+          }
+          navigate("/app/join-club");
+        }}
+        style={{
+          width: "100%",
+          background: "#E51937",
+          color: "#ffffff",
+          border: "none",
+          borderRadius: "6px",
+          padding: "11px 20px",
+          fontSize: "14px",
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {membershipRequiresApproval(membershipType)
+          ? "Request to Join"
+          : "Join Club"}
+      </button>
+    );
   }
 
   if (loading) {
@@ -658,6 +736,11 @@ export default function EventRSVPPage() {
               >
                 You&apos;re already registered for this event ✓
               </p>
+              {clubJoined || clubJoinPending ? (
+                <div style={{ marginTop: "20px" }}>
+                  {renderMembershipPrimaryAction()}
+                </div>
+              ) : null}
             </div>
           ) : submitted ? (
             <div style={{ textAlign: "center", padding: "16px 0" }}>
@@ -690,52 +773,26 @@ export default function EventRSVPPage() {
                     Want to stay connected with {clubName}?
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (membershipRequiresApproval(membershipType)) {
-                          navigate("/app/join");
-                          return;
-                        }
-                        if (clubSlug) {
-                          navigate(`/clubs/${clubSlug}`);
-                        } else {
-                          navigate(`/app/join`);
-                        }
-                      }}
-                      style={{
-                        width: "100%",
-                        background: "#E51937",
-                        color: "#ffffff",
-                        border: "none",
-                        borderRadius: "6px",
-                        padding: "11px 20px",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {membershipRequiresApproval(membershipType)
-                        ? "Request to Join"
-                        : "Join Club"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleSaveClub(event.clubId)}
-                      style={{
-                        width: "100%",
-                        background: "transparent",
-                        color: "#ffffff",
-                        border: "1px solid #333333",
-                        borderRadius: "6px",
-                        padding: "11px 20px",
-                        fontSize: "14px",
-                        fontWeight: 500,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {isSaved(event.clubId) ? "Club Saved ✓" : "Save Club"}
-                    </button>
+                    {renderMembershipPrimaryAction()}
+                    {!clubJoined && !clubJoinPending ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSaveClub(event.clubId)}
+                        style={{
+                          width: "100%",
+                          background: "transparent",
+                          color: "#ffffff",
+                          border: "1px solid #333333",
+                          borderRadius: "6px",
+                          padding: "11px 20px",
+                          fontSize: "14px",
+                          fontWeight: 500,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isSaved(event.clubId) ? "Club Saved ✓" : "Save Club"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => setShowPostRsvpCta(false)}

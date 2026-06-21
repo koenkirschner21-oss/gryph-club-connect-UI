@@ -2,17 +2,24 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 /**
- * Fetches the count of active (non-done) tasks across all joined clubs for the dashboard.
+ * Fetches the count of active (non-done) tasks assigned to the current user
+ * across joined clubs for the dashboard.
  */
-export function useDashboardTasks(joinedClubIds: string[]) {
+export function useDashboardTasks(
+  joinedClubIds: string[],
+  userId: string | undefined,
+) {
   const [activeCount, setActiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const clubKey = joinedClubIds.join(",");
 
   useEffect(() => {
-    if (joinedClubIds.length === 0) {
-      queueMicrotask(() => setLoading(false));
+    if (joinedClubIds.length === 0 || !userId) {
+      queueMicrotask(() => {
+        setActiveCount(0);
+        setLoading(false);
+      });
       return;
     }
 
@@ -23,8 +30,9 @@ export function useDashboardTasks(joinedClubIds: string[]) {
         .from("tasks")
         .select("id", { count: "exact", head: true })
         .in("club_id", joinedClubIds)
+        .eq("assigned_to", userId)
         .neq("status", "done")
-      .neq("status", "cancelled");
+        .neq("status", "cancelled");
 
       if (cancelled) return;
 
@@ -36,12 +44,12 @@ export function useDashboardTasks(joinedClubIds: string[]) {
       setLoading(false);
     }
 
-    fetchTaskCount();
+    void fetchTaskCount();
 
     return () => {
       cancelled = true;
     };
-  }, [clubKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clubKey, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { activeCount, loading };
 }

@@ -584,7 +584,10 @@ export function MyClubsGrid({
   clubs: MyClubsTabClub[];
   clubLogos: Record<string, string>;
   getUserRole: (clubId: string) => MemberRole | null;
-  formatClubRoleDisplay: (role: MemberRole | null | undefined) => ClubRoleDisplay;
+  formatClubRoleDisplay: (
+    role: MemberRole | null | undefined,
+    options?: { isPendingMembership?: boolean; isSavedOnly?: boolean },
+  ) => ClubRoleDisplay;
   isPendingMembership: (clubId: string) => boolean;
   onOpenWorkspace: (clubId: string) => void;
   isMobile: boolean;
@@ -603,7 +606,11 @@ export function MyClubsGrid({
           key={club.id}
           club={club}
           logoUrl={clubLogos[club.id] ?? club.logoUrl}
-          roleDisplay={formatClubRoleDisplay(getUserRole(club.id))}
+          roleDisplay={formatClubRoleDisplay(getUserRole(club.id), {
+            isPendingMembership: isPendingMembership(club.id),
+            isSavedOnly:
+              getUserRole(club.id) == null && !isPendingMembership(club.id),
+          })}
           statusLabel={resolveClubStatusLabel(club, isPendingMembership(club.id))}
           onOpenWorkspace={() => onOpenWorkspace(club.id)}
           isMobile={isMobile}

@@ -300,8 +300,8 @@ export default function DashboardPage() {
   );
 
   const { events: upcomingEvents, loading: eventsLoading } =
-    useDashboardEvents(joinedClubs);
-  const { activeCount: taskCount } = useDashboardTasks(joinedClubs);
+    useDashboardEvents(joinedClubs, user?.id);
+  const { activeCount: taskCount } = useDashboardTasks(joinedClubs, user?.id);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
   const [overdueTaskCount, setOverdueTaskCount] = useState(0);
@@ -572,7 +572,7 @@ export default function DashboardPage() {
           accentColor="#E51937"
           iconColor="#E51937"
           value={taskCount}
-          sublabel="Active tasks"
+          sublabel="My open tasks"
           onClick={() => setActiveTab("tasks")}
           icon={
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1885,15 +1885,22 @@ function hasEventLocation(location: string | null | undefined): boolean {
 
 function formatClubRoleDisplay(
   role: import("../../types").MemberRole | null | undefined,
+  options?: {
+    isPendingMembership?: boolean;
+    isSavedOnly?: boolean;
+  },
 ): { label: string; color: string; borderColor?: string } {
+  if (options?.isPendingMembership) {
+    return { label: "Pending", color: "#999988", borderColor: "#666655" };
+  }
   if (role === "owner") {
     return { label: "President", color: "#FFC429" };
   }
   if (role === "executive") {
     return { label: "Executive", color: "#E51937", borderColor: "#FFC429" };
   }
-  if (role == null) {
-    return { label: "Pending", color: "#999988", borderColor: "#666655" };
+  if (options?.isSavedOnly) {
+    return { label: "Saved", color: "#747676" };
   }
   return { label: "Member", color: "#747676" };
 }

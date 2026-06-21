@@ -164,6 +164,23 @@ export async function notifyJoinRequestSubmitted(
   if (!ok) {
     console.error("Failed to send join request notifications.");
   }
+
+  const inboxTitle = `Join request submitted — ${params.clubName}`;
+  const inboxMessage = `Your request to join ${params.clubName} has been submitted and is waiting for approval.`;
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.studentUserId,
+    type: "join_request_submitted",
+    title: inboxTitle,
+    message: inboxMessage,
+    clubId: params.clubId,
+    referenceId: memberRowId,
+    referenceType: "club_member",
+  });
+
+  if (!inboxOk) {
+    console.error("Failed to create join request submission inbox message.");
+  }
 }
 
 export async function notifyJoinRequestApproved(
