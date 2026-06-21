@@ -144,6 +144,14 @@ export function resolveInboxLink(message: InboxMessage): string {
     if (claimId) return `/claim-status/${claimId}`;
   }
 
+  if (message.actionType === "claim_more_info") {
+    const claimId =
+      (typeof message.actionData.claimId === "string" &&
+        message.actionData.claimId.trim()) ||
+      message.referenceId;
+    if (claimId) return `/claim-status/${claimId}`;
+  }
+
   const clubBase = message.clubId ? `/app/clubs/${message.clubId}` : null;
 
   switch (message.type) {
@@ -192,7 +200,7 @@ export async function createInboxMessage(
   supabase: SupabaseClient,
   input: CreateInboxMessageInput,
 ): Promise<boolean> {
-  const { error } = await supabase.from("inbox_messages").insert({
+  const row = {
     recipient_id: input.recipientId,
     sender_id: input.senderId ?? null,
     type: input.type,
@@ -205,10 +213,24 @@ export async function createInboxMessage(
     reference_id: input.referenceId ?? null,
     reference_type: input.referenceType ?? null,
     read: false,
+  };
+
+  const { error: rpcError } = await supabase.rpc("send_inbox_messages", {
+    p_messages: [row],
   });
 
+  if (!rpcError) {
+    return true;
+  }
+
+  const { error } = await supabase.from("inbox_messages").insert(row);
+
   if (error) {
-    console.error("Failed to create inbox message:", error.message);
+    console.error(
+      "Failed to create inbox message:",
+      error.message,
+      rpcError.message ? `(RPC: ${rpcError.message})` : "",
+    );
     return false;
   }
 

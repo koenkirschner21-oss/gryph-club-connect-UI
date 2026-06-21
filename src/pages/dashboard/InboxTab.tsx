@@ -50,6 +50,7 @@ const CLAIM_UI_TYPES = new Set([
   "claim_approved",
   "claim_rejected",
   "claim_submitted",
+  "claim_more_info",
   "new_claim_request",
 ]);
 

@@ -47,6 +47,7 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
 export function normalizeInboxUiType(message: InboxMessage): string {
   if (message.actionType === "view_claim_status") return "claim_submitted";
   if (message.actionType === "review_claim_request") return "new_claim_request";
+  if (message.actionType === "claim_more_info") return "claim_more_info";
 
   switch (message.type) {
     case "club_claim_approved":
@@ -70,6 +71,7 @@ export function inboxCategoryLabel(message: InboxMessage): string {
     case "claim_approved":
     case "claim_rejected":
     case "claim_submitted":
+    case "claim_more_info":
       return "Club Claim";
     case "executive_invite":
       return "Executive Invite";
@@ -175,6 +177,7 @@ function inboxAvatarIcon(message: InboxMessage): AvatarIconConfig {
     case "claim_approved":
     case "claim_rejected":
     case "claim_submitted":
+    case "claim_more_info":
     case "new_claim_request":
       return { Icon: Building, background: RED, color: "#ffffff" };
     case "application_update":
@@ -220,6 +223,8 @@ export function resolveInboxRowActionLabel(message: InboxMessage): string {
       return "View Club Profile →";
     case "claim_submitted":
       return "View Status →";
+    case "claim_more_info":
+      return "View Status →";
     case "new_claim_request":
       return "Review in Admin →";
     case "application_update":
@@ -243,6 +248,8 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
     case "claim_rejected":
       return [{ label: "View Club Profile", variant: "outlined" }];
     case "claim_submitted":
+      return [{ label: "View Status", variant: "outlined" }];
+    case "claim_more_info":
       return [{ label: "View Status", variant: "outlined" }];
     case "join_rejected":
       return [{ label: "Read More →", variant: "link" }];

@@ -10,8 +10,11 @@ import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
-import { createInboxMessage } from "../../lib/inboxUtils";
-import { createNotification } from "../../lib/notifications";
+import {
+  notifyClaimRequestApproved,
+  notifyClaimRequestMoreInfo,
+  notifyClaimRequestRejected,
+} from "../../lib/notifications";
 import {
   clubReportReasonLabel,
   clubReportStatusBadgeStyle,
@@ -64,6 +67,7 @@ interface ClubClaimRequestRow {
   proof_url: string | null;
   contact_email: string | null;
   status: "pending" | "approved" | "rejected" | "more_info";
+  review_note: string | null;
   created_at: string;
   clubName: string;
   clubSlug: string;
@@ -487,6 +491,9 @@ export default function AdminPage() {
   const [rejectNote, setRejectNote] = useState("");
   const [moreInfoTarget, setMoreInfoTarget] = useState<ClubRequestRow | null>(null);
   const [moreInfoNote, setMoreInfoNote] = useState("");
+  const [claimMoreInfoTarget, setClaimMoreInfoTarget] =
+    useState<ClubClaimRequestRow | null>(null);
+  const [claimMoreInfoNote, setClaimMoreInfoNote] = useState("");
   const [requestSearch, setRequestSearch] = useState("");
 
   const [users, setUsers] = useState<AdminUserRow[]>([]);
@@ -731,6 +738,7 @@ export default function AdminPage() {
         proof_url,
         contact_email,
         status,
+        review_note,
         created_at,
         clubs ( name, slug )
       `,
@@ -791,6 +799,7 @@ export default function AdminPage() {
           contact_email: (record.contact_email as string) ?? null,
           status:
             (record.status as ClubClaimRequestRow["status"]) ?? "pending",
+          review_note: (record.review_note as string) ?? null,
           created_at: (record.created_at as string) ?? "",
           clubName: (club.name as string) ?? "Unknown club",
           clubSlug: (club.slug as string) ?? "",
@@ -1122,23 +1131,11 @@ export default function AdminPage() {
       return;
     }
 
-    await createNotification(supabase, {
-      userId: request.submitted_by,
-      type: "claim_approved",
-      message: `Your claim request for ${request.clubName} has been approved. You are now President.`,
+    await notifyClaimRequestApproved(supabase, {
       clubId: request.club_id,
-      referenceId: request.id,
-    });
-
-    await createInboxMessage(supabase, {
-      recipientId: request.submitted_by,
-      type: "club_claim_approved",
-      title: `Club claim approved — ${request.clubName}`,
-      message: `Your claim request for ${request.clubName} has been approved. You are now able to manage this club as President.`,
-      actionRequired: false,
-      clubId: request.club_id,
-      referenceId: request.id,
-      referenceType: "club_claim_request",
+      clubName: request.clubName,
+      submitterUserId: request.submitted_by,
+      claimRequestId: request.id,
     });
 
     setClaimActionLoadingId(null);
@@ -1173,30 +1170,60 @@ export default function AdminPage() {
       .eq("id", request.club_id)
       .eq("claim_status", "claim_pending");
 
-    await createNotification(supabase, {
-      userId: request.submitted_by,
-      type: "claim_rejected",
-      message: `Your claim request for ${request.clubName} was not approved at this time.`,
-      referenceId: request.id,
-    });
-
-    await createInboxMessage(supabase, {
-      recipientId: request.submitted_by,
-      type: "club_claim_rejected",
-      title: `Club claim declined — ${request.clubName}`,
-      message: `Your claim request for ${request.clubName} was not approved at this time.`,
-      actionRequired: false,
+    await notifyClaimRequestRejected(supabase, {
       clubId: request.club_id,
-      referenceId: request.id,
-      referenceType: "club_claim_request",
-      actionData: {
-        path: request.clubSlug ? `/clubs/${request.clubSlug}` : "/explore",
-        actionLabel: "View Club Profile",
-      },
+      clubName: request.clubName,
+      clubSlug: request.clubSlug,
+      submitterUserId: request.submitted_by,
+      claimRequestId: request.id,
     });
 
     setClaimActionLoadingId(null);
     await loadClaimRequests();
+  }
+
+  async function handleRequestClaimMoreInfo() {
+    if (!user?.id || !claimMoreInfoTarget) return;
+
+    const note = claimMoreInfoNote.trim();
+    if (!note) {
+      setFeedback("Please enter a message for the claimant.");
+      return;
+    }
+
+    setClaimActionLoadingId(claimMoreInfoTarget.id);
+    setFeedback(null);
+
+    const { error: updateError } = await supabase
+      .from("club_claim_requests")
+      .update({
+        status: "more_info",
+        review_note: note,
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", claimMoreInfoTarget.id);
+
+    if (updateError) {
+      console.error("Failed to save claim more-info request:", updateError.message);
+      setFeedback("Failed to save your message.");
+      setClaimActionLoadingId(null);
+      return;
+    }
+
+    await notifyClaimRequestMoreInfo(supabase, {
+      clubId: claimMoreInfoTarget.club_id,
+      clubName: claimMoreInfoTarget.clubName,
+      clubSlug: claimMoreInfoTarget.clubSlug,
+      submitterUserId: claimMoreInfoTarget.submitted_by,
+      claimRequestId: claimMoreInfoTarget.id,
+      note,
+    });
+
+    setClaimMoreInfoTarget(null);
+    setClaimMoreInfoNote("");
+    setClaimActionLoadingId(null);
+    void loadClaimRequests();
   }
 
   async function handleApprove(request: ClubRequestRow) {
@@ -2889,6 +2916,18 @@ export default function AdminPage() {
                         Contact: {request.contact_email}
                       </p>
                     ) : null}
+                    {request.status === "more_info" && request.review_note ? (
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          color: "#FFC429",
+                          margin: "8px 0 0",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        Admin note: {request.review_note}
+                      </p>
+                    ) : null}
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                     <button
@@ -2907,6 +2946,26 @@ export default function AdminPage() {
                       }}
                     >
                       Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={claimActionLoadingId === request.id}
+                      onClick={() => {
+                        setClaimMoreInfoTarget(request);
+                        setClaimMoreInfoNote(request.review_note ?? "");
+                      }}
+                      style={{
+                        background: "transparent",
+                        color: "#FFC429",
+                        border: "1px solid #FFC429",
+                        borderRadius: "6px",
+                        padding: "8px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Request More Info
                     </button>
                     <button
                       type="button"
@@ -3183,6 +3242,110 @@ export default function AdminPage() {
               }}
             >
               {actionLoadingId ? "Sending…" : "Send Request"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {claimMoreInfoTarget ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: isMobile ? "#1a1a1a" : "rgba(0, 0, 0, 0.65)",
+            display: "flex",
+            alignItems: isMobile ? "stretch" : "center",
+            justifyContent: isMobile ? "stretch" : "center",
+            zIndex: 50,
+            padding: isMobile ? 0 : "16px",
+          }}
+          onClick={() => {
+            if (!claimActionLoadingId) setClaimMoreInfoTarget(null);
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              background: "#1a1a1a",
+              border: isMobile ? "none" : "1px solid #242424",
+              borderRadius: isMobile ? 0 : "12px",
+              padding: isMobile ? "24px 16px" : "24px",
+              maxWidth: isMobile ? "none" : "420px",
+              width: "100%",
+              minHeight: isMobile ? "100%" : undefined,
+              boxSizing: "border-box",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setClaimMoreInfoTarget(null)}
+              disabled={Boolean(claimActionLoadingId)}
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                background: "transparent",
+                border: "none",
+                color: "#777777",
+                cursor: "pointer",
+                padding: "4px",
+              }}
+            >
+              <X size={20} />
+            </button>
+            <h3
+              style={{
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 8px",
+              }}
+            >
+              Request more info for &ldquo;{claimMoreInfoTarget.clubName}&rdquo;
+            </h3>
+            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px" }}>
+              Message for the claimant:
+            </p>
+            <textarea
+              value={claimMoreInfoNote}
+              onChange={(e) => setClaimMoreInfoNote(e.target.value)}
+              rows={4}
+              placeholder="What additional details do you need?"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                background: "#111111",
+                border: "1px solid #2a2a2a",
+                borderRadius: "6px",
+                padding: "10px 14px",
+                color: "#ffffff",
+                fontSize: "14px",
+                marginBottom: "16px",
+                resize: "vertical",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void handleRequestClaimMoreInfo()}
+              disabled={Boolean(claimActionLoadingId)}
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "1px solid #FFC429",
+                color: "#FFC429",
+                borderRadius: "6px",
+                padding: "10px 24px",
+                fontWeight: 600,
+                fontSize: "14px",
+                cursor: claimActionLoadingId ? "not-allowed" : "pointer",
+                opacity: claimActionLoadingId ? 0.6 : 1,
+              }}
+            >
+              {claimActionLoadingId ? "Sending…" : "Send Request"}
             </button>
           </div>
         </div>

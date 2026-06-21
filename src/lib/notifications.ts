@@ -252,6 +252,25 @@ export async function notifyJoinRequestRejected(
   }
 }
 
+async function fetchPlatformAdminUserIds(
+  supabase: SupabaseClient,
+): Promise<string[]> {
+  const { data, error } = await supabase.from("platform_admins").select("user_id");
+
+  if (error) {
+    console.error("Failed to load platform admins:", error.message);
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.user_id as string)
+        .filter((id) => Boolean(id)),
+    ),
+  );
+}
+
 export async function notifyClaimRequestSubmitted(
   supabase: SupabaseClient,
   params: {
@@ -263,11 +282,13 @@ export async function notifyClaimRequestSubmitted(
     claimRequestId?: string;
   },
 ): Promise<void> {
+  const claimantMessage = `Your claim for ${params.clubName} has been submitted and is under review.`;
+
   const claimantInboxOk = await createInboxMessage(supabase, {
     recipientId: params.submitterUserId,
     type: "system_message",
-    title: `Claim request submitted — ${params.clubName}`,
-    message: `Your claim request for ${params.clubName} has been submitted and is currently under review. We'll notify you once a decision has been made.`,
+    title: `Claim submitted — ${params.clubName}`,
+    message: claimantMessage,
     actionRequired: false,
     actionType: "view_claim_status",
     actionData: {
@@ -285,7 +306,7 @@ export async function notifyClaimRequestSubmitted(
   const claimantBellOk = await createNotification(supabase, {
     userId: params.submitterUserId,
     type: "claim_submitted",
-    message: `Your claim request for ${params.clubName} has been submitted and is under review.`,
+    message: claimantMessage,
     clubId: params.clubId,
     referenceId: params.claimRequestId,
   });
@@ -293,46 +314,17 @@ export async function notifyClaimRequestSubmitted(
     console.error("Failed to create claimant claim submission notification.");
   }
 
-  const { data: admins, error: adminsError } = await supabase
-    .from("platform_admins")
-    .select("user_id");
-
-  if (adminsError) {
-    console.error("Failed to load platform admins:", adminsError.message);
-    return;
-  }
-
-  const adminIds = (admins ?? [])
-    .map((row) => row.user_id as string)
-    .filter(Boolean);
-
+  const adminIds = await fetchPlatformAdminUserIds(supabase);
   if (adminIds.length === 0) return;
 
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, email")
-    .in("id", adminIds);
-
-  const uoguelphAdminIds = new Set(
-    (profiles ?? [])
-      .filter((profile) => {
-        const email = (profile.email as string | null)?.trim().toLowerCase() ?? "";
-        return email.endsWith("@uoguelph.ca");
-      })
-      .map((profile) => profile.id as string),
-  );
-
-  const recipientIds =
-    uoguelphAdminIds.size > 0
-      ? adminIds.filter((id) => uoguelphAdminIds.has(id))
-      : adminIds;
+  const adminMessage = `${params.submitterName} submitted a claim for ${params.clubName}.`;
 
   const adminBellOk = await createNotifications(
     supabase,
-    recipientIds.map((userId) => ({
+    adminIds.map((userId) => ({
       userId,
       type: "new_claim_request",
-      message: `New club claim submitted for ${params.clubName} by ${params.submitterName}.`,
+      message: adminMessage,
       clubId: params.clubId,
       referenceId: params.claimRequestId,
     })),
@@ -341,12 +333,12 @@ export async function notifyClaimRequestSubmitted(
     console.error("Failed to send admin claim request notifications.");
   }
 
-  for (const adminId of recipientIds) {
+  for (const adminId of adminIds) {
     const inboxOk = await createInboxMessage(supabase, {
       recipientId: adminId,
       type: "admin_message",
       title: `New club claim — ${params.clubName}`,
-      message: `${params.submitterName} has submitted a claim request for ${params.clubName}. Review it in the admin panel.`,
+      message: adminMessage,
       actionRequired: true,
       actionType: "review_claim_request",
       actionData: { path: "/app/admin" },
@@ -357,5 +349,143 @@ export async function notifyClaimRequestSubmitted(
     if (!inboxOk) {
       console.error("Failed to create admin claim request inbox message for:", adminId);
     }
+  }
+}
+
+export async function notifyClaimRequestApproved(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    submitterUserId: string;
+    claimRequestId: string;
+  },
+): Promise<void> {
+  const message = `Your claim for ${params.clubName} has been approved.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "claim_approved",
+    message,
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send claim approval notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "club_claim_approved",
+    title: `Club claim approved — ${params.clubName}`,
+    message,
+    actionRequired: false,
+    actionType: "open_club_dashboard",
+    actionData: {
+      path: `/app/clubs/${params.clubId}`,
+      actionLabel: "Open Club Dashboard",
+    },
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+    referenceType: "club_claim_request",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create claim approval inbox message.");
+  }
+}
+
+export async function notifyClaimRequestRejected(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    clubSlug?: string;
+    submitterUserId: string;
+    claimRequestId: string;
+  },
+): Promise<void> {
+  const message = `Your claim for ${params.clubName} was not approved at this time.`;
+  const profilePath = params.clubSlug
+    ? `/clubs/${params.clubSlug}`
+    : "/explore";
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "claim_rejected",
+    message,
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send claim rejection notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "club_claim_rejected",
+    title: `Club claim declined — ${params.clubName}`,
+    message,
+    actionRequired: false,
+    actionType: "view_club_profile",
+    actionData: {
+      path: profilePath,
+      actionLabel: "View Club Profile",
+    },
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+    referenceType: "club_claim_request",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create claim rejection inbox message.");
+  }
+}
+
+export async function notifyClaimRequestMoreInfo(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    clubSlug?: string;
+    submitterUserId: string;
+    claimRequestId: string;
+    note: string;
+  },
+): Promise<void> {
+  const trimmedNote = params.note.trim();
+  const message = trimmedNote
+    ? `More information is needed for your claim for ${params.clubName}: ${trimmedNote}`
+    : `More information is needed for your claim for ${params.clubName}.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "claim_more_info",
+    message,
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send claim more-info notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "system_message",
+    title: `More info needed — ${params.clubName}`,
+    message,
+    actionRequired: true,
+    actionType: "claim_more_info",
+    actionData: {
+      claimId: params.claimRequestId,
+      clubSlug: params.clubSlug,
+      path: params.claimRequestId
+        ? `/claim-status/${params.claimRequestId}`
+        : undefined,
+    },
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+    referenceType: "club_claim_request",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create claim more-info inbox message.");
   }
 }
