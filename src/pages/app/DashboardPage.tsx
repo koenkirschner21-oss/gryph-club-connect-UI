@@ -45,15 +45,16 @@ import InboxTab from "../dashboard/InboxTab";
 import {
   TasksFilterBar,
   TaskBreakdownCard,
-  TaskClubGroupSection,
+  TaskListGroupSection,
   TasksTabFooter,
   type TasksTabTask,
-  WeeklyTaskProgressCard,
-  prioritySortValue,
-  statusSortValue,
+  TaskProgressCard,
+  buildTaskListGroups,
   useTaskBreakdown,
-  useWeeklyTaskProgress,
+  useTaskProgress,
+  type TaskGroupByOption,
   type TaskPriorityFilter,
+  type TaskProgressTimeRange,
   type TaskSortOption,
 } from "../dashboard/TasksTabUI";
 import {
@@ -2442,9 +2443,11 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [search, setSearch] = useState("");
   const [clubFilter, setClubFilter] = useState("all");
+  const [groupBy, setGroupBy] = useState<TaskGroupByOption>("status");
   const [sort, setSort] = useState<TaskSortOption>("due_date");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriorityFilter>("all");
-  const [expandedClubs, setExpandedClubs] = useState<Record<string, boolean>>({});
+  const [progressRange, setProgressRange] = useState<TaskProgressTimeRange>("semester");
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (joinedClubs.length === 0) {
@@ -2598,79 +2601,30 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     });
   }, [tasks, search, clubFilter, priorityFilter]);
 
-  const sortedTasks = useMemo(() => {
-    const next = [...filteredTasks];
+  const taskGroups = useMemo(
+    () =>
+      buildTaskListGroups({
+        tasks: filteredTasks,
+        allTasks: tasks,
+        groupBy,
+        sort,
+        clubFilter,
+      }),
+    [filteredTasks, tasks, groupBy, sort, clubFilter],
+  );
 
-    next.sort((a, b) => {
-      if (sort === "club_name") {
-        return a.clubName.localeCompare(b.clubName) || a.title.localeCompare(b.title);
-      }
-
-      if (sort === "status") {
-        return (
-          statusSortValue(a.status) - statusSortValue(b.status) ||
-          a.title.localeCompare(b.title)
-        );
-      }
-
-      if (sort === "priority") {
-        return (
-          prioritySortValue(a.priority) - prioritySortValue(b.priority) ||
-          a.title.localeCompare(b.title)
-        );
-      }
-
-      const aDue = a.dueDate?.trim() ?? "9999-12-31";
-      const bDue = b.dueDate?.trim() ?? "9999-12-31";
-      return aDue.localeCompare(bDue) || a.title.localeCompare(b.title);
-    });
-
-    return next;
-  }, [filteredTasks, sort]);
-
-  const groupedTasks = useMemo(() => {
-    const byClub = new Map<string, TasksTabTask[]>();
-    for (const task of sortedTasks) {
-      const existing = byClub.get(task.clubId) ?? [];
-      existing.push(task);
-      byClub.set(task.clubId, existing);
-    }
-
-    const allClubIds = new Set([...byClub.keys()]);
-    if (clubFilter !== "all") {
-      allClubIds.add(clubFilter);
-    }
-
-    return Array.from(allClubIds)
-      .map((clubId) => {
-        const clubTasks = byClub.get(clubId) ?? [];
-        const sourceTasks = tasks.filter((task) => task.clubId === clubId);
-        const doneCount = sourceTasks.filter((task) => task.status === "done").length;
-        return {
-          clubId,
-          clubName: clubTasks[0]?.clubName ?? sourceTasks[0]?.clubName ?? "Unknown Club",
-          clubAbbreviation: clubTasks[0]?.clubAbbreviation ?? sourceTasks[0]?.clubAbbreviation,
-          tasks: clubTasks,
-          doneCount,
-          totalCount: sourceTasks.length,
-        };
-      })
-      .filter((group) => group.totalCount > 0)
-      .sort((a, b) => a.clubName.localeCompare(b.clubName));
-  }, [sortedTasks, tasks, clubFilter]);
-
-  const weeklyProgress = useWeeklyTaskProgress(tasks);
+  const taskProgress = useTaskProgress(tasks, progressRange);
   const breakdown = useTaskBreakdown(filteredTasks);
 
   useEffect(() => {
-    setExpandedClubs((prev) => {
+    setExpandedGroups((prev) => {
       const next = { ...prev };
-      for (const group of groupedTasks) {
-        if (next[group.clubId] === undefined) next[group.clubId] = true;
+      for (const group of taskGroups) {
+        if (next[group.id] === undefined) next[group.id] = true;
       }
       return next;
     });
-  }, [groupedTasks]);
+  }, [taskGroups]);
 
   if (loadingTasks) {
     return (
@@ -2691,11 +2645,14 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
   return (
     <div>
       <div style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <WeeklyTaskProgressCard
-          completed={weeklyProgress.completed}
-          total={weeklyProgress.total}
-          dailyCounts={weeklyProgress.dailyCounts}
-          weekLabels={weeklyProgress.weekLabels}
+        <TaskProgressCard
+          completed={taskProgress.completed}
+          total={taskProgress.total}
+          labels={taskProgress.labels}
+          counts={taskProgress.counts}
+          useSummaryOnly={taskProgress.useSummaryOnly}
+          range={progressRange}
+          onRangeChange={setProgressRange}
         />
         <TaskBreakdownCard arcs={breakdown.arcs} segments={breakdown.segments} />
       </div>
@@ -2706,31 +2663,38 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
         clubFilter={clubFilter}
         onClubFilterChange={setClubFilter}
         clubOptions={clubOptions}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
         sort={sort}
         onSortChange={setSort}
         priorityFilter={priorityFilter}
         onPriorityFilterChange={setPriorityFilter}
       />
 
-      {groupedTasks.map((group) => (
-        <TaskClubGroupSection
-          key={group.clubId}
+      {taskGroups.map((group) => (
+        <TaskListGroupSection
+          key={group.id}
           group={group}
-          logoUrl={group.tasks[0]?.clubLogoUrl ?? clubLogos[group.clubId]}
-          expanded={expandedClubs[group.clubId] ?? true}
+          groupBy={groupBy}
+          logoUrl={
+            group.clubMeta
+              ? group.tasks[0]?.clubLogoUrl ?? clubLogos[group.clubMeta.clubId]
+              : undefined
+          }
+          expanded={expandedGroups[group.id] ?? true}
           onToggle={() =>
-            setExpandedClubs((prev) => ({
+            setExpandedGroups((prev) => ({
               ...prev,
-              [group.clubId]: !(prev[group.clubId] ?? true),
+              [group.id]: !(prev[group.id] ?? true),
             }))
           }
         />
       ))}
 
       <TasksTabFooter
-        visibleCount={sortedTasks.length}
+        visibleCount={filteredTasks.length}
         totalCount={tasks.length}
-        clubCount={groupedTasks.length}
+        clubCount={new Set(filteredTasks.map((task) => task.clubId)).size}
         filtersActive={filtersActive}
       />
     </div>

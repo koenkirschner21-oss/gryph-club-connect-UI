@@ -53,6 +53,16 @@ export type TaskClubGroup = {
 
 export type TaskSortOption = "due_date" | "priority" | "status" | "club_name";
 export type TaskPriorityFilter = "all" | "high" | "medium" | "low";
+export type TaskProgressTimeRange = "week" | "month" | "semester" | "all";
+export type TaskGroupByOption = "status" | "deadline" | "club" | "priority" | "task_type";
+
+export type TaskListGroup = {
+  id: string;
+  label: string;
+  tasks: TasksTabTask[];
+  emptyMessage: string;
+  clubMeta?: TaskClubGroup;
+};
 
 const WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const DONUT_CIRCUMFERENCE = 201;
@@ -170,33 +180,147 @@ function completionDayKey(task: TasksTabTask): string | null {
   return localIsoDate(d);
 }
 
-export function useWeeklyTaskProgress(tasks: TasksTabTask[]) {
-  return useMemo(() => {
-    const weekDayKeys = getCurrentWeekDayKeys();
-    const weekStart = weekDayKeys[0];
-    const weekEnd = weekDayKeys[6];
+function taskProgressRangeStart(range: TaskProgressTimeRange): Date | null {
+  const now = new Date();
+  if (range === "week") {
+    const weekDayKeys = getCurrentWeekDayKeys(now);
+    return new Date(`${weekDayKeys[0]}T00:00:00`);
+  }
+  if (range === "month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  if (range === "semester") {
+    const start = new Date(now);
+    start.setMonth(start.getMonth() - 4);
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+  return null;
+}
 
-    const weekTasks = tasks.filter((task) => {
-      if (task.dueDate?.trim()) {
-        const due = task.dueDate.trim();
-        return due >= weekStart && due <= weekEnd;
-      }
-      return true;
+function taskRelevantDate(task: TasksTabTask): Date | null {
+  const raw = task.dueDate?.trim() || task.createdAt;
+  if (!raw) return null;
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(`${raw}T12:00:00`)
+    : new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function taskInProgressRange(task: TasksTabTask, range: TaskProgressTimeRange): boolean {
+  if (range === "week") {
+    const weekDayKeys = getCurrentWeekDayKeys();
+    if (task.dueDate?.trim()) {
+      const due = task.dueDate.trim();
+      return due >= weekDayKeys[0] && due <= weekDayKeys[6];
+    }
+    return true;
+  }
+
+  const start = taskProgressRangeStart(range);
+  if (!start) return true;
+
+  const relevant = taskRelevantDate(task);
+  if (!relevant) return true;
+  return relevant >= start;
+}
+
+function getMonthBucketKeys(range: TaskProgressTimeRange, tasks: TasksTabTask[]): string[] {
+  const now = new Date();
+  let start: Date;
+
+  if (range === "month") {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (range === "semester") {
+    start = taskProgressRangeStart("semester") ?? new Date(now.getFullYear(), now.getMonth() - 4, 1);
+  } else {
+    let earliest = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    for (const task of tasks) {
+      const d = taskRelevantDate(task);
+      if (d && d < earliest) earliest = new Date(d.getFullYear(), d.getMonth(), 1);
+    }
+    start = earliest;
+  }
+
+  const keys: string[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  const endMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  while (cursor <= endMonth) {
+    keys.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return keys.length > 0 ? keys : [`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`];
+}
+
+function formatMonthBucketLabel(monthKey: string): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  const d = new Date(year, month - 1, 1);
+  return d.toLocaleDateString("en-US", { month: "short" });
+}
+
+export function useTaskProgress(tasks: TasksTabTask[], range: TaskProgressTimeRange) {
+  return useMemo(() => {
+    const rangeTasks = tasks.filter((task) => taskInProgressRange(task, range));
+    const completed = rangeTasks.filter((task) => task.status === "done").length;
+    const total = rangeTasks.length;
+
+    if (range === "week") {
+      const weekDayKeys = getCurrentWeekDayKeys();
+      const dailyCounts = weekDayKeys.map((dayKey) =>
+        tasks.filter((task) => completionDayKey(task) === dayKey).length,
+      );
+      const hasCompletionSpread = dailyCounts.some((count) => count > 0);
+      const useSummaryOnly = total < 3 || (!hasCompletionSpread && completed === 0);
+
+      return {
+        mode: "week" as const,
+        completed,
+        total,
+        labels: WEEK_LABELS,
+        counts: dailyCounts,
+        useSummaryOnly,
+      };
+    }
+
+    const monthKeys = getMonthBucketKeys(range, tasks);
+    const labels = monthKeys.map(formatMonthBucketLabel);
+    const counts = monthKeys.map((monthKey) => {
+      const [year, month] = monthKey.split("-").map(Number);
+      return tasks.filter((task) => {
+        const key = completionDayKey(task);
+        if (!key) return false;
+        const [y, m] = key.split("-").map(Number);
+        return y === year && m === month;
+      }).length;
     });
 
-    const completed = weekTasks.filter((task) => task.status === "done").length;
-    const dailyCounts = weekDayKeys.map((dayKey) =>
-      tasks.filter((task) => completionDayKey(task) === dayKey).length,
-    );
+    const hasCompletionSpread = counts.some((count) => count > 0);
+    const useSummaryOnly = total < 3 || (!hasCompletionSpread && completed === 0);
 
     return {
-      weekDayKeys,
-      weekLabels: WEEK_LABELS,
+      mode: "month" as const,
       completed,
-      total: weekTasks.length,
-      dailyCounts,
+      total,
+      labels,
+      counts,
+      useSummaryOnly,
     };
-  }, [tasks]);
+  }, [tasks, range]);
+}
+
+/** @deprecated Use useTaskProgress instead */
+export function useWeeklyTaskProgress(tasks: TasksTabTask[]) {
+  const progress = useTaskProgress(tasks, "week");
+  return {
+    weekDayKeys: getCurrentWeekDayKeys(),
+    weekLabels: progress.labels,
+    completed: progress.completed,
+    total: progress.total,
+    dailyCounts: progress.counts,
+  };
 }
 
 export function useTaskBreakdown(tasks: TasksTabTask[]) {
@@ -224,27 +348,40 @@ export function useTaskBreakdown(tasks: TasksTabTask[]) {
   }, [tasks]);
 }
 
-export function WeeklyTaskProgressCard({
-  completed,
-  total,
-  dailyCounts,
-  weekLabels,
+const PROGRESS_RANGE_OPTIONS: { value: TaskProgressTimeRange; label: string }[] = [
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "semester", label: "Semester" },
+  { value: "all", label: "All Time" },
+];
+
+const CONTROL_SELECT_STYLE: React.CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #2a2a2a",
+  borderRadius: "8px",
+  padding: "6px 10px",
+  color: "#cccccc",
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
+function TaskProgressTrendChart({
+  labels,
+  counts,
 }: {
-  completed: number;
-  total: number;
-  dailyCounts: number[];
-  weekLabels: readonly string[];
+  labels: readonly string[];
+  counts: number[];
 }) {
   const chartWidth = 320;
   const chartHeight = 88;
   const paddingX = 16;
   const paddingY = 12;
-  const maxCount = Math.max(1, ...dailyCounts);
+  const maxCount = Math.max(1, ...counts);
 
-  const points = dailyCounts.map((count, index) => {
+  const points = counts.map((count, index) => {
     const x =
       paddingX +
-      (index / Math.max(weekLabels.length - 1, 1)) * (chartWidth - paddingX * 2);
+      (index / Math.max(labels.length - 1, 1)) * (chartWidth - paddingX * 2);
     const y =
       chartHeight - paddingY - (count / maxCount) * (chartHeight - paddingY * 2);
     return { x, y, count };
@@ -253,24 +390,7 @@ export function WeeklyTaskProgressCard({
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
 
   return (
-    <div style={{ ...CARD_STYLE, flex: 1.5, minWidth: 0 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: "16px",
-          gap: "12px",
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
-          Weekly Task Progress
-        </h3>
-        <span style={{ fontSize: "12px", color: "#777777", whiteSpace: "nowrap" }}>
-          {completed} / {total} completed
-        </span>
-      </div>
-
+    <>
       <svg
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
         width="100%"
@@ -287,7 +407,7 @@ export function WeeklyTaskProgressCard({
           strokeLinecap="round"
         />
         {points.map((point, index) => (
-          <g key={weekLabels[index]}>
+          <g key={`${labels[index]}-${index}`}>
             <circle cx={point.x} cy={point.y} r={4} fill="#E51937" />
             {point.count > 0 ? (
               <g transform={`translate(${point.x - 6}, ${point.y - 22})`}>
@@ -309,21 +429,122 @@ export function WeeklyTaskProgressCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: `repeat(${weekLabels.length}, 1fr)`,
+          gridTemplateColumns: `repeat(${labels.length}, 1fr)`,
           gap: "4px",
           marginTop: "8px",
         }}
       >
-        {weekLabels.map((label) => (
+        {labels.map((label, index) => (
           <span
-            key={label}
+            key={`${label}-${index}`}
             style={{ textAlign: "center", fontSize: "11px", color: "#555555" }}
           >
             {label}
           </span>
         ))}
       </div>
+    </>
+  );
+}
+
+export function TaskProgressCard({
+  completed,
+  total,
+  labels,
+  counts,
+  useSummaryOnly,
+  range,
+  onRangeChange,
+}: {
+  completed: number;
+  total: number;
+  labels: readonly string[];
+  counts: number[];
+  useSummaryOnly: boolean;
+  range: TaskProgressTimeRange;
+  onRangeChange: (range: TaskProgressTimeRange) => void;
+}) {
+  return (
+    <div style={{ ...CARD_STYLE, flex: 1.5, minWidth: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "16px",
+          gap: "12px",
+          flexWrap: "wrap",
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
+          Task Progress
+        </h3>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <select
+            value={range}
+            onChange={(event) => onRangeChange(event.target.value as TaskProgressTimeRange)}
+            aria-label="Task progress time range"
+            style={CONTROL_SELECT_STYLE}
+          >
+            {PROGRESS_RANGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span style={{ fontSize: "12px", color: "#777777", whiteSpace: "nowrap" }}>
+            {completed} / {total} completed
+          </span>
+        </div>
+      </div>
+
+      {useSummaryOnly ? (
+        <div
+          style={{
+            minHeight: "88px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            padding: "12px",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: "13px", color: "#777777", lineHeight: 1.5 }}>
+            {completed} of {total} task{total === 1 ? "" : "s"} completed in this period.
+            {total < 3
+              ? " More activity is needed before a trend chart is shown."
+              : " Complete tasks to see a completion trend over time."}
+          </p>
+        </div>
+      ) : (
+        <TaskProgressTrendChart labels={labels} counts={counts} />
+      )}
     </div>
+  );
+}
+
+/** @deprecated Use TaskProgressCard */
+export function WeeklyTaskProgressCard({
+  completed,
+  total,
+  dailyCounts,
+  weekLabels,
+}: {
+  completed: number;
+  total: number;
+  dailyCounts: number[];
+  weekLabels: readonly string[];
+}) {
+  return (
+    <TaskProgressCard
+      completed={completed}
+      total={total}
+      labels={weekLabels}
+      counts={dailyCounts}
+      useSummaryOnly={total < 3}
+      range="week"
+      onRangeChange={() => undefined}
+    />
   );
 }
 
@@ -398,6 +619,8 @@ export function TasksFilterBar({
   clubFilter,
   onClubFilterChange,
   clubOptions,
+  groupBy,
+  onGroupByChange,
   sort,
   onSortChange,
   priorityFilter,
@@ -408,6 +631,8 @@ export function TasksFilterBar({
   clubFilter: string;
   onClubFilterChange: (value: string) => void;
   clubOptions: Array<{ id: string; name: string }>;
+  groupBy: TaskGroupByOption;
+  onGroupByChange: (value: TaskGroupByOption) => void;
   sort: TaskSortOption;
   onSortChange: (value: TaskSortOption) => void;
   priorityFilter: TaskPriorityFilter;
@@ -476,6 +701,26 @@ export function TasksFilterBar({
         </select>
 
         <select
+          value={groupBy}
+          onChange={(event) => onGroupByChange(event.target.value as TaskGroupByOption)}
+          style={{
+            background: "#1a1a1a",
+            border: "1px solid #2a2a2a",
+            borderRadius: "8px",
+            padding: "10px 14px",
+            color: "#cccccc",
+            fontSize: "13px",
+          }}
+          aria-label="Group tasks by"
+        >
+          <option value="status">Group by: Progress Status</option>
+          <option value="deadline">Group by: Deadline</option>
+          <option value="club">Group by: Club</option>
+          <option value="priority">Group by: Priority</option>
+          <option value="task_type">Group by: Task Type</option>
+        </select>
+
+        <select
           value={sort}
           onChange={(event) => onSortChange(event.target.value as TaskSortOption)}
           style={{
@@ -486,6 +731,7 @@ export function TasksFilterBar({
             color: "#cccccc",
             fontSize: "13px",
           }}
+          aria-label="Sort tasks"
         >
           <option value="due_date">Sort: Due Date</option>
           <option value="priority">Sort: Priority</option>
@@ -664,7 +910,7 @@ export function TasksTabTaskRow({ task }: { task: TasksTabTask }) {
           {task.dueDate?.trim() ? (
             <>
               <p style={{ margin: 0, fontSize: "12px", color: "#cccccc" }}>
-                {formatTaskDate(task.dueDate)}
+                Due: {formatTaskDate(task.dueDate)}
               </p>
               {daysLeft !== null && task.status !== "done" ? (
                 <p
@@ -691,11 +937,13 @@ export function TaskClubGroupSection({
   logoUrl,
   expanded,
   onToggle,
+  emptyMessage = "No tasks for this club",
 }: {
   group: TaskClubGroup;
   logoUrl?: string;
   expanded: boolean;
   onToggle: () => void;
+  emptyMessage?: string;
 }) {
   const progressPercent =
     group.totalCount > 0 ? Math.round((group.doneCount / group.totalCount) * 100) : 0;
@@ -759,7 +1007,7 @@ export function TaskClubGroupSection({
       {expanded ? (
         group.tasks.length === 0 ? (
           <p style={{ margin: 0, textAlign: "center", fontSize: "12px", color: "#555555" }}>
-            No tasks for this club
+            {emptyMessage}
           </p>
         ) : (
           <div>
@@ -806,4 +1054,308 @@ export function statusSortValue(status: string): number {
   if (status === "in_progress") return 1;
   if (status === "done") return 2;
   return 3;
+}
+
+function sortDoneTasksByCompletion(tasks: TasksTabTask[]): TasksTabTask[] {
+  return [...tasks].sort((a, b) => {
+    const aDate = a.createdAt ?? a.dueDate ?? "";
+    const bDate = b.createdAt ?? b.dueDate ?? "";
+    return bDate.localeCompare(aDate) || a.title.localeCompare(b.title);
+  });
+}
+
+export function sortTasksWithinGroup(
+  tasks: TasksTabTask[],
+  sort: TaskSortOption,
+  groupId?: string,
+): TasksTabTask[] {
+  if (groupId === "done" && sort === "due_date") {
+    return sortDoneTasksByCompletion(tasks);
+  }
+
+  const next = [...tasks];
+
+  next.sort((a, b) => {
+    if (sort === "club_name") {
+      return a.clubName.localeCompare(b.clubName) || a.title.localeCompare(b.title);
+    }
+
+    if (sort === "status") {
+      return (
+        statusSortValue(a.status) - statusSortValue(b.status) ||
+        a.title.localeCompare(b.title)
+      );
+    }
+
+    if (sort === "priority") {
+      return (
+        prioritySortValue(a.priority) - prioritySortValue(b.priority) ||
+        a.title.localeCompare(b.title)
+      );
+    }
+
+    const aDue = a.dueDate?.trim() ?? "9999-12-31";
+    const bDue = b.dueDate?.trim() ?? "9999-12-31";
+    return aDue.localeCompare(bDue) || a.title.localeCompare(b.title);
+  });
+
+  return next;
+}
+
+function isDueThisMonth(dueDate?: string): boolean {
+  if (!dueDate?.trim()) return false;
+  const due = parseIsoDay(dueDate.trim());
+  if (!due) return false;
+  const now = new Date();
+  return due.getFullYear() === now.getFullYear() && due.getMonth() === now.getMonth();
+}
+
+function isDueAfterThisMonth(dueDate?: string): boolean {
+  if (!dueDate?.trim()) return false;
+  const due = parseIsoDay(dueDate.trim());
+  if (!due) return false;
+  const endOfMonth = new Date();
+  endOfMonth.setMonth(endOfMonth.getMonth() + 1, 0);
+  endOfMonth.setHours(23, 59, 59, 999);
+  return due > endOfMonth;
+}
+
+export function buildTaskListGroups({
+  tasks,
+  allTasks,
+  groupBy,
+  sort,
+  clubFilter,
+}: {
+  tasks: TasksTabTask[];
+  allTasks: TasksTabTask[];
+  groupBy: TaskGroupByOption;
+  sort: TaskSortOption;
+  clubFilter: string;
+}): TaskListGroup[] {
+  if (groupBy === "club") {
+    const byClub = new Map<string, TasksTabTask[]>();
+    for (const task of tasks) {
+      const existing = byClub.get(task.clubId) ?? [];
+      existing.push(task);
+      byClub.set(task.clubId, existing);
+    }
+
+    const allClubIds = new Set([...byClub.keys()]);
+    if (clubFilter !== "all") {
+      allClubIds.add(clubFilter);
+    }
+
+    return Array.from(allClubIds)
+      .map((clubId) => {
+        const clubTasks = byClub.get(clubId) ?? [];
+        const sourceTasks = allTasks.filter((task) => task.clubId === clubId);
+        const doneCount = sourceTasks.filter((task) => task.status === "done").length;
+        return {
+          id: clubId,
+          label: clubTasks[0]?.clubName ?? sourceTasks[0]?.clubName ?? "Unknown Club",
+          tasks: sortTasksWithinGroup(clubTasks, sort, clubId),
+          emptyMessage:
+            clubFilter === clubId && clubTasks.length === 0
+              ? "No tasks found for this club."
+              : "No tasks for this club.",
+          clubMeta: {
+            clubId,
+            clubName: clubTasks[0]?.clubName ?? sourceTasks[0]?.clubName ?? "Unknown Club",
+            clubAbbreviation: clubTasks[0]?.clubAbbreviation ?? sourceTasks[0]?.clubAbbreviation,
+            tasks: sortTasksWithinGroup(clubTasks, sort, clubId),
+            doneCount,
+            totalCount: sourceTasks.length,
+          },
+        };
+      })
+      .filter((group) => group.clubMeta && group.clubMeta.totalCount > 0)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  if (groupBy === "status") {
+    return [
+      {
+        id: "todo",
+        label: "To Do",
+        tasks: sortTasksWithinGroup(
+          tasks.filter((task) => task.status === "todo"),
+          sort,
+          "todo",
+        ),
+        emptyMessage: "No tasks to do.",
+      },
+      {
+        id: "in_progress",
+        label: "In Progress",
+        tasks: sortTasksWithinGroup(
+          tasks.filter((task) => task.status === "in_progress"),
+          sort,
+          "in_progress",
+        ),
+        emptyMessage: "No tasks in progress.",
+      },
+      {
+        id: "done",
+        label: "Done",
+        tasks: sortTasksWithinGroup(
+          tasks.filter((task) => task.status === "done"),
+          sort,
+          "done",
+        ),
+        emptyMessage: "No completed tasks yet.",
+      },
+    ];
+  }
+
+  if (groupBy === "deadline") {
+    const overdue = tasks.filter((task) => {
+      const days = daysUntilDue(task.dueDate);
+      return days !== null && days < 0 && task.status !== "done";
+    });
+    const thisMonth = tasks.filter((task) => {
+      if (task.status === "done") return false;
+      const days = daysUntilDue(task.dueDate);
+      if (days !== null && days < 0) return false;
+      return isDueThisMonth(task.dueDate);
+    });
+    const later = tasks.filter((task) => {
+      if (task.status === "done") return false;
+      const days = daysUntilDue(task.dueDate);
+      if (days !== null && days < 0) return false;
+      return isDueAfterThisMonth(task.dueDate);
+    });
+    const noDue = tasks.filter((task) => !task.dueDate?.trim() && task.status !== "done");
+
+    return [
+      {
+        id: "overdue",
+        label: "Overdue",
+        tasks: sortTasksWithinGroup(overdue, sort, "overdue"),
+        emptyMessage: "No overdue tasks.",
+      },
+      {
+        id: "this_month",
+        label: "Due This Month",
+        tasks: sortTasksWithinGroup(thisMonth, sort, "this_month"),
+        emptyMessage: "No tasks due this month.",
+      },
+      {
+        id: "later",
+        label: "Later",
+        tasks: sortTasksWithinGroup(later, sort, "later"),
+        emptyMessage: "No upcoming tasks beyond this month.",
+      },
+      {
+        id: "no_due",
+        label: "No Due Date",
+        tasks: sortTasksWithinGroup(noDue, sort, "no_due"),
+        emptyMessage: "No tasks without a due date.",
+      },
+    ];
+  }
+
+  if (groupBy === "priority") {
+    return (["high", "medium", "low"] as const).map((priority) => ({
+      id: priority,
+      label: priority.charAt(0).toUpperCase() + priority.slice(1) + " Priority",
+      tasks: sortTasksWithinGroup(
+        tasks.filter((task) => task.priority === priority),
+        sort,
+        priority,
+      ),
+      emptyMessage: `No ${priority} priority tasks.`,
+    }));
+  }
+
+  const typeOrder = ["general", "event", "hiring", "setup", "meeting"];
+  const typesInTasks = [...new Set(tasks.map((task) => task.taskType))];
+  const orderedTypes = [
+    ...typeOrder.filter((type) => typesInTasks.includes(type)),
+    ...typesInTasks.filter((type) => !typeOrder.includes(type)),
+  ];
+
+  return orderedTypes.map((taskType) => ({
+    id: taskType,
+    label: taskTypeLabel(taskType),
+    tasks: sortTasksWithinGroup(
+      tasks.filter((task) => task.taskType === taskType),
+      sort,
+      taskType,
+    ),
+    emptyMessage: `No ${taskTypeLabel(taskType).toLowerCase()} tasks.`,
+  }));
+}
+
+export function TaskListGroupSection({
+  group,
+  groupBy,
+  logoUrl,
+  expanded,
+  onToggle,
+}: {
+  group: TaskListGroup;
+  groupBy: TaskGroupByOption;
+  logoUrl?: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  if (groupBy === "club" && group.clubMeta) {
+    return (
+      <TaskClubGroupSection
+        group={group.clubMeta}
+        logoUrl={logoUrl}
+        expanded={expanded}
+        onToggle={onToggle}
+        emptyMessage={group.emptyMessage}
+      />
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: "20px" }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          marginBottom: expanded ? "12px" : 0,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff", flex: 1 }}>
+          {group.label}
+        </span>
+        <span style={{ fontSize: "12px", color: "#777777", whiteSpace: "nowrap" }}>
+          {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
+        </span>
+        {expanded ? (
+          <ChevronUp size={18} color="#555555" aria-hidden />
+        ) : (
+          <ChevronDown size={18} color="#555555" aria-hidden />
+        )}
+      </button>
+
+      {expanded ? (
+        group.tasks.length === 0 ? (
+          <p style={{ margin: 0, textAlign: "center", fontSize: "12px", color: "#555555" }}>
+            {group.emptyMessage}
+          </p>
+        ) : (
+          <div>
+            {group.tasks.map((task) => (
+              <TasksTabTaskRow key={task.id} task={task} />
+            ))}
+          </div>
+        )
+      ) : null}
+    </div>
+  );
 }
