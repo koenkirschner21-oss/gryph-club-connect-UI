@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { buildAuthRedirectUrl } from "../lib/authRedirect";
 import Button from "../components/ui/Button";
 import FormInput from "../components/ui/FormInput";
 import { showToast } from "../components/ui/Toast";
@@ -13,8 +14,11 @@ export default function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
 
+    const redirectTo = buildAuthRedirectUrl("/reset-password");
+    console.info("[auth] password reset redirectTo", { redirectTo });
+
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo,
     });
 
     if (resetError) {

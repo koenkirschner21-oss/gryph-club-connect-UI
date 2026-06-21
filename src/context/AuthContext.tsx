@@ -13,6 +13,7 @@ import {
   formatSignupError,
   isAllowedSignupEmail,
 } from "../lib/authProfile";
+import { buildAuthCallbackUrl } from "../lib/authRedirect";
 import { AuthContext, type AuthContextValue } from "./authContextValue";
 
 const ALLOWED_EMAIL_DOMAIN = "uoguelph.ca";
@@ -140,11 +141,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.info("[auth] signup start", { email: normalizedEmail });
 
+    const emailRedirectTo = buildAuthCallbackUrl();
+    console.info("[auth] signup emailRedirectTo", { emailRedirectTo });
+
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/login`,
+        emailRedirectTo,
         data: {
           email: normalizedEmail,
         },

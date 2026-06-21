@@ -49,6 +49,7 @@ import ClubAnnouncementsPage from "./pages/app/ClubAnnouncementsPage";
 import ClubAnalyticsPage from "./pages/app/ClubAnalyticsPage";
 import ClubDocumentsPage from "./pages/app/ClubDocumentsPage";
 import OnboardingPage from "./pages/OnboardingPage";
+import AuthCallbackPage from "./pages/AuthCallbackPage";
 import InvitePage from "./pages/InvitePage";
 import ExecutiveInvitePage from "./pages/ExecutiveInvitePage";
 import ProfilePage from "./pages/app/ProfilePage";
@@ -126,6 +127,7 @@ const ONBOARDING_EXEMPT_PREFIXES = [
   "/onboarding",
   "/login",
   "/signup",
+  "/auth/callback",
   "/invite",
   "/forgot-password",
   "/reset-password",
@@ -294,6 +296,7 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
+                <Route path="/auth/callback" element={<AuthCallbackPage />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
