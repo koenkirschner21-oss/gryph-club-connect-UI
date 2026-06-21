@@ -14,7 +14,22 @@ export type PermissionKey =
   | "assign_tasks"
   | "manage_roles"
   | "edit_club_settings"
-  | "delete_club";
+  | "delete_club"
+  | "view_analytics"
+  | "manage_meetings";
+
+/** Maps canonical RLS capability keys to stored custom_permissions row ids. */
+export const PERMISSION_CAPABILITY_ALIASES: Record<string, PermissionKey[]> = {
+  manage_members: ["approve_members", "invite_members"],
+  manage_hiring: ["manage_hiring"],
+  view_analytics: ["view_analytics"],
+  manage_club_settings: ["edit_club_settings", "manage_roles", "delete_club"],
+  manage_tasks: ["assign_tasks"],
+  manage_events: ["create_events"],
+  manage_meetings: ["manage_meetings"],
+  manage_documents: ["manage_documents"],
+  manage_announcements: ["post_announcements"],
+};
 
 export type ClubPermissions = Record<
   PermissionKey,
@@ -46,6 +61,8 @@ export const PERMISSION_ROW_DEFINITIONS: {
   { id: "manage_roles", label: "Manage roles" },
   { id: "edit_club_settings", label: "Edit club settings" },
   { id: "delete_club", label: "Delete club" },
+  { id: "view_analytics", label: "View analytics" },
+  { id: "manage_meetings", label: "Manage meetings" },
 ];
 
 export const defaultPermissions: ClubPermissions = {
@@ -82,7 +99,7 @@ export const defaultPermissions: ClubPermissions = {
   invite_members: {
     president: true,
     managerial_executive: true,
-    executive: true,
+    executive: false,
     member: false,
   },
   assign_tasks: {
@@ -107,6 +124,18 @@ export const defaultPermissions: ClubPermissions = {
     president: true,
     managerial_executive: false,
     executive: false,
+    member: false,
+  },
+  view_analytics: {
+    president: true,
+    managerial_executive: true,
+    executive: false,
+    member: false,
+  },
+  manage_meetings: {
+    president: true,
+    managerial_executive: true,
+    executive: true,
     member: false,
   },
 };
@@ -176,4 +205,46 @@ export function isPermissionCellChanged(
   role: PermissionRole,
 ): boolean {
   return permissions[actionId][role] !== savedPermissions[actionId][role];
+}
+
+export function resolvePermissionRole(
+  accessLevel: PermissionRole | null | undefined,
+  memberRole: string | null | undefined,
+): PermissionRole {
+  if (
+    accessLevel === "president" ||
+    accessLevel === "managerial_executive" ||
+    accessLevel === "executive" ||
+    accessLevel === "member"
+  ) {
+    return accessLevel;
+  }
+  if (memberRole === "owner" || memberRole === "admin") return "president";
+  if (memberRole === "executive" || memberRole === "exec") return "executive";
+  return "member";
+}
+
+export function hasClubPermission(
+  permissions: ClubPermissions,
+  accessLevel: PermissionRole | null | undefined,
+  memberRole: string | null | undefined,
+  capability: keyof typeof PERMISSION_CAPABILITY_ALIASES,
+): boolean {
+  const role = resolvePermissionRole(accessLevel, memberRole);
+  if (role === "president") return true;
+  if (role === "member") return false;
+
+  const aliasKeys = PERMISSION_CAPABILITY_ALIASES[capability] ?? [];
+  if (aliasKeys.length === 0) return false;
+
+  if (capability === "manage_members") {
+    return aliasKeys.some((key) => permissions[key][role]);
+  }
+
+  if (capability === "manage_club_settings") {
+    return permissions.edit_club_settings[role];
+  }
+
+  const primary = aliasKeys[0];
+  return permissions[primary][role];
 }

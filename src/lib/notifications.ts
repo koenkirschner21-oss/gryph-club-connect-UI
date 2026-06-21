@@ -233,7 +233,7 @@ export async function notifyExecutiveInviteRequest(
   }
 }
 
-async function fetchClubHiringReviewerUserIds(
+async function fetchClubPresidentUserIds(
   supabase: SupabaseClient,
   clubId: string,
 ): Promise<string[]> {
@@ -241,11 +241,11 @@ async function fetchClubHiringReviewerUserIds(
     .from("club_members")
     .select("user_id")
     .eq("club_id", clubId)
-    .in("role", ["owner", "executive"])
-    .eq("status", "active");
+    .eq("status", "active")
+    .or("role.eq.owner,access_level.eq.president");
 
   if (error) {
-    console.error("Failed to load hiring reviewers for notifications:", error.message);
+    console.error("Failed to load club presidents for notifications:", error.message);
     return [];
   }
 
@@ -256,6 +256,33 @@ async function fetchClubHiringReviewerUserIds(
         .filter((id) => Boolean(id)),
     ),
   );
+}
+
+async function fetchHiringListingReviewerUserIds(
+  supabase: SupabaseClient,
+  clubId: string,
+  listingId: string,
+): Promise<string[]> {
+  const { data: listing, error: listingError } = await supabase
+    .from("hiring_listings")
+    .select("reviewer_ids")
+    .eq("id", listingId)
+    .maybeSingle();
+
+  if (listingError) {
+    console.error(
+      "Failed to load hiring listing reviewers for notifications:",
+      listingError.message,
+    );
+    return fetchClubPresidentUserIds(supabase, clubId);
+  }
+
+  const designated = Array.isArray(listing?.reviewer_ids)
+    ? (listing.reviewer_ids as string[]).filter(Boolean)
+    : [];
+
+  const presidentIds = await fetchClubPresidentUserIds(supabase, clubId);
+  return Array.from(new Set([...presidentIds, ...designated]));
 }
 
 export async function notifyHiringApplicationSubmitted(
@@ -298,7 +325,11 @@ export async function notifyHiringApplicationSubmitted(
   }
 
   const reviewerMessage = `${params.applicantName} applied for ${params.roleTitle}.`;
-  const reviewerIds = await fetchClubHiringReviewerUserIds(supabase, params.clubId);
+  const reviewerIds = await fetchHiringListingReviewerUserIds(
+    supabase,
+    params.clubId,
+    params.listingId,
+  );
 
   for (const reviewerId of reviewerIds) {
     if (reviewerId === params.applicantUserId) continue;
