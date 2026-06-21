@@ -627,7 +627,6 @@ export default function DashboardPage() {
           myClubs={myClubs}
           upcomingEvents={upcomingEvents}
           eventsLoading={eventsLoading}
-          myRsvps={myRsvps}
           getUserRole={getUserRole}
           userId={user?.id}
           joinedClubIds={joinedClubs}
@@ -838,12 +837,16 @@ function OverviewClubLogo({
   name,
   abbreviation,
   logoUrl,
+  size = 28,
 }: {
   name: string;
   abbreviation?: string;
   logoUrl?: string;
+  size?: number;
 }) {
   const abbr = abbreviation?.trim() || deriveAbbreviation(name);
+  const fontSize = size >= 32 ? "11px" : "10px";
+  const radius = size >= 32 ? "8px" : "6px";
 
   if (logoUrl) {
     return (
@@ -851,9 +854,9 @@ function OverviewClubLogo({
         src={logoUrl}
         alt=""
         style={{
-          width: "28px",
-          height: "28px",
-          borderRadius: "6px",
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: radius,
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -864,12 +867,12 @@ function OverviewClubLogo({
   return (
     <div
       style={{
-        width: "28px",
-        height: "28px",
-        borderRadius: "6px",
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: radius,
         background: "#2a2a2a",
         color: "#888888",
-        fontSize: "10px",
+        fontSize,
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
@@ -1084,11 +1087,9 @@ function OverviewCompactTaskRow({
 
 function OverviewCompactEventRow({
   event,
-  rsvpStatus,
   logoUrl,
 }: {
   event: DashboardEvent;
-  rsvpStatus?: string;
   logoUrl?: string;
 }) {
   const timeLabel = formatOverviewEventTime(event.time);
@@ -1117,12 +1118,9 @@ function OverviewCompactEventRow({
             </p>
           ) : null}
         </div>
-        <OverviewCompactEventDateBadge date={event.date} />
-        {rsvpStatus === "going" ? (
-          <span style={dashboardEventRsvpBadgeStyle("going")}>Going</span>
-        ) : rsvpStatus === "maybe" ? (
-          <span style={dashboardEventRsvpBadgeStyle("maybe")}>Maybe</span>
-        ) : null}
+        <div style={{ flexShrink: 0, alignSelf: "flex-start" }}>
+          <OverviewCompactEventDateBadge date={event.date} />
+        </div>
       </div>
     </Link>
   );
@@ -1142,17 +1140,26 @@ function OverviewCompactClubRow({
       to={`/app/clubs/${club.id}`}
       style={{ textDecoration: "none", display: "block" }}
     >
-      <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "center", gap: "10px" }}>
+      <div
+        style={{
+          ...overviewRowDividerStyle,
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "12px 0",
+        }}
+      >
         <OverviewClubLogo
           name={club.name}
           abbreviation={club.abbreviation}
           logoUrl={logoUrl}
+          size={32}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
             {club.name}
           </p>
-          <span style={overviewClubRoleBadgeStyle(userRole)}>
+          <span style={{ ...overviewClubRoleBadgeStyle(userRole), marginTop: "4px", display: "inline-block" }}>
             {formatClubRoleDisplay(userRole).label}
           </span>
         </div>
@@ -1772,38 +1779,6 @@ function taskStatusLabel(status: string): string {
   return "To Do";
 }
 
-function dashboardEventRsvpBadgeStyle(rsvpStatus?: string): CSSProperties {
-  const base: CSSProperties = {
-    fontSize: "11px",
-    fontWeight: 500,
-    borderRadius: "5px",
-    padding: "3px 8px",
-    flexShrink: 0,
-  };
-  if (rsvpStatus === "going") {
-    return {
-      ...base,
-      background: "#1a1200",
-      border: "1px solid #FFC429",
-      color: "#FFC429",
-    };
-  }
-  if (rsvpStatus === "maybe") {
-    return {
-      ...base,
-      background: "#1f1a00",
-      border: "1px solid #2a2400",
-      color: "#9a7a00",
-    };
-  }
-  return {
-    ...base,
-    background: "#1a1a1a",
-    border: "1px solid #333333",
-    color: "#666666",
-  };
-}
-
 function dashboardTaskStatusBadgeStyle(status: string): CSSProperties {
   const base: CSSProperties = {
     fontSize: "11px",
@@ -2003,7 +1978,6 @@ function OverviewTab({
   myClubs,
   upcomingEvents,
   eventsLoading,
-  myRsvps,
   getUserRole,
   userId,
   joinedClubIds,
@@ -2021,7 +1995,6 @@ function OverviewTab({
   myClubs: ReturnType<typeof import("../../context/useClubContext").useClubContext>["clubs"];
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
-  myRsvps: Record<string, string>;
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
   userId?: string;
   joinedClubIds: string[];
@@ -2230,7 +2203,6 @@ function OverviewTab({
             <OverviewCompactEventRow
               key={event.id}
               event={event}
-              rsvpStatus={myRsvps[event.id]}
               logoUrl={clubLogos[event.clubId ?? ""]}
             />
           ))}
@@ -2346,7 +2318,7 @@ function OverviewTab({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "34fr 34fr 28fr",
           gap: "16px",
           marginBottom: "16px",
         }}
