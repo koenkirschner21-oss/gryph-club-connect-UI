@@ -223,7 +223,8 @@ function EventClubLogo({
         style={{
           width: "40px",
           height: "40px",
-          borderRadius: "50%",
+          borderRadius: "8px",
+          border: "1px solid #2a2a2a",
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -236,10 +237,11 @@ function EventClubLogo({
       style={{
         width: "40px",
         height: "40px",
-        borderRadius: "50%",
+        borderRadius: "8px",
+        border: "1px solid #2a2a2a",
         background: "#2a2a2a",
         color: "#888888",
-        fontSize: "11px",
+        fontSize: "12px",
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
