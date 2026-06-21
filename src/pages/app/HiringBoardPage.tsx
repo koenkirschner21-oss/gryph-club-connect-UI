@@ -6,8 +6,9 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { Search, X } from "lucide-react";
+import { Bookmark, Search, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -70,6 +71,7 @@ export interface BoardPosition {
   clubBannerUrl?: string;
   clubSlug?: string;
   clubDescription?: string;
+  clubCategory?: string;
   title: string;
   description: string;
   requirements?: string;
@@ -201,12 +203,50 @@ export function deadlineLabel(deadline: string | null): string | null {
   return `${days} days left`;
 }
 
-const BOARD_FILTER_PILLS = [
-  { value: "all", label: "All" },
+type ListTab = "all" | "saved" | "applied";
+
+const ROLE_TYPE_FILTER_OPTIONS = [
+  { value: "all", label: "All role types" },
   { value: "executive", label: "Executive" },
   { value: "volunteer", label: "Volunteer" },
   { value: "general", label: "General" },
 ] as const;
+
+const COMMITMENT_FILTER_OPTIONS = [
+  { value: "all", label: "All commitment" },
+  { value: "flexible", label: "Flexible" },
+  { value: "part_time", label: "Part-time" },
+  { value: "weekly_hours", label: "Weekly hours" },
+] as const;
+
+const DEADLINE_FILTER_OPTIONS = [
+  { value: "all", label: "Any deadline" },
+  { value: "closing_soon", label: "Closing soon" },
+  { value: "has_deadline", label: "Has deadline" },
+  { value: "no_deadline", label: "No deadline" },
+] as const;
+
+const LIST_TAB_OPTIONS: { value: ListTab; label: string }[] = [
+  { value: "all", label: "All Roles" },
+  { value: "saved", label: "Saved Roles" },
+  { value: "applied", label: "Applied" },
+];
+
+const BANNER_HEIGHT = 200;
+
+const filterSelectStyle: CSSProperties = {
+  background: "#111111",
+  border: "1px solid #2a2a2a",
+  color: "#cccccc",
+  borderRadius: "8px",
+  padding: "8px 32px 8px 12px",
+  fontSize: "12px",
+  cursor: "pointer",
+  flex: "1 1 140px",
+  minWidth: "120px",
+  outline: "none",
+  boxSizing: "border-box",
+};
 
 const CLUB_AVATAR_BACKGROUNDS = ["#1a0505", "#1a1500", "#0a0a1a", "#0a1a0a", "#1a0a1a"] as const;
 
@@ -332,10 +372,25 @@ function listingDeadlineDisplay(deadline: string | null): {
   };
 }
 
-function deadlineBadgeStyle(
-  deadline: string | null,
-): CSSProperties {
+function isClosingSoon(deadline: string | null): boolean {
+  if (!deadline) return false;
+  const end = parseDeadlineDate(deadline);
+  if (!end || end.getTime() < Date.now()) return false;
+  const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  return days <= 7;
+}
+
+function deadlineBadgeStyle(deadline: string | null): CSSProperties | null {
+  if (!deadline) return null;
   const meta = listingDeadlineDisplay(deadline);
+  if (meta.passed) {
+    return {
+      ...listingTypeBadgeStyle,
+      background: "#1a0505",
+      border: "1px solid #3a1515",
+      color: "#E51937",
+    };
+  }
   if (meta.withinSevenDays) {
     return {
       ...listingTypeBadgeStyle,
@@ -347,15 +402,39 @@ function deadlineBadgeStyle(
   return { ...listingTypeBadgeStyle, color: "#555555" };
 }
 
-const sectionHeadingStyle: CSSProperties = {
-  fontSize: "11px",
-  fontWeight: 600,
-  color: "#ffffff",
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  marginBottom: "8px",
-  marginTop: "28px",
-};
+function DetailSectionHeading({
+  children,
+  first = false,
+}: {
+  children: ReactNode;
+  first?: boolean;
+}) {
+  return (
+    <div style={{ marginTop: first ? "28px" : "36px", marginBottom: "12px" }}>
+      <div
+        style={{
+          width: "28px",
+          height: "2px",
+          background: "#E51937",
+          marginBottom: "10px",
+        }}
+      />
+      <h3
+        style={{
+          fontSize: "13px",
+          fontWeight: 700,
+          color: "#ffffff",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          margin: 0,
+          lineHeight: 1.3,
+        }}
+      >
+        {children}
+      </h3>
+    </div>
+  );
+}
 
 const detailBodyTextStyle: CSSProperties = {
   fontSize: "15px",
@@ -375,6 +454,67 @@ const boardFilterPillStyle = (active: boolean): CSSProperties => ({
   fontWeight: 500,
   cursor: "pointer",
 });
+
+function ViewClubProfileLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        fontSize: "13px",
+        color: "#E51937",
+        fontWeight: 500,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      View Club Profile →
+    </button>
+  );
+}
+
+function SaveRoleButton({
+  saved,
+  onToggle,
+  compact = false,
+  disabled = false,
+}: {
+  saved: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      disabled={disabled}
+      style={{
+        background: saved ? "#1a1500" : "transparent",
+        border: saved ? "1px solid #3a2f00" : "1px solid #333333",
+        color: saved ? "#FFC429" : "#cccccc",
+        borderRadius: compact ? "6px" : "8px",
+        padding: compact ? "6px 12px" : "10px 18px",
+        fontSize: compact ? "11px" : "13px",
+        fontWeight: 600,
+        cursor: disabled ? "default" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <Bookmark size={compact ? 12 : 14} fill={saved ? "#FFC429" : "none"} />
+      {saved ? "Saved" : "Save Role"}
+    </button>
+  );
+}
 
 function ClubAvatar({
   clubName,
@@ -435,7 +575,13 @@ function ClubAvatar({
 }
 
 function CompactPositionTagsRow({ position }: { position: BoardPosition }) {
-  const deadline = listingDeadlineDisplay(position.deadline);
+  const deadlineStyle = deadlineBadgeStyle(position.deadline);
+  const deadline = position.deadline ? listingDeadlineDisplay(position.deadline) : null;
+  const showCommitment =
+    position.commitmentLevel === "part_time" ||
+    (position.commitmentLevel === "weekly_hours" &&
+      position.weeklyHours != null &&
+      position.weeklyHours > 0);
 
   return (
     <div
@@ -443,16 +589,25 @@ function CompactPositionTagsRow({ position }: { position: BoardPosition }) {
         display: "flex",
         gap: "6px",
         flexWrap: "wrap",
-        marginTop: "6px",
+        marginTop: "8px",
       }}
     >
       <span style={listingTypeBadgeStyle}>
         {boardPositionTypeLabel(position.positionType)}
       </span>
-      <span style={listingTypeBadgeStyle}>
-        {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-      </span>
-      <span style={deadlineBadgeStyle(position.deadline)}>{deadline.text}</span>
+      {showCommitment ? (
+        <span style={listingTypeBadgeStyle}>
+          {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+        </span>
+      ) : null}
+      {deadlineStyle && deadline && !deadline.passed ? (
+        <span style={deadlineStyle}>
+          {deadline.withinSevenDays ? "Closing soon" : deadline.text}
+        </span>
+      ) : null}
+      {deadline?.passed ? (
+        <span style={deadlineStyle ?? listingTypeBadgeStyle}>Closed</span>
+      ) : null}
     </div>
   );
 }
@@ -468,15 +623,13 @@ const detailTagBadgeStyle: CSSProperties = {
 };
 
 function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
-  const deadline = listingDeadlineDisplay(position.deadline);
-  const deadlineStyle = deadline.withinSevenDays
-    ? {
-        ...detailTagBadgeStyle,
-        background: "#1a1500",
-        border: "1px solid #3a2f00",
-        color: "#FFC429",
-      }
-    : { ...detailTagBadgeStyle, color: "#555555" };
+  const deadline = position.deadline ? listingDeadlineDisplay(position.deadline) : null;
+  const deadlineStyle = deadlineBadgeStyle(position.deadline);
+  const showCommitment =
+    position.commitmentLevel === "part_time" ||
+    (position.commitmentLevel === "weekly_hours" &&
+      position.weeklyHours != null &&
+      position.weeklyHours > 0);
 
   return (
     <div
@@ -490,10 +643,35 @@ function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
       <span style={detailTagBadgeStyle}>
         {boardPositionTypeLabel(position.positionType)}
       </span>
-      <span style={detailTagBadgeStyle}>
-        {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-      </span>
-      <span style={deadlineStyle}>{deadline.text}</span>
+      {showCommitment ? (
+        <span style={detailTagBadgeStyle}>
+          {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+        </span>
+      ) : null}
+      {deadlineStyle && deadline && !deadline.passed ? (
+        <span
+          style={{
+            ...deadlineStyle,
+            borderRadius: "4px",
+            padding: "4px 10px",
+            fontSize: "11px",
+          }}
+        >
+          {deadline.withinSevenDays ? "Closing soon" : deadline.text}
+        </span>
+      ) : null}
+      {deadline?.passed ? (
+        <span
+          style={{
+            ...detailTagBadgeStyle,
+            background: "#1a0505",
+            border: "1px solid #3a1515",
+            color: "#E51937",
+          }}
+        >
+          Closed
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -501,7 +679,7 @@ function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
 const LISTING_DESC_READ_MORE = " Read more";
 const LISTING_DESC_LINE_HEIGHT = 1.5;
 const LISTING_DESC_FONT_SIZE = 12;
-const LISTING_DESC_MAX_LINES = 2;
+const LISTING_DESC_MAX_LINES = 3;
 
 function computeListingDescriptionPreview(
   description: string,
@@ -564,19 +742,28 @@ function computeListingDescriptionPreview(
 function HiringListingCard({
   position,
   selected,
+  saved,
   onSelect,
   onReadMore,
+  onToggleSave,
+  canSave,
 }: {
   position: BoardPosition;
   selected: boolean;
+  saved: boolean;
   onSelect: () => void;
   onReadMore: () => void;
+  onToggleSave: () => void;
+  canSave: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const descWrapperRef = useRef<HTMLDivElement>(null);
   const [descriptionPreview, setDescriptionPreview] = useState<string | null>(null);
   const posted = postedDateLabel(position.createdAt);
   const description = position.description?.trim();
+  const deadlineMeta = position.deadline
+    ? listingDeadlineDisplay(position.deadline)
+    : null;
 
   useLayoutEffect(() => {
     const wrapper = descWrapperRef.current;
@@ -611,70 +798,57 @@ function HiringListingCard({
           : `1px solid ${hovered ? "#333333" : "#1e1e1e"}`,
         borderLeft: selected ? "3px solid #E51937" : undefined,
         borderRadius: "10px",
-        marginBottom: "12px",
+        marginBottom: "14px",
         cursor: "pointer",
         transition: "border-color 0.2s ease, background 0.2s ease",
         boxSizing: "border-box",
-        padding: "18px",
+        padding: "20px",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
         <ClubAvatar
           clubName={position.clubName}
           logoUrl={position.clubLogoUrl}
-          size={36}
+          size={40}
           borderRadius={8}
         />
-        <span
-          style={{
-            fontSize: "13px",
-            color: "#dddddd",
-            fontWeight: 500,
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {position.clubName}
-        </span>
-        {posted ? (
+        <div style={{ minWidth: 0, flex: 1 }}>
           <span
             style={{
-              fontSize: "11px",
-              color: "#aaaaaa",
-              marginLeft: "auto",
-              flexShrink: 0,
+              fontSize: "13px",
+              color: "#dddddd",
+              fontWeight: 500,
+              display: "block",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
-            {posted}
+            {position.clubName}
           </span>
-        ) : null}
+          <h3
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#ffffff",
+              marginTop: "4px",
+              marginBottom: 0,
+              lineHeight: 1.25,
+            }}
+          >
+            {position.title}
+          </h3>
+        </div>
       </div>
-
-      <h3
-        style={{
-          fontSize: "15px",
-          fontWeight: 700,
-          color: "#ffffff",
-          marginTop: "8px",
-          marginBottom: 0,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {position.title}
-      </h3>
 
       <CompactPositionTagsRow position={position} />
 
       {description ? (
-        <div ref={descWrapperRef} style={{ marginTop: "8px" }}>
+        <div ref={descWrapperRef} style={{ marginTop: "10px" }}>
           <p
             style={{
               fontSize: `${LISTING_DESC_FONT_SIZE}px`,
-              color: "#777777",
+              color: "#888888",
               margin: 0,
               lineHeight: LISTING_DESC_LINE_HEIGHT,
             }}
@@ -709,6 +883,64 @@ function HiringListingCard({
           </p>
         </div>
       ) : null}
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "10px",
+          marginTop: "12px",
+          fontSize: "11px",
+          color: "#666666",
+        }}
+      >
+        {posted ? <span>Posted {posted}</span> : null}
+        {deadlineMeta && !deadlineMeta.passed && deadlineMeta.text !== "No deadline" ? (
+          <span>{deadlineMeta.text}</span>
+        ) : null}
+        {position.applicantCount > 0 ? (
+          <span>
+            {position.applicantCount} applicant
+            {position.applicantCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          marginTop: "14px",
+          alignItems: "center",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReadMore();
+          }}
+          style={{
+            background: "transparent",
+            border: "1px solid #333333",
+            color: "#cccccc",
+            borderRadius: "6px",
+            padding: "6px 14px",
+            fontSize: "12px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          View Role
+        </button>
+        <SaveRoleButton
+          compact
+          saved={saved}
+          disabled={!canSave}
+          onToggle={onToggleSave}
+        />
+      </div>
     </article>
   );
 }
@@ -717,23 +949,22 @@ function HiringDetailApplyButton({
   user,
   alreadyApplied,
   onApply,
-  fullWidth = false,
+  size = "default",
 }: {
   user: { id: string } | null;
   alreadyApplied: boolean;
   onApply: () => void;
-  fullWidth?: boolean;
+  size?: "default" | "compact";
 }) {
   const baseStyle: CSSProperties = {
     background: "#E51937",
     color: "#ffffff",
     borderRadius: "8px",
-    padding: fullWidth ? "14px" : "12px 32px",
-    fontSize: fullWidth ? "15px" : "14px",
+    padding: size === "compact" ? "8px 20px" : "10px 24px",
+    fontSize: size === "compact" ? "13px" : "14px",
     fontWeight: 600,
     border: "none",
     cursor: "pointer",
-    width: fullWidth ? "100%" : undefined,
   };
 
   if (!user) {
@@ -775,18 +1006,64 @@ function HiringDetailApplyButton({
   );
 }
 
-function HiringDetailContent({
+function HiringDetailActionRow({
   position,
   user,
   alreadyApplied,
+  saved,
+  canSave,
   onApply,
   onViewClub,
+  onToggleSave,
 }: {
   position: BoardPosition;
   user: { id: string } | null;
   alreadyApplied: boolean;
+  saved: boolean;
+  canSave: boolean;
   onApply: () => void;
   onViewClub: () => void;
+  onToggleSave: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "10px",
+        alignItems: "center",
+        marginTop: "16px",
+      }}
+    >
+      <HiringDetailApplyButton
+        user={user}
+        alreadyApplied={alreadyApplied}
+        onApply={onApply}
+      />
+      <SaveRoleButton saved={saved} disabled={!canSave} onToggle={onToggleSave} />
+      {position.clubSlug ? <ViewClubProfileLink onClick={onViewClub} /> : null}
+    </div>
+  );
+}
+
+function HiringDetailContent({
+  position,
+  user,
+  alreadyApplied,
+  saved,
+  canSave,
+  onApply,
+  onViewClub,
+  onToggleSave,
+}: {
+  position: BoardPosition;
+  user: { id: string } | null;
+  alreadyApplied: boolean;
+  saved: boolean;
+  canSave: boolean;
+  onApply: () => void;
+  onViewClub: () => void;
+  onToggleSave: () => void;
 }) {
   const deadline = listingDeadlineDisplay(position.deadline);
   const deadlineColor = deadline.passed
@@ -830,21 +1107,9 @@ function HiringDetailContent({
               {position.clubName}
             </p>
             {position.clubSlug ? (
-              <button
-                type="button"
-                onClick={onViewClub}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  marginTop: "4px",
-                  fontSize: "12px",
-                  color: "#E51937",
-                  cursor: "pointer",
-                }}
-              >
-                View Club →
-              </button>
+              <div style={{ marginTop: "4px" }}>
+                <ViewClubProfileLink onClick={onViewClub} />
+              </div>
             ) : null}
           </div>
         </div>
@@ -864,17 +1129,20 @@ function HiringDetailContent({
 
         <DetailPositionTagsRow position={position} />
 
-        <div style={{ marginTop: "20px" }}>
-          <HiringDetailApplyButton
-            user={user}
-            alreadyApplied={alreadyApplied}
-            onApply={onApply}
-          />
-        </div>
+        <HiringDetailActionRow
+          position={position}
+          user={user}
+          alreadyApplied={alreadyApplied}
+          saved={saved}
+          canSave={canSave}
+          onApply={onApply}
+          onViewClub={onViewClub}
+          onToggleSave={onToggleSave}
+        />
       </div>
 
       <div>
-        <p style={{ ...sectionHeadingStyle, marginTop: 0 }}>About this role</p>
+        <DetailSectionHeading first>About this role</DetailSectionHeading>
         <p
           style={{
             fontSize: "14px",
@@ -886,11 +1154,21 @@ function HiringDetailContent({
         >
           {position.description || "No description provided."}
         </p>
+        {!alreadyApplied ? (
+          <div style={{ marginTop: "20px" }}>
+            <HiringDetailApplyButton
+              user={user}
+              alreadyApplied={alreadyApplied}
+              onApply={onApply}
+              size="compact"
+            />
+          </div>
+        ) : null}
       </div>
 
       {position.requirements?.trim() ? (
         <div>
-          <p style={sectionHeadingStyle}>Requirements</p>
+          <DetailSectionHeading>Requirements</DetailSectionHeading>
           <p
             style={{
               fontSize: "14px",
@@ -905,37 +1183,44 @@ function HiringDetailContent({
         </div>
       ) : null}
 
-      <div>
-        <p style={sectionHeadingStyle}>Commitment</p>
-        <p
-          style={{
-            fontSize: "14px",
-            color: "#cccccc",
-            lineHeight: 1.7,
-            margin: 0,
-          }}
-        >
-          {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-        </p>
-      </div>
+      {(position.commitmentLevel === "part_time" ||
+        (position.commitmentLevel === "weekly_hours" &&
+          position.weeklyHours != null &&
+          position.weeklyHours > 0)) ? (
+        <div>
+          <DetailSectionHeading>Time commitment</DetailSectionHeading>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#cccccc",
+              lineHeight: 1.7,
+              margin: 0,
+            }}
+          >
+            {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+          </p>
+        </div>
+      ) : null}
 
-      <div>
-        <p style={sectionHeadingStyle}>Application Deadline</p>
-        <p
-          style={{
-            fontSize: "14px",
-            color: deadlineColor,
-            lineHeight: 1.7,
-            margin: 0,
-          }}
-        >
-          {deadlineText}
-        </p>
-      </div>
+      {position.deadline ? (
+        <div>
+          <DetailSectionHeading>Application deadline</DetailSectionHeading>
+          <p
+            style={{
+              fontSize: "14px",
+              color: deadlineColor,
+              lineHeight: 1.7,
+              margin: 0,
+            }}
+          >
+            {deadlineText}
+          </p>
+        </div>
+      ) : null}
 
       {position.clubDescription?.trim() ? (
         <div>
-          <p style={sectionHeadingStyle}>About the club</p>
+          <DetailSectionHeading>About the club</DetailSectionHeading>
           <p
             style={{
               fontSize: "14px",
@@ -948,20 +1233,7 @@ function HiringDetailContent({
             {position.clubDescription}
           </p>
           {position.clubSlug ? (
-            <button
-              type="button"
-              onClick={onViewClub}
-              style={{
-                background: "none",
-                border: "none",
-                padding: 0,
-                fontSize: "13px",
-                color: "#E51937",
-                cursor: "pointer",
-              }}
-            >
-              View Club Profile →
-            </button>
+            <ViewClubProfileLink onClick={onViewClub} />
           ) : null}
         </div>
       ) : null}
@@ -976,8 +1248,8 @@ function HiringClubBannerFit({ bannerUrl }: { bannerUrl: string }) {
       alt=""
       style={{
         width: "100%",
-        height: "auto",
-        maxHeight: "320px",
+        height: BANNER_HEIGHT,
+        objectFit: "cover",
         display: "block",
         background: "#1a1a1a",
       }}
@@ -989,23 +1261,31 @@ function HiringDetailPanel({
   position,
   user,
   alreadyApplied,
+  saved,
+  canSave,
   onApply,
   onViewClub,
+  onToggleSave,
 }: {
   position: BoardPosition;
   user: { id: string } | null;
   alreadyApplied: boolean;
+  saved: boolean;
+  canSave: boolean;
   onApply: () => void;
   onViewClub: () => void;
+  onToggleSave: () => void;
 }) {
-  const deadline = listingDeadlineDisplay(position.deadline);
-  const deadlineColor = deadline.passed
+  const deadline = position.deadline
+    ? listingDeadlineDisplay(position.deadline)
+    : null;
+  const deadlineColor = deadline?.passed
     ? "#E51937"
-    : deadline.withinSevenDays
+    : deadline?.withinSevenDays
       ? "#FFC429"
       : "#cccccc";
 
-  const deadlineText = deadline.passed
+  const deadlineText = deadline?.passed
     ? "Closed"
     : position.deadline
       ? (() => {
@@ -1016,14 +1296,9 @@ function HiringDetailPanel({
                 day: "numeric",
                 year: "numeric",
               })
-            : "No deadline listed";
+            : "";
         })()
-      : "No deadline listed";
-
-  const firstSectionStyle: CSSProperties = {
-    ...sectionHeadingStyle,
-    marginTop: 0,
-  };
+      : "";
 
   return (
     <div>
@@ -1037,8 +1312,7 @@ function HiringDetailPanel({
         <div
           style={{
             width: "100%",
-            minHeight: position.clubBannerUrl ? undefined : "200px",
-            height: position.clubBannerUrl ? undefined : "200px",
+            height: BANNER_HEIGHT,
             overflow: "hidden",
             position: "relative",
             backgroundColor: "#0f0f0f",
@@ -1097,23 +1371,9 @@ function HiringDetailPanel({
           {position.clubName}
         </p>
         {position.clubSlug ? (
-          <button
-            type="button"
-            onClick={onViewClub}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              marginBottom: "20px",
-              fontSize: "13px",
-              color: "#E51937",
-              fontWeight: 500,
-              cursor: "pointer",
-              display: "block",
-            }}
-          >
-            View Club →
-          </button>
+          <div style={{ marginBottom: "16px" }}>
+            <ViewClubProfileLink onClick={onViewClub} />
+          </div>
         ) : null}
 
         <h2
@@ -1131,65 +1391,75 @@ function HiringDetailPanel({
         <div
           style={{
             borderBottom: "1px solid #1e1e1e",
-            marginBottom: "24px",
-            paddingBottom: "24px",
+            marginBottom: "8px",
+            paddingBottom: "20px",
           }}
         >
           <DetailPositionTagsRow position={position} />
         </div>
 
-        <div style={{ marginBottom: "32px" }}>
-          <HiringDetailApplyButton
-            user={user}
-            alreadyApplied={alreadyApplied}
-            onApply={onApply}
-            fullWidth={!alreadyApplied}
-          />
-        </div>
+        <HiringDetailActionRow
+          position={position}
+          user={user}
+          alreadyApplied={alreadyApplied}
+          saved={saved}
+          canSave={canSave}
+          onApply={onApply}
+          onViewClub={onViewClub}
+          onToggleSave={onToggleSave}
+        />
 
-        <p style={firstSectionStyle}>About this role</p>
+        <DetailSectionHeading first>About this role</DetailSectionHeading>
         <p style={detailBodyTextStyle}>
           {position.description || "No description provided."}
         </p>
+        {!alreadyApplied ? (
+          <div style={{ marginTop: "20px" }}>
+            <HiringDetailApplyButton
+              user={user}
+              alreadyApplied={alreadyApplied}
+              onApply={onApply}
+              size="compact"
+            />
+          </div>
+        ) : null}
 
         {position.requirements?.trim() ? (
           <>
-            <p style={sectionHeadingStyle}>Requirements</p>
+            <DetailSectionHeading>Requirements</DetailSectionHeading>
             <p style={detailBodyTextStyle}>{position.requirements}</p>
           </>
         ) : null}
 
-        <p style={sectionHeadingStyle}>Commitment</p>
-        <p style={detailBodyTextStyle}>
-          {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-        </p>
+        {(position.commitmentLevel === "part_time" ||
+          (position.commitmentLevel === "weekly_hours" &&
+            position.weeklyHours != null &&
+            position.weeklyHours > 0)) ? (
+          <>
+            <DetailSectionHeading>Time commitment</DetailSectionHeading>
+            <p style={detailBodyTextStyle}>
+              {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+            </p>
+          </>
+        ) : null}
 
-        <p style={sectionHeadingStyle}>Application Deadline</p>
-        <p style={{ ...detailBodyTextStyle, color: deadlineColor }}>
-          {deadlineText}
-        </p>
+        {position.deadline && deadlineText ? (
+          <>
+            <DetailSectionHeading>Application deadline</DetailSectionHeading>
+            <p style={{ ...detailBodyTextStyle, color: deadlineColor }}>
+              {deadlineText}
+            </p>
+          </>
+        ) : null}
 
         {position.clubDescription?.trim() ? (
           <>
-            <p style={sectionHeadingStyle}>About the club</p>
+            <DetailSectionHeading>About the club</DetailSectionHeading>
             <p style={{ ...detailBodyTextStyle, marginBottom: "8px" }}>
               {position.clubDescription}
             </p>
             {position.clubSlug ? (
-              <button
-                type="button"
-                onClick={onViewClub}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  fontSize: "13px",
-                  color: "#E51937",
-                  cursor: "pointer",
-                }}
-              >
-                View Club Profile →
-              </button>
+              <ViewClubProfileLink onClick={onViewClub} />
             ) : null}
           </>
         ) : null}
@@ -1202,16 +1472,22 @@ function HiringListingDetailOverlay({
   position,
   user,
   alreadyApplied,
+  saved,
+  canSave,
   onClose,
   onApply,
   onViewClub,
+  onToggleSave,
 }: {
   position: BoardPosition;
   user: { id: string } | null;
   alreadyApplied: boolean;
+  saved: boolean;
+  canSave: boolean;
   onClose: () => void;
   onApply: () => void;
   onViewClub: () => void;
+  onToggleSave: () => void;
 }) {
   return (
     <div
@@ -1268,8 +1544,11 @@ function HiringListingDetailOverlay({
           position={position}
           user={user}
           alreadyApplied={alreadyApplied}
+          saved={saved}
+          canSave={canSave}
           onApply={onApply}
           onViewClub={onViewClub}
+          onToggleSave={onToggleSave}
         />
       </div>
     </div>
@@ -1280,16 +1559,22 @@ function HiringDetailMobileModal({
   position,
   user,
   alreadyApplied,
+  saved,
+  canSave,
   onClose,
   onApply,
   onViewClub,
+  onToggleSave,
 }: {
   position: BoardPosition;
   user: { id: string } | null;
   alreadyApplied: boolean;
+  saved: boolean;
+  canSave: boolean;
   onClose: () => void;
   onApply: () => void;
   onViewClub: () => void;
+  onToggleSave: () => void;
 }) {
   return (
     <div
@@ -1324,8 +1609,11 @@ function HiringDetailMobileModal({
         position={position}
         user={user}
         alreadyApplied={alreadyApplied}
+        saved={saved}
+        canSave={canSave}
         onApply={onApply}
         onViewClub={onViewClub}
+        onToggleSave={onToggleSave}
       />
     </div>
   );
@@ -1831,6 +2119,129 @@ export function ApplicationModal({
   );
 }
 
+function filterBoardPositions(
+  positions: BoardPosition[],
+  options: {
+    search: string;
+    roleTypeFilter: string;
+    commitmentFilter: string;
+    clubCategoryFilter: string;
+    deadlineFilter: string;
+    listTab: ListTab;
+    savedRoleIds: Set<string>;
+    myApplications: Record<string, boolean>;
+  },
+): BoardPosition[] {
+  const q = options.search.trim().toLowerCase();
+
+  return positions.filter((p) => {
+    if (options.listTab === "saved" && !options.savedRoleIds.has(p.id)) {
+      return false;
+    }
+    if (options.listTab === "applied" && !options.myApplications[p.id]) {
+      return false;
+    }
+    if (
+      options.roleTypeFilter !== "all" &&
+      p.positionType !== options.roleTypeFilter
+    ) {
+      return false;
+    }
+    if (
+      options.commitmentFilter !== "all" &&
+      p.commitmentLevel !== options.commitmentFilter
+    ) {
+      return false;
+    }
+    if (
+      options.clubCategoryFilter !== "all" &&
+      (p.clubCategory ?? "").toLowerCase() !==
+        options.clubCategoryFilter.toLowerCase()
+    ) {
+      return false;
+    }
+    if (options.deadlineFilter === "closing_soon" && !isClosingSoon(p.deadline)) {
+      return false;
+    }
+    if (options.deadlineFilter === "has_deadline" && !p.deadline) {
+      return false;
+    }
+    if (options.deadlineFilter === "no_deadline" && p.deadline) {
+      return false;
+    }
+    if (!q) return true;
+    return (
+      p.title.toLowerCase().includes(q) ||
+      p.clubName.toLowerCase().includes(q) ||
+      p.description.toLowerCase().includes(q) ||
+      (p.clubCategory ?? "").toLowerCase().includes(q)
+    );
+  });
+}
+
+function BoardEmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "32px 16px",
+        textAlign: "center",
+      }}
+    >
+      <p
+        style={{
+          color: "#888888",
+          fontSize: "15px",
+          fontWeight: 600,
+          margin: "0 0 8px",
+        }}
+      >
+        {title}
+      </p>
+      <p style={{ color: "#555555", fontSize: "13px", margin: 0, lineHeight: 1.5 }}>
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function BoardDetailEmptyState() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%",
+        minHeight: "280px",
+        padding: "32px",
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ textAlign: "center", maxWidth: "360px" }}>
+        <p
+          style={{
+            color: "#888888",
+            fontSize: "16px",
+            fontWeight: 600,
+            margin: "0 0 8px",
+          }}
+        >
+          Select a role to learn more
+        </p>
+        <p style={{ color: "#555555", fontSize: "14px", margin: 0, lineHeight: 1.5 }}>
+          Choose an open position from the list to view details, save it, or apply.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function HiringBoardPage() {
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
@@ -1840,13 +2251,20 @@ export default function HiringBoardPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [listTab, setListTab] = useState<ListTab>("all");
+  const [roleTypeFilter, setRoleTypeFilter] = useState("all");
+  const [commitmentFilter, setCommitmentFilter] = useState("all");
+  const [clubCategoryFilter, setClubCategoryFilter] = useState("all");
+  const [deadlineFilter, setDeadlineFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"newest" | "closing_soon" | "a-z">("newest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [detailOverlayId, setDetailOverlayId] = useState<string | null>(null);
   const [applyPosition, setApplyPosition] = useState<BoardPosition | null>(null);
   const [myApplications, setMyApplications] = useState<Record<string, boolean>>({});
+  const [savedRoleIds, setSavedRoleIds] = useState<Set<string>>(new Set());
+
+  const canSave = Boolean(user?.id);
 
   function handleApplyFromDetail(position: BoardPosition) {
     if (!user) {
@@ -1876,7 +2294,7 @@ export default function HiringBoardPage() {
         created_at,
         is_open,
         questions,
-        clubs ( name, logo_url, banner_url, slug, description )
+        clubs ( name, logo_url, banner_url, slug, description, category )
       `,
       )
       .eq("is_open", true)
@@ -1928,6 +2346,7 @@ export default function HiringBoardPage() {
         banner_url?: string;
         slug?: string;
         description?: string;
+        category?: string;
       } | null;
       const commitment = (row.commitment_level as CommitmentLevel) ?? "flexible";
       return {
@@ -1938,6 +2357,7 @@ export default function HiringBoardPage() {
         clubBannerUrl: club?.banner_url ?? undefined,
         clubSlug: club?.slug ?? undefined,
         clubDescription: club?.description ?? undefined,
+        clubCategory: club?.category ?? undefined,
         title: row.title as string,
         description: (row.description as string) ?? "",
         requirements: (row.requirements as string) ?? undefined,
@@ -1955,23 +2375,126 @@ export default function HiringBoardPage() {
     setLoading(false);
   }, [user?.id]);
 
+  const loadSavedRoles = useCallback(async () => {
+    if (!user?.id) {
+      setSavedRoleIds(new Set());
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("saved_roles")
+      .select("position_id")
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to load saved roles:", error.message);
+      setSavedRoleIds(new Set());
+      return;
+    }
+
+    setSavedRoleIds(
+      new Set((data ?? []).map((row) => row.position_id as string)),
+    );
+  }, [user?.id]);
+
   useEffect(() => {
     void loadPositions();
-  }, [loadPositions, user?.id]);
+  }, [loadPositions]);
+
+  useEffect(() => {
+    void loadSavedRoles();
+  }, [loadSavedRoles]);
+
+  const clubCategories = useMemo(() => {
+    const categories = new Set<string>();
+    positions.forEach((p) => {
+      if (p.clubCategory?.trim()) categories.add(p.clubCategory.trim());
+    });
+    return Array.from(categories).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }, [positions]);
+
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    roleTypeFilter !== "all" ||
+    commitmentFilter !== "all" ||
+    clubCategoryFilter !== "all" ||
+    deadlineFilter !== "all";
+
+  function clearFilters() {
+    setSearch("");
+    setRoleTypeFilter("all");
+    setCommitmentFilter("all");
+    setClubCategoryFilter("all");
+    setDeadlineFilter("all");
+  }
+
+  async function toggleSaveRole(positionId: string) {
+    if (!user?.id) {
+      navigate("/login?redirect=/hiring");
+      return;
+    }
+
+    const isSaved = savedRoleIds.has(positionId);
+
+    if (isSaved) {
+      const { error } = await supabase
+        .from("saved_roles")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("position_id", positionId);
+
+      if (error) {
+        console.error("Failed to unsave role:", error.message);
+        return;
+      }
+
+      setSavedRoleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(positionId);
+        return next;
+      });
+      return;
+    }
+
+    const { error } = await supabase.from("saved_roles").insert({
+      user_id: user.id,
+      position_id: positionId,
+    });
+
+    if (error) {
+      console.error("Failed to save role:", error.message);
+      return;
+    }
+
+    setSavedRoleIds((prev) => new Set(prev).add(positionId));
+  }
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const matches = positions.filter((p) => {
-      if (typeFilter !== "all" && p.positionType !== typeFilter) return false;
-      if (!q) return true;
-      return (
-        p.title.toLowerCase().includes(q) ||
-        p.clubName.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q)
-      );
+    const matches = filterBoardPositions(positions, {
+      search,
+      roleTypeFilter,
+      commitmentFilter,
+      clubCategoryFilter,
+      deadlineFilter,
+      listTab,
+      savedRoleIds,
+      myApplications,
     });
     return sortBoardPositions(matches, sortBy);
-  }, [positions, search, typeFilter, sortBy]);
+  }, [
+    positions,
+    search,
+    roleTypeFilter,
+    commitmentFilter,
+    clubCategoryFilter,
+    deadlineFilter,
+    listTab,
+    savedRoleIds,
+    myApplications,
+    sortBy,
+  ]);
 
   useEffect(() => {
     if (filtered.length === 0) {
@@ -1982,7 +2505,7 @@ export default function HiringBoardPage() {
     }
     setSelectedId((current) => {
       if (current && filtered.some((p) => p.id === current)) return current;
-      return filtered[0].id;
+      return null;
     });
   }, [filtered]);
 
@@ -2003,7 +2526,9 @@ export default function HiringBoardPage() {
   }, [filtered, isMobile, loading, searchParams]);
 
   const activePosition =
-    filtered.find((p) => p.id === selectedId) ?? filtered[0] ?? null;
+    selectedId != null
+      ? filtered.find((p) => p.id === selectedId) ?? null
+      : null;
 
   const overlayPosition =
     detailOverlayId != null
@@ -2116,58 +2641,136 @@ export default function HiringBoardPage() {
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: "8px",
+              gap: "6px",
               flexWrap: "wrap",
               marginBottom: "12px",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                gap: "6px",
-                flexWrap: "wrap",
-                flex: 1,
-                minWidth: 0,
-              }}
+            {LIST_TAB_OPTIONS.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setListTab(tab.value)}
+                style={boardFilterPillStyle(listTab === tab.value)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginBottom: "12px",
+            }}
+          >
+            <select
+              value={roleTypeFilter}
+              onChange={(e) => setRoleTypeFilter(e.target.value)}
+              aria-label="Filter by role type"
+              style={filterSelectStyle}
             >
-              {BOARD_FILTER_PILLS.map((pill) => (
-                <button
-                  key={pill.value}
-                  type="button"
-                  onClick={() => setTypeFilter(pill.value)}
-                  style={boardFilterPillStyle(typeFilter === pill.value)}
-                >
-                  {pill.label}
-                </button>
+              {ROLE_TYPE_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
-            </div>
+            </select>
+            <select
+              value={commitmentFilter}
+              onChange={(e) => setCommitmentFilter(e.target.value)}
+              aria-label="Filter by commitment"
+              style={filterSelectStyle}
+            >
+              {COMMITMENT_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {clubCategories.length > 0 ? (
+              <select
+                value={clubCategoryFilter}
+                onChange={(e) => setClubCategoryFilter(e.target.value)}
+                aria-label="Filter by club category"
+                style={filterSelectStyle}
+              >
+                <option value="all">All club categories</option>
+                {clubCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <select
+              value={deadlineFilter}
+              onChange={(e) => setDeadlineFilter(e.target.value)}
+              aria-label="Filter by deadline"
+              style={filterSelectStyle}
+            >
+              {DEADLINE_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
             <select
               value={sortBy}
               onChange={(e) =>
                 setSortBy(e.target.value as "newest" | "closing_soon" | "a-z")
               }
               aria-label="Sort positions"
-              style={{
-                background: "#111111",
-                border: "1px solid #2a2a2a",
-                color: "#777777",
-                borderRadius: "6px",
-                padding: "5px 10px",
-                fontSize: "12px",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
+              style={{ ...filterSelectStyle, flex: "0 1 auto", minWidth: "110px" }}
             >
               <option value="newest">Newest</option>
-              <option value="closing_soon">Closing Soon</option>
-              <option value="a-z">A-Z</option>
+              <option value="closing_soon">Closing soon</option>
+              <option value="a-z">A–Z</option>
             </select>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "8px",
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  flex: "0 0 auto",
+                }}
+              >
+                Clear filters
+              </button>
+            ) : null}
           </div>
           {loading ? (
             <p style={{ color: "#555555", fontSize: "14px" }}>Loading positions…</p>
+          ) : listTab === "saved" && !user ? (
+            <BoardEmptyState
+              title="Sign in to save roles"
+              description="Create an account or sign in to save roles you are interested in."
+            />
           ) : filtered.length === 0 ? (
-            <p style={{ color: "#555555", fontSize: "14px" }}>No open positions found.</p>
+            <BoardEmptyState
+              title={
+                listTab === "saved"
+                  ? "No saved roles yet"
+                  : listTab === "applied"
+                    ? "No applied roles yet"
+                    : "No roles found"
+              }
+              description={
+                listTab === "saved"
+                  ? "Save roles you are interested in and come back later."
+                  : listTab === "applied"
+                    ? "Roles you apply to will appear here."
+                    : "Try adjusting your filters or clearing your search."
+              }
+            />
           ) : (
             <>
               <p
@@ -2183,16 +2786,19 @@ export default function HiringBoardPage() {
                 {filtered.length} open position{filtered.length === 1 ? "" : "s"}
               </p>
               {filtered.map((position) => (
-              <HiringListingCard
-                key={position.id}
-                position={position}
-                selected={activePosition?.id === position.id}
-                onSelect={() => {
-                  setSelectedId(position.id);
-                  if (isMobile) setMobileDetailOpen(true);
-                }}
-                onReadMore={() => openListingDetail(position)}
-              />
+                <HiringListingCard
+                  key={position.id}
+                  position={position}
+                  selected={activePosition?.id === position.id}
+                  saved={savedRoleIds.has(position.id)}
+                  canSave={canSave}
+                  onSelect={() => {
+                    setSelectedId(position.id);
+                    if (isMobile) setMobileDetailOpen(true);
+                  }}
+                  onReadMore={() => openListingDetail(position)}
+                  onToggleSave={() => void toggleSaveRole(position.id)}
+                />
               ))}
             </>
           )}
@@ -2212,34 +2818,18 @@ export default function HiringBoardPage() {
                 position={activePosition}
                 user={user}
                 alreadyApplied={Boolean(myApplications[activePosition.id])}
+                saved={savedRoleIds.has(activePosition.id)}
+                canSave={canSave}
                 onApply={() => handleApplyFromDetail(activePosition)}
                 onViewClub={() => {
                   if (activePosition.clubSlug) {
                     navigate(`/clubs/${activePosition.clubSlug}`);
                   }
                 }}
+                onToggleSave={() => void toggleSaveRole(activePosition.id)}
               />
             ) : (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "100%",
-                  minHeight: "280px",
-                }}
-              >
-                <p
-                  style={{
-                    color: "#333333",
-                    fontSize: "14px",
-                    textAlign: "center",
-                    margin: 0,
-                  }}
-                >
-                  Select a position to view details
-                </p>
-              </div>
+              <BoardDetailEmptyState />
             )}
           </div>
         ) : null}
@@ -2250,6 +2840,8 @@ export default function HiringBoardPage() {
           position={overlayPosition}
           user={user}
           alreadyApplied={Boolean(myApplications[overlayPosition.id])}
+          saved={savedRoleIds.has(overlayPosition.id)}
+          canSave={canSave}
           onClose={closeListingDetailOverlay}
           onApply={() => handleApplyFromDetail(overlayPosition)}
           onViewClub={() => {
@@ -2257,6 +2849,7 @@ export default function HiringBoardPage() {
               navigate(`/clubs/${overlayPosition.clubSlug}`);
             }
           }}
+          onToggleSave={() => void toggleSaveRole(overlayPosition.id)}
         />
       ) : null}
 
@@ -2265,6 +2858,8 @@ export default function HiringBoardPage() {
           position={activePosition}
           user={user}
           alreadyApplied={Boolean(myApplications[activePosition.id])}
+          saved={savedRoleIds.has(activePosition.id)}
+          canSave={canSave}
           onClose={() => setMobileDetailOpen(false)}
           onApply={() => handleApplyFromDetail(activePosition)}
           onViewClub={() => {
@@ -2272,6 +2867,7 @@ export default function HiringBoardPage() {
               navigate(`/clubs/${activePosition.clubSlug}`);
             }
           }}
+          onToggleSave={() => void toggleSaveRole(activePosition.id)}
         />
       ) : null}
 
