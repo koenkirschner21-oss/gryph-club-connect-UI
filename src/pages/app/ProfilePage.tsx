@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 import Spinner from "../../components/ui/Spinner";
 import { showToast } from "../../components/ui/Toast";
 import { useIsMobile } from "../../hooks/useWindowWidth";
+import { getProfileInitials } from "../../lib/profileInitials";
 import type { Club, MemberRole } from "../../types";
 
 interface ProfileData {
@@ -32,15 +33,6 @@ const PAGE_BG = "#0f0f0f";
 const CARD_BG = "#1a1a1a";
 const CARD_BORDER = "#242424";
 const MUTED = "#555555";
-
-function getInitials(name: string, email: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-  }
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (email || "GC").slice(0, 2).toUpperCase();
-}
 
 function formatMemberSince(iso?: string): string | null {
   if (!iso) return null;
@@ -300,7 +292,7 @@ export default function ProfilePage() {
                   flexShrink: 0,
                 }}
               >
-                {getInitials(profile.full_name, profile.email)}
+                {getProfileInitials(profile.full_name, profile.email)}
               </div>
             )}
             <div>

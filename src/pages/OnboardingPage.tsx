@@ -1,12 +1,15 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check } from "lucide-react";
+import { Camera, Check } from "lucide-react";
 import BrandLogo from "../components/ui/BrandLogo";
+import ImageCropModal from "../components/ui/ImageCropModal";
 import { useAuthContext } from "../context/useAuthContext";
-import { notifyOnboardingCompleted } from "../context/AuthContext";
+import { notifyOnboardingCompleted, refreshUserProfile } from "../context/AuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { ensureMinimalProfile } from "../lib/authProfile";
+import { getProfileInitials } from "../lib/profileInitials";
 import { supabase } from "../lib/supabaseClient";
+import { uploadImage } from "../lib/uploadImage";
 import Spinner from "../components/ui/Spinner";
 
 type OnboardingIntent = "discover" | "manage" | "both";
@@ -111,6 +114,10 @@ export default function OnboardingPage() {
   const [fullName, setFullName] = useState("");
   const [program, setProgram] = useState("");
   const [yearOfStudy, setYearOfStudy] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,7 +137,7 @@ export default function OnboardingPage() {
 
       const { data, error: profileError } = await supabase
         .from("profiles")
-        .select("full_name, program, year_of_study, onboarding_completed")
+        .select("full_name, program, year_of_study, avatar_url, onboarding_completed")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -151,6 +158,7 @@ export default function OnboardingPage() {
       setFullName((data?.full_name as string) ?? "");
       setProgram((data?.program as string) ?? "");
       setYearOfStudy((data?.year_of_study as string) ?? "");
+      setAvatarUrl((data?.avatar_url as string) ?? "");
       setCheckingProfile(false);
     })();
 
@@ -158,6 +166,25 @@ export default function OnboardingPage() {
       cancelled = true;
     };
   }, [user?.id, navigate]);
+
+  async function handleAvatarUpload(file: File) {
+    if (!user?.id) return;
+    setUploadingAvatar(true);
+    setError(null);
+
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
+    const path = `${user.id}.${ext}`;
+    const url = await uploadImage("profile-pictures", path, file);
+
+    if (!url) {
+      setError("Failed to upload photo. You can skip and add one later in Settings.");
+      setUploadingAvatar(false);
+      return;
+    }
+
+    setAvatarUrl(`${url}?t=${Date.now()}`);
+    setUploadingAvatar(false);
+  }
 
   async function handleComplete(event: FormEvent) {
     event.preventDefault();
@@ -181,6 +208,7 @@ export default function OnboardingPage() {
           full_name: trimmedName,
           program: program.trim() || null,
           year_of_study: yearOfStudy || null,
+          avatar_url: avatarUrl.trim() || null,
           onboarding_completed: true,
         })
         .eq("id", user.id);
@@ -188,6 +216,7 @@ export default function OnboardingPage() {
       if (updateError) throw updateError;
 
       notifyOnboardingCompleted();
+      await refreshUserProfile();
       navigate(redirectForIntent(intent), { replace: true });
     } catch {
       setError("Something went wrong. Please try again.");
@@ -372,6 +401,68 @@ export default function OnboardingPage() {
               </p>
             ) : null}
 
+            <div style={{ marginBottom: "20px", textAlign: "center" }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) setAvatarCropFile(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                aria-label="Add profile photo (optional)"
+                style={{
+                  width: "80px",
+                  height: "80px",
+                  borderRadius: "50%",
+                  border: "1px solid #333333",
+                  background: "#111111",
+                  margin: "0 auto 10px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  cursor: uploadingAvatar ? "wait" : "pointer",
+                  padding: 0,
+                }}
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <Camera size={24} color="#555555" aria-hidden />
+                )}
+              </button>
+              <p style={{ fontSize: "12px", color: "#666666", margin: 0 }}>
+                {uploadingAvatar
+                  ? "Uploading photo…"
+                  : avatarUrl
+                    ? "Profile photo added (optional)"
+                    : "Add a profile photo (optional)"}
+              </p>
+              {fullName.trim() && !avatarUrl ? (
+                <p
+                  style={{
+                    fontSize: "11px",
+                    color: "#444444",
+                    margin: "6px 0 0",
+                  }}
+                >
+                  Preview: {getProfileInitials(fullName, user?.email)}
+                </p>
+              ) : null}
+            </div>
+
             <label htmlFor="onboarding-full-name" style={labelStyle}>
               Full Name
             </label>
@@ -460,6 +551,23 @@ export default function OnboardingPage() {
           </form>
         )}
       </div>
+
+      {avatarCropFile ? (
+        <ImageCropModal
+          imageFile={avatarCropFile}
+          aspectRatio={1}
+          circular
+          onComplete={(blob) => {
+            const file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+            setAvatarCropFile(null);
+            void handleAvatarUpload(file);
+          }}
+          onCancel={() => {
+            setAvatarCropFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+        />
+      ) : null}
     </div>
   );
 }

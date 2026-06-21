@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAuthContext } from "../../context/useAuthContext";
+import { getProfileInitials } from "../../lib/profileInitials";
 import { supabase } from "../../lib/supabaseClient";
 import NotificationsDropdown from "../ui/NotificationsDropdown";
 
@@ -34,14 +35,16 @@ function publicNavLinkStyle(isActive: boolean): CSSProperties {
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut } = useAuthContext();
+  const { user, signOut, userProfile } = useAuthContext();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-  const initials =
-    user?.email?.slice(0, 2).toUpperCase() ??
-    "GC";
+  const initials = getProfileInitials(
+    userProfile?.fullName ?? "",
+    user?.email,
+  );
+  const avatarUrl = userProfile?.avatarUrl ?? null;
 
   useEffect(() => {
     if (!user?.id) {
@@ -221,9 +224,18 @@ export default function Navbar() {
                 <button
                   type="button"
                   onClick={() => setProfileOpen((v) => !v)}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-2)] text-xs font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
+                  aria-label="Account menu"
+                  className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-2)] text-xs font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
                 >
-                  {initials}
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    initials
+                  )}
                 </button>
                 {profileOpen && (
                   <div className="absolute right-0 top-10 z-[120] w-44 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-2)] p-1 shadow-[var(--shadow-md)]">

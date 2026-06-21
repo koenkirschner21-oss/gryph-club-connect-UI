@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import {
   Calendar,
@@ -17,6 +18,8 @@ import {
   ChevronRight,
   Megaphone,
   Users,
+  Briefcase,
+  UserCircle,
 } from "lucide-react";
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
@@ -95,6 +98,140 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
     .join("")
     .slice(0, maxLen)
     .toUpperCase();
+}
+
+const newUserGuideCardStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+  background: "#141414",
+  border: "1px solid #242424",
+  borderRadius: "12px",
+  padding: "20px",
+  textDecoration: "none",
+  color: "inherit",
+  transition: "border-color 0.15s ease, transform 0.15s ease",
+};
+
+function NewUserDashboardGuide() {
+  const isMobileGuide = useIsMobile();
+  const cards: {
+    to: string;
+    title: string;
+    description: string;
+    icon: ReactNode;
+  }[] = [
+    {
+      to: "/explore",
+      title: "Explore clubs",
+      description: "Browse campus clubs by category and find communities to join.",
+      icon: <Compass size={22} color="#E51937" aria-hidden />,
+    },
+    {
+      to: "/events",
+      title: "Browse events",
+      description: "See what's happening on campus and RSVP to public events.",
+      icon: <Calendar size={22} color="#FFC429" aria-hidden />,
+    },
+    {
+      to: "/hiring",
+      title: "Browse hiring roles",
+      description: "Find executive and volunteer openings posted by clubs.",
+      icon: <Briefcase size={22} color="#E51937" aria-hidden />,
+    },
+    {
+      to: "/app/settings",
+      title: "Complete your profile",
+      description: "Add a photo, program, and preferences so clubs recognize you.",
+      icon: <UserCircle size={22} color="#747676" aria-hidden />,
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        background: "#111111",
+        border: "1px solid #1e1e1e",
+        borderRadius: "12px",
+        padding: isMobileGuide ? "28px 20px" : "40px 32px",
+      }}
+    >
+      <h2
+        style={{
+          fontSize: "20px",
+          fontWeight: 700,
+          color: "#ffffff",
+          margin: "0 0 8px",
+          textAlign: "center",
+        }}
+      >
+        Welcome to Gryph ClubConnect
+      </h2>
+      <p
+        style={{
+          fontSize: "14px",
+          color: "#666666",
+          margin: "0 0 28px",
+          textAlign: "center",
+          lineHeight: 1.5,
+        }}
+      >
+        You haven&apos;t joined any clubs yet. Here are a few good places to start.
+      </p>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobileGuide ? "1fr" : "1fr 1fr",
+          gap: "14px",
+        }}
+      >
+        {cards.map((card) => (
+          <Link
+            key={card.to}
+            to={card.to}
+            style={newUserGuideCardStyle}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.borderColor = "#333333";
+              event.currentTarget.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.borderColor = "#242424";
+              event.currentTarget.style.transform = "none";
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {card.icon}
+              <span
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                }}
+              >
+                {card.title}
+              </span>
+              <ChevronRight
+                size={16}
+                color="#555555"
+                style={{ marginLeft: "auto" }}
+                aria-hidden
+              />
+            </div>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#777777",
+                margin: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              {card.description}
+            </p>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +514,9 @@ export default function DashboardPage() {
               color: "#999999",
             }}
           >
-            Here&apos;s what&apos;s happening across your clubs this week.
+            {joinedClubs.length === 0
+              ? "Get started by exploring campus clubs and events."
+              : "Here's what's happening across your clubs this week."}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -397,80 +536,7 @@ export default function DashboardPage() {
       </div>
 
       {joinedClubs.length === 0 ? (
-        <div
-          style={{
-            background: "#0f0f0f",
-            borderRadius: "12px",
-            padding: "64px 24px",
-            textAlign: "center",
-          }}
-        >
-          <Compass
-            size={48}
-            color="#333333"
-            style={{ marginBottom: "16px" }}
-            aria-hidden
-          />
-          <h2
-            style={{
-              fontSize: "20px",
-              fontWeight: 700,
-              color: "#ffffff",
-              margin: 0,
-            }}
-          >
-            You haven&apos;t joined any clubs yet
-          </h2>
-          <p
-            style={{
-              fontSize: "14px",
-              color: "#555555",
-              marginTop: "8px",
-              marginBottom: 0,
-            }}
-          >
-            Explore clubs on campus and join ones that match your interests
-          </p>
-          <div
-            style={{
-              marginTop: "24px",
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              gap: "12px",
-            }}
-          >
-            <Link
-              to="/explore"
-              style={{
-                background: "#E51937",
-                color: "#ffffff",
-                borderRadius: "8px",
-                padding: "10px 24px",
-                fontSize: "14px",
-                fontWeight: 600,
-                textDecoration: "none",
-              }}
-            >
-              Explore Clubs
-            </Link>
-            <Link
-              to="/hiring"
-              style={{
-                background: "transparent",
-                border: "1px solid #333333",
-                color: "#cccccc",
-                borderRadius: "8px",
-                padding: "10px 24px",
-                fontSize: "14px",
-                fontWeight: 600,
-                textDecoration: "none",
-              }}
-            >
-              Browse Hiring
-            </Link>
-          </div>
-        </div>
+        <NewUserDashboardGuide />
       ) : (
         <>
       {/* ── Stat Cards (always visible) ── */}

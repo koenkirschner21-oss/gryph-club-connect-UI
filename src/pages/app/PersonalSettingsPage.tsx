@@ -8,7 +8,9 @@ import {
 import { useNavigate } from "react-router-dom";
 import { X, Camera } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
+import { refreshUserProfile } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabaseClient";
+import { getProfileInitials } from "../../lib/profileInitials";
 import { uploadImage } from "../../lib/uploadImage";
 import Spinner from "../../components/ui/Spinner";
 import ImageCropModal from "../../components/ui/ImageCropModal";
@@ -93,17 +95,6 @@ function mergeNotificationPreferences(
     }
   }
   return merged;
-}
-
-function deriveInitials(fullName: string, email: string): string {
-  const fromName = fullName.trim().split(/\s+/).filter(Boolean);
-  if (fromName.length >= 2) {
-    return `${fromName[0][0]}${fromName[1][0]}`.toUpperCase();
-  }
-  if (fromName.length === 1 && fromName[0].length > 0) {
-    return fromName[0].slice(0, 2).toUpperCase();
-  }
-  return (email || "GC").slice(0, 2).toUpperCase();
 }
 
 function SettingsField({
@@ -323,6 +314,8 @@ export default function PersonalSettingsPage() {
     if (error) {
       console.error("Failed to save avatar:", error.message);
       setErrorMessage("Photo uploaded but failed to save to profile.");
+    } else {
+      await refreshUserProfile();
     }
 
     setUploadingAvatar(false);
@@ -354,6 +347,7 @@ export default function PersonalSettingsPage() {
       return;
     }
 
+    await refreshUserProfile();
     setProfileSuccess(true);
   }
 
@@ -472,7 +466,7 @@ export default function PersonalSettingsPage() {
     );
   }
 
-  const initials = deriveInitials(fullName, email);
+  const initials = getProfileInitials(fullName, email);
 
   return (
     <div style={pageStyle}>

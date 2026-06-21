@@ -14,16 +14,26 @@ import {
   isAllowedSignupEmail,
 } from "../lib/authProfile";
 import { buildAuthCallbackUrl } from "../lib/authRedirect";
-import { AuthContext, type AuthContextValue } from "./authContextValue";
+import {
+  AuthContext,
+  type AuthContextValue,
+  type UserProfileSnapshot,
+} from "./authContextValue";
 
 const ALLOWED_EMAIL_DOMAIN = "uoguelph.ca";
 void ALLOWED_EMAIL_DOMAIN; // preserved for UofG email restriction restore
 
 let notifyOnboardingCompletedRef: (() => void) | null = null;
+let refreshUserProfileRef: (() => Promise<void>) | null = null;
 
 /** Called after onboarding finishes so auth state skips redirect loops. */
 export function notifyOnboardingCompleted() {
   notifyOnboardingCompletedRef?.();
+}
+
+/** Reload profile fields used in the nav (name, avatar). */
+export function refreshUserProfile() {
+  return refreshUserProfileRef?.() ?? Promise.resolve();
 }
 
 /**
@@ -46,6 +56,24 @@ async function resolveOnboardingCompleted(user: User): Promise<boolean> {
   return data?.onboarding_completed === true;
 }
 
+async function loadUserProfile(userId: string): Promise<UserProfileSnapshot> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("full_name, avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load user profile:", error.message);
+    return { fullName: "", avatarUrl: null };
+  }
+
+  return {
+    fullName: (data?.full_name as string) ?? "",
+    avatarUrl: (data?.avatar_url as string) ?? null,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,8 +83,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [onboardingCompleted, setOnboardingCompleted] = useState<
     boolean | null
   >(null);
+  const [userProfile, setUserProfile] = useState<UserProfileSnapshot | null>(
+    null,
+  );
 
   notifyOnboardingCompletedRef = () => setOnboardingCompleted(true);
+
+  const refreshUserProfile = useCallback(async () => {
+    if (!user?.id) {
+      setUserProfile(null);
+      return;
+    }
+    const profile = await loadUserProfile(user.id);
+    setUserProfile(profile);
+  }, [user?.id]);
+
+  refreshUserProfileRef = refreshUserProfile;
 
   const refreshOnboardingStatus = useCallback(async (authUser: User) => {
     const completed = await resolveOnboardingCompleted(authUser);
@@ -73,8 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(s?.user ?? null);
         if (s?.user) {
           void refreshOnboardingStatus(s.user);
+          void loadUserProfile(s.user.id).then(setUserProfile);
         } else {
           setOnboardingCompleted(null);
+          setUserProfile(null);
         }
       })
       .catch((err) => {
@@ -92,8 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(s?.user ?? null);
       if (s?.user) {
         void refreshOnboardingStatus(s.user);
+        void loadUserProfile(s.user.id).then(setUserProfile);
       } else {
         setOnboardingCompleted(null);
+        setUserProfile(null);
       }
     });
 
@@ -195,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setOnboardingCompleted(null);
+    setUserProfile(null);
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -203,6 +250,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       onboardingCompleted,
+      userProfile,
+      refreshUserProfile,
       signUp,
       signIn,
       signOut,
@@ -213,6 +262,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       onboardingCompleted,
+      userProfile,
+      refreshUserProfile,
       signUp,
       signIn,
       signOut,
