@@ -18,6 +18,15 @@ import {
   notifyHiringApplicationSubmitted,
   resolveStudentDisplayName,
 } from "../../lib/notifications";
+import {
+  activeUploadSlots,
+  HIRING_UPLOAD_SLOT_LABELS,
+  MAX_HIRING_FILE_BYTES,
+  parseHiringUploadFields,
+  uploadHiringApplicationFile,
+  type HiringUploadFields,
+  type HiringUploadSlot,
+} from "../../lib/hiringUploadFields";
 
 export const POSITION_TYPES = [
   { value: "executive", label: "Executive" },
@@ -65,6 +74,9 @@ export interface ListingQuestion {
 export interface HiringApplicationAnswer {
   question_id: string;
   answer: string;
+  file_name?: string;
+  file_type?: string;
+  file_size?: number;
 }
 
 export interface BoardPosition {
@@ -86,6 +98,7 @@ export interface BoardPosition {
   createdAt: string;
   applicantCount: number;
   questions: ListingQuestion[];
+  uploadFields: HiringUploadFields;
 }
 
 const DEFAULT_APPLICATION_QUESTION_ID = "default-why";
@@ -1809,7 +1822,11 @@ export function ApplicationModal({
   } | null>(null);
   const selectedListing = position;
   const displayQuestions = listingQuestionsForApply(selectedListing.questions);
+  const uploadSlots = activeUploadSlots(selectedListing.uploadFields);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [uploadFiles, setUploadFiles] = useState<
+    Partial<Record<HiringUploadSlot, File>>
+  >({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -1865,6 +1882,11 @@ export function ApplicationModal({
         next[q.id] = "This question is required.";
       }
     }
+    for (const { slot, setting } of uploadSlots) {
+      if (setting === "required" && !uploadFiles[slot]) {
+        next[`upload_${slot}`] = `${HIRING_UPLOAD_SLOT_LABELS[slot]} is required.`;
+      }
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -1877,6 +1899,43 @@ export function ApplicationModal({
       question_id: q.id,
       answer: (answers[q.id] ?? "").trim(),
     }));
+
+    for (const { slot } of uploadSlots) {
+      const file = uploadFiles[slot];
+      if (!file) continue;
+
+      if (file.size > MAX_HIRING_FILE_BYTES) {
+        setErrors({
+          form: `${HIRING_UPLOAD_SLOT_LABELS[slot]} must be 50MB or smaller.`,
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      const uploaded = await uploadHiringApplicationFile(
+        supabase,
+        selectedListing.clubId,
+        selectedListing.id,
+        user.id,
+        file,
+      );
+
+      if (!uploaded) {
+        setErrors({
+          form: `Failed to upload ${HIRING_UPLOAD_SLOT_LABELS[slot].toLowerCase()}. Please try again.`,
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      answersPayload.push({
+        question_id: `upload_${slot}`,
+        answer: uploaded.url,
+        file_name: uploaded.name,
+        file_type: uploaded.type,
+        file_size: uploaded.size,
+      });
+    }
 
     const payload = {
       listing_id: selectedListing.id,
@@ -2086,6 +2145,56 @@ export function ApplicationModal({
                 )}
                 {errors[q.id] ? (
                   <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>{errors[q.id]}</p>
+                ) : null}
+              </div>
+            ))}
+
+            {uploadSlots.map(({ slot, setting }) => (
+              <div key={slot} style={{ marginBottom: "16px" }}>
+                <label
+                  htmlFor={`hiring-upload-${slot}`}
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    color: "#cccccc",
+                    display: "block",
+                    marginBottom: "6px",
+                  }}
+                >
+                  {HIRING_UPLOAD_SLOT_LABELS[slot]}
+                  {setting === "required" ? (
+                    <span style={{ color: "#E51937", marginLeft: "4px" }}>*</span>
+                  ) : null}
+                </label>
+                <input
+                  id={`hiring-upload-${slot}`}
+                  type="file"
+                  disabled={submitting}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? undefined;
+                    setUploadFiles((prev) => {
+                      const next = { ...prev };
+                      if (file) next[slot] = file;
+                      else delete next[slot];
+                      return next;
+                    });
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next[`upload_${slot}`];
+                      return next;
+                    });
+                  }}
+                  style={{ ...darkInputStyle, width: "100%", padding: "8px 12px" }}
+                />
+                {uploadFiles[slot] ? (
+                  <p style={{ fontSize: "12px", color: "#777777", margin: "6px 0 0" }}>
+                    Selected: {uploadFiles[slot]?.name}
+                  </p>
+                ) : null}
+                {errors[`upload_${slot}`] ? (
+                  <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
+                    {errors[`upload_${slot}`]}
+                  </p>
                 ) : null}
               </div>
             ))}
@@ -2312,6 +2421,7 @@ export default function HiringBoardPage() {
         created_at,
         is_open,
         questions,
+        upload_fields,
         clubs ( name, logo_url, banner_url, slug, description, category )
       `,
       )
@@ -2386,6 +2496,7 @@ export default function HiringBoardPage() {
         createdAt: (row.created_at as string) ?? new Date().toISOString(),
         applicantCount: counts[row.id as string] ?? 0,
         questions: parseListingQuestions(row.questions),
+        uploadFields: parseHiringUploadFields(row.upload_fields),
       };
     });
 

@@ -21,6 +21,11 @@ import {
 } from "../../lib/hiringPipelineUtils";
 import { darkInputStyle, modalOverlayStyle } from "../../pages/app/HiringBoardPage";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
+import {
+  downloadHiringApplicationFile,
+  hiringFileQuestionLabel,
+  isHiringFileQuestionId,
+} from "../../lib/hiringUploadFields";
 
 export interface CandidateReviewApplication {
   id: string;
@@ -29,7 +34,13 @@ export interface CandidateReviewApplication {
   status: string;
   subStatus: string;
   createdAt: string;
-  answers: { question_id: string; answer: string }[];
+  answers: {
+    question_id: string;
+    answer: string;
+    file_name?: string;
+    file_type?: string;
+    file_size?: number;
+  }[];
   profile: {
     full_name: string | null;
     email: string | null;
@@ -331,11 +342,37 @@ export default function CandidateReviewPanel({
                 margin: "0 0 4px",
               }}
             >
-              {answerLabel(ans.question_id)}
+              {isHiringFileQuestionId(ans.question_id)
+                ? hiringFileQuestionLabel(ans.question_id)
+                : answerLabel(ans.question_id)}
             </p>
-            <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
-              {ans.answer}
-            </p>
+            {isHiringFileQuestionId(ans.question_id) ? (
+              <button
+                type="button"
+                onClick={() =>
+                  void downloadHiringApplicationFile(
+                    ans.answer,
+                    ans.file_name ?? hiringFileQuestionLabel(ans.question_id),
+                  )
+                }
+                style={{
+                  background: "#111111",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "6px",
+                  color: "#E51937",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  padding: "8px 12px",
+                }}
+              >
+                Download {ans.file_name ?? "file"}
+              </button>
+            ) : (
+              <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
+                {ans.answer}
+              </p>
+            )}
           </div>
         ))
       )}

@@ -13,7 +13,6 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
-import { notifyHiringApplicationSubmitted } from "../../lib/notifications";
 import type { MemberRole } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
@@ -35,6 +34,7 @@ import {
 import {
   POSITION_TYPES,
   PositionQuestionBuilder,
+  ApplicationModal,
   commitmentLabel,
   darkInputStyle,
   deadlineLabel,
@@ -50,6 +50,17 @@ import {
   type PositionQuestionDraft,
   type PositionType,
 } from "./HiringBoardPage";
+import {
+  DEFAULT_HIRING_UPLOAD_FIELDS,
+  HIRING_UPLOAD_SETTING_OPTIONS,
+  HIRING_UPLOAD_SLOTS,
+  HIRING_UPLOAD_SLOT_LABELS,
+  hiringFileQuestionLabel,
+  isHiringFileQuestionId,
+  parseHiringUploadFields,
+  type HiringUploadFields,
+  type HiringUploadSetting,
+} from "../../lib/hiringUploadFields";
 
 type ListingStatus = "open" | "filled" | "closed";
 type PositionFilter = "all" | "open" | "pending_review" | "filled" | "closed";
@@ -68,6 +79,7 @@ interface ClubPosition {
   pendingCount: number;
   acceptedCount: number;
   questions: ListingQuestion[];
+  uploadFields: HiringUploadFields;
 }
 
 function mapRoleType(positionType: string): "executive" | "volunteer" | "general" {
@@ -145,15 +157,20 @@ interface HiringApplicationRow {
 
 function parseHiringAnswers(raw: unknown): HiringApplicationAnswer[] {
   if (Array.isArray(raw)) {
-    return raw
-      .map((item, index) => {
-        const row = item as Record<string, unknown>;
-        return {
-          question_id: (row.question_id as string) ?? `a-${index}`,
-          answer: String(row.answer ?? "").trim(),
-        };
-      })
-      .filter((a) => a.answer);
+    const parsed: HiringApplicationAnswer[] = [];
+    raw.forEach((item, index) => {
+      const row = item as Record<string, unknown>;
+      const answer = String(row.answer ?? "").trim();
+      if (!answer) return;
+      parsed.push({
+        question_id: (row.question_id as string) ?? `a-${index}`,
+        answer,
+        ...(row.file_name ? { file_name: String(row.file_name) } : {}),
+        ...(row.file_type ? { file_type: String(row.file_type) } : {}),
+        ...(typeof row.file_size === "number" ? { file_size: row.file_size } : {}),
+      });
+    });
+    return parsed;
   }
   if (raw && typeof raw === "object") {
     return Object.entries(raw as Record<string, string>)
@@ -170,6 +187,9 @@ function answerLabel(
   questionId: string,
   listingQuestions: ListingQuestion[],
 ): string {
+  if (isHiringFileQuestionId(questionId)) {
+    return hiringFileQuestionLabel(questionId);
+  }
   const match = listingQuestions.find((q) => q.id === questionId);
   if (match) return match.question;
   if (questionId === "default-why") return "Why do you want this position?";
@@ -396,204 +416,54 @@ function StatCard({
   );
 }
 
-function ApplyModal({
-  positionTitle,
-  clubId,
-  clubName,
-  positionId,
-  userId,
-  onClose,
-  onSubmitted,
+function PositionUploadFieldsEditor({
+  value,
+  onChange,
 }: {
-  positionTitle: string;
-  clubId: string;
-  clubName: string;
-  positionId: string;
-  userId: string;
-  onClose: () => void;
-  onSubmitted: () => void;
+  value: HiringUploadFields;
+  onChange: (next: HiringUploadFields) => void;
 }) {
-  const [whyText, setWhyText] = useState("");
-  const [experienceText, setExperienceText] = useState("");
-  const [portfolioUrl, setPortfolioUrl] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit() {
-    if (!whyText.trim()) {
-      setError("Please tell us why you want this role.");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-
-    const answers: HiringApplicationAnswer[] = [
-      { question_id: "why", answer: whyText.trim() },
-    ];
-    if (experienceText.trim()) {
-      answers.push({ question_id: "experience", answer: experienceText.trim() });
-    }
-    if (portfolioUrl.trim()) {
-      answers.push({ question_id: "portfolio", answer: portfolioUrl.trim() });
-    }
-
-    const { data, error: insertError } = await supabase
-      .from("hiring_applications")
-      .insert({
-        listing_id: positionId,
-        applicant_id: userId,
-        answers,
-        status: "pending",
-      })
-      .select("id")
-      .single();
-
-    setSubmitting(false);
-
-    if (insertError || !data) {
-      console.error("Failed to submit application:", insertError?.message);
-      if (insertError?.code === "23505") {
-        setError("You have already applied for this role.");
-      } else {
-        setError("Could not submit application. Please try again.");
-      }
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("id", userId)
-      .maybeSingle();
-
-    await notifyHiringApplicationSubmitted(supabase, {
-      clubId,
-      clubName,
-      listingId: positionId,
-      applicationId: data.id as string,
-      roleTitle: positionTitle,
-      applicantUserId: userId,
-      applicantName:
-        (profile?.full_name as string | undefined)?.trim() || "A student",
-    });
-
-    onSubmitted();
-    onClose();
-  }
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={modalOverlayStyle}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "#1a1a1a",
-          border: "1px solid #242424",
-          borderRadius: "12px",
-          padding: "24px",
-          maxWidth: "480px",
-          width: "100%",
-        }}
-        onClick={(e) => e.stopPropagation()}
-        role="presentation"
-      >
-        <h2
+    <div style={{ marginTop: "16px", marginBottom: "8px" }}>
+      <p style={{ fontSize: "12px", color: "#888888", margin: "0 0 8px" }}>
+        Application file uploads
+      </p>
+      {HIRING_UPLOAD_SLOTS.map((slot) => (
+        <div
+          key={slot}
           style={{
-            fontSize: "16px",
-            fontWeight: 700,
-            color: "#ffffff",
-            margin: "0 0 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            marginBottom: "8px",
           }}
         >
-          Apply for {positionTitle}
-        </h2>
-
-        <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
-          Why do you want this role?
-        </label>
-        <textarea
-          value={whyText}
-          onChange={(e) => setWhyText(e.target.value)}
-          style={{
-            ...darkInputStyle,
-            width: "100%",
-            minHeight: "100px",
-            marginBottom: "14px",
-            resize: "vertical",
-          }}
-        />
-
-        <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
-          Relevant experience
-        </label>
-        <textarea
-          value={experienceText}
-          onChange={(e) => setExperienceText(e.target.value)}
-          style={{
-            ...darkInputStyle,
-            width: "100%",
-            minHeight: "80px",
-            marginBottom: "14px",
-            resize: "vertical",
-          }}
-        />
-
-        <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
-          Resume/Portfolio link
-        </label>
-        <input
-          type="url"
-          value={portfolioUrl}
-          onChange={(e) => setPortfolioUrl(e.target.value)}
-          placeholder="https://..."
-          style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
-        />
-
-        {error ? (
-          <p style={{ fontSize: "12px", color: "#E51937", margin: "0 0 12px" }}>{error}</p>
-        ) : null}
-
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => void handleSubmit()}
-          style={{
-            width: "100%",
-            background: "#E51937",
-            color: "#ffffff",
-            border: "none",
-            borderRadius: "6px",
-            padding: "12px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: submitting ? "not-allowed" : "pointer",
-            opacity: submitting ? 0.7 : 1,
-            marginBottom: "10px",
-          }}
-        >
-          {submitting ? "Submitting…" : "Submit Application"}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={submitting}
-          style={{
-            width: "100%",
-            background: "transparent",
-            border: "1px solid #333333",
-            color: "#888888",
-            borderRadius: "6px",
-            padding: "12px",
-            fontSize: "13px",
-            cursor: "pointer",
-          }}
-        >
-          Cancel
-        </button>
-      </div>
+          <span style={{ fontSize: "13px", color: "#cccccc", flexShrink: 0 }}>
+            {HIRING_UPLOAD_SLOT_LABELS[slot]}
+          </span>
+          <select
+            value={value[slot]}
+            onChange={(e) =>
+              onChange({
+                ...value,
+                [slot]: e.target.value as HiringUploadSetting,
+              })
+            }
+            style={{
+              ...darkInputStyle,
+              minWidth: "140px",
+              cursor: "pointer",
+            }}
+          >
+            {HIRING_UPLOAD_SETTING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ))}
     </div>
   );
 }
@@ -635,6 +505,9 @@ export default function ClubRecruitingPage() {
   const [positionType, setPositionType] = useState<PositionType>("executive");
   const [deadline, setDeadline] = useState("");
   const [formQuestions, setFormQuestions] = useState<PositionQuestionDraft[]>([]);
+  const [uploadFields, setUploadFields] = useState<HiringUploadFields>(
+    DEFAULT_HIRING_UPLOAD_FIELDS,
+  );
   const [saving, setSaving] = useState(false);
   const [savePositionError, setSavePositionError] = useState<string | null>(null);
 
@@ -687,7 +560,7 @@ export default function ClubRecruitingPage() {
     let query = supabase
       .from("hiring_listings")
       .select(
-        "id, title, description, requirements, role_type, commitment_level, weekly_hours, deadline, is_open, questions",
+        "id, title, description, requirements, role_type, commitment_level, weekly_hours, deadline, is_open, questions, upload_fields",
       )
       .eq("club_id", clubId)
       .order("created_at", { ascending: false });
@@ -744,6 +617,7 @@ export default function ClubRecruitingPage() {
         pendingCount: pendingCounts[row.id as string] ?? 0,
         acceptedCount: acceptedCounts[row.id as string] ?? 0,
         questions: parseListingQuestions(row.questions),
+        uploadFields: parseHiringUploadFields(row.upload_fields),
       })),
     );
 
@@ -878,6 +752,7 @@ export default function ClubRecruitingPage() {
     setPositionType("executive");
     setDeadline("");
     setFormQuestions([]);
+    setUploadFields(DEFAULT_HIRING_UPLOAD_FIELDS);
     setEditingPosition(null);
   }
 
@@ -912,6 +787,7 @@ export default function ClubRecruitingPage() {
       .maybeSingle();
 
     setFormQuestions(formQuestionsFromJson(listingRow?.questions));
+    setUploadFields(position.uploadFields);
     setSavePositionError(null);
     setShowPostModal(true);
     setOpenMenuId(null);
@@ -935,6 +811,7 @@ export default function ClubRecruitingPage() {
       role_type: mapRoleType(positionType),
       deadline: deadlineValue,
       questions: formQuestionsToJson(formQuestions),
+      upload_fields: uploadFields,
       requirements: requirements.trim() || null,
       commitment_level: commitmentLevel,
       weekly_hours:
@@ -2290,6 +2167,11 @@ export default function ClubRecruitingPage() {
               style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
             />
 
+            <PositionUploadFieldsEditor
+              value={uploadFields}
+              onChange={setUploadFields}
+            />
+
             <PositionQuestionBuilder
               questions={formQuestions}
               onChange={setFormQuestions}
@@ -2349,12 +2231,24 @@ export default function ClubRecruitingPage() {
       ) : null}
 
       {applyPosition && user?.id && clubId ? (
-        <ApplyModal
-          positionTitle={applyPosition.title}
-          clubId={clubId}
+        <ApplicationModal
+          position={{
+            id: applyPosition.id,
+            clubId,
+            clubName,
+            title: applyPosition.title,
+            description: applyPosition.description,
+            requirements: applyPosition.requirements,
+            positionType: applyPosition.positionType,
+            commitmentLevel: applyPosition.commitmentLevel,
+            weeklyHours: applyPosition.weeklyHours,
+            deadline: applyPosition.deadline,
+            createdAt: "",
+            applicantCount: applyPosition.applicantCount,
+            questions: applyPosition.questions,
+            uploadFields: applyPosition.uploadFields,
+          }}
           clubName={clubName}
-          positionId={applyPosition.id}
-          userId={user.id}
           onClose={() => setApplyPosition(null)}
           onSubmitted={() => void loadPositions()}
         />
