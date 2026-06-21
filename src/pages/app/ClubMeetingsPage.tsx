@@ -4,8 +4,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
-import { isPrivilegedClubRole } from "../../lib/clubRoles";
-import type { MemberRole } from "../../types";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 import {
   CompactMeetingRow,
@@ -32,12 +31,6 @@ import { supabase } from "../../lib/supabaseClient";
 
 type PageTab = "upcoming" | "past" | "my_actions";
 
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
-}
-
 export default function ClubMeetingsPage() {
   const { clubId, meetingId } = useParams<{ clubId: string; meetingId?: string }>();
   const [searchParams] = useSearchParams();
@@ -47,7 +40,9 @@ export default function ClubMeetingsPage() {
   const { members } = useClubMembers(clubId);
   const isMobile = useIsMobile();
 
-  const [userRole, setUserRole] = useState<MemberRole>("member");
+  const memberAccess = useClubMemberAccess(clubId);
+  const canManageMeetings =
+    memberAccess.isPresident || memberAccess.can("manage_meetings");
   const [meetings, setMeetings] = useState<ClubMeeting[]>([]);
   const [myActionItems, setMyActionItems] = useState<MeetingActionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +58,7 @@ export default function ClubMeetingsPage() {
   } | null>(null);
   const editMeetingId = searchParams.get("edit");
 
-  const isPrivileged = isPrivilegedClubRole(userRole);
+  const isPrivileged = canManageMeetings;
   const isCreateRoute =
     meetingId === "new" ||
     location.pathname.endsWith("/meetings/new") ||
@@ -84,25 +79,6 @@ export default function ClubMeetingsPage() {
         }
       });
   }, [editMeetingId, clubId]);
-
-  useEffect(() => {
-    const previewRole = localStorage.getItem("previewRole");
-    if (previewRole) {
-      setUserRole(previewRole as MemberRole);
-      return;
-    }
-    const fetchRole = async () => {
-      if (!user?.id || !clubId) return;
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (data?.role) setUserRole(normalizeUserRole(data.role));
-    };
-    void fetchRole();
-  }, [clubId, user?.id]);
 
   const loadMeetings = useCallback(async () => {
     if (!clubId) return;

@@ -224,6 +224,20 @@ export function resolvePermissionRole(
   return "member";
 }
 
+export function isExecutiveAccessLevel(
+  accessLevel: PermissionRole | null | undefined,
+  memberRole: string | null | undefined,
+): boolean {
+  if (
+    accessLevel === "president" ||
+    accessLevel === "managerial_executive" ||
+    accessLevel === "executive"
+  ) {
+    return true;
+  }
+  return memberRole === "owner" || memberRole === "executive" || memberRole === "exec";
+}
+
 export function isPresidentAccess(
   accessLevel: PermissionRole | null | undefined,
   memberRole: string | null | undefined,

@@ -20,8 +20,10 @@ import { useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
-import type { MemberRole, Visibility } from "../../types";
+import type { Visibility } from "../../types";
 import {
   DocumentCard,
   DocumentsTipBar,
@@ -121,12 +123,6 @@ const modalPanelStyle: CSSProperties = {
   maxHeight: "90vh",
   overflowY: "auto",
 };
-
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
-}
 
 type CategoryOption = { value: string; label: string };
 
@@ -458,9 +454,15 @@ export default function ClubDocumentsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
 
-  const [userRole, setUserRole] = useState<MemberRole>("member");
-  const isPrivileged = userRole === "owner" || userRole === "executive";
-  const isMember = userRole !== null;
+  const memberAccess = useClubMemberAccess(clubId);
+  const canManageDocuments =
+    memberAccess.isPresident || memberAccess.can("manage_documents");
+  const isExecutiveForVisibility = isExecutiveAccessLevel(
+    memberAccess.accessLevel,
+    memberAccess.role,
+  );
+  const isMember = memberAccess.hasMembership;
+  const isPrivileged = canManageDocuments;
 
   const [documents, setDocuments] = useState<ClubDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -518,22 +520,6 @@ export default function ClubDocumentsPage() {
     if (!clubId) return;
     setCustomCategories(loadCustomCategories(clubId));
   }, [clubId]);
-
-  useEffect(() => {
-    const fetchRole = async () => {
-      if (!user?.id || !clubId) return;
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .single();
-      if (data?.role) {
-        setUserRole(normalizeUserRole(data.role));
-      }
-    };
-    void fetchRole();
-  }, [clubId, user?.id]);
 
   const loadResourceLinks = useCallback(async () => {
     if (!clubId) return;
@@ -644,7 +630,10 @@ export default function ClubDocumentsPage() {
   }, [feedback]);
 
   const filteredDocuments = useMemo(() => {
-    let result = filterByVisibility(documents, { isMember, isPrivileged });
+    let result = filterByVisibility(documents, {
+      isMember,
+      isPrivileged: isExecutiveForVisibility,
+    });
     if (filterCategory !== "all") {
       result = result.filter((doc) => doc.category === filterCategory);
     }
@@ -660,7 +649,7 @@ export default function ClubDocumentsPage() {
       });
     }
     return result;
-  }, [documents, filterCategory, searchQuery, allCategories, isMember, isPrivileged]);
+  }, [documents, filterCategory, searchQuery, allCategories, isMember, isExecutiveForVisibility]);
 
   const sortedDocuments = useMemo(
     () => sortDocuments(filteredDocuments, sortBy),

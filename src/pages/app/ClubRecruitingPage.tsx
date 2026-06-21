@@ -7,13 +7,13 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Briefcase, Clipboard, MoreHorizontal } from "lucide-react";
+import { Briefcase, Bookmark, Clipboard, MoreHorizontal } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
-import type { MemberRole } from "../../types";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import CandidateReviewPanel, {
@@ -196,10 +196,197 @@ function answerLabel(
   return "Response";
 }
 
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
+function MemberRoleDetailModal({
+  position,
+  clubName,
+  hasApplied,
+  saved,
+  onClose,
+  onApply,
+  onToggleSave,
+}: {
+  position: ClubPosition;
+  clubName: string;
+  hasApplied: boolean;
+  saved: boolean;
+  onClose: () => void;
+  onApply: () => void;
+  onToggleSave: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={modalOverlayStyle}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#141414",
+          border: "1px solid #2a2a2a",
+          borderRadius: "12px",
+          padding: "24px",
+          maxWidth: "640px",
+          width: "100%",
+          maxHeight: "85vh",
+          overflowY: "auto",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "12px",
+            marginBottom: "16px",
+          }}
+        >
+          <div>
+            <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 4px" }}>
+              {clubName}
+            </p>
+            <h2
+              style={{
+                fontSize: "24px",
+                fontWeight: 800,
+                color: "#ffffff",
+                margin: 0,
+              }}
+            >
+              {position.title}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#777777",
+              cursor: "pointer",
+              fontSize: "20px",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+          <span style={roleTypeBadgeStyle()}>
+            {positionTypeLabel(position.positionType)}
+          </span>
+          <span style={commitmentBadgeStyle()}>
+            {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
+          </span>
+        </div>
+
+        {position.description ? (
+          <>
+            <h3 style={{ fontSize: "13px", fontWeight: 700, color: "#cccccc", margin: "0 0 8px" }}>
+              About the role
+            </h3>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#aaaaaa",
+                lineHeight: 1.6,
+                margin: "0 0 16px",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {position.description}
+            </p>
+          </>
+        ) : null}
+
+        {position.requirements ? (
+          <>
+            <h3 style={{ fontSize: "13px", fontWeight: 700, color: "#cccccc", margin: "0 0 8px" }}>
+              Requirements
+            </h3>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#aaaaaa",
+                lineHeight: 1.6,
+                margin: "0 0 16px",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {position.requirements}
+            </p>
+          </>
+        ) : null}
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            marginTop: "20px",
+            paddingTop: "16px",
+            borderTop: "1px solid #242424",
+          }}
+        >
+          {position.isOpen && !hasApplied ? (
+            <button
+              type="button"
+              onClick={onApply}
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "10px 20px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Apply Now
+            </button>
+          ) : hasApplied ? (
+            <span
+              style={{
+                background: "#1a1200",
+                border: "1px solid #FFC429",
+                color: "#FFC429",
+                borderRadius: "8px",
+                padding: "10px 20px",
+                fontSize: "13px",
+                fontWeight: 600,
+              }}
+            >
+              Application Submitted ✓
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={onToggleSave}
+            style={{
+              background: saved ? "#1a1500" : "transparent",
+              border: saved ? "1px solid #3a2f00" : "1px solid #333333",
+              color: saved ? "#FFC429" : "#cccccc",
+              borderRadius: "8px",
+              padding: "10px 18px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Bookmark size={14} fill={saved ? "#FFC429" : "none"} />
+            {saved ? "Saved" : "Save Role"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function roleTypeBadgeStyle(): CSSProperties {
@@ -487,8 +674,13 @@ export default function ClubRecruitingPage() {
   const club = getClubById(clubId ?? "");
   const clubName = club?.name ?? "Club";
 
-  const [userRole, setUserRole] = useState<MemberRole>("member");
-  const isPrivileged = userRole === "owner" || userRole === "executive";
+  const memberAccess = useClubMemberAccess(clubId);
+  const [isListingReviewer, setIsListingReviewer] = useState(false);
+  const canManageHiring =
+    memberAccess.isPresident ||
+    memberAccess.can("manage_hiring") ||
+    isListingReviewer;
+  const isPrivileged = canManageHiring;
 
   const [loading, setLoading] = useState(true);
   const [positions, setPositions] = useState<ClubPosition[]>([]);
@@ -516,6 +708,8 @@ export default function ClubRecruitingPage() {
   const [appsLoading, setAppsLoading] = useState(false);
 
   const [applyPosition, setApplyPosition] = useState<ClubPosition | null>(null);
+  const [viewRolePosition, setViewRolePosition] = useState<ClubPosition | null>(null);
+  const [savedRoleIds, setSavedRoleIds] = useState<Set<string>>(new Set());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [positionFilter] = useState<PositionFilter>("all");
@@ -538,20 +732,85 @@ export default function ClubRecruitingPage() {
   const skipApplicantFilterResetRef = useRef(false);
 
   useEffect(() => {
-    const fetchRole = async () => {
-      if (!user?.id || !clubId) return;
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .single();
-      if (data?.role) {
-        setUserRole(normalizeUserRole(data.role));
-      }
-    };
-    void fetchRole();
+    if (!clubId || !user?.id) {
+      setIsListingReviewer(false);
+      return;
+    }
+
+    void supabase
+      .from("hiring_listings")
+      .select("id")
+      .eq("club_id", clubId)
+      .contains("reviewer_ids", [user.id])
+      .limit(1)
+      .then(({ data }) => {
+        setIsListingReviewer((data ?? []).length > 0);
+      });
   }, [clubId, user?.id]);
+
+  const loadSavedRoles = useCallback(async () => {
+    if (!user?.id) {
+      setSavedRoleIds(new Set());
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("saved_roles")
+      .select("position_id")
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to load saved roles:", error.message);
+      setSavedRoleIds(new Set());
+      return;
+    }
+
+    setSavedRoleIds(
+      new Set((data ?? []).map((row) => row.position_id as string)),
+    );
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadSavedRoles();
+  }, [loadSavedRoles]);
+
+  async function toggleSaveRole(positionId: string) {
+    if (!user?.id) return;
+
+    const isSaved = savedRoleIds.has(positionId);
+
+    if (isSaved) {
+      const { error } = await supabase
+        .from("saved_roles")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("position_id", positionId);
+
+      if (error) {
+        console.error("Failed to unsave role:", error.message);
+        return;
+      }
+
+      setSavedRoleIds((prev) => {
+        const next = new Set(prev);
+        next.delete(positionId);
+        return next;
+      });
+      return;
+    }
+
+    const { error } = await supabase.from("saved_roles").insert({
+      user_id: user.id,
+      position_id: positionId,
+    });
+
+    if (error) {
+      console.error("Failed to save role:", error.message);
+      return;
+    }
+
+    setSavedRoleIds((prev) => new Set(prev).add(positionId));
+  }
 
   const loadPositions = useCallback(async () => {
     if (!clubId) return;
@@ -583,7 +842,7 @@ export default function ClubRecruitingPage() {
     const pendingCounts: Record<string, number> = {};
     const acceptedCounts: Record<string, number> = {};
 
-    if (ids.length > 0) {
+    if (canManageHiring && ids.length > 0) {
       const { data: apps } = await supabase
         .from("hiring_applications")
         .select("listing_id, status")
@@ -638,7 +897,7 @@ export default function ClubRecruitingPage() {
     }
 
     setLoading(false);
-  }, [clubId, isPrivileged, user?.id]);
+  }, [clubId, canManageHiring, user?.id]);
 
   useEffect(() => {
     void loadPositions();
@@ -1170,7 +1429,7 @@ export default function ClubRecruitingPage() {
               </div>
             </div>
 
-            {!isPrivileged && position.isOpen && !hasApplied ? (
+            {canManageHiring && position.isOpen && !hasApplied ? (
               <button
                 type="button"
                 onClick={() => setApplyPosition(position)}
@@ -1188,7 +1447,7 @@ export default function ClubRecruitingPage() {
               >
                 Apply Now
               </button>
-            ) : !isPrivileged && hasApplied ? (
+            ) : canManageHiring && hasApplied ? (
               <span
                 style={{
                   background: "#1a1200",
@@ -1221,21 +1480,23 @@ export default function ClubRecruitingPage() {
               </span>
             ))}
           </p>
-          <p
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              color:
-                position.pendingCount > 0
-                  ? "#FFC429"
-                  : position.applicantCount === 0
-                    ? "#555555"
-                    : "#888888",
-              margin: "0 0 10px",
-            }}
-          >
-            {applicantSummary}
-          </p>
+          {canManageHiring ? (
+            <p
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color:
+                  position.pendingCount > 0
+                    ? "#FFC429"
+                    : position.applicantCount === 0
+                      ? "#555555"
+                      : "#888888",
+                margin: "0 0 10px",
+              }}
+            >
+              {applicantSummary}
+            </p>
+          ) : null}
 
           {position.description ? (
             <p
@@ -1256,7 +1517,7 @@ export default function ClubRecruitingPage() {
             <div style={{ marginBottom: "16px" }} />
           )}
 
-          {isPrivileged ? (
+          {canManageHiring ? (
             <div
               style={{
                 display: "flex",
@@ -1391,7 +1652,90 @@ export default function ClubRecruitingPage() {
                 ) : null}
               </div>
             </div>
-          ) : null}
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              {position.isOpen && !hasApplied ? (
+                <button
+                  type="button"
+                  onClick={() => setApplyPosition(position)}
+                  style={{
+                    background: "#E51937",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 14px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Apply Now
+                </button>
+              ) : hasApplied ? (
+                <span
+                  style={{
+                    background: "#1a1200",
+                    border: "1px solid #FFC429",
+                    color: "#FFC429",
+                    borderRadius: "6px",
+                    padding: "6px 14px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                  }}
+                >
+                  Applied ✓
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setViewRolePosition(position)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#cccccc",
+                  borderRadius: "6px",
+                  padding: "6px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                View Role
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleSaveRole(position.id)}
+                style={{
+                  background: savedRoleIds.has(position.id) ? "#1a1500" : "transparent",
+                  border: savedRoleIds.has(position.id)
+                    ? "1px solid #3a2f00"
+                    : "1px solid #333333",
+                  color: savedRoleIds.has(position.id) ? "#FFC429" : "#cccccc",
+                  borderRadius: "6px",
+                  padding: "6px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <Bookmark
+                  size={12}
+                  fill={savedRoleIds.has(position.id) ? "#FFC429" : "none"}
+                />
+                {savedRoleIds.has(position.id) ? "Saved" : "Save Role"}
+              </button>
+            </div>
+          )}
         </div>
       );
     });
@@ -2228,6 +2572,21 @@ export default function ClubRecruitingPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {viewRolePosition ? (
+        <MemberRoleDetailModal
+          position={viewRolePosition}
+          clubName={clubName}
+          hasApplied={Boolean(myApplications[viewRolePosition.id])}
+          saved={savedRoleIds.has(viewRolePosition.id)}
+          onClose={() => setViewRolePosition(null)}
+          onApply={() => {
+            setViewRolePosition(null);
+            setApplyPosition(viewRolePosition);
+          }}
+          onToggleSave={() => void toggleSaveRole(viewRolePosition.id)}
+        />
       ) : null}
 
       {applyPosition && user?.id && clubId ? (

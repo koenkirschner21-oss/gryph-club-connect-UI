@@ -25,7 +25,8 @@ import { useClubTasks } from "../../hooks/useClubTasks";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { supabase } from "../../lib/supabaseClient";
-import type { ClubEvent, MemberRole, RsvpStatus, Visibility } from "../../types";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import type { ClubEvent, RsvpStatus, Visibility } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
@@ -33,6 +34,7 @@ import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
+import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import {
   filterRsvpQuestionsForLoggedInUser,
@@ -1770,12 +1772,6 @@ function deriveInitialsFromAbbreviation(abbreviation?: string | null): string {
   return cleaned.slice(0, 4).toUpperCase();
 }
 
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
-}
-
 type QuestionType = "text" | "multiple_choice" | "yes_no";
 
 interface EventFormQuestion {
@@ -2108,45 +2104,36 @@ export default function ClubEventsPage() {
   const { tasks, createTask, updateTask, deleteTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
 
-  const [userRole, setUserRole] = useState<MemberRole>("member");
-  const isPrivileged = userRole === "owner" || userRole === "executive";
+  const memberAccess = useClubMemberAccess(clubId);
+  const canManageEvents =
+    memberAccess.isPresident || memberAccess.can("manage_events");
+  const isExecutiveForVisibility = isExecutiveAccessLevel(
+    memberAccess.accessLevel,
+    memberAccess.role,
+  );
   const isActiveMember = clubId ? isJoined(clubId) : false;
 
   const visibleEvents = useMemo(
-    () => filterByVisibility(events, { isMember: isActiveMember, isPrivileged }),
-    [events, isActiveMember, isPrivileged],
+    () =>
+      filterByVisibility(events, {
+        isMember: isActiveMember,
+        isPrivileged: isExecutiveForVisibility,
+      }),
+    [events, isActiveMember, isExecutiveForVisibility],
   );
 
   const getRsvpAccessForEvent = useCallback(
     (event: ClubEvent) =>
-      getEventRsvpAccess(event.visibility, { isActiveMember, isPrivileged }),
-    [isActiveMember, isPrivileged],
+      getEventRsvpAccess(event.visibility, {
+        isActiveMember,
+        isPrivileged: isExecutiveForVisibility,
+      }),
+    [isActiveMember, isExecutiveForVisibility],
   );
   const [clubBrand, setClubBrand] = useState<{
     logoUrl?: string;
     abbreviation?: string;
   }>({});
-
-  useEffect(() => {
-    const previewRole = localStorage.getItem("previewRole");
-    if (previewRole) {
-      setUserRole(previewRole as MemberRole);
-      return;
-    }
-    const fetchRole = async () => {
-      if (!user?.id || !clubId) return;
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .single();
-      if (data?.role) {
-        setUserRole(normalizeUserRole(data.role));
-      }
-    };
-    fetchRole();
-  }, [clubId, user?.id]);
 
   useEffect(() => {
     const fetchClubBrand = async () => {
@@ -2439,7 +2426,7 @@ export default function ClubEventsPage() {
     const shouldOpenCreate =
       searchParams.get("openCreate") === "true" ||
       searchParams.get("create") === "true";
-    if (!shouldOpenCreate || !isPrivileged || loading) return;
+    if (!shouldOpenCreate || !canManageEvents || loading) return;
     const templateState = routerLocation.state as {
       contentTemplate?: { title?: string; description?: string };
     } | null;
@@ -2459,7 +2446,7 @@ export default function ClubEventsPage() {
   }, [
     searchParams,
     setSearchParams,
-    isPrivileged,
+    canManageEvents,
     loading,
     routerLocation.state,
   ]);
@@ -2467,16 +2454,16 @@ export default function ClubEventsPage() {
   useEffect(() => {
     const eventId = searchParams.get("manageEvent");
     if (!eventId || loading) return;
-    if (!isPrivileged) {
+    if (!canManageEvents) {
       const next = new URLSearchParams(searchParams);
       next.delete("manageEvent");
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams, isPrivileged, loading]);
+  }, [searchParams, setSearchParams, canManageEvents, loading]);
 
   useEffect(() => {
     const eventId = searchParams.get("viewRsvps");
-    if (!eventId || !isPrivileged || loading) return;
+    if (!eventId || !canManageEvents || loading) return;
 
     void loadAttendees(eventId);
     setFocusRsvpPanel(true);
@@ -2484,17 +2471,17 @@ export default function ClubEventsPage() {
     next.delete("viewRsvps");
     next.set("manageEvent", eventId);
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading, loadAttendees]);
+  }, [searchParams, setSearchParams, canManageEvents, loading, loadAttendees]);
 
   useEffect(() => {
-    if (searchParams.get("openTemplate") !== "true" || !isPrivileged || loading) {
+    if (searchParams.get("openTemplate") !== "true" || !canManageEvents || loading) {
       return;
     }
     setShowTemplatePicker(true);
     const next = new URLSearchParams(searchParams);
     next.delete("openTemplate");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading]);
+  }, [searchParams, setSearchParams, canManageEvents, loading]);
 
   async function saveEventCategory(
     eventId: string,
@@ -3229,7 +3216,7 @@ export default function ClubEventsPage() {
     );
   }
 
-  if (manageEventId && isPrivileged) {
+  if (manageEventId && canManageEvents) {
     if (!manageEvent) {
       return (
         <div
@@ -3291,7 +3278,7 @@ export default function ClubEventsPage() {
           category={getEventCategory(manageEvent.id)}
           recurringMeta={eventRecurring[manageEvent.id]}
           isRecurring={isEventRecurring(manageEvent.id)}
-          isPrivileged={isPrivileged}
+          isPrivileged={canManageEvents}
           isMobile={isMobile}
           counts={manageCounts}
           attendeeList={attendees[manageEvent.id]}
@@ -3353,7 +3340,7 @@ export default function ClubEventsPage() {
             {upcomingEvents.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {isPrivileged && (
+        {canManageEvents && (
           <Button
             onClick={() => {
               if (showForm) resetForm();
@@ -3437,7 +3424,7 @@ export default function ClubEventsPage() {
       ) : null}
 
       {/* Create / edit form — admin/exec only */}
-      {showForm && isPrivileged && (
+      {showForm && canManageEvents && (
         <Card className="mb-6 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-white">
@@ -3604,13 +3591,13 @@ export default function ClubEventsPage() {
               margin: "4px auto 0",
             }}
           >
-            {upcomingEvents.length === 0 && isPrivileged
+            {upcomingEvents.length === 0 && canManageEvents
               ? "Create your first event to get started."
               : eventFilter !== "all"
                 ? "Try a different filter or check back soon."
                 : "Check back soon for new events."}
           </p>
-          {upcomingEvents.length === 0 && isPrivileged ? (
+          {upcomingEvents.length === 0 && canManageEvents ? (
             <button
               type="button"
               onClick={() => setShowForm(true)}
@@ -3694,7 +3681,7 @@ export default function ClubEventsPage() {
                 clubLogoUrl={clubBrand.logoUrl}
                 clubAbbreviation={clubBrand.abbreviation}
                 isRecurring={isEventRecurring(event.id)}
-                isPrivileged={isPrivileged}
+                isPrivileged={canManageEvents}
                 rsvpAccess={getRsvpAccessForEvent(event)}
                 myStatus={myStatus}
                 counts={c}
@@ -3709,7 +3696,7 @@ export default function ClubEventsPage() {
                 onDelete={handleDelete}
                 onCopyRsvpLink={copyRsvpLink}
                 onAddToCalendar={downloadEventIcs}
-                showViewAttendees={isPrivileged}
+                showViewAttendees={canManageEvents}
                 onToggleAttendees={toggleAttendees}
                 attendeesList={
                   expandedAttendees === event.id ? attendees[event.id] : undefined
@@ -3764,7 +3751,7 @@ export default function ClubEventsPage() {
                   clubLogoUrl={clubBrand.logoUrl}
                   clubAbbreviation={clubBrand.abbreviation}
                   isRecurring={isEventRecurring(event.id)}
-                  isPrivileged={isPrivileged}
+                  isPrivileged={canManageEvents}
                   rsvpAccess={getRsvpAccessForEvent(event)}
                   past
                   counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}

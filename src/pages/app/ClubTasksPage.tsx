@@ -15,7 +15,8 @@ import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
-import type { MemberRole, Task, TaskStatus, TaskPriority, TaskType } from "../../types";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import type { Task, TaskStatus, TaskPriority, TaskType } from "../../types";
 import {
   TASK_TYPE_FILTER_CHIPS,
   TASK_TYPE_FORM_OPTIONS,
@@ -53,12 +54,6 @@ const quickFilterChips: { id: TaskQuickFilter; label: string }[] = [
   { id: "high_priority", label: "High Priority" },
   { id: "completed", label: "Completed" },
 ];
-
-function normalizeUserRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
-}
 
 function isTaskOverdue(task: Task): boolean {
   if (!task.dueDate || task.status === "done") return false;
@@ -697,36 +692,15 @@ export default function ClubTasksPage() {
   const myCommenterName =
     members.find((m) => m.userId === user?.id)?.fullName ?? "A member";
 
-  const [userRole, setUserRole] = useState<MemberRole>("member");
-  const isPrivileged = userRole === "owner" || userRole === "executive";
-
+  const memberAccess = useClubMemberAccess(clubId);
+  const canManageTasks =
+    memberAccess.isPresident || memberAccess.can("manage_tasks");
   const [eventLinkOptions, setEventLinkOptions] = useState<{ id: string; title: string }[]>([]);
   const [meetingLinkOptions, setMeetingLinkOptions] = useState<{ id: string; title: string }[]>([]);
   const [hiringLinkOptions, setHiringLinkOptions] = useState<{ id: string; title: string }[]>([]);
 
   useEffect(() => {
-    const previewRole = localStorage.getItem("previewRole");
-    if (previewRole) {
-      setUserRole(previewRole as MemberRole);
-      return;
-    }
-    const fetchRole = async () => {
-      if (!user?.id || !clubId) return;
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .single();
-      if (data?.role) {
-        setUserRole(normalizeUserRole(data.role));
-      }
-    };
-    void fetchRole();
-  }, [clubId, user?.id]);
-
-  useEffect(() => {
-    if (!clubId || !isPrivileged) return;
+    if (!clubId || !canManageTasks) return;
 
     const nowIso = new Date().toISOString();
 
@@ -769,7 +743,7 @@ export default function ClubTasksPage() {
         })),
       );
     });
-  }, [clubId, isPrivileged]);
+  }, [clubId, canManageTasks]);
 
   const enrichedTasks = useMemo(
     () =>
@@ -795,7 +769,11 @@ export default function ClubTasksPage() {
   const visibleTasks = useMemo(() => {
     const activeTasks = enrichedTasks.filter((task) => task.status !== "cancelled");
 
-    if (isPrivileged && activeTypeFilter === "event") {
+    if (!canManageTasks) {
+      return activeTasks.filter((task) => task.assignedTo === user?.id);
+    }
+
+    if (activeTypeFilter === "event") {
       return activeTasks.filter((task) => (task.taskType ?? "general") === "event");
     }
 
@@ -809,7 +787,7 @@ export default function ClubTasksPage() {
     }
 
     return activeTasks.filter((task) => task.assignedTo === user?.id);
-  }, [enrichedTasks, assignmentTab, user?.id, isPrivileged, activeTypeFilter]);
+  }, [enrichedTasks, assignmentTab, user?.id, canManageTasks, activeTypeFilter]);
 
 
   const [showForm, setShowForm] = useState(false);
@@ -842,10 +820,10 @@ export default function ClubTasksPage() {
   }, []);
 
   useEffect(() => {
-    if (!isPrivileged && assignmentTab === "assigned_by_me") {
+    if (!canManageTasks && assignmentTab === "assigned_by_me") {
       setAssignmentTab("assigned_to_me");
     }
-  }, [isPrivileged, assignmentTab]);
+  }, [canManageTasks, assignmentTab]);
 
   useEffect(() => {
     setActiveQuickFilter("all");
@@ -985,7 +963,7 @@ export default function ClubTasksPage() {
     const shouldOpenCreate =
       searchParams.get("openCreate") === "true" ||
       searchParams.get("create") === "true";
-    if (!shouldOpenCreate || !isPrivileged || loading) return;
+    if (!shouldOpenCreate || !canManageTasks || loading) return;
 
     setEditingId(null);
     setTitle("");
@@ -1003,7 +981,7 @@ export default function ClubTasksPage() {
     next.delete("openCreate");
     next.delete("create");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading]);
+  }, [searchParams, setSearchParams, canManageTasks, loading]);
 
   async function handleSubmit() {
     if (!title.trim()) return;
@@ -1231,9 +1209,9 @@ export default function ClubTasksPage() {
   function renderListCard(task: Task, completed = false) {
     const isHovered = hoveredTaskId === task.id;
     const isDone = completed || task.status === "done";
-    const canChangeStatus = isPrivileged || task.assignedTo === user?.id;
-    const canViewComments = isPrivileged || task.assignedTo === user?.id;
-    const canComment = isPrivileged || task.assignedTo === user?.id;
+    const canChangeStatus = canManageTasks || task.assignedTo === user?.id;
+    const canViewComments = canManageTasks || task.assignedTo === user?.id;
+    const canComment = canManageTasks || task.assignedTo === user?.id;
     const next = nextStatus(task.status);
     const assigneeName = assigneePlainNameFor(task);
     const commentCount = commentCounts[task.id] ?? 0;
@@ -1255,7 +1233,7 @@ export default function ClubTasksPage() {
     const actionStyle =
       task.status === "todo" ? startTaskButtonStyle : markDoneButtonStyle;
 
-    const menu = isPrivileged || canChangeStatus ? (
+    const menu = canManageTasks || canChangeStatus ? (
       <div style={{ position: "relative", flexShrink: 0 }}>
         <TasksListMenuButton
           onClick={(e) => {
@@ -1276,7 +1254,7 @@ export default function ClubTasksPage() {
             openTaskDetail(task);
           }}
           onEdit={
-            isPrivileged
+            canManageTasks
               ? () => {
                   setOpenMenuTaskId(null);
                   startEdit(task);
@@ -1284,7 +1262,7 @@ export default function ClubTasksPage() {
               : undefined
           }
           onDelete={
-            isPrivileged
+            canManageTasks
               ? () => {
                   setOpenMenuTaskId(null);
                   void handleDelete(task.id);
@@ -1311,7 +1289,7 @@ export default function ClubTasksPage() {
           commentCount={commentCount}
           onCommentCountChange={handleCommentCountChange}
           canComment={canComment}
-          canDeleteAnyComment={isPrivileged}
+          canDeleteAnyComment={canManageTasks}
         />
       ) : null;
 
@@ -1434,7 +1412,7 @@ export default function ClubTasksPage() {
           >
             Track club work, assignments, and deadlines.
           </p>
-          {!isPrivileged ? (
+          {!canManageTasks ? (
             <p
               style={{
                 fontSize: "13px",
@@ -1454,7 +1432,7 @@ export default function ClubTasksPage() {
             flexShrink: 0,
           }}
         >
-          {isPrivileged ? (
+          {canManageTasks ? (
             <button
               type="button"
             onClick={() => {
@@ -1482,7 +1460,7 @@ export default function ClubTasksPage() {
       <AssignmentTabToggle
         active={assignmentTab}
         onChange={setAssignmentTab}
-        showAssignedByMe={isPrivileged}
+        showAssignedByMe={canManageTasks}
       />
 
       <TasksListStatCards
@@ -1529,7 +1507,7 @@ export default function ClubTasksPage() {
         </div>
       ) : null}
 
-      {showForm && isPrivileged ? (
+      {showForm && canManageTasks ? (
         <Card className="mb-6 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-white">
@@ -1768,10 +1746,10 @@ export default function ClubTasksPage() {
           onClose={closeTaskDetail}
           assigneeName={assigneeDisplayFor(detailTask)}
           assigneeAvatarUrl={assigneeAvatarFor(detailTask)}
-          canEdit={isPrivileged}
-          canDelete={isPrivileged}
-          canChangeStatus={isPrivileged || detailTask.assignedTo === user?.id}
-          canComment={isPrivileged || detailTask.assignedTo === user?.id}
+          canEdit={canManageTasks}
+          canDelete={canManageTasks}
+          canChangeStatus={canManageTasks || detailTask.assignedTo === user?.id}
+          canComment={canManageTasks || detailTask.assignedTo === user?.id}
           commenterName={myCommenterName}
           userId={user?.id}
           onEdit={() => {
