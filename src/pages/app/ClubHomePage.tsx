@@ -31,7 +31,6 @@ import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
 import { supabase } from "../../lib/supabaseClient";
 import type {
   AccessLevel,
-  Club,
   ClubEvent,
   MemberRole,
   Post,
@@ -1250,47 +1249,25 @@ export default function ClubHomePage() {
   const { posts, loading: postsLoading, refresh: refreshPosts } = useClubPosts(clubId);
   const { tasks, loading: tasksLoading, updateTask, deleteTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
-  const [checklistClub, setChecklistClub] = useState<Club | null>(null);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (club) setChecklistClub(club);
-  }, [club]);
-
-  const refetchClubData = useCallback(async () => {
-    if (!clubId || !club) return;
+  const refetchClubData = useCallback(() => {
+    if (!clubId) return;
     refreshPosts();
     refreshEvents();
+  }, [clubId, refreshEvents, refreshPosts]);
 
-    const { data } = await supabase
-      .from("clubs")
-      .select(
-        "name, short_description, logo_url, banner_url, contact_email, meeting_schedule, social_links, membership_type, description_confirmed, logo_confirmed, banner_confirmed, membership_confirmed",
-      )
-      .eq("id", clubId)
-      .maybeSingle();
-
-    if (!data) return;
-
-    setChecklistClub({
-      ...club,
-      name: (data.name as string) ?? club.name,
-      shortDescription: (data.short_description as string) ?? club.shortDescription,
-      logoUrl: (data.logo_url as string) ?? club.logoUrl,
-      bannerUrl: (data.banner_url as string) ?? club.bannerUrl,
-      contactEmail: (data.contact_email as string) ?? club.contactEmail,
-      meetingSchedule: (data.meeting_schedule as string) ?? club.meetingSchedule,
-      socialLinks: (data.social_links as typeof club.socialLinks) ?? club.socialLinks,
-      membershipType:
-        (data.membership_type as Club["membershipType"]) ?? club.membershipType,
-      descriptionConfirmed:
-        (data.description_confirmed as boolean) ?? club.descriptionConfirmed,
-      logoConfirmed: (data.logo_confirmed as boolean) ?? club.logoConfirmed,
-      bannerConfirmed: (data.banner_confirmed as boolean) ?? club.bannerConfirmed,
-      membershipConfirmed:
-        (data.membership_confirmed as boolean) ?? club.membershipConfirmed,
-    });
-  }, [club, clubId, refreshEvents, refreshPosts]);
+  useEffect(() => {
+    if (!clubId) return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ clubId?: string }>).detail;
+      if (detail?.clubId === clubId) {
+        refetchClubData();
+      }
+    };
+    window.addEventListener("club-setup-progress-changed", handler);
+    return () => window.removeEventListener("club-setup-progress-changed", handler);
+  }, [clubId, refetchClubData]);
 
   useEffect(() => {
     if (!clubId || posts.length === 0) {
@@ -1670,9 +1647,9 @@ export default function ClubHomePage() {
         boxSizing: "border-box",
       }}
     >
-      {showSetupChecklist && checklistClub ? (
+      {showSetupChecklist && club ? (
         <SetupChecklist
-          club={checklistClub}
+          club={club}
           postsCount={posts.length}
           eventsCount={events.length}
           contentLoading={postsLoading || eventsLoading}
@@ -1681,9 +1658,9 @@ export default function ClubHomePage() {
         />
       ) : null}
 
-      {setupModalOpen && checklistClub ? (
+      {setupModalOpen && club ? (
         <SetupChecklistModal
-          club={checklistClub}
+          club={club}
           postsCount={posts.length}
           eventsCount={events.length}
           contentLoading={postsLoading || eventsLoading}

@@ -214,10 +214,27 @@ interface FormSnapshot {
   membershipType: MembershipType;
   logoUrl: string;
   bannerUrl: string;
+  contactEmail: string;
+  meetingSchedule: string;
   instagramUrl: string;
   linkedinUrl: string;
   twitterUrl: string;
   websiteUrl: string;
+}
+
+function isPlaceholderImageUrl(url: string): boolean {
+  const normalized = url.trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized.includes("ui-avatars") ||
+    normalized.includes("placeholder") ||
+    normalized.includes("default") ||
+    normalized.includes("initials")
+  );
+}
+
+function hasSocialLinkValue(...urls: string[]): boolean {
+  return urls.some((value) => value.trim() !== "");
 }
 
 function PermissionCell({
@@ -944,6 +961,10 @@ export default function ClubSettingsPage() {
   const [brandColor, setBrandColor] = useState(club?.brandColor ?? "#C20430");
   const [logoUrl, setLogoUrl] = useState(club?.logoUrl ?? "");
   const [bannerUrl, setBannerUrl] = useState(club?.bannerUrl ?? "");
+  const [contactEmail, setContactEmail] = useState(club?.contactEmail ?? "");
+  const [meetingSchedule, setMeetingSchedule] = useState(
+    club?.meetingSchedule ?? "",
+  );
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [logoCropFile, setLogoCropFile] = useState<File | null>(null);
@@ -960,6 +981,7 @@ export default function ClubSettingsPage() {
   const [showLogoUrl, setShowLogoUrl] = useState(false);
   const [showBannerUrl, setShowBannerUrl] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [membershipDirty, setMembershipDirty] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState<FormSnapshot | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -1014,6 +1036,8 @@ export default function ClubSettingsPage() {
       membershipType: club?.membershipType ?? "open",
       logoUrl: club?.logoUrl ?? "",
       bannerUrl: club?.bannerUrl ?? "",
+      contactEmail: club?.contactEmail ?? "",
+      meetingSchedule: club?.meetingSchedule ?? "",
       instagramUrl: "",
       linkedinUrl: "",
       twitterUrl: "",
@@ -1036,6 +1060,8 @@ export default function ClubSettingsPage() {
     setMembershipType(snapshot.membershipType);
     setLogoUrl(snapshot.logoUrl);
     setBannerUrl(snapshot.bannerUrl);
+    setContactEmail(snapshot.contactEmail);
+    setMeetingSchedule(snapshot.meetingSchedule);
     setInstagramUrl(snapshot.instagramUrl);
     setLinkedinUrl(snapshot.linkedinUrl);
     setTwitterUrl(snapshot.twitterUrl);
@@ -1309,23 +1335,61 @@ export default function ClubSettingsPage() {
       brandColor: brandColor.trim() || undefined,
       logoUrl: logoUrl.trim() || undefined,
       bannerUrl: bannerUrl.trim() || undefined,
+      contactEmail: contactEmail.trim() || undefined,
+      meetingSchedule: meetingSchedule.trim() || undefined,
       membershipType,
     };
 
     if (savedSnapshot) {
-      if (shortDescription.trim() !== savedSnapshot.shortDescription) {
+      if (
+        shortDescription.trim() &&
+        shortDescription.trim() !== savedSnapshot.shortDescription
+      ) {
         ownerUpdate.descriptionConfirmed = true;
       }
-      if (logoUrl.trim() !== savedSnapshot.logoUrl) {
+      if (
+        logoUrl.trim() &&
+        !isPlaceholderImageUrl(logoUrl) &&
+        logoUrl.trim() !== savedSnapshot.logoUrl
+      ) {
         ownerUpdate.logoConfirmed = true;
       }
-      if (bannerUrl.trim() !== savedSnapshot.bannerUrl) {
+      if (
+        bannerUrl.trim() &&
+        !isPlaceholderImageUrl(bannerUrl) &&
+        bannerUrl.trim() !== savedSnapshot.bannerUrl
+      ) {
         ownerUpdate.bannerConfirmed = true;
       }
-      if (membershipType !== savedSnapshot.membershipType) {
+      if (
+        membershipDirty ||
+        membershipType !== savedSnapshot.membershipType
+      ) {
         ownerUpdate.membershipConfirmed = true;
       }
+      if (
+        contactEmail.trim() &&
+        contactEmail.trim() !== savedSnapshot.contactEmail
+      ) {
+        ownerUpdate.contactEmailConfirmed = true;
+      }
+      if (
+        meetingSchedule.trim() &&
+        meetingSchedule.trim() !== savedSnapshot.meetingSchedule
+      ) {
+        ownerUpdate.meetingScheduleConfirmed = true;
+      }
     }
+
+    const socialLinksChanged = savedSnapshot
+      ? instagramUrl.trim() !== savedSnapshot.instagramUrl ||
+        linkedinUrl.trim() !== savedSnapshot.linkedinUrl ||
+        twitterUrl.trim() !== savedSnapshot.twitterUrl ||
+        websiteUrl.trim() !== savedSnapshot.websiteUrl
+      : false;
+    const shouldConfirmSocialLinks =
+      socialLinksChanged &&
+      hasSocialLinkValue(instagramUrl, linkedinUrl, twitterUrl, websiteUrl);
 
     const ok = await updateClub(
       clubId!,
@@ -1356,6 +1420,10 @@ export default function ClubSettingsPage() {
         return;
       }
 
+      if (shouldConfirmSocialLinks) {
+        await updateClub(clubId!, { socialLinksConfirmed: true });
+      }
+
       if (permissionsDirty) {
         const normalizedPermissions = normalizeClubPermissions(permissions);
         const { error: permissionsError } = await supabase
@@ -1381,6 +1449,7 @@ export default function ClubSettingsPage() {
     if (ok) {
       setSuccess(true);
       setHasUnsavedChanges(false);
+      setMembershipDirty(false);
       setSavedSnapshot({
         name: name.trim(),
         shortDescription: shortDescription.trim(),
@@ -1391,11 +1460,16 @@ export default function ClubSettingsPage() {
         membershipType,
         logoUrl: logoUrl.trim(),
         bannerUrl: bannerUrl.trim(),
+        contactEmail: contactEmail.trim(),
+        meetingSchedule: meetingSchedule.trim(),
         instagramUrl: instagramUrl.trim(),
         linkedinUrl: linkedinUrl.trim(),
         twitterUrl: twitterUrl.trim(),
         websiteUrl: websiteUrl.trim(),
       });
+      window.dispatchEvent(
+        new CustomEvent("club-setup-progress-changed", { detail: { clubId } }),
+      );
     } else {
       setError("Failed to save changes. Please try again.");
     }
@@ -1565,6 +1639,10 @@ export default function ClubSettingsPage() {
     }
 
     setJoinQuestions(parseJoinQuestions(questions));
+    void updateClub(clubId, { membershipConfirmed: true });
+    window.dispatchEvent(
+      new CustomEvent("club-setup-progress-changed", { detail: { clubId } }),
+    );
     showToast("Join request form saved", "success");
   }
 
@@ -1848,6 +1926,27 @@ export default function ClubSettingsPage() {
               onDirty={markDirty}
               placeholder="A brief tagline for your club"
               maxLength={200}
+            />
+          </SettingsField>
+
+          <SettingsField id="contact-email" label="Contact Email">
+            <SettingsTextInput
+              id="contact-email"
+              type="email"
+              value={contactEmail}
+              onChange={setContactEmail}
+              onDirty={markDirty}
+              placeholder="club@uoguelph.ca"
+            />
+          </SettingsField>
+
+          <SettingsField id="meeting-schedule" label="Meeting Schedule">
+            <SettingsTextInput
+              id="meeting-schedule"
+              value={meetingSchedule}
+              onChange={setMeetingSchedule}
+              onDirty={markDirty}
+              placeholder="e.g. Wednesdays at 6pm in UC 442"
             />
           </SettingsField>
 
@@ -2186,6 +2285,7 @@ export default function ClubSettingsPage() {
                     type="button"
                     onClick={() => {
                       setMembershipType(option.value);
+                      setMembershipDirty(true);
                       markDirty();
                     }}
                     style={{

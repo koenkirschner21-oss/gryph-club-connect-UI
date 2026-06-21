@@ -42,33 +42,12 @@ function buildCompletionChecks(
 ) {
   return {
     clubName: Boolean(club.name?.trim()),
-    shortDescription: Boolean(
-      club.shortDescription?.trim() &&
-        club.shortDescription.trim().length > 100 &&
-        club.descriptionConfirmed === true,
-    ),
-    logo: Boolean(
-      club.logoUrl?.trim() &&
-        !club.logoUrl.includes("ui-avatars") &&
-        !club.logoUrl.includes("placeholder") &&
-        !club.logoUrl.includes("default") &&
-        !club.logoUrl.includes("initials") &&
-        club.logoConfirmed === true,
-    ),
-    banner: Boolean(
-      club.bannerUrl?.trim() &&
-        !club.bannerUrl.includes("placeholder") &&
-        !club.bannerUrl.includes("default") &&
-        club.bannerConfirmed === true,
-    ),
-    contactEmail: Boolean(club.contactEmail?.trim()),
-    meetingSchedule: Boolean(club.meetingSchedule?.trim()),
-    socialLinks: Boolean(
-      club.socialLinks &&
-        Object.values(club.socialLinks).some(
-          (value) => value && String(value).trim() !== "",
-        ),
-    ),
+    shortDescription: club.descriptionConfirmed === true,
+    logo: club.logoConfirmed === true,
+    banner: club.bannerConfirmed === true,
+    contactEmail: club.contactEmailConfirmed === true,
+    meetingSchedule: club.meetingScheduleConfirmed === true,
+    socialLinks: club.socialLinksConfirmed === true,
     membershipType: club.membershipConfirmed === true,
     firstAnnouncement: postsCount > 0,
     firstEvent: eventsCount > 0,
@@ -142,7 +121,7 @@ function buildChecklistItems(
     },
     {
       id: "membership-type",
-      label: "Choose membership settings",
+      label: "Choose membership rules",
       complete: checks.membershipType,
       section: "profile",
       fixPath: settingsFixPath(club.id, "membership", "membership"),
@@ -201,11 +180,31 @@ function ChecklistRow({
   onUseTemplate: (type: TemplateLaunchType) => void;
 }) {
   const navigate = useNavigate();
+  const canDeepLink = !item.complete && Boolean(item.fixPath);
 
   return (
     <div>
       <div style={checkRowStyle}>
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div
+          style={{
+            minWidth: 0,
+            flex: 1,
+            cursor: canDeepLink ? "pointer" : undefined,
+          }}
+          role={canDeepLink ? "link" : undefined}
+          tabIndex={canDeepLink ? 0 : undefined}
+          onClick={canDeepLink ? () => navigate(item.fixPath!) : undefined}
+          onKeyDown={
+            canDeepLink
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(item.fixPath!);
+                  }
+                }
+              : undefined
+          }
+        >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             {item.complete ? (
               <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
@@ -304,9 +303,16 @@ export default function SetupChecklist({
 
   useEffect(() => {
     if (!onRefetch) return;
-    const handleFocus = () => onRefetch();
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
+    const handleRefresh = () => onRefetch();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") handleRefresh();
+    };
+    window.addEventListener("focus", handleRefresh);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleRefresh);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [onRefetch]);
 
   const items = useMemo(
@@ -505,9 +511,8 @@ export default function SetupChecklist({
         >
           Continue Setup
         </Link>
-        <button
-          type="button"
-          onClick={() => navigate(publicProfilePath)}
+        <Link
+          to={publicProfilePath}
           style={{
             background: "transparent",
             color: "#cccccc",
@@ -516,11 +521,12 @@ export default function SetupChecklist({
             padding: "10px 18px",
             fontSize: "13px",
             fontWeight: 600,
-            cursor: "pointer",
+            textDecoration: "none",
+            display: "inline-block",
           }}
         >
           Preview Public Profile
-        </button>
+        </Link>
         {allComplete ? (
           <button
             type="button"

@@ -73,6 +73,9 @@ function mapRow(row: Record<string, unknown>): Club {
     logoConfirmed: (row.logo_confirmed as boolean) ?? false,
     bannerConfirmed: (row.banner_confirmed as boolean) ?? false,
     membershipConfirmed: (row.membership_confirmed as boolean) ?? false,
+    contactEmailConfirmed: (row.contact_email_confirmed as boolean) ?? false,
+    socialLinksConfirmed: (row.social_links_confirmed as boolean) ?? false,
+    meetingScheduleConfirmed: (row.meeting_schedule_confirmed as boolean) ?? false,
     claimStatus: normalizeClaimStatus(row.claim_status),
     setupCompleted: (row.setup_completed as boolean) ?? false,
     isPublished: (row.is_published as boolean) ?? false,
@@ -499,6 +502,12 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         row.banner_confirmed = fields.bannerConfirmed;
       if (fields.membershipConfirmed !== undefined)
         row.membership_confirmed = fields.membershipConfirmed;
+      if (fields.contactEmailConfirmed !== undefined)
+        row.contact_email_confirmed = fields.contactEmailConfirmed;
+      if (fields.socialLinksConfirmed !== undefined)
+        row.social_links_confirmed = fields.socialLinksConfirmed;
+      if (fields.meetingScheduleConfirmed !== undefined)
+        row.meeting_schedule_confirmed = fields.meetingScheduleConfirmed;
       if (fields.joinCode !== undefined) row.join_code = fields.joinCode;
       if (fields.contactEmail !== undefined) row.contact_email = fields.contactEmail;
       if (fields.meetingSchedule !== undefined)

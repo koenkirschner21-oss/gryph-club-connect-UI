@@ -73,6 +73,9 @@ export interface Club {
   logoConfirmed?: boolean;
   bannerConfirmed?: boolean;
   membershipConfirmed?: boolean;
+  contactEmailConfirmed?: boolean;
+  socialLinksConfirmed?: boolean;
+  meetingScheduleConfirmed?: boolean;
   claimStatus?: ClaimStatus;
   setupCompleted?: boolean;
   isPublished?: boolean;
