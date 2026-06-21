@@ -574,6 +574,7 @@ const HOW_IT_WORKS = [
     step: "1",
     title: "Sign Up",
     description: "Create your account with your UofG email in seconds",
+    to: "/signup",
     borderTop: "#E51937",
     Icon: UserPlus,
     iconColor: "#E51937",
@@ -582,6 +583,7 @@ const HOW_IT_WORKS = [
     step: "2",
     title: "Find Your Club",
     description: "Browse 200+ clubs by category, size, or interest",
+    to: "/explore",
     borderTop: "#FFC429",
     Icon: Search,
     iconColor: "#FFC429",
@@ -590,6 +592,7 @@ const HOW_IT_WORKS = [
     step: "3",
     title: "Get Involved",
     description: "Join clubs, attend events, and connect with your community",
+    to: "/events",
     borderTop: "#E51937",
     Icon: Users,
     iconColor: "#ffffff",
@@ -912,13 +915,9 @@ function HomeUpcomingEventsBlock({
 }: {
   savedClubList?: Club[];
 }) {
-  const { user } = useAuthContext();
   const navigate = useNavigate();
   const [events, setEvents] = useState<HomeCampusEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const seeAllPath = user
-    ? "/events"
-    : `/signup?redirect=${encodeURIComponent("/events")}`;
   const combinedLayout = Boolean(savedClubList && savedClubList.length > 0);
 
   useEffect(() => {
@@ -996,14 +995,7 @@ function HomeUpcomingEventsBlock({
   }, []);
 
   function openEvent(event: HomeCampusEvent) {
-    const clubPath = event.clubSlug
-      ? `/clubs/${event.clubSlug}`
-      : "/explore";
-    if (user) {
-      navigate(clubPath);
-    } else {
-      navigate(`/signup?redirect=${encodeURIComponent(clubPath)}`);
-    }
+    navigate(`/events/${event.id}`);
   }
 
   if (!loading && events.length === 0 && !combinedLayout) return null;
@@ -1052,7 +1044,7 @@ function HomeUpcomingEventsBlock({
             ))}
           </div>
           <Link
-            to={seeAllPath}
+            to="/events"
             style={{
               fontSize: "13px",
               color: "#E51937",
@@ -1358,8 +1350,10 @@ export default function Home() {
           </p>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
             {HOW_IT_WORKS.map((item) => (
-              <div
+              <Link
                 key={item.step}
+                to={item.to}
+                className="block no-underline"
                 style={{
                   background: "#141414",
                   border: "1px solid #242424",
@@ -1367,6 +1361,15 @@ export default function Home() {
                   borderRadius: "10px",
                   padding: "24px",
                   textAlign: "left",
+                  transition: "border-color 0.15s ease, transform 0.15s ease",
+                }}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.borderColor = "#333333";
+                  event.currentTarget.style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.borderColor = "#242424";
+                  event.currentTarget.style.transform = "none";
                 }}
               >
                 <item.Icon
@@ -1421,7 +1424,7 @@ export default function Home() {
                 >
                   {item.description}
                 </p>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

@@ -92,8 +92,8 @@ export default function TermsOfService() {
         <h2 style={h2Style}>Section 10 — Contact</h2>
         <p style={bodyStyle}>
           Questions about these Terms of Service can be directed to{" "}
-          <a href="mailto:legal@gryphclubconnect.com" style={linkStyle}>
-            legal@gryphclubconnect.com
+          <a href="mailto:gryphclubconnect@gmail.com" style={linkStyle}>
+            gryphclubconnect@gmail.com
           </a>
           .
         </p>

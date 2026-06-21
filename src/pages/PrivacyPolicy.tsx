@@ -84,8 +84,8 @@ export default function PrivacyPolicy() {
           You have the right to access the personal information we hold about you, to
           request corrections to inaccurate data, and to request deletion of your account.
           To exercise these rights, contact us at{" "}
-          <a href="mailto:privacy@gryphclubconnect.com" style={linkStyle}>
-            privacy@gryphclubconnect.com
+          <a href="mailto:gryphclubconnect@gmail.com" style={linkStyle}>
+            gryphclubconnect@gmail.com
           </a>
           .
         </p>
@@ -96,8 +96,8 @@ export default function PrivacyPolicy() {
         <h2 style={h2Style}>Section 9 — Contact</h2>
         <p style={bodyStyle}>
           If you have questions about this Privacy Policy, contact us at{" "}
-          <a href="mailto:privacy@gryphclubconnect.com" style={linkStyle}>
-            privacy@gryphclubconnect.com
+          <a href="mailto:gryphclubconnect@gmail.com" style={linkStyle}>
+            gryphclubconnect@gmail.com
           </a>
           .
         </p>
