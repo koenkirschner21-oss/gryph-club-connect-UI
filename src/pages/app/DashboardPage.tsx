@@ -845,8 +845,8 @@ function OverviewClubLogo({
   size?: number;
 }) {
   const abbr = abbreviation?.trim() || deriveAbbreviation(name);
-  const fontSize = size >= 32 ? "11px" : "10px";
-  const radius = size >= 32 ? "8px" : "6px";
+  const fontSize = size >= 40 ? "12px" : size >= 32 ? "11px" : "10px";
+  const radius = size >= 40 ? "10px" : size >= 32 ? "8px" : "6px";
 
   if (logoUrl) {
     return (
@@ -1145,15 +1145,15 @@ function OverviewCompactClubRow({
           ...overviewRowDividerStyle,
           display: "flex",
           alignItems: "center",
-          gap: "12px",
-          padding: "12px 0",
+          gap: "14px",
+          padding: "14px 0",
         }}
       >
         <OverviewClubLogo
           name={club.name}
           abbreviation={club.abbreviation}
           logoUrl={logoUrl}
-          size={32}
+          size={40}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
@@ -2021,7 +2021,7 @@ function OverviewTab({
     [upcomingEvents],
   );
 
-  const previewClubs = useMemo(() => myClubs.slice(0, 4), [myClubs]);
+  const previewClubs = useMemo(() => myClubs.slice(0, 3), [myClubs]);
 
   const previewInboxMessages = useMemo(
     () => inboxMessages.slice(0, 3),
