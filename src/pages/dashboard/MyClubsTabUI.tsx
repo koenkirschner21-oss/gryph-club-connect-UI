@@ -78,23 +78,6 @@ function isClubActive(club: Club): boolean {
   return true;
 }
 
-function formatClubCardDescription(club: Club): string | null {
-  const raw = club.shortDescription?.trim() || club.description?.trim();
-  if (!raw) return null;
-
-  const sentenceMatches = raw.match(/[^.!?]+[.!?]+/g);
-  if (sentenceMatches && sentenceMatches.length > 0) {
-    const truncated = sentenceMatches.slice(0, 2).join(" ").trim();
-    if (truncated.length < raw.length) return truncated;
-  }
-
-  if (raw.length > 160) {
-    return `${raw.slice(0, 157).trim()}…`;
-  }
-
-  return raw;
-}
-
 function resolveClubStatusLabel(club: Club, isPendingMembership: boolean): string | null {
   if (club.claimStatus === "claim_pending") return "Claim Pending";
   if (isPendingMembership) return "Pending";
@@ -375,7 +358,8 @@ function MyClubsTabCard({
   isMobile: boolean;
 }) {
   const categorySubtitle = formatCategorySubtitle(club);
-  const description = formatClubCardDescription(club);
+  const descriptionText =
+    club.shortDescription?.trim() || club.description?.trim() || null;
   const roleBorderColor = roleDisplay.borderColor ?? roleDisplay.color;
 
   return (
@@ -385,149 +369,151 @@ function MyClubsTabCard({
         border: "1px solid #2a2a2a",
         borderRadius: "10px",
         padding: "14px",
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: "280px",
+        boxSizing: "border-box",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: "12px",
-          marginBottom: "10px",
-        }}
-      >
-        <MyClubsTabClubAvatar
-          name={club.name}
-          abbreviation={club.abbreviation}
-          logoUrl={logoUrl}
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: "8px",
-            }}
-          >
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "12px",
+            marginBottom: "10px",
+          }}
+        >
+          <MyClubsTabClubAvatar
+            name={club.name}
+            abbreviation={club.abbreviation}
+            logoUrl={logoUrl}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "8px",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  lineHeight: 1.3,
+                }}
+              >
+                {club.name}
+              </p>
+              <button
+                type="button"
+                aria-label="Club options"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#777777",
+                  cursor: "pointer",
+                  padding: 0,
+                  display: "flex",
+                  flexShrink: 0,
+                }}
+              >
+                <MoreVertical size={16} aria-hidden />
+              </button>
+            </div>
+
+            <div style={{ marginTop: "6px" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  borderRadius: "20px",
+                  padding: "2px 8px",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  color: roleDisplay.color,
+                  border: `1px solid ${roleBorderColor}`,
+                  background: "transparent",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {roleDisplay.label}
+              </span>
+            </div>
+
             <p
               style={{
-                margin: 0,
-                fontSize: "15px",
-                fontWeight: 700,
-                color: "#ffffff",
-                lineHeight: 1.3,
+                margin: "6px 0 0",
+                fontSize: "12px",
+                color: categorySubtitle ? "#777777" : "transparent",
+                lineHeight: 1.35,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minHeight: "16px",
               }}
+              title={categorySubtitle ?? undefined}
             >
-              {club.name}
+              {categorySubtitle ?? "\u00A0"}
             </p>
-            <button
-              type="button"
-              aria-label="Club options"
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#777777",
-                cursor: "pointer",
-                padding: 0,
-                display: "flex",
-                flexShrink: 0,
-              }}
-            >
-              <MoreVertical size={16} aria-hidden />
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: "6px",
-              marginTop: "6px",
-            }}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                borderRadius: "20px",
-                padding: "2px 8px",
-                fontSize: "10px",
-                fontWeight: 600,
-                color: roleDisplay.color,
-                border: `1px solid ${roleBorderColor}`,
-                background: "transparent",
-              }}
-            >
-              {roleDisplay.label}
-            </span>
-            {categorySubtitle ? (
-              <span style={{ fontSize: "12px", color: "#777777" }}>{categorySubtitle}</span>
-            ) : null}
           </div>
         </div>
-      </div>
 
-      {description ? (
         <p
           style={{
             margin: "0 0 10px",
             fontSize: "12px",
-            color: "#999999",
+            color: descriptionText ? "#999999" : "#555555",
+            fontStyle: descriptionText ? "normal" : "italic",
             lineHeight: 1.5,
+            minHeight: "36px",
             display: "-webkit-box",
             WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
           }}
         >
-          {description}
+          {descriptionText ?? "No description added yet."}
         </p>
-      ) : (
-        <p
-          style={{
-            margin: "0 0 10px",
-            fontSize: "12px",
-            color: "#555555",
-            fontStyle: "italic",
-            lineHeight: 1.5,
-          }}
-        >
-          No description added yet.
-        </p>
-      )}
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "8px",
-          marginBottom: "10px",
-        }}
-      >
-        <span
+        <div
           style={{
-            display: "inline-flex",
+            display: "flex",
             alignItems: "center",
-            gap: "5px",
-            fontSize: "11px",
-            color: "#777777",
+            justifyContent: "space-between",
+            gap: "8px",
+            marginBottom: "12px",
           }}
         >
-          <Users size={13} aria-hidden />
-          {club.memberCount} Member{club.memberCount === 1 ? "" : "s"}
-        </span>
-        {statusLabel ? (
           <span
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
               fontSize: "11px",
-              color: "#888888",
-              fontWeight: 500,
+              color: "#777777",
             }}
           >
-            {statusLabel}
+            <Users size={13} aria-hidden />
+            {club.memberCount} Member{club.memberCount === 1 ? "" : "s"}
           </span>
-        ) : null}
+          {statusLabel ? (
+            <span
+              style={{
+                fontSize: "11px",
+                color: "#888888",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {statusLabel}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div
@@ -536,6 +522,8 @@ function MyClubsTabCard({
           flexDirection: isMobile ? "column" : "row",
           alignItems: isMobile ? "stretch" : "center",
           gap: "8px",
+          marginTop: "auto",
+          paddingTop: "4px",
         }}
       >
         <button
@@ -545,8 +533,8 @@ function MyClubsTabCard({
             background: "#E51937",
             color: "#ffffff",
             borderRadius: "6px",
-            padding: "7px 12px",
-            fontSize: "12px",
+            padding: "5px 10px",
+            fontSize: "11px",
             fontWeight: 600,
             flex: isMobile ? undefined : 1,
             textAlign: "center",
@@ -607,6 +595,7 @@ export function MyClubsGrid({
         display: "grid",
         gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))",
         gap: "12px",
+        alignItems: "stretch",
       }}
     >
       {clubs.map((club) => (
