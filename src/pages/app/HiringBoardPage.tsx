@@ -14,6 +14,10 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { getClubInitials } from "../../lib/clubUtils";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  notifyHiringApplicationSubmitted,
+  resolveStudentDisplayName,
+} from "../../lib/notifications";
 
 export const POSITION_TYPES = [
   { value: "executive", label: "Executive" },
@@ -1900,6 +1904,22 @@ export function ApplicationModal({
 
     if (!data?.length) {
       console.error("Insert succeeded but no row returned:", { payload, data });
+    }
+
+    const applicationId = (data?.[0]?.id as string | undefined) ?? undefined;
+    if (applicationId && user?.id) {
+      await notifyHiringApplicationSubmitted(supabase, {
+        clubId: selectedListing.clubId,
+        clubName,
+        listingId: selectedListing.id,
+        applicationId,
+        roleTitle: selectedListing.title,
+        applicantUserId: user.id,
+        applicantName: resolveStudentDisplayName(
+          profile?.fullName,
+          user.email ?? null,
+        ),
+      });
     }
 
     setSubmitted(true);

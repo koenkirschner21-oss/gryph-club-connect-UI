@@ -233,6 +233,109 @@ export async function notifyExecutiveInviteRequest(
   }
 }
 
+async function fetchClubHiringReviewerUserIds(
+  supabase: SupabaseClient,
+  clubId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("club_members")
+    .select("user_id")
+    .eq("club_id", clubId)
+    .in("role", ["owner", "executive"])
+    .eq("status", "active");
+
+  if (error) {
+    console.error("Failed to load hiring reviewers for notifications:", error.message);
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.user_id as string)
+        .filter((id) => Boolean(id)),
+    ),
+  );
+}
+
+export async function notifyHiringApplicationSubmitted(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    listingId: string;
+    applicationId: string;
+    roleTitle: string;
+    applicantUserId: string;
+    applicantName: string;
+  },
+): Promise<void> {
+  const applicantMessage = `Your application for ${params.roleTitle} at ${params.clubName} has been submitted. The club team will review it.`;
+  const reviewPath = `/app/clubs/${params.clubId}/recruiting?listing=${params.listingId}&application=${params.applicationId}`;
+
+  const applicantBellOk = await createNotification(supabase, {
+    userId: params.applicantUserId,
+    type: "club_update",
+    message: applicantMessage,
+    clubId: params.clubId,
+    referenceId: params.applicationId,
+  });
+  if (!applicantBellOk) {
+    console.error("Failed to send applicant hiring submission notification.");
+  }
+
+  const applicantInboxOk = await createInboxMessage(supabase, {
+    recipientId: params.applicantUserId,
+    type: "application_update",
+    title: `Application submitted — ${params.roleTitle}`,
+    message: applicantMessage,
+    clubId: params.clubId,
+    referenceId: params.applicationId,
+    referenceType: "hiring_application",
+  });
+  if (!applicantInboxOk) {
+    console.error("Failed to create applicant hiring submission inbox message.");
+  }
+
+  const reviewerMessage = `${params.applicantName} applied for ${params.roleTitle}.`;
+  const reviewerIds = await fetchClubHiringReviewerUserIds(supabase, params.clubId);
+
+  for (const reviewerId of reviewerIds) {
+    if (reviewerId === params.applicantUserId) continue;
+
+    const reviewerBellOk = await createNotification(supabase, {
+      userId: reviewerId,
+      type: "club_update",
+      message: reviewerMessage,
+      clubId: params.clubId,
+      referenceId: params.applicationId,
+    });
+    if (!reviewerBellOk) {
+      console.error("Failed to send hiring reviewer notification for:", reviewerId);
+    }
+
+    const reviewerInboxOk = await createInboxMessage(supabase, {
+      recipientId: reviewerId,
+      type: "admin_message",
+      title: `New application — ${params.roleTitle}`,
+      message: reviewerMessage,
+      actionRequired: true,
+      actionType: "review_hiring_application",
+      actionData: {
+        path: reviewPath,
+        listingId: params.listingId,
+        applicationId: params.applicationId,
+      },
+      clubId: params.clubId,
+      referenceId: params.applicationId,
+      referenceType: "hiring_application",
+    });
+    if (!reviewerInboxOk) {
+      console.error("Failed to create hiring reviewer inbox message for:", reviewerId);
+    }
+  }
+}
+
 export async function notifyJoinRequestRejected(
   supabase: SupabaseClient,
   params: {

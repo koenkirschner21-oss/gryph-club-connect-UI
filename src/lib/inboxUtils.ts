@@ -154,6 +154,10 @@ export function resolveInboxLink(message: InboxMessage): string {
 
   const clubBase = message.clubId ? `/app/clubs/${message.clubId}` : null;
 
+  if (message.actionType === "review_hiring_application") {
+    return clubBase ? `${clubBase}/recruiting` : "/app";
+  }
+
   switch (message.type) {
     case "join_rejected":
       return "/explore";

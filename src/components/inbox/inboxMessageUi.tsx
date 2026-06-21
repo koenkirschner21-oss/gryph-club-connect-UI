@@ -258,10 +258,16 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
     case "executive_invite":
       return [{ label: "Review Invite", variant: "outlined" }];
     case "application_update":
+      if (message.actionType === "review_hiring_application") {
+        return [{ label: "Review Applicant", variant: "solid" }];
+      }
       return [{ label: "Review Application", variant: "outlined" }];
     case "new_claim_request":
       return [{ label: "Review in Admin", variant: "outlined" }];
     default:
+      if (message.actionType === "review_hiring_application") {
+        return [{ label: "Review Applicant", variant: "solid" }];
+      }
       return [{ label: "Read More →", variant: "link" }];
   }
 }

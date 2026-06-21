@@ -13,6 +13,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
+import { notifyHiringApplicationSubmitted } from "../../lib/notifications";
 import type { MemberRole } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
@@ -302,28 +303,17 @@ function daysAgoLabel(iso: string): string {
   return `Applied ${days} days ago`;
 }
 
-function positionNeedsUrgentAttention(
-  position: ClubPosition,
-  status: ListingStatus,
-  deadline: { text: string; urgent: boolean } | null,
-): boolean {
-  if (status === "open" && position.pendingCount > 0) return true;
-  if (status === "open" && deadline?.urgent) return true;
-  return false;
+function positionApplicantSummary(position: ClubPosition): string {
+  if (position.applicantCount === 0) return "No applicants yet";
+  if (position.pendingCount > 0) {
+    return `${position.pendingCount} pending review`;
+  }
+  return `${position.applicantCount} applicant${position.applicantCount === 1 ? "" : "s"}`;
 }
 
-function positionCardBorderStyle(
-  isSelected: boolean,
-  needsUrgent: boolean,
-): CSSProperties {
+function positionCardBorderStyle(isSelected: boolean): CSSProperties {
   if (isSelected) {
     return { border: "1px solid #E51937" };
-  }
-  if (needsUrgent) {
-    return {
-      border: "1px solid #2a2a2a",
-      borderLeft: "3px solid #E51937",
-    };
   }
   return { border: "1px solid #2a2a2a" };
 }
@@ -409,6 +399,7 @@ function StatCard({
 function ApplyModal({
   positionTitle,
   clubId,
+  clubName,
   positionId,
   userId,
   onClose,
@@ -416,6 +407,7 @@ function ApplyModal({
 }: {
   positionTitle: string;
   clubId: string;
+  clubName: string;
   positionId: string;
   userId: string;
   onClose: () => void;
@@ -435,23 +427,55 @@ function ApplyModal({
     setSubmitting(true);
     setError(null);
 
-    const { error: insertError } = await supabase.from("job_applications").insert({
-      position_id: positionId,
-      applicant_id: userId,
-      club_id: clubId,
-      why_text: whyText.trim(),
-      experience_text: experienceText.trim() || null,
-      portfolio_url: portfolioUrl.trim() || null,
-      status: "pending",
-    });
+    const answers: HiringApplicationAnswer[] = [
+      { question_id: "why", answer: whyText.trim() },
+    ];
+    if (experienceText.trim()) {
+      answers.push({ question_id: "experience", answer: experienceText.trim() });
+    }
+    if (portfolioUrl.trim()) {
+      answers.push({ question_id: "portfolio", answer: portfolioUrl.trim() });
+    }
+
+    const { data, error: insertError } = await supabase
+      .from("hiring_applications")
+      .insert({
+        listing_id: positionId,
+        applicant_id: userId,
+        answers,
+        status: "pending",
+      })
+      .select("id")
+      .single();
 
     setSubmitting(false);
 
-    if (insertError) {
-      console.error("Failed to submit application:", insertError.message);
-      setError("Could not submit application. Make sure job_applications is set up.");
+    if (insertError || !data) {
+      console.error("Failed to submit application:", insertError?.message);
+      if (insertError?.code === "23505") {
+        setError("You have already applied for this role.");
+      } else {
+        setError("Could not submit application. Please try again.");
+      }
       return;
     }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", userId)
+      .maybeSingle();
+
+    await notifyHiringApplicationSubmitted(supabase, {
+      clubId,
+      clubName,
+      listingId: positionId,
+      applicationId: data.id as string,
+      roleTitle: positionTitle,
+      applicantUserId: userId,
+      applicantName:
+        (profile?.full_name as string | undefined)?.trim() || "A student",
+    });
 
     onSubmitted();
     onClose();
@@ -820,6 +844,31 @@ export default function ClubRecruitingPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, isPrivileged, loading, positions]);
 
+  useEffect(() => {
+    const listingId = searchParams.get("listing");
+    if (!listingId || !isPrivileged || loading || positions.length === 0) {
+      return;
+    }
+
+    const position = positions.find((item) => item.id === listingId);
+    if (!position) return;
+
+    const applicationId = searchParams.get("application");
+
+    skipApplicantFilterResetRef.current = true;
+    setExpandedPositionId(listingId);
+    void loadApplicationsForPosition(listingId).then(() => {
+      if (applicationId) {
+        setSelectedApplicantId(applicationId);
+      }
+    });
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("listing");
+    next.delete("application");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged, loading, positions]);
+
   function resetPostForm() {
     setTitle("");
     setDescription("");
@@ -1071,12 +1120,13 @@ export default function ClubRecruitingPage() {
       !isPrivileged ||
       loading ||
       positions.length === 0 ||
-      expandedPositionId !== null
+      expandedPositionId !== null ||
+      searchParams.get("listing")
     ) {
       return;
     }
     void toggleApplications(positions[0]);
-  }, [isPrivileged, loading, positions]);
+  }, [isPrivileged, loading, positions, expandedPositionId, searchParams]);
 
   function patchApplication(applicationId: string, patch: CandidateReviewPatch) {
     setApplications((prev) =>
@@ -1155,8 +1205,8 @@ export default function ClubRecruitingPage() {
       const menuOpen = openMenuId === position.id;
       const cardHovered = hoveredCardId === position.id;
       const status = listingStatus(position);
-      const needsUrgent = positionNeedsUrgentAttention(position, status, deadline);
       const showClosingSoonBadge = status === "open" && Boolean(deadline?.urgent);
+      const applicantSummary = positionApplicantSummary(position);
 
       const metaSegments: ReactNode[] = [];
       if (closeDate) metaSegments.push(`Closes ${closeDate}`);
@@ -1170,9 +1220,6 @@ export default function ClubRecruitingPage() {
         const legacy = deadlineLabel(position.deadline);
         if (legacy) metaSegments.push(legacy);
       }
-      metaSegments.push(
-        `${position.applicantCount} applicant${position.applicantCount === 1 ? "" : "s"}`,
-      );
 
       return (
         <div
@@ -1187,7 +1234,7 @@ export default function ClubRecruitingPage() {
             borderRadius: "12px",
             padding: "20px 24px",
             marginBottom: "12px",
-            ...positionCardBorderStyle(isExpanded, needsUrgent),
+            ...positionCardBorderStyle(isExpanded),
           }}
         >
           <div
@@ -1287,7 +1334,7 @@ export default function ClubRecruitingPage() {
               fontSize: "12px",
               color: "#444444",
               marginTop: "8px",
-              marginBottom: "10px",
+              marginBottom: "4px",
             }}
           >
             {metaSegments.map((part, index) => (
@@ -1296,6 +1343,21 @@ export default function ClubRecruitingPage() {
                 {part}
               </span>
             ))}
+          </p>
+          <p
+            style={{
+              fontSize: "12px",
+              fontWeight: 600,
+              color:
+                position.pendingCount > 0
+                  ? "#FFC429"
+                  : position.applicantCount === 0
+                    ? "#555555"
+                    : "#888888",
+              margin: "0 0 10px",
+            }}
+          >
+            {applicantSummary}
           </p>
 
           {position.description ? (
@@ -1331,17 +1393,17 @@ export default function ClubRecruitingPage() {
                 type="button"
                 onClick={() => void toggleApplications(position)}
                 style={{
-                  background: "#E51937",
-                  color: "#ffffff",
+                  background: isExpanded ? "transparent" : "#E51937",
+                  color: isExpanded ? "#cccccc" : "#ffffff",
                   borderRadius: "8px",
                   padding: "8px 18px",
                   fontSize: "13px",
                   fontWeight: 600,
-                  border: "none",
+                  border: isExpanded ? "1px solid #333333" : "none",
                   cursor: "pointer",
                 }}
               >
-                Review Applicants ({position.applicantCount})
+                {isExpanded ? "Reviewing Applicants" : "Review Applicants"}
               </button>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 {position.isOpen ? (
@@ -1656,6 +1718,38 @@ export default function ClubRecruitingPage() {
                     {selectedPosition.title}
                   </p>
 
+                  {appsLoading ? (
+                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+                      Loading…
+                    </p>
+                  ) : applications.length === 0 ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minHeight: "420px",
+                        textAlign: "center",
+                        padding: "24px 16px",
+                      }}
+                    >
+                      <Briefcase
+                        size={36}
+                        color="#333333"
+                        aria-hidden
+                        style={{ marginBottom: "12px" }}
+                      />
+                      <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
+                        No applicants yet
+                      </p>
+                      <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px", maxWidth: "320px" }}>
+                        Once students apply for this role, their applications will appear here for
+                        review.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
                   <input
                     type="search"
                     value={applicantSearch}
@@ -1708,20 +1802,7 @@ export default function ClubRecruitingPage() {
                     })}
                   </div>
 
-                  {appsLoading ? (
-                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                      Loading…
-                    </p>
-                  ) : applications.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "48px 16px" }}>
-                      <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
-                        No applicants yet
-                      </p>
-                      <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
-                        Once students apply, their applications will appear here.
-                      </p>
-                    </div>
-                  ) : filteredApplications.length === 0 &&
+                  {filteredApplications.length === 0 &&
                     applicantStatusFilter === "pending" &&
                     applications.length > 0 &&
                     !applicantSearch.trim() &&
@@ -1990,6 +2071,8 @@ export default function ClubRecruitingPage() {
                         </div>
                       ) : null}
                     </div>
+                  )}
+                    </>
                   )}
                 </>
               )}
@@ -2269,6 +2352,7 @@ export default function ClubRecruitingPage() {
         <ApplyModal
           positionTitle={applyPosition.title}
           clubId={clubId}
+          clubName={clubName}
           positionId={applyPosition.id}
           userId={user.id}
           onClose={() => setApplyPosition(null)}
