@@ -23,6 +23,7 @@ import {
   inboxCategoryLabel,
   inboxStatusBadge,
   resolveActionButtons,
+  resolveInboxRowActionLabel,
 } from "./inboxMessageUi";
 
 function formatInboxTimestamp(dateStr: string): string {
@@ -494,6 +495,7 @@ export default function InboxMessageCard({
   const statusBadge = inboxStatusBadge(message);
   const categoryLabel = inboxCategoryLabel(message);
   const clubLabel = message.clubName?.trim() || "Gryph Club Connect";
+  const actionLabel = resolveInboxRowActionLabel(message);
 
   async function handleOpen() {
     if (!message.read) {
@@ -518,19 +520,20 @@ export default function InboxMessageCard({
       style={{
         display: "flex",
         alignItems: "flex-start",
-        gap: "12px",
-        padding: "16px",
-        border: `1px solid ${hovered ? "#333333" : "#2a2a2a"}`,
+        gap: "14px",
+        padding: "18px",
+        border: `1px solid ${hovered ? "#383838" : "#2e2e2e"}`,
         borderRadius: "10px",
         background: hovered
           ? message.read
-            ? "#181818"
-            : "#1a1a1a"
+            ? "#1a1a1a"
+            : "#1c1c1c"
           : message.read
-            ? "#141414"
-            : "#161616",
+            ? "#161616"
+            : "#181818",
         cursor: "pointer",
         transition: "border-color 0.15s ease, background 0.15s ease",
+        boxShadow: hovered ? "0 2px 8px rgba(0,0,0,0.2)" : "none",
       }}
     >
       <InboxMessageAvatar message={message} logoUrl={clubLogoUrl} />
@@ -542,6 +545,7 @@ export default function InboxMessageCard({
             alignItems: "flex-start",
             justifyContent: "space-between",
             gap: "12px",
+            marginBottom: "8px",
           }}
         >
           <div
@@ -560,7 +564,7 @@ export default function InboxMessageCard({
                 fontSize: "14px",
                 fontWeight: 700,
                 color: "#ffffff",
-                lineHeight: 1.4,
+                lineHeight: 1.35,
               }}
             >
               {message.title}
@@ -584,24 +588,43 @@ export default function InboxMessageCard({
               </span>
             ) : null}
           </div>
-          <span
+          <div
             style={{
-              fontSize: "11px",
-              color: "#555555",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
               flexShrink: 0,
-              whiteSpace: "nowrap",
             }}
           >
-            {formatInboxTimestamp(message.createdAt)}
-          </span>
+            <span
+              style={{
+                fontSize: "11px",
+                color: "#666666",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {formatInboxTimestamp(message.createdAt)}
+            </span>
+            {!message.read ? (
+              <span
+                aria-hidden
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  background: "#E51937",
+                  borderRadius: "50%",
+                }}
+              />
+            ) : null}
+          </div>
         </div>
 
         <p
           style={{
-            margin: "6px 0 0",
+            margin: "0 0 10px",
             fontSize: "13px",
-            color: "#777777",
-            lineHeight: 1.5,
+            color: "#888888",
+            lineHeight: 1.55,
             display: "-webkit-box",
             WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical",
@@ -611,33 +634,30 @@ export default function InboxMessageCard({
           {message.message}
         </p>
 
-        <p style={{ margin: "8px 0 0", fontSize: "11px", lineHeight: 1.4 }}>
-          <span style={{ color: "#E51937" }}>{clubLabel}</span>
-          <span style={{ color: "#555555" }}> · {categoryLabel}</span>
-        </p>
-      </div>
-
-      <div
-        style={{
-          width: "8px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          alignSelf: "center",
-          flexShrink: 0,
-        }}
-      >
-        {!message.read ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: "11px", lineHeight: 1.4, minWidth: 0 }}>
+            <span style={{ color: "#E51937" }}>{clubLabel}</span>
+            <span style={{ color: "#555555" }}> · {categoryLabel}</span>
+          </p>
           <span
-            aria-hidden
             style={{
-              width: "8px",
-              height: "8px",
-              background: "#E51937",
-              borderRadius: "50%",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: hovered ? "#ff4d66" : "#E51937",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
             }}
-          />
-        ) : null}
+          >
+            {actionLabel}
+          </span>
+        </div>
       </div>
     </div>
   );

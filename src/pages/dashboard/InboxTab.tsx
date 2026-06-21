@@ -266,7 +266,7 @@ export default function InboxTab({
               {inboxEmptyMessage()}
             </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               {visibleMessages.map((message) => (
                 <InboxMessageCard
                   key={message.id}

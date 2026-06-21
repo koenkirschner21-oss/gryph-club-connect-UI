@@ -197,6 +197,42 @@ export type InboxActionButton = {
   variant: "solid" | "outlined" | "link";
 };
 
+export function resolveInboxRowActionLabel(message: InboxMessage): string {
+  if (message.actionRequired && !message.actionCompleted) {
+    if (message.actionType === "executive_invite_response") {
+      return "Accept / Decline";
+    }
+    if (message.actionType === "ownership_transfer_response") {
+      return "Review →";
+    }
+    if (message.actionType === "former_owner_role_choice") {
+      return "Choose Role →";
+    }
+  }
+
+  const uiType = normalizeInboxUiType(message);
+
+  switch (uiType) {
+    case "claim_approved":
+    case "join_approved":
+      return "Open →";
+    case "claim_rejected":
+      return "View Club Profile →";
+    case "claim_submitted":
+      return "View Status →";
+    case "new_claim_request":
+      return "Review in Admin →";
+    case "application_update":
+      return "View Application →";
+    case "executive_invite":
+      return "Review →";
+    case "new_join_request":
+      return "Review →";
+    default:
+      return "Read More →";
+  }
+}
+
 export function resolveActionButtons(message: InboxMessage): InboxActionButton[] {
   const uiType = normalizeInboxUiType(message);
 

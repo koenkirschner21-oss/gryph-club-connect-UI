@@ -151,6 +151,8 @@ export function resolveInboxLink(message: InboxMessage): string {
       return "/explore";
     case "club_claim_rejected":
       return "/explore";
+    case "club_claim_approved":
+      return clubBase ?? "/app";
     case "admin_message":
     case "system_message":
       return "/app/settings";
