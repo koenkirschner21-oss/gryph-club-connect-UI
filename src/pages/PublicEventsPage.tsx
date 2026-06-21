@@ -29,6 +29,7 @@ import {
 } from "../lib/eventCategories";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
+import { clubCategoryFilterOptions } from "../lib/clubCategories";
 import type { RsvpStatus } from "../types";
 
 type TimeFilter = "week" | "month" | "all" | "custom";
@@ -1249,13 +1250,10 @@ export default function PublicEventsPage() {
   const eventIds = useMemo(() => events.map((event) => event.id), [events]);
   const { myRsvps } = useEventRsvps(eventIds);
 
-  const clubCategories = useMemo(() => {
-    const set = new Set<string>();
-    for (const ev of eventsWithStartTime) {
-      if (ev.clubCategory) set.add(ev.clubCategory);
-    }
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [eventsWithStartTime]);
+  const clubCategories = useMemo(
+    () => clubCategoryFilterOptions(eventsWithStartTime.map((ev) => ev.clubCategory)),
+    [eventsWithStartTime],
+  );
 
   const hasActiveFilters =
     search.trim().length > 0 ||
@@ -1372,11 +1370,18 @@ export default function PublicEventsPage() {
     navigate(`/signup?redirect=${encodeURIComponent(target)}`);
   }
 
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const createClubPath = user ? "/app/create-club" : "/signup?redirect=/app/create-club";
+
   const horizontalPad = isMobile ? "16px" : "48px";
 
   return (
     <div style={{ background: PAGE_BG, minHeight: "100vh" }}>
       <header
+        id="events-page-top"
         style={{
           padding: isMobile ? "28px 16px 12px" : "40px 48px 12px",
           backgroundColor: PAGE_BG,
@@ -1735,6 +1740,62 @@ export default function PublicEventsPage() {
                 ))}
               </div>
             )}
+            <div
+              style={{
+                marginTop: "32px",
+                paddingTop: "24px",
+                borderTop: "1px solid #1e1e1e",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "20px",
+                textAlign: "center",
+              }}
+            >
+              <button
+                type="button"
+                onClick={scrollToTop}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#cccccc",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                Back to top
+              </button>
+              <div>
+                <p
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 600,
+                    color: "#ffffff",
+                    margin: "0 0 6px",
+                  }}
+                >
+                  Can&apos;t find your club?
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate(createClubPath)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#E51937",
+                    cursor: "pointer",
+                  }}
+                >
+                  Create your club here
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>

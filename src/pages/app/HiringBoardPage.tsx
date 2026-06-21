@@ -640,8 +640,6 @@ const detailTagBadgeStyle: CSSProperties = {
 };
 
 function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
-  const deadline = position.deadline ? listingDeadlineDisplay(position.deadline) : null;
-  const deadlineStyle = deadlineBadgeStyle(position.deadline);
   const showCommitment =
     position.commitmentLevel === "part_time" ||
     (position.commitmentLevel === "weekly_hours" &&
@@ -663,30 +661,6 @@ function DetailPositionTagsRow({ position }: { position: BoardPosition }) {
       {showCommitment ? (
         <span style={detailTagBadgeStyle}>
           {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-        </span>
-      ) : null}
-      {deadlineStyle && deadline && !deadline.passed ? (
-        <span
-          style={{
-            ...deadlineStyle,
-            borderRadius: "4px",
-            padding: "4px 10px",
-            fontSize: "11px",
-          }}
-        >
-          {deadline.withinSevenDays ? "Closing soon" : deadline.text}
-        </span>
-      ) : null}
-      {deadline?.passed ? (
-        <span
-          style={{
-            ...detailTagBadgeStyle,
-            background: "#1a0505",
-            border: "1px solid #3a1515",
-            color: "#E51937",
-          }}
-        >
-          Closed
         </span>
       ) : null}
     </div>
@@ -778,9 +752,6 @@ function HiringListingCard({
   const [descriptionPreview, setDescriptionPreview] = useState<string | null>(null);
   const posted = postedDateLabel(position.createdAt);
   const description = position.description?.trim();
-  const deadlineMeta = position.deadline
-    ? listingDeadlineDisplay(position.deadline)
-    : null;
 
   useLayoutEffect(() => {
     const wrapper = descWrapperRef.current;
@@ -912,9 +883,6 @@ function HiringListingCard({
         }}
       >
         {posted ? <span>Posted {posted}</span> : null}
-        {deadlineMeta && !deadlineMeta.passed && deadlineMeta.text !== "No deadline" ? (
-          <span>{deadlineMeta.text}</span>
-        ) : null}
         {position.applicantCount > 0 ? (
           <span>
             {position.applicantCount} applicant
@@ -1123,11 +1091,6 @@ function HiringDetailContent({
             <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
               {position.clubName}
             </p>
-            {position.clubSlug ? (
-              <div style={{ marginTop: "4px" }}>
-                <ViewClubProfileLink onClick={onViewClub} />
-              </div>
-            ) : null}
           </div>
         </div>
 
@@ -1171,16 +1134,6 @@ function HiringDetailContent({
         >
           {position.description || "No description provided."}
         </p>
-        {!alreadyApplied ? (
-          <div style={{ marginTop: "20px" }}>
-            <HiringDetailApplyButton
-              user={user}
-              alreadyApplied={alreadyApplied}
-              onApply={onApply}
-              size="compact"
-            />
-          </div>
-        ) : null}
       </div>
 
       {position.requirements?.trim() ? (
@@ -1249,9 +1202,6 @@ function HiringDetailContent({
           >
             {position.clubDescription}
           </p>
-          {position.clubSlug ? (
-            <ViewClubProfileLink onClick={onViewClub} />
-          ) : null}
         </div>
       ) : null}
     </>
@@ -1385,11 +1335,6 @@ function HiringDetailPanel({
         >
           {position.clubName}
         </p>
-        {position.clubSlug ? (
-          <div style={{ marginBottom: "16px" }}>
-            <ViewClubProfileLink onClick={onViewClub} />
-          </div>
-        ) : null}
 
         <h2
           style={{
@@ -1428,16 +1373,6 @@ function HiringDetailPanel({
         <p style={detailBodyTextStyle}>
           {position.description || "No description provided."}
         </p>
-        {!alreadyApplied ? (
-          <div style={{ marginTop: "20px" }}>
-            <HiringDetailApplyButton
-              user={user}
-              alreadyApplied={alreadyApplied}
-              onApply={onApply}
-              size="compact"
-            />
-          </div>
-        ) : null}
 
         {position.requirements?.trim() ? (
           <>
@@ -1473,9 +1408,6 @@ function HiringDetailPanel({
             <p style={{ ...detailBodyTextStyle, marginBottom: "8px" }}>
               {position.clubDescription}
             </p>
-            {position.clubSlug ? (
-              <ViewClubProfileLink onClick={onViewClub} />
-            ) : null}
           </>
         ) : null}
       </div>
@@ -2544,10 +2476,15 @@ export default function HiringBoardPage() {
     );
   }, [positions]);
 
+  const showCommitmentFilter = useMemo(
+    () => positions.some((position) => position.commitmentLevel !== "flexible"),
+    [positions],
+  );
+
   const hasActiveFilters =
     search.trim().length > 0 ||
     roleTypeFilter !== "all" ||
-    commitmentFilter !== "all" ||
+    (showCommitmentFilter && commitmentFilter !== "all") ||
     clubCategoryFilter !== "all" ||
     deadlineFilter !== "all";
 
@@ -2806,18 +2743,20 @@ export default function HiringBoardPage() {
                 </option>
               ))}
             </select>
-            <select
-              value={commitmentFilter}
-              onChange={(e) => setCommitmentFilter(e.target.value)}
-              aria-label="Filter by commitment"
-              style={filterSelectStyle}
-            >
-              {COMMITMENT_FILTER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            {showCommitmentFilter ? (
+              <select
+                value={commitmentFilter}
+                onChange={(e) => setCommitmentFilter(e.target.value)}
+                aria-label="Filter by commitment"
+                style={filterSelectStyle}
+              >
+                {COMMITMENT_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             {clubCategories.length > 0 ? (
               <select
                 value={clubCategoryFilter}
