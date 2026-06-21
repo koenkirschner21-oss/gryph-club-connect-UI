@@ -667,6 +667,19 @@ export default function ClubDocumentsPage() {
     [filteredDocuments, sortBy],
   );
 
+  const filteredResourceLinks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return resourceLinks;
+    return resourceLinks.filter((link) => {
+      return (
+        link.title.toLowerCase().includes(query) ||
+        link.url.toLowerCase().includes(query) ||
+        (link.description?.toLowerCase().includes(query) ?? false) ||
+        (link.addedByName?.toLowerCase().includes(query) ?? false)
+      );
+    });
+  }, [resourceLinks, searchQuery]);
+
   const displayedDocuments = useMemo(() => {
     if (showAllFiles || sortedDocuments.length <= 6) return sortedDocuments;
     return sortedDocuments.slice(0, 6);
@@ -1083,7 +1096,7 @@ export default function ClubDocumentsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
-            placeholder="Search files by name, category, or description…"
+            placeholder="Search files, links, categories, and descriptions…"
             style={{
               width: "100%",
               height: "44px",
@@ -1215,8 +1228,12 @@ export default function ClubDocumentsPage() {
           <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
             Loading links…
           </p>
-        ) : resourceLinks.length === 0 ? (
-          isPrivileged ? (
+        ) : filteredResourceLinks.length === 0 ? (
+          searchActive ? (
+            <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
+              No links match your search.
+            </p>
+          ) : isPrivileged ? (
             <ResourceLinksEmptyState onAddLink={() => setShowAddLinkModal(true)} />
           ) : (
             <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
@@ -1225,13 +1242,13 @@ export default function ClubDocumentsPage() {
           )
         ) : (
           <Box>
-            {resourceLinks.map((link, index) => (
+            {filteredResourceLinks.map((link, index) => (
               <ResourceLinkRow
                 key={link.id}
                 link={link}
                 canManage={isPrivileged}
                 deleting={deletingLinkId === link.id}
-                isLast={index === resourceLinks.length - 1}
+                isLast={index === filteredResourceLinks.length - 1}
                 onDelete={(item) => void handleDeleteLink(item as ResourceLink)}
               />
             ))}

@@ -813,7 +813,7 @@ export default function ClubMembersPage() {
 
   const isSmallClub = members.length <= 3;
   const showInviteCodeSection =
-    Boolean(club?.joinCode) && (!isSmallClub || viewMode === "list");
+    Boolean(club?.joinCode) && !(isSmallClub && viewMode === "list");
 
   const roleOrder: Record<MemberRole, number> = {
     owner: 0,
@@ -1593,6 +1593,9 @@ export default function ClubMembersPage() {
           flexWrap: "wrap",
           gap: "8px",
           marginBottom: "20px",
+          marginTop: "4px",
+          paddingTop: "16px",
+          borderTop: "1px solid #1a1a1a",
         }}
       >
         {viewToggleButton("list", "Members")}

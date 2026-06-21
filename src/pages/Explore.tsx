@@ -73,7 +73,7 @@ function ExploreSearchBar({
         aria-label={placeholder}
         style={{
           backgroundColor: PAGE_BG,
-          border: "1px solid #2a2a2a",
+          border: "2px solid #2a2a2a",
           borderRadius: "10px",
           padding: "0 20px 0 48px",
           color: "#ffffff",
@@ -82,6 +82,7 @@ function ExploreSearchBar({
           height: "60px",
           boxSizing: "border-box",
           outline: "none",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
         }}
         onFocus={(e) => {
           e.currentTarget.style.borderColor = ACCENT_RED;
@@ -425,9 +426,10 @@ export default function Explore() {
         category,
         clubs: sortClubsByMemberActivity(
           clubs.filter((club) => club.category.toLowerCase() === category.toLowerCase()),
-        ),
+        ).slice(0, 6),
       }))
-      .filter((row) => row.clubs.length > 0);
+      .filter((row) => row.clubs.length > 0)
+      .slice(0, 2);
   }, [clubs]);
 
   const filteredClubs = useMemo(() => {
@@ -486,7 +488,7 @@ export default function Explore() {
       <section style={{ backgroundColor: PAGE_BG }}>
         <div
           style={{
-            padding: isMobile ? "28px 16px 20px" : "48px 48px 24px",
+            padding: isMobile ? "24px 16px 12px" : "36px 48px 16px",
             textAlign: "left",
           }}
         >
@@ -515,9 +517,9 @@ export default function Explore() {
 
           <div
             style={{
-              marginTop: "16px",
+              marginTop: "12px",
               width: "100%",
-              maxWidth: "720px",
+              maxWidth: "760px",
             }}
           >
             <ExploreSearchBar
@@ -533,7 +535,7 @@ export default function Explore() {
                 flexWrap: "wrap",
                 alignItems: "center",
                 gap: "10px",
-                marginTop: "10px",
+                marginTop: "8px",
               }}
             >
               <CategoryFilterDropdown
@@ -593,7 +595,7 @@ export default function Explore() {
 
       <div
         className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
-        style={{ backgroundColor: PAGE_BG, paddingTop: isMobile ? "4px" : "8px" }}
+        style={{ backgroundColor: PAGE_BG, paddingTop: 0 }}
       >
         {claimMode ? (
           <div
@@ -633,7 +635,7 @@ export default function Explore() {
         {!loading && !hasActiveFilters ? (
           <>
             {mostActiveClubs.length > 0 ? (
-              <section className="mb-10" style={{ backgroundColor: PAGE_BG }}>
+              <section className="mb-6" style={{ backgroundColor: PAGE_BG }}>
                 <div
                   style={{
                     display: "flex",
@@ -681,7 +683,7 @@ export default function Explore() {
             ) : null}
 
             {featuredCategoryRows.map((row) => (
-              <section key={row.category} className="mb-12" style={{ backgroundColor: PAGE_BG }}>
+              <section key={row.category} className="mb-8" style={{ backgroundColor: PAGE_BG }}>
                 <h2 style={{ ...sectionHeadingStyle, marginBottom: "14px" }}>{row.category}</h2>
                 <HorizontalClubRow
                   clubs={row.clubs}
