@@ -5,6 +5,7 @@ import BrandLogo from "../components/ui/BrandLogo";
 import { useAuthContext } from "../context/useAuthContext";
 import { notifyOnboardingCompleted } from "../context/AuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
+import { ensureMinimalProfile } from "../lib/authProfile";
 import { supabase } from "../lib/supabaseClient";
 import Spinner from "../components/ui/Spinner";
 
@@ -118,31 +119,40 @@ export default function OnboardingPage() {
 
     let cancelled = false;
 
-    void supabase
-      .from("profiles")
-      .select("full_name, program, year_of_study, onboarding_completed")
-      .eq("id", user.id)
-      .maybeSingle()
-      .then(({ data, error: profileError }) => {
-        if (cancelled) return;
+    void (async () => {
+      const profileEnsure = await ensureMinimalProfile(user);
+      if (profileEnsure.error) {
+        console.error(
+          "[auth] onboarding profile ensure failed:",
+          profileEnsure.error,
+        );
+      }
 
-        if (profileError) {
-          console.error("Failed to load profile for onboarding:", profileError.message);
-          setCheckingProfile(false);
-          return;
-        }
+      const { data, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, program, year_of_study, onboarding_completed")
+        .eq("id", user.id)
+        .maybeSingle();
 
-        if (data?.onboarding_completed) {
-          notifyOnboardingCompleted();
-          navigate("/app", { replace: true });
-          return;
-        }
+      if (cancelled) return;
 
-        setFullName((data?.full_name as string) ?? "");
-        setProgram((data?.program as string) ?? "");
-        setYearOfStudy((data?.year_of_study as string) ?? "");
+      if (profileError) {
+        console.error("Failed to load profile for onboarding:", profileError.message);
         setCheckingProfile(false);
-      });
+        return;
+      }
+
+      if (data?.onboarding_completed) {
+        notifyOnboardingCompleted();
+        navigate("/app", { replace: true });
+        return;
+      }
+
+      setFullName((data?.full_name as string) ?? "");
+      setProgram((data?.program as string) ?? "");
+      setYearOfStudy((data?.year_of_study as string) ?? "");
+      setCheckingProfile(false);
+    })();
 
     return () => {
       cancelled = true;

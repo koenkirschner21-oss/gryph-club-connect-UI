@@ -4,6 +4,11 @@ import { Eye, EyeOff } from "lucide-react";
 import { useAuthContext } from "../context/useAuthContext";
 import { showToast } from "../components/ui/Toast";
 import { useIsMobile } from "../hooks/useWindowWidth";
+import {
+  formatSignupError,
+  isAllowedSignupEmail,
+  signupEmailValidationMessage,
+} from "../lib/authProfile";
 
 const AUTH_RED = "#E51937";
 const AUTH_RED_HOVER = "#cc0020";
@@ -306,10 +311,9 @@ function AuthPasswordField({
 }
 
 const ALLOWED_DOMAIN = "uoguelph.ca";
-const EMAIL_DOMAIN_ERROR =
-  "Only University of Guelph email addresses are accepted (@uoguelph.ca)";
+const EMAIL_DOMAIN_ERROR = signupEmailValidationMessage();
 void ALLOWED_DOMAIN;
-void EMAIL_DOMAIN_ERROR; // preserved for UofG email restriction restore
+void EMAIL_DOMAIN_ERROR;
 
 export default function Signup() {
   const { signUp } = useAuthContext();
@@ -333,11 +337,10 @@ export default function Signup() {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    // TODO: re-enable UofG email restriction before launch — disabled temporarily for multi-account testing
-    // if (!normalizedEmail.endsWith(`@${ALLOWED_DOMAIN}`)) {
-    //   setEmailError(EMAIL_DOMAIN_ERROR);
-    //   return;
-    // }
+    if (!isAllowedSignupEmail(normalizedEmail)) {
+      setEmailError(EMAIL_DOMAIN_ERROR);
+      return;
+    }
 
     setEmailError(null);
     setLoading(true);
@@ -347,9 +350,11 @@ export default function Signup() {
         setPendingConfirmationEmail(normalizedEmail);
         return;
       }
+      console.info("[auth] signup redirect", { destination: "/onboarding" });
       navigate("/onboarding");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Sign up failed", "error");
+      console.error("[auth] signup failed:", err);
+      showToast(formatSignupError(err), "error");
     } finally {
       setLoading(false);
     }

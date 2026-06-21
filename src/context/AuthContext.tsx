@@ -8,6 +8,11 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
+import {
+  ensureMinimalProfile,
+  formatSignupError,
+  isAllowedSignupEmail,
+} from "../lib/authProfile";
 import { AuthContext, type AuthContextValue } from "./authContextValue";
 
 const ALLOWED_EMAIL_DOMAIN = "uoguelph.ca";
@@ -24,6 +29,8 @@ export function notifyOnboardingCompleted() {
  * Returns true when onboarding is complete (or should be skipped on query failure).
  */
 async function resolveOnboardingCompleted(user: User): Promise<boolean> {
+  await ensureMinimalProfile(user);
+
   const { data, error } = await supabase
     .from("profiles")
     .select("onboarding_completed")
@@ -124,25 +131,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, onboardingCompleted]);
 
   const signUp = useCallback(async (email: string, password: string) => {
-    // TODO: re-enable UofG email restriction before launch — disabled temporarily for multi-account testing
-    // const domain = email.split("@")[1]?.toLowerCase();
-    // if (domain !== ALLOWED_EMAIL_DOMAIN) {
-    //   throw new Error(
-    //     `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
-    //   );
-    // }
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isAllowedSignupEmail(normalizedEmail)) {
+      throw new Error(
+        `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
+      );
+    }
+
+    console.info("[auth] signup start", { email: normalizedEmail });
+
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: normalizedEmail,
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/login`,
+        data: {
+          email: normalizedEmail,
+        },
       },
     });
-    if (error) throw error;
+
+    if (error) {
+      console.error("[auth] signup auth error:", error.message, error);
+      throw new Error(formatSignupError(error));
+    }
+
+    console.info("[auth] signup auth response", {
+      userId: data.user?.id ?? null,
+      hasSession: Boolean(data.session),
+    });
+
     const needsEmailConfirmation = Boolean(data.user && !data.session);
-    if (!needsEmailConfirmation) {
+
+    if (data.user && data.session) {
+      const profileResult = await ensureMinimalProfile(data.user);
+      if (profileResult.error) {
+        console.error(
+          "[auth] signup profile ensure failed:",
+          profileResult.error,
+        );
+      } else if (profileResult.created) {
+        console.info("[auth] signup created minimal profile");
+      }
       setOnboardingCompleted(false);
     }
+
     return { needsEmailConfirmation };
   }, []);
 
