@@ -46,7 +46,6 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
         meetingsRes,
         documentsRes,
         openListingsRes,
-        reviewerListingsRes,
       ] = await Promise.all([
         supabase
           .from("conversation_members")
@@ -65,12 +64,6 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
           .select("id", { count: "exact", head: true })
           .eq("club_id", clubId)
           .eq("is_open", true),
-        supabase
-          .from("hiring_listings")
-          .select("id")
-          .eq("club_id", clubId)
-          .eq("is_open", true)
-          .contains("reviewer_ids", [user.id]),
       ]);
 
       let hasChat = false;
@@ -101,7 +94,7 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
         hasMeetingInvite,
         hasMemberDocuments,
         hasActiveHiring: (openListingsRes.count ?? 0) > 0,
-        isHiringReviewer: (reviewerListingsRes.data ?? []).length > 0,
+        isHiringReviewer: false,
       });
     } catch (error) {
       console.error("Failed to load workspace nav flags:", error);

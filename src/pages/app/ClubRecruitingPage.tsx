@@ -675,11 +675,8 @@ export default function ClubRecruitingPage() {
   const clubName = club?.name ?? "Club";
 
   const memberAccess = useClubMemberAccess(clubId);
-  const [isListingReviewer, setIsListingReviewer] = useState(false);
   const canManageHiring =
-    memberAccess.isPresident ||
-    memberAccess.can("manage_hiring") ||
-    isListingReviewer;
+    memberAccess.isPresident || memberAccess.can("manage_hiring");
   const canDeleteHiring =
     memberAccess.isPresident || memberAccess.can("manage_hiring");
   const isPrivileged = canManageHiring;
@@ -736,23 +733,6 @@ export default function ClubRecruitingPage() {
     Record<string, number>
   >({});
   const skipApplicantFilterResetRef = useRef(false);
-
-  useEffect(() => {
-    if (!clubId || !user?.id) {
-      setIsListingReviewer(false);
-      return;
-    }
-
-    void supabase
-      .from("hiring_listings")
-      .select("id")
-      .eq("club_id", clubId)
-      .contains("reviewer_ids", [user.id])
-      .limit(1)
-      .then(({ data }) => {
-        setIsListingReviewer((data ?? []).length > 0);
-      });
-  }, [clubId, user?.id]);
 
   const loadSavedRoles = useCallback(async () => {
     if (!user?.id) {
@@ -1138,16 +1118,24 @@ export default function ClubRecruitingPage() {
     setDeletingPositionId(positionId);
     setDeletePositionError(null);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("hiring_listings")
       .delete()
-      .eq("id", positionId);
+      .eq("id", positionId)
+      .select("id");
 
     setDeletingPositionId(null);
 
     if (error) {
       console.error("Failed to delete position:", error.message);
       setDeletePositionError(error.message || "Could not delete this position.");
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setDeletePositionError(
+        "Could not delete this position. You may not have permission.",
+      );
       return;
     }
 
