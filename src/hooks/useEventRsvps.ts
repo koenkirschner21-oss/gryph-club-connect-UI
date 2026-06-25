@@ -63,7 +63,6 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
     let cancelled = false;
 
     async function fetchRsvpData() {
-      // Fetch all rsvps for these events (just id, event_id, user_id, status)
       const { data, error } = await supabase
         .from("event_rsvps")
         .select("id, event_id, user_id, status")
@@ -92,7 +91,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
       }
       setCounts(newCounts);
 
-      // Build current user's RSVPs
+      // Build current user's RSVPs (merge event-scoped rows with a direct own-rows query)
       if (user) {
         const mine: Record<string, RsvpStatus> = {};
         for (const r of rows) {
@@ -100,6 +99,19 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
             mine[r.event_id as string] = r.status as RsvpStatus;
           }
         }
+
+        const { data: ownRows, error: ownError } = await supabase
+          .from("event_rsvps")
+          .select("event_id, status")
+          .eq("user_id", user.id)
+          .in("event_id", eventIds);
+
+        if (!cancelled && !ownError) {
+          for (const r of ownRows ?? []) {
+            mine[r.event_id as string] = r.status as RsvpStatus;
+          }
+        }
+
         setMyRsvps(mine);
       }
 

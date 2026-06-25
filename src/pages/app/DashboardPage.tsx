@@ -299,7 +299,7 @@ export default function DashboardPage() {
     [clubs, savedClubs],
   );
 
-  const { events: upcomingEvents, loading: eventsLoading } =
+  const { events: upcomingEvents, loading: eventsLoading, refresh: refreshEvents } =
     useDashboardEvents(joinedClubs, user?.id);
   const { activeCount: taskCount } = useDashboardTasks(joinedClubs, user?.id);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -308,7 +308,14 @@ export default function DashboardPage() {
   const [dueSoonTaskCount, setDueSoonTaskCount] = useState(0);
 
   useEffect(() => {
-    if (joinedClubs.length === 0) {
+    const clubIds = Array.from(
+      new Set([
+        ...joinedClubs,
+        ...upcomingEvents.map((event) => event.clubId).filter(Boolean),
+      ]),
+    );
+
+    if (clubIds.length === 0) {
       setClubLogos({});
       return;
     }
@@ -318,7 +325,7 @@ export default function DashboardPage() {
     supabase
       .from("clubs")
       .select("*")
-      .in("id", joinedClubs)
+      .in("id", clubIds)
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
@@ -337,7 +344,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [joinedClubs]);
+  }, [joinedClubs, upcomingEvents]);
 
   const fetchUnreadNotificationCount = useCallback(async () => {
     if (!user?.id) {
@@ -463,7 +470,25 @@ export default function DashboardPage() {
     () => upcomingEvents.map((e) => e.id),
     [upcomingEvents],
   );
-  const { myRsvps } = useEventRsvps(eventIds);
+  const { myRsvps, setRsvp, removeRsvp } = useEventRsvps(eventIds);
+
+  const handleDashboardSetRsvp = useCallback(
+    async (eventId: string, status: import("../../types").RsvpStatus) => {
+      const ok = await setRsvp(eventId, status);
+      if (ok) refreshEvents();
+      return ok;
+    },
+    [refreshEvents, setRsvp],
+  );
+
+  const handleDashboardRemoveRsvp = useCallback(
+    async (eventId: string) => {
+      const ok = await removeRsvp(eventId);
+      if (ok) refreshEvents();
+      return ok;
+    },
+    [refreshEvents, removeRsvp],
+  );
 
   const sourceName = profile?.fullName || user?.email?.split("@")[0] || "";
   const displayName = sourceName.split(" ")[0];
@@ -741,6 +766,8 @@ export default function DashboardPage() {
           eventsLoading={eventsLoading}
           myRsvps={myRsvps}
           clubLogos={clubLogos}
+          onSetRsvp={handleDashboardSetRsvp}
+          onRemoveRsvp={handleDashboardRemoveRsvp}
         />
       )}
       {activeTab === "tasks" && <TasksTab joinedClubs={joinedClubs} />}
@@ -2461,11 +2488,15 @@ function EventsTab({
   eventsLoading,
   myRsvps,
   clubLogos,
+  onSetRsvp,
+  onRemoveRsvp,
 }: {
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
   myRsvps: Record<string, string>;
   clubLogos: Record<string, string>;
+  onSetRsvp: (eventId: string, status: import("../../types").RsvpStatus) => Promise<boolean>;
+  onRemoveRsvp: (eventId: string) => Promise<boolean>;
 }) {
   const displayEvents = useMemo(
     () => deduplicateDashboardEvents(upcomingEvents),
@@ -2488,7 +2519,9 @@ function EventsTab({
   if (upcomingEvents.length === 0) {
     return (
       <Card className="p-10 text-center">
-        <p className="text-muted">No upcoming events from your clubs.</p>
+        <p className="text-muted">
+          No upcoming events. RSVP to campus events from Explore to see them here.
+        </p>
       </Card>
     );
   }
@@ -2500,6 +2533,8 @@ function EventsTab({
         groups={eventsByDate}
         myRsvps={myRsvps}
         clubLogos={clubLogos}
+        onSetRsvp={onSetRsvp}
+        onRemoveRsvp={onRemoveRsvp}
       />
     </div>
   );

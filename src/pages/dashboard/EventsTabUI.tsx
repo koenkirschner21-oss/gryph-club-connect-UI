@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { Calendar, Clock, Filter, MapPin, MoreVertical } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DashboardEvent } from "../../hooks/useDashboardEvents";
@@ -132,10 +132,12 @@ function hasEventLocation(location: string | null | undefined): boolean {
   return !!trimmed && trimmed.toUpperCase() !== "TBD";
 }
 
-type EventStatusDisplay = "going" | "rsvp" | "open";
+type EventStatusDisplay = "going" | "maybe" | "not_going" | "rsvp" | "open";
 
 function resolveEventStatusDisplay(rsvpStatus?: RsvpStatus | string): EventStatusDisplay {
   if (rsvpStatus === "going") return "going";
+  if (rsvpStatus === "maybe") return "maybe";
+  if (rsvpStatus === "not_going") return "not_going";
   if (!rsvpStatus) return "rsvp";
   return "open";
 }
@@ -161,6 +163,37 @@ function EventStatusButton({ display }: { display: EventStatusDisplay }) {
         }}
       >
         Going
+      </span>
+    );
+  }
+
+  if (display === "maybe") {
+    return (
+      <span
+        style={{
+          ...base,
+          background: "transparent",
+          border: "1px solid #FFC429",
+          color: "#FFC429",
+        }}
+      >
+        Maybe
+      </span>
+    );
+  }
+
+  if (display === "not_going") {
+    return (
+      <span
+        style={{
+          ...base,
+          background: "transparent",
+          border: "1px solid #555555",
+          color: "#777777",
+          fontWeight: 500,
+        }}
+      >
+        Not Going
       </span>
     );
   }
@@ -342,16 +375,147 @@ function TimelineDateBox({ dateStr }: { dateStr: string }) {
   );
 }
 
+function EventRsvpMenu({
+  eventId,
+  currentStatus,
+  onSetRsvp,
+  onRemoveRsvp,
+}: {
+  eventId: string;
+  currentStatus?: RsvpStatus | string;
+  onSetRsvp: (eventId: string, status: RsvpStatus) => Promise<boolean>;
+  onRemoveRsvp: (eventId: string) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  async function handleAction(
+    action: () => Promise<boolean>,
+  ): Promise<void> {
+    setBusy(true);
+    await action();
+    setBusy(false);
+    setOpen(false);
+  }
+
+  const itemStyle = {
+    display: "block",
+    width: "100%",
+    textAlign: "left" as const,
+    background: "transparent",
+    border: "none",
+    color: "#cccccc",
+    fontSize: "13px",
+    padding: "8px 12px",
+    cursor: busy ? "wait" : "pointer",
+  };
+
+  return (
+    <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        type="button"
+        aria-label="Event RSVP actions"
+        aria-expanded={open}
+        disabled={busy}
+        onClick={() => setOpen((prev) => !prev)}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "#555555",
+          cursor: busy ? "wait" : "pointer",
+          padding: "4px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <MoreVertical size={18} aria-hidden />
+      </button>
+
+      {open ? (
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "100%",
+            marginTop: "4px",
+            minWidth: "160px",
+            background: "#1a1a1a",
+            border: "1px solid #2a2a2a",
+            borderRadius: "8px",
+            padding: "4px 0",
+            zIndex: 20,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          }}
+        >
+          {(["going", "maybe", "not_going"] as RsvpStatus[]).map((status) => (
+            <button
+              key={status}
+              type="button"
+              disabled={busy || currentStatus === status}
+              onClick={() =>
+                void handleAction(() => onSetRsvp(eventId, status))
+              }
+              style={{
+                ...itemStyle,
+                color: currentStatus === status ? "#FFC429" : "#cccccc",
+                fontWeight: currentStatus === status ? 600 : 400,
+              }}
+            >
+              {status === "going"
+                ? "Going"
+                : status === "maybe"
+                  ? "Maybe"
+                  : "Not Going"}
+            </button>
+          ))}
+          {currentStatus ? (
+            <>
+              <div style={{ height: "1px", background: "#2a2a2a", margin: "4px 0" }} />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleAction(() => onRemoveRsvp(eventId))}
+                style={{ ...itemStyle, color: "#E51937" }}
+              >
+                Cancel RSVP
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function EventsTabEventRow({
   event,
   rsvpStatus,
   logoUrl,
   attendees,
+  onSetRsvp,
+  onRemoveRsvp,
 }: {
   event: DeduplicatedDashboardEvent;
   rsvpStatus?: RsvpStatus | string;
   logoUrl?: string;
   attendees?: EventRsvp[];
+  onSetRsvp?: (eventId: string, status: RsvpStatus) => Promise<boolean>;
+  onRemoveRsvp?: (eventId: string) => Promise<boolean>;
 }) {
   const timeLabel = event.time ? formatEventTime12h(event.time) : null;
   const showLocation = hasEventLocation(event.location);
@@ -372,7 +536,7 @@ function EventsTabEventRow({
       }}
     >
       <Link
-        to={`/app/clubs/${event.clubId}/events`}
+        to={`/events/${event.id}`}
         style={{
           display: "flex",
           alignItems: "center",
@@ -455,23 +619,32 @@ function EventsTabEventRow({
 
       <EventStatusButton display={statusDisplay} />
 
-      <button
-        type="button"
-        aria-label="Event actions"
-        style={{
-          background: "transparent",
-          border: "none",
-          color: "#555555",
-          cursor: "pointer",
-          padding: "4px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <MoreVertical size={18} aria-hidden />
-      </button>
+      {onSetRsvp && onRemoveRsvp ? (
+        <EventRsvpMenu
+          eventId={event.id}
+          currentStatus={rsvpStatus}
+          onSetRsvp={onSetRsvp}
+          onRemoveRsvp={onRemoveRsvp}
+        />
+      ) : (
+        <button
+          type="button"
+          aria-label="Event actions"
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#555555",
+            cursor: "pointer",
+            padding: "4px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <MoreVertical size={18} aria-hidden />
+        </button>
+      )}
     </div>
   );
 }
@@ -523,11 +696,15 @@ export function EventsTabTimeline({
   myRsvps,
   clubLogos,
   eventAttendees,
+  onSetRsvp,
+  onRemoveRsvp,
 }: {
   groups: EventsByDateGroup[];
   myRsvps: Record<string, RsvpStatus | string>;
   clubLogos: Record<string, string>;
   eventAttendees?: Record<string, EventRsvp[]>;
+  onSetRsvp?: (eventId: string, status: RsvpStatus) => Promise<boolean>;
+  onRemoveRsvp?: (eventId: string) => Promise<boolean>;
 }) {
   return (
     <div>
@@ -597,6 +774,8 @@ export function EventsTabTimeline({
                   rsvpStatus={myRsvps[event.id]}
                   logoUrl={event.clubId ? clubLogos[event.clubId] : undefined}
                   attendees={eventAttendees?.[event.id]}
+                  onSetRsvp={onSetRsvp}
+                  onRemoveRsvp={onRemoveRsvp}
                 />
               ))}
             </div>

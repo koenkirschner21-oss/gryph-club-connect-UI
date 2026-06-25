@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { ClubEvent } from "../types";
 
@@ -38,10 +38,16 @@ export function useDashboardEvents(
 ) {
   const [events, setEvents] = useState<DashboardEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = useCallback(() => {
+    setRefreshKey((key) => key + 1);
+  }, []);
 
   const clubKey = joinedClubIds.join(",");
 
   useEffect(() => {
+    setLoading(true);
     if (!userId && joinedClubIds.length === 0) {
       queueMicrotask(() => setLoading(false));
       return;
@@ -135,7 +141,7 @@ export function useDashboardEvents(
     return () => {
       cancelled = true;
     };
-  }, [clubKey, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clubKey, userId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { events, loading };
+  return { events, loading, refresh };
 }
