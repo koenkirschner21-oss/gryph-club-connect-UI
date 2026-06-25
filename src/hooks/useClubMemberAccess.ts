@@ -10,6 +10,7 @@ import {
   type PermissionRole,
   PERMISSION_CAPABILITY_ALIASES,
 } from "../lib/clubPermissions";
+import { accessLevelFromMember } from "../lib/memberRoleTitle";
 import type { AccessLevel, MemberRole } from "../types";
 
 function normalizeMemberRole(role: string): MemberRole {
@@ -18,7 +19,9 @@ function normalizeMemberRole(role: string): MemberRole {
   return "member";
 }
 
-function normalizeAccessLevel(value: string | null | undefined): AccessLevel {
+function normalizeStoredAccessLevel(
+  value: string | null | undefined,
+): AccessLevel | null {
   if (
     value === "president" ||
     value === "managerial_executive" ||
@@ -27,7 +30,7 @@ function normalizeAccessLevel(value: string | null | undefined): AccessLevel {
   ) {
     return value;
   }
-  return "member";
+  return null;
 }
 
 export function useClubMemberAccess(clubId: string | undefined) {
@@ -37,7 +40,7 @@ export function useClubMemberAccess(clubId: string | undefined) {
 
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<MemberRole>("member");
-  const [accessLevel, setAccessLevel] = useState<AccessLevel>("member");
+  const [storedAccessLevel, setStoredAccessLevel] = useState<AccessLevel | null>(null);
   const [joinedAt, setJoinedAt] = useState<string | null>(null);
   const [memberTitle, setMemberTitle] = useState<string | null>(null);
   const [hasMembership, setHasMembership] = useState(false);
@@ -59,11 +62,12 @@ export function useClubMemberAccess(clubId: string | undefined) {
       const previewRole = localStorage.getItem("previewRole");
       if (previewRole) {
         if (!cancelled) {
-          setRole(previewRole as MemberRole);
-          setAccessLevel(
-            previewRole === "owner"
+          const previewMemberRole = previewRole as MemberRole;
+          setRole(previewMemberRole);
+          setStoredAccessLevel(
+            previewMemberRole === "owner"
               ? "president"
-              : previewRole === "executive"
+              : previewMemberRole === "executive"
                 ? "executive"
                 : "member",
           );
@@ -88,8 +92,11 @@ export function useClubMemberAccess(clubId: string | undefined) {
         return;
       }
 
-      setRole(normalizeMemberRole(data.role as string));
-      setAccessLevel(normalizeAccessLevel(data.access_level as string | null));
+      const memberRole = normalizeMemberRole(data.role as string);
+      setRole(memberRole);
+      setStoredAccessLevel(
+        normalizeStoredAccessLevel(data.access_level as string | null),
+      );
       setJoinedAt((data.joined_at as string | null) ?? null);
       setMemberTitle((data.title as string | null) ?? null);
       setHasMembership(true);
@@ -104,13 +111,20 @@ export function useClubMemberAccess(clubId: string | undefined) {
   }, [clubId, user?.id]);
 
   const permissions = club?.customPermissions ?? cloneDefaultPermissions();
-  const permissionRole: PermissionRole = resolvePermissionRole(accessLevel, role);
-  const isPresident = isPresidentAccess(accessLevel, role);
+  const accessLevel = useMemo(
+    () => accessLevelFromMember({ role, accessLevel: storedAccessLevel }),
+    [role, storedAccessLevel],
+  );
+  const permissionRole: PermissionRole = resolvePermissionRole(
+    storedAccessLevel,
+    role,
+  );
+  const isPresident = isPresidentAccess(storedAccessLevel, role);
 
   const can = useCallback(
     (capability: keyof typeof PERMISSION_CAPABILITY_ALIASES) =>
-      hasClubPermission(permissions, accessLevel, role, capability),
-    [permissions, accessLevel, role],
+      hasClubPermission(permissions, storedAccessLevel, role, capability),
+    [permissions, storedAccessLevel, role],
   );
 
   const canManageClubSettings = useMemo(

@@ -17,6 +17,7 @@ import {
   notifyClubRequestMoreInfo,
   notifyClubRequestRejected,
 } from "../../lib/notifications";
+import { ensurePresidentMembership } from "../../lib/clubPresidentMembership";
 import {
   clubReportReasonLabel,
   clubReportStatusBadgeStyle,
@@ -1107,19 +1108,15 @@ export default function AdminPage() {
     setClaimActionLoadingId(request.id);
     setFeedback(null);
 
-    const { error: memberError } = await supabase.from("club_members").upsert(
-      {
-        club_id: request.club_id,
-        user_id: request.submitted_by,
-        role: "owner",
-        status: "active",
-        title: request.role_in_club,
-      },
-      { onConflict: "club_id,user_id" },
+    const memberError = await ensurePresidentMembership(
+      supabase,
+      request.club_id,
+      request.submitted_by,
+      request.role_in_club?.trim() || undefined,
     );
 
     if (memberError) {
-      console.error("Failed to create owner membership:", memberError.message);
+      console.error("Failed to create owner membership:", memberError);
       setFeedback("Failed to approve claim — could not add owner membership.");
       setClaimActionLoadingId(null);
       return;
@@ -1283,20 +1280,27 @@ export default function AdminPage() {
         return;
       }
 
+      const socialLinks =
+        meta.social_links && Object.keys(meta.social_links).length > 0
+          ? meta.social_links
+          : null;
+
       const { data: createdClub, error: createError } = await supabase
         .from("clubs")
         .insert({
           name: request.name,
           slug,
           short_description: request.short_description,
-          long_description: request.long_description,
+          long_description: request.short_description || "",
           description: request.short_description || "",
           category: request.category || "",
           contact_email: meta.contact_email || "",
           meeting_schedule: meta.meeting_schedule || "",
           meeting_location: meta.meeting_location || null,
+          social_links: socialLinks,
           abbreviation: deriveClubAbbreviation(request.name),
           is_public: true,
+          claim_status: "claimed",
           created_by: request.submitted_by,
         })
         .select("id")
@@ -1322,9 +1326,40 @@ export default function AdminPage() {
       return;
     }
 
+    if (request.submitted_by) {
+      const memberError = await ensurePresidentMembership(
+        supabase,
+        clubId,
+        request.submitted_by,
+      );
+      if (memberError) {
+        console.error("Failed to create president membership:", memberError);
+        const message =
+          "Club was created but president membership could not be assigned.";
+        setApprovalErrors((prev) => ({ ...prev, [request.id]: message }));
+        setActionLoadingId(null);
+        return;
+      }
+    }
+
+    const clubUpdate: Record<string, unknown> = {
+      is_public: true,
+      claim_status: "claimed",
+      short_description: request.short_description,
+      long_description: request.short_description || "",
+      description: request.short_description || "",
+      category: request.category || "",
+      contact_email: meta.contact_email || "",
+      meeting_schedule: meta.meeting_schedule || "",
+      meeting_location: meta.meeting_location || null,
+    };
+    if (meta.social_links && Object.keys(meta.social_links).length > 0) {
+      clubUpdate.social_links = meta.social_links;
+    }
+
     const { error } = await supabase
       .from("clubs")
-      .update({ is_public: true })
+      .update(clubUpdate)
       .eq("id", clubId);
 
     if (error) {
