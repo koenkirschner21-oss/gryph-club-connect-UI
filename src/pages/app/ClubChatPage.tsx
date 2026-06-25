@@ -1203,6 +1203,9 @@ export default function ClubChatPage() {
     Set<string>
   >(() => new Set());
   const [creating, setCreating] = useState(false);
+  const [createConversationError, setCreateConversationError] = useState<
+    string | null
+  >(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
@@ -1508,7 +1511,7 @@ export default function ClubChatPage() {
     void (async () => {
       const convId = await createDirectMessage(dmUserId);
       if (convId) {
-        setActiveConversationId(convId);
+        selectConversation(convId);
       }
       const next = new URLSearchParams(searchParams);
       next.delete("dm");
@@ -1520,7 +1523,7 @@ export default function ClubChatPage() {
     loading,
     user?.id,
     createDirectMessage,
-    setActiveConversationId,
+    selectConversation,
     setSearchParams,
   ]);
 
@@ -1570,6 +1573,7 @@ export default function ClubChatPage() {
     setGroupName("");
     setGroupAvatarFile(null);
     setCreating(false);
+    setCreateConversationError(null);
   }
 
   function openModal() {
@@ -1580,6 +1584,7 @@ export default function ClubChatPage() {
     setGroupName("");
     setGroupAvatarFile(null);
     setCreating(false);
+    setCreateConversationError(null);
     setShowModal(true);
   }
 
@@ -1632,21 +1637,24 @@ export default function ClubChatPage() {
   async function handleCreateConversation() {
     if (!clubId) return;
     setCreating(true);
+    setCreateConversationError(null);
 
     try {
       if (chatType === "direct") {
         if (selectedMemberIds.length !== 1) {
-          setCreating(false);
           return;
         }
         const id = await createDirectMessage(selectedMemberIds[0]);
         if (id) {
-          setActiveConversationId(id);
+          selectConversation(id);
           resetModal();
+          return;
         }
+        setCreateConversationError(
+          "Could not create that conversation. Please try again.",
+        );
       } else {
         if (!groupName.trim() || selectedMemberIds.length === 0) {
-          setCreating(false);
           return;
         }
         let avatarUrl: string | null = null;
@@ -1660,9 +1668,13 @@ export default function ClubChatPage() {
           avatarUrl,
         );
         if (id) {
-          setActiveConversationId(id);
+          selectConversation(id);
           resetModal();
+          return;
         }
+        setCreateConversationError(
+          "Could not create that group chat. Please try again.",
+        );
       }
     } finally {
       setCreating(false);
@@ -3219,7 +3231,7 @@ export default function ClubChatPage() {
                   <button
                     type="button"
                     disabled={creating || !canCreateConversation}
-                    onClick={handleCreateConversation}
+                    onClick={() => void handleCreateConversation()}
                     style={{
                       background: "#E51937",
                       color: "#ffffff",
@@ -3234,6 +3246,17 @@ export default function ClubChatPage() {
                     {creating ? "Creating…" : "Create"}
                   </button>
                 </div>
+                {createConversationError ? (
+                  <p
+                    style={{
+                      margin: "12px 0 0",
+                      fontSize: "13px",
+                      color: "#E51937",
+                    }}
+                  >
+                    {createConversationError}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>
