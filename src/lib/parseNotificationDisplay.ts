@@ -50,6 +50,21 @@ export function parseNotificationDisplay(
   if (type === "claim_more_info") {
     return { title: "More Info Needed", body: trimmed };
   }
+  if (type === "new_club_request") {
+    return { title: "New Club Request", body: trimmed };
+  }
+  if (type === "club_request_submitted") {
+    return { title: "Club Request Submitted", body: trimmed };
+  }
+  if (type === "club_request_approved") {
+    return { title: "Club Request Approved", body: trimmed };
+  }
+  if (type === "club_request_rejected") {
+    return { title: "Club Request Declined", body: trimmed };
+  }
+  if (type === "club_request_more_info") {
+    return { title: "More Info Needed", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }

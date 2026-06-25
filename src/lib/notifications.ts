@@ -492,7 +492,7 @@ export async function notifyClaimRequestSubmitted(
       message: adminMessage,
       actionRequired: true,
       actionType: "review_claim_request",
-      actionData: { path: "/app/admin" },
+      actionData: { path: "/app/admin?tab=claims" },
       clubId: params.clubId,
       referenceId: params.claimRequestId,
       referenceType: "club_claim_request",
@@ -638,5 +638,211 @@ export async function notifyClaimRequestMoreInfo(
   });
   if (!inboxOk) {
     console.error("Failed to create claim more-info inbox message.");
+  }
+}
+
+export async function notifyClubRequestSubmitted(
+  supabase: SupabaseClient,
+  params: {
+    clubName: string;
+    submitterName: string;
+    submitterUserId: string;
+    clubRequestId: string;
+  },
+): Promise<void> {
+  const submitterMessage = `Your club request for ${params.clubName} has been submitted and is pending review. We'll notify you once it's reviewed.`;
+
+  const submitterInboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "system_message",
+    title: `Club request submitted — ${params.clubName}`,
+    message: submitterMessage,
+    actionRequired: false,
+    actionType: "view_club_request_status",
+    actionData: {
+      requestId: params.clubRequestId,
+      path: "/app",
+    },
+    referenceId: params.clubRequestId,
+    referenceType: "club_request",
+  });
+  if (!submitterInboxOk) {
+    console.error("Failed to create club request submission inbox message.");
+  }
+
+  const submitterBellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "club_request_submitted",
+    message: submitterMessage,
+    referenceId: params.clubRequestId,
+  });
+  if (!submitterBellOk) {
+    console.error("Failed to create club request submission notification.");
+  }
+
+  const adminIds = await fetchPlatformAdminUserIds(supabase);
+  if (adminIds.length === 0) return;
+
+  const adminMessage = `${params.submitterName} submitted a new club request for ${params.clubName}.`;
+
+  const adminBellOk = await createNotifications(
+    supabase,
+    adminIds.map((userId) => ({
+      userId,
+      type: "new_club_request",
+      message: adminMessage,
+      referenceId: params.clubRequestId,
+    })),
+  );
+  if (!adminBellOk) {
+    console.error("Failed to send admin club request notifications.");
+  }
+
+  for (const adminId of adminIds) {
+    const inboxOk = await createInboxMessage(supabase, {
+      recipientId: adminId,
+      type: "admin_message",
+      title: `New club request — ${params.clubName}`,
+      message: adminMessage,
+      actionRequired: true,
+      actionType: "review_club_request",
+      actionData: {
+        path: `/app/admin?tab=requests&request=${params.clubRequestId}`,
+        requestId: params.clubRequestId,
+      },
+      referenceId: params.clubRequestId,
+      referenceType: "club_request",
+    });
+    if (!inboxOk) {
+      console.error("Failed to create admin club request inbox message for:", adminId);
+    }
+  }
+}
+
+export async function notifyClubRequestApproved(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    submitterUserId: string;
+    clubRequestId: string;
+  },
+): Promise<void> {
+  const message = `Your club request for ${params.clubName} has been approved.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "club_request_approved",
+    message,
+    clubId: params.clubId,
+    referenceId: params.clubRequestId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send club request approval notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "club_request_approved",
+    title: `Club request approved — ${params.clubName}`,
+    message,
+    actionRequired: false,
+    actionType: "open_club_dashboard",
+    actionData: {
+      path: `/app/clubs/${params.clubId}`,
+      actionLabel: "Open Club Dashboard",
+    },
+    clubId: params.clubId,
+    referenceId: params.clubRequestId,
+    referenceType: "club_request",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create club request approval inbox message.");
+  }
+}
+
+export async function notifyClubRequestRejected(
+  supabase: SupabaseClient,
+  params: {
+    clubName: string;
+    submitterUserId: string;
+    clubRequestId: string;
+    reviewNote?: string | null;
+  },
+): Promise<void> {
+  const trimmedNote = params.reviewNote?.trim();
+  const message = trimmedNote
+    ? `Your club request for ${params.clubName} was not approved: ${trimmedNote}`
+    : `Your club request for ${params.clubName} was not approved at this time.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "club_request_rejected",
+    message,
+    referenceId: params.clubRequestId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send club request rejection notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "club_request_rejected",
+    title: `Club request declined — ${params.clubName}`,
+    message,
+    actionRequired: false,
+    actionType: "view_explore",
+    actionData: {
+      path: "/explore",
+      actionLabel: "Browse Clubs",
+    },
+    referenceId: params.clubRequestId,
+    referenceType: "club_request",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create club request rejection inbox message.");
+  }
+}
+
+export async function notifyClubRequestMoreInfo(
+  supabase: SupabaseClient,
+  params: {
+    clubName: string;
+    submitterUserId: string;
+    clubRequestId: string;
+    note: string;
+  },
+): Promise<void> {
+  const trimmedNote = params.note.trim();
+  const message = trimmedNote
+    ? `More information is needed for your club request for ${params.clubName}: ${trimmedNote}`
+    : `More information is needed for your club request for ${params.clubName}.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "club_request_more_info",
+    message,
+    referenceId: params.clubRequestId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send club request more-info notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "system_message",
+    title: `More info needed — ${params.clubName}`,
+    message,
+    actionRequired: true,
+    actionType: "view_club_request_status",
+    actionData: {
+      requestId: params.clubRequestId,
+      path: "/app",
+    },
+    referenceId: params.clubRequestId,
+    referenceType: "club_request",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create club request more-info inbox message.");
   }
 }

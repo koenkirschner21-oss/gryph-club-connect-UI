@@ -51,6 +51,25 @@ function resolveNotificationLink(notification: Notification): string | null {
   if (notification.link?.trim()) {
     return notification.link.trim();
   }
+
+  switch (notification.type) {
+    case "new_club_request":
+      return "/app/admin?tab=requests";
+    case "new_claim_request":
+      return "/app/admin?tab=claims";
+    case "club_request_submitted":
+    case "claim_submitted":
+      return "/app";
+    case "club_request_rejected":
+    case "claim_rejected":
+      return "/explore";
+    case "club_request_approved":
+    case "claim_approved":
+      return notification.clubId ? `/app/clubs/${notification.clubId}` : "/app";
+    default:
+      break;
+  }
+
   if (!notification.clubId) return null;
 
   const base = `/app/clubs/${notification.clubId}`;
@@ -100,6 +119,16 @@ function notificationIconColor(type: string): string {
     case "claim_rejected":
       return "#777777";
     case "claim_more_info":
+      return "#FFC429";
+    case "new_club_request":
+      return "#E51937";
+    case "club_request_submitted":
+      return "#777777";
+    case "club_request_approved":
+      return "#22c55e";
+    case "club_request_rejected":
+      return "#777777";
+    case "club_request_more_info":
       return "#FFC429";
     default:
       return "#747676";

@@ -6,14 +6,16 @@ import {
   type CSSProperties,
 } from "react";
 import { FileText, X, Check } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
-import { notifyUsers } from "../../lib/notifyUsers";
 import {
   notifyClaimRequestApproved,
   notifyClaimRequestMoreInfo,
   notifyClaimRequestRejected,
+  notifyClubRequestApproved,
+  notifyClubRequestMoreInfo,
+  notifyClubRequestRejected,
 } from "../../lib/notifications";
 import {
   clubReportReasonLabel,
@@ -84,7 +86,7 @@ interface ClubRequestRow {
   long_description: string | null;
   category: string | null;
   requested_at: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "more_info";
   review_note: string | null;
   submitterName: string;
   submitterEmail: string;
@@ -174,6 +176,11 @@ const statusBadgeStyle = (
     textTransform: "capitalize",
   };
 };
+
+function clubRequestStatusLabel(status: ClubRequestRow["status"]): string {
+  if (status === "pending" || status === "more_info") return "Pending Review";
+  return status;
+}
 
 function generateSlug(value: string): string {
   return value
@@ -473,6 +480,7 @@ export default function AdminPage() {
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<AdminTab>("requests");
 
   const [requests, setRequests] = useState<ClubRequestRow[]>([]);
@@ -980,6 +988,20 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (
+      tab === "requests" ||
+      tab === "claims" ||
+      tab === "users" ||
+      tab === "moderation" ||
+      tab === "stats" ||
+      tab === "bugs"
+    ) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     void loadRequests();
     void loadClaimRequests();
   }, [loadRequests, loadClaimRequests]);
@@ -1333,15 +1355,12 @@ export default function AdminPage() {
     }
 
     if (request.submitted_by) {
-      await notifyUsers([
-        {
-          user_id: request.submitted_by,
-          type: "club_update",
-          message: `Your club request for "${request.name}" has been approved!`,
-          club_id: clubId,
-          reference_id: request.id,
-        },
-      ]);
+      await notifyClubRequestApproved(supabase, {
+        clubId,
+        clubName: request.name,
+        submitterUserId: request.submitted_by,
+        clubRequestId: request.id,
+      });
     }
 
     setActionLoadingId(null);
@@ -1372,16 +1391,12 @@ export default function AdminPage() {
       return;
     }
 
-    await notifyUsers([
-      {
-        user_id: rejectTarget.submitted_by,
-        type: "club_update",
-        message: rejectNote.trim()
-          ? `Your club request for "${rejectTarget.name}" was rejected: ${rejectNote.trim()}`
-          : `Your club request for "${rejectTarget.name}" was rejected.`,
-        reference_id: rejectTarget.id,
-      },
-    ]);
+    await notifyClubRequestRejected(supabase, {
+      clubName: rejectTarget.name,
+      submitterUserId: rejectTarget.submitted_by,
+      clubRequestId: rejectTarget.id,
+      reviewNote: rejectNote.trim() || null,
+    });
 
     setRejectTarget(null);
     setRejectNote("");
@@ -1413,14 +1428,12 @@ export default function AdminPage() {
       return;
     }
 
-    await notifyUsers([
-      {
-        user_id: moreInfoTarget.submitted_by,
-        type: "club_update",
-        message: `We need more information about your club request for "${moreInfoTarget.name}": ${note}`,
-        reference_id: moreInfoTarget.id,
-      },
-    ]);
+    await notifyClubRequestMoreInfo(supabase, {
+      clubName: moreInfoTarget.name,
+      submitterUserId: moreInfoTarget.submitted_by,
+      clubRequestId: moreInfoTarget.id,
+      note,
+    });
 
     setMoreInfoTarget(null);
     setMoreInfoNote("");
@@ -1886,7 +1899,7 @@ export default function AdminPage() {
                     ) : null}
                   </div>
                   <span style={statusBadgeStyle(request.status)}>
-                    {request.status}
+                    {clubRequestStatusLabel(request.status)}
                   </span>
                 </div>
 

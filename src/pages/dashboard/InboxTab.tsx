@@ -52,6 +52,11 @@ const CLAIM_UI_TYPES = new Set([
   "claim_submitted",
   "claim_more_info",
   "new_claim_request",
+  "club_request_approved",
+  "club_request_rejected",
+  "club_request_submitted",
+  "club_request_more_info",
+  "new_club_request",
 ]);
 
 function filterByCategory(

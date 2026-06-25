@@ -15,6 +15,11 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   claim_approved: "✅",
   claim_rejected: "✕",
   claim_more_info: "❓",
+  new_club_request: "🏛️",
+  club_request_submitted: "📨",
+  club_request_approved: "✅",
+  club_request_rejected: "✕",
+  club_request_more_info: "❓",
   club_update: "🔔",
 };
 

@@ -2,6 +2,10 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  notifyClubRequestSubmitted,
+  resolveStudentDisplayName,
+} from "../../lib/notifications";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
 
@@ -128,19 +132,40 @@ export default function CreateClubPage() {
           Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
       });
 
-      const { error: insertError } = await supabase.from("club_requests").insert({
-        submitted_by: user.id,
-        name: name.trim(),
-        short_description: description.trim() || null,
-        long_description: longDescription,
-        category: category.trim(),
-        status: "pending",
-      });
+      const { data: insertedRequest, error: insertError } = await supabase
+        .from("club_requests")
+        .insert({
+          submitted_by: user.id,
+          name: name.trim(),
+          short_description: description.trim() || null,
+          long_description: longDescription,
+          category: category.trim(),
+          status: "pending",
+        })
+        .select("id")
+        .single();
 
       if (insertError) {
         console.error("Failed to submit club request:", insertError.message);
         setError("Failed to submit club request. Please try again.");
         return;
+      }
+
+      const requestId = insertedRequest?.id as string | undefined;
+      if (requestId) {
+        const submitterName = resolveStudentDisplayName(
+          typeof user.user_metadata?.full_name === "string"
+            ? user.user_metadata.full_name
+            : null,
+          user.email,
+        );
+
+        await notifyClubRequestSubmitted(supabase, {
+          clubName: name.trim(),
+          submitterName,
+          submitterUserId: user.id,
+          clubRequestId: requestId,
+        });
       }
 
       setSuccessMessage(

@@ -48,12 +48,18 @@ export function normalizeInboxUiType(message: InboxMessage): string {
   if (message.actionType === "view_claim_status") return "claim_submitted";
   if (message.actionType === "review_claim_request") return "new_claim_request";
   if (message.actionType === "claim_more_info") return "claim_more_info";
+  if (message.actionType === "view_club_request_status") return "club_request_submitted";
+  if (message.actionType === "review_club_request") return "new_club_request";
 
   switch (message.type) {
     case "club_claim_approved":
       return "claim_approved";
     case "club_claim_rejected":
       return "claim_rejected";
+    case "club_request_approved":
+      return "club_request_approved";
+    case "club_request_rejected":
+      return "club_request_rejected";
     default:
       return message.type;
   }
@@ -72,12 +78,17 @@ export function inboxCategoryLabel(message: InboxMessage): string {
     case "claim_rejected":
     case "claim_submitted":
     case "claim_more_info":
-      return "Club Claim";
+    case "club_request_approved":
+    case "club_request_rejected":
+    case "club_request_submitted":
+    case "club_request_more_info":
+      return "Club Request";
     case "executive_invite":
       return "Executive Invite";
     case "application_update":
       return "Application Update";
     case "new_claim_request":
+    case "new_club_request":
       return "Admin";
     case "admin_message":
     case "system_message":
@@ -124,12 +135,33 @@ export function inboxStatusBadge(message: InboxMessage): InboxStatusBadge | null
         background: "rgba(255,196,41,0.1)",
         border: `1px solid ${GOLD}`,
       };
+    case "club_request_approved":
+      return {
+        label: "Approved ✓",
+        color: GOLD,
+        background: "rgba(255,196,41,0.1)",
+        border: `1px solid ${GOLD}`,
+      };
     case "claim_rejected":
       return {
         label: "Declined",
         color: RED,
         background: "rgba(229,25,55,0.1)",
         border: `1px solid ${RED}`,
+      };
+    case "club_request_rejected":
+      return {
+        label: "Declined",
+        color: RED,
+        background: "rgba(229,25,55,0.1)",
+        border: `1px solid ${RED}`,
+      };
+    case "club_request_submitted":
+      return {
+        label: "Pending Review",
+        color: GOLD,
+        background: "rgba(255,196,41,0.1)",
+        border: `1px solid ${GOLD}`,
       };
     case "join_approved":
       return {
@@ -179,6 +211,11 @@ function inboxAvatarIcon(message: InboxMessage): AvatarIconConfig {
     case "claim_submitted":
     case "claim_more_info":
     case "new_claim_request":
+    case "club_request_approved":
+    case "club_request_rejected":
+    case "club_request_submitted":
+    case "club_request_more_info":
+    case "new_club_request":
       return { Icon: Building, background: RED, color: "#ffffff" };
     case "application_update":
       return { Icon: Briefcase, background: "#555555", color: "#ffffff" };
@@ -217,15 +254,20 @@ export function resolveInboxRowActionLabel(message: InboxMessage): string {
 
   switch (uiType) {
     case "claim_approved":
+    case "club_request_approved":
     case "join_approved":
       return "Open →";
     case "claim_rejected":
+    case "club_request_rejected":
       return "View Club Profile →";
     case "claim_submitted":
+    case "club_request_submitted":
       return "View Status →";
     case "claim_more_info":
+    case "club_request_more_info":
       return "View Status →";
     case "new_claim_request":
+    case "new_club_request":
       return "Review in Admin →";
     case "application_update":
       return "View Application →";
@@ -243,13 +285,18 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
 
   switch (uiType) {
     case "claim_approved":
+    case "club_request_approved":
     case "join_approved":
       return [{ label: "Open Club Dashboard", variant: "solid" }];
     case "claim_rejected":
       return [{ label: "View Club Profile", variant: "outlined" }];
+    case "club_request_rejected":
+      return [{ label: "Browse Clubs", variant: "outlined" }];
     case "claim_submitted":
+    case "club_request_submitted":
       return [{ label: "View Status", variant: "outlined" }];
     case "claim_more_info":
+    case "club_request_more_info":
       return [{ label: "View Status", variant: "outlined" }];
     case "join_rejected":
       return [{ label: "Read More →", variant: "link" }];
@@ -263,6 +310,7 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
       }
       return [{ label: "Review Application", variant: "outlined" }];
     case "new_claim_request":
+    case "new_club_request":
       return [{ label: "Review in Admin", variant: "outlined" }];
     default:
       if (message.actionType === "review_hiring_application") {

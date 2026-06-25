@@ -11,6 +11,8 @@ export type InboxMessageType =
   | "join_rejected"
   | "club_claim_approved"
   | "club_claim_rejected"
+  | "club_request_approved"
+  | "club_request_rejected"
   | "application_update"
   | "offer_accepted"
   | "offer_declined"
@@ -71,6 +73,8 @@ const CLUB_UPDATE_TYPES = new Set<InboxMessageType>([
   "join_rejected",
   "club_claim_approved",
   "club_claim_rejected",
+  "club_request_approved",
+  "club_request_rejected",
   "ownership_transfer",
   "role_updated",
 ]);
@@ -144,6 +148,24 @@ export function resolveInboxLink(message: InboxMessage): string {
     if (claimId) return `/claim-status/${claimId}`;
   }
 
+  if (message.actionType === "view_club_request_status") {
+    return "/app";
+  }
+
+  if (message.actionType === "review_club_request") {
+    const requestId =
+      (typeof message.actionData.requestId === "string" &&
+        message.actionData.requestId.trim()) ||
+      message.referenceId;
+    return requestId
+      ? `/app/admin?tab=requests&request=${requestId}`
+      : "/app/admin?tab=requests";
+  }
+
+  if (message.actionType === "review_claim_request") {
+    return "/app/admin?tab=claims";
+  }
+
   if (message.actionType === "claim_more_info") {
     const claimId =
       (typeof message.actionData.claimId === "string" &&
@@ -163,7 +185,10 @@ export function resolveInboxLink(message: InboxMessage): string {
       return "/explore";
     case "club_claim_rejected":
       return "/explore";
+    case "club_request_rejected":
+      return "/explore";
     case "club_claim_approved":
+    case "club_request_approved":
       return clubBase ?? "/app";
     case "admin_message":
     case "system_message":
