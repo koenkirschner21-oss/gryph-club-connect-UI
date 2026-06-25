@@ -63,16 +63,7 @@ export default function CreateClubPage() {
     setSlug(generateSlug(value));
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSuccessMessage(null);
-
-    if (!user?.id) {
-      setError("You must be signed in to submit a club request.");
-      return;
-    }
-
+  function validateBasics(): boolean {
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
     const nextFieldErrors = {
@@ -89,11 +80,33 @@ export default function CreateClubPage() {
           : "",
     };
     setFieldErrors(nextFieldErrors);
-    if (
+    return !(
       nextFieldErrors.name ||
       nextFieldErrors.category ||
       nextFieldErrors.description
-    ) {
+    );
+  }
+
+  function handleNext() {
+    if (step === 1 && !validateBasics()) {
+      return;
+    }
+    setStep((s) => (s + 1) as 1 | 2 | 3);
+  }
+
+  async function submitClubRequest() {
+    if (step !== 3 || loading || successMessage) {
+      return;
+    }
+
+    setError(null);
+
+    if (!user?.id) {
+      setError("You must be signed in to submit a club request.");
+      return;
+    }
+
+    if (!validateBasics()) {
       setStep(1);
       return;
     }
@@ -131,13 +144,17 @@ export default function CreateClubPage() {
       }
 
       setSuccessMessage(
-        "Your club request has been submitted for review. You'll be notified once it's approved.",
+        "Your club request has been submitted and is pending review. You'll be notified once it's approved.",
       );
     } catch {
       setError("Failed to submit club request. Please try again.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleFormSubmit(e: FormEvent) {
+    e.preventDefault();
   }
 
   return (
@@ -148,16 +165,48 @@ export default function CreateClubPage() {
         <div
           role="status"
           style={{
-            background: "#0d2b0d",
-            border: "1px solid #1a4a1a",
-            color: "#4ade80",
-            borderRadius: "8px",
-            padding: "16px",
+            background: "#141414",
+            border: "1px solid #2a2a2a",
+            borderRadius: "12px",
+            padding: "24px",
             marginBottom: "24px",
-            fontSize: "14px",
           }}
         >
-          {successMessage}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "12px",
+              padding: "4px 10px",
+              borderRadius: "999px",
+              background: "rgba(234, 179, 8, 0.12)",
+              border: "1px solid rgba(234, 179, 8, 0.35)",
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "#facc15",
+            }}
+          >
+            Pending Review
+          </div>
+          <h2
+            style={{
+              margin: "0 0 8px",
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "#ffffff",
+            }}
+          >
+            Club request submitted
+          </h2>
+          <p style={{ margin: 0, fontSize: "14px", color: "#888888", lineHeight: 1.5 }}>
+            {successMessage}
+          </p>
+          <div style={{ marginTop: "20px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <Button type="button" onClick={() => navigate("/app")}>
+              Back to Dashboard
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -170,6 +219,7 @@ export default function CreateClubPage() {
         </div>
       )}
 
+      {!successMessage ? (
       <div className="mb-8 flex items-center">
         {[1, 2, 3].map((dot, i) => (
           <div key={dot} className="flex flex-1 items-center">
@@ -178,8 +228,10 @@ export default function CreateClubPage() {
           </div>
         ))}
       </div>
+      ) : null}
 
-      <form onSubmit={handleSubmit} className="space-y-6 overflow-hidden rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-2)] p-6" noValidate>
+      {!successMessage ? (
+      <form onSubmit={handleFormSubmit} className="space-y-6 overflow-hidden rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-2)] p-6" noValidate>
         <div className="transition-all duration-200" style={{ transform: "translateX(0)", opacity: 1 }}>
           {step === 1 && (
             <fieldset className="space-y-4">
@@ -234,16 +286,21 @@ export default function CreateClubPage() {
             Back
           </Button>
           {step < 3 ? (
-            <Button type="button" onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}>
+            <Button type="button" onClick={handleNext}>
               Next →
             </Button>
           ) : (
-            <Button type="submit" disabled={loading || !!successMessage}>
+            <Button
+              type="button"
+              disabled={loading}
+              onClick={() => void submitClubRequest()}
+            >
               {loading ? "Submitting…" : "Create Club"}
             </Button>
           )}
         </div>
       </form>
+      ) : null}
     </div>
   );
 }
