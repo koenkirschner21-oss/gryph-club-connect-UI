@@ -55,6 +55,7 @@ export type TaskSortOption = "due_date" | "priority" | "status" | "club_name";
 export type TaskPriorityFilter = "all" | "high" | "medium" | "low";
 export type TaskProgressTimeRange = "week" | "month" | "semester" | "all";
 export type TaskGroupByOption = "status" | "deadline" | "club" | "priority" | "task_type";
+export type DashboardTaskScope = "assigned_to_me" | "created_by_me" | "club_tasks";
 
 export type TaskListGroup = {
   id: string;
@@ -609,6 +610,56 @@ export function TaskBreakdownCard({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+export function DashboardTaskScopeToggle({
+  active,
+  onChange,
+  showClubTasks,
+}: {
+  active: DashboardTaskScope;
+  onChange: (scope: DashboardTaskScope) => void;
+  showClubTasks: boolean;
+}) {
+  const options: { id: DashboardTaskScope; label: string }[] = [
+    { id: "assigned_to_me", label: "Assigned to Me" },
+    { id: "created_by_me", label: "Created by Me" },
+    ...(showClubTasks ? [{ id: "club_tasks" as const, label: "Club Tasks" }] : []),
+  ];
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Task scope"
+      style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}
+    >
+      {options.map((option) => {
+        const isActive = active === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(option.id)}
+            style={{
+              background: isActive ? "#E51937" : "transparent",
+              color: isActive ? "#ffffff" : "#999999",
+              border: isActive ? "1px solid #E51937" : "1px solid #333333",
+              borderRadius: "20px",
+              padding: "6px 14px",
+              fontSize: "12px",
+              fontWeight: 500,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
