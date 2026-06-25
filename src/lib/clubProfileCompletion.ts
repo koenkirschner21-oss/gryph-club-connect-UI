@@ -1,5 +1,32 @@
 import type { Club } from "../types";
 
+export type ClubSetupSettingsSection =
+  | "profile"
+  | "branding"
+  | "social"
+  | "membership";
+
+const SETUP_SECTIONS = new Set<ClubSetupSettingsSection>([
+  "profile",
+  "branding",
+  "social",
+  "membership",
+]);
+
+export function buildClubSettingsSectionPath(
+  clubId: string,
+  section: ClubSetupSettingsSection,
+): string {
+  return `/app/clubs/${clubId}/settings?section=${section}&highlight=${section}`;
+}
+
+export function isClubSetupSettingsDeepLink(
+  searchParams: Pick<URLSearchParams, "get">,
+): boolean {
+  const section = searchParams.get("section");
+  return SETUP_SECTIONS.has(section as ClubSetupSettingsSection);
+}
+
 function hasSocialLinks(links: Club["socialLinks"]): boolean {
   if (!links) return false;
   return Object.values(links).some((value) => Boolean(value && value.trim() !== ""));

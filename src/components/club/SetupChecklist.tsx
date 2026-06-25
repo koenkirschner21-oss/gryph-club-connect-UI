@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check, X } from "lucide-react";
+import {
+  buildClubSettingsSectionPath,
+  resolveClubSetupSettingsPath,
+} from "../../lib/clubProfileCompletion";
 import type { Club } from "../../types";
 
 const CARD_BG = "#141414";
@@ -26,14 +30,6 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   launch: "Launch Content",
   live: "Go Live",
 };
-
-function settingsFixPath(
-  clubId: string,
-  section: "profile" | "branding" | "social" | "membership",
-  highlight: "profile" | "branding" | "social" | "membership",
-): string {
-  return `/app/clubs/${clubId}/settings?section=${section}&highlight=${highlight}`;
-}
 
 function buildCompletionChecks(
   club: Club,
@@ -73,7 +69,7 @@ function buildChecklistItems(
       label: "Update club logo",
       complete: checks.logo,
       section: "profile",
-      fixPath: settingsFixPath(club.id, "branding", "branding"),
+      fixPath: buildClubSettingsSectionPath(club.id, "branding"),
       instruction:
         "Replace the default logo with your club's official logo.",
     },
@@ -82,7 +78,7 @@ function buildChecklistItems(
       label: "Update club banner",
       complete: checks.banner,
       section: "profile",
-      fixPath: settingsFixPath(club.id, "branding", "branding"),
+      fixPath: buildClubSettingsSectionPath(club.id, "branding"),
       instruction:
         "Replace the default banner with a real club banner image.",
     },
@@ -91,7 +87,7 @@ function buildChecklistItems(
       label: "Review or update short description",
       complete: checks.shortDescription,
       section: "profile",
-      fixPath: settingsFixPath(club.id, "profile", "profile"),
+      fixPath: buildClubSettingsSectionPath(club.id, "profile"),
       instruction:
         "Review the imported description and update it to accurately represent your club. Click Save in Settings to confirm.",
     },
@@ -100,7 +96,7 @@ function buildChecklistItems(
       label: "Add contact email",
       complete: checks.contactEmail,
       section: "profile",
-      fixPath: settingsFixPath(club.id, "profile", "profile"),
+      fixPath: buildClubSettingsSectionPath(club.id, "profile"),
       instruction: "Add a contact email so students can reach your club.",
     },
     {
@@ -108,7 +104,7 @@ function buildChecklistItems(
       label: "Add meeting schedule",
       complete: checks.meetingSchedule,
       section: "profile",
-      fixPath: settingsFixPath(club.id, "profile", "profile"),
+      fixPath: buildClubSettingsSectionPath(club.id, "profile"),
       instruction: "Let members know when and where your club meets.",
     },
     {
@@ -116,7 +112,7 @@ function buildChecklistItems(
       label: "Add social links",
       complete: checks.socialLinks,
       section: "profile",
-      fixPath: settingsFixPath(club.id, "social", "social"),
+      fixPath: buildClubSettingsSectionPath(club.id, "social"),
       instruction: "Link your Instagram, website, or other channels.",
     },
     {
@@ -124,7 +120,7 @@ function buildChecklistItems(
       label: "Choose membership rules",
       complete: checks.membershipType,
       section: "profile",
-      fixPath: settingsFixPath(club.id, "membership", "membership"),
+      fixPath: buildClubSettingsSectionPath(club.id, "membership"),
       instruction:
         "Choose how students can join your club and click Save to confirm.",
     },
@@ -325,7 +321,10 @@ export default function SetupChecklist({
   const progressPercent = Math.round((completedCount / totalCount) * 100);
   const allComplete = completedCount === totalCount;
 
-  const settingsPath = `/app/clubs/${club.id}/settings`;
+  const settingsPath = resolveClubSetupSettingsPath(
+    `/app/clubs/${club.id}/settings`,
+    club,
+  );
   const publicProfilePath = `/clubs/${club.slug}`;
 
   async function handlePublish() {

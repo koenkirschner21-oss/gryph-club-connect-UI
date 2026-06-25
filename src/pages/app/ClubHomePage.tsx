@@ -1546,7 +1546,7 @@ export default function ClubHomePage() {
   );
   const isPrivileged = isPrivilegedClubRole(userRole);
   const isPresidentCommandCenter =
-    userRole === "owner" || userAccessLevel === "president";
+    memberAccess.isPresident || userRole === "owner" || userAccessLevel === "president";
   const visibilityContext = useMemo(
     () => ({ isMember: true, isPrivileged }),
     [isPrivileged],

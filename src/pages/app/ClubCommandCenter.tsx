@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import {
+  buildClubSettingsSectionPath,
   clubHasSocialLinks,
   computeClubProfileCompletionPercent,
   getClubProfileMissingLabels,
@@ -852,7 +853,8 @@ export default function ClubCommandCenter({
           title: "Add a club logo",
           reason: "Clubs with logos look more credible on Explore and public profiles.",
           actionLabel: "Complete Setup",
-          onAction: () => navigate(`${settingsPath}?section=branding&highlight=branding`),
+          onAction: () =>
+            navigate(buildClubSettingsSectionPath(clubId, "branding")),
         });
       }
 
@@ -864,7 +866,8 @@ export default function ClubCommandCenter({
           title: "Add a banner image",
           reason: "A banner helps your public profile stand out to prospective members.",
           actionLabel: "Complete Setup",
-          onAction: () => navigate(`${settingsPath}?section=branding&highlight=branding`),
+          onAction: () =>
+            navigate(buildClubSettingsSectionPath(clubId, "branding")),
         });
       }
 
@@ -876,7 +879,8 @@ export default function ClubCommandCenter({
           title: "Add contact email",
           reason: "Prospective members need a way to reach your club leadership.",
           actionLabel: "Complete Setup",
-          onAction: () => navigate(`${settingsPath}?section=profile&highlight=profile`),
+          onAction: () =>
+            navigate(buildClubSettingsSectionPath(clubId, "profile")),
         });
       }
 
@@ -888,7 +892,8 @@ export default function ClubCommandCenter({
           title: "Add a short description",
           reason: "Help students understand what your club is about on your public profile.",
           actionLabel: "Complete Setup",
-          onAction: () => navigate(`${settingsPath}?section=profile&highlight=profile`),
+          onAction: () =>
+            navigate(buildClubSettingsSectionPath(clubId, "profile")),
         });
       }
 
@@ -900,7 +905,8 @@ export default function ClubCommandCenter({
           title: "Add meeting schedule",
           reason: "Let members know when and how often your club meets.",
           actionLabel: "Complete Setup",
-          onAction: () => navigate(`${settingsPath}?section=profile&highlight=profile`),
+          onAction: () =>
+            navigate(buildClubSettingsSectionPath(clubId, "profile")),
         });
       }
 
@@ -912,7 +918,8 @@ export default function ClubCommandCenter({
           title: "Add social links",
           reason: "Link your Instagram, website, or other channels on your public profile.",
           actionLabel: "Complete Setup",
-          onAction: () => navigate(`${settingsPath}?section=social&highlight=social`),
+          onAction: () =>
+            navigate(buildClubSettingsSectionPath(clubId, "social")),
         });
       }
     }

@@ -39,9 +39,9 @@ export function accessLevelFromMember(member: {
   role: MemberRole | string;
   accessLevel?: AccessLevel | null;
 }): AccessLevel {
-  if (member.accessLevel) return member.accessLevel;
   const role = member.role;
-  if (role === "owner") return "president";
+  if (role === "owner" || role === "admin") return "president";
+  if (member.accessLevel) return member.accessLevel;
   if (role === "executive" || role === "exec") return "executive";
   return "member";
 }

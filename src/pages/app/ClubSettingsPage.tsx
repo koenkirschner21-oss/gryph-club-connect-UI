@@ -39,6 +39,7 @@ import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
 import MyMembershipPanel from "../../components/club/MyMembershipPanel";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import { isClubSetupSettingsDeepLink } from "../../lib/clubProfileCompletion";
 import {
   cancelOwnershipTransfer,
   isPresidentMember,
@@ -123,12 +124,6 @@ function SocialTwitterIcon({
       <path d="M4 4l16 16M20 4L4 20" />
     </svg>
   );
-}
-
-function normalizeMemberRole(role: string): MemberRole {
-  if (role === "executive" || role === "exec") return "executive";
-  if (role === "owner") return "owner";
-  return "member";
 }
 
 function formatSettingsRoleLabel(role: MemberRole | string): string {
@@ -945,10 +940,7 @@ export default function ClubSettingsPage() {
 
   const club = getClubById(clubId ?? "");
   const memberAccess = useClubMemberAccess(clubId);
-
-  const [userRole, setUserRole] = useState<MemberRole>("member");
-  const [roleLoading, setRoleLoading] = useState(true);
-  const [hasMembership, setHasMembership] = useState(false);
+  const isOwner = memberAccess.role === "owner";
 
   const [name, setName] = useState(club?.name ?? "");
   const [shortDescription, setShortDescription] = useState(
@@ -1023,7 +1015,9 @@ export default function ClubSettingsPage() {
   const [resettingPermissions, setResettingPermissions] = useState(false);
   const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
 
-  const isOwner = userRole === "owner";
+  const canViewClubSettings =
+    memberAccess.canManageClubSettings ||
+    (isClubSetupSettingsDeepLink(searchParams) && isOwner);
 
   const buildSnapshot = useCallback(
     (): FormSnapshot => ({
@@ -1089,42 +1083,9 @@ export default function ClubSettingsPage() {
   }, [club?.id, buildSnapshot]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function fetchRole() {
-      if (!user?.id || !clubId) {
-        if (!cancelled) setRoleLoading(false);
-        return;
-      }
-
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .single();
-
-      if (cancelled) return;
-
-      if (data?.role) {
-        setUserRole(normalizeMemberRole(data.role as string));
-        setHasMembership(true);
-      } else {
-        setHasMembership(false);
-      }
-      setRoleLoading(false);
-    }
-
-    void fetchRole();
-    return () => {
-      cancelled = true;
-    };
-  }, [clubId, user?.id]);
-
-  useEffect(() => {
     const section = searchParams.get("section");
     const highlight = searchParams.get("highlight");
-    if ((!section && !highlight) || roleLoading) return;
+    if ((!section && !highlight) || memberAccess.loading || !canViewClubSettings) return;
 
     const sectionIdMap: Record<string, string> = {
       profile: "club-profile",
@@ -1158,7 +1119,7 @@ export default function ClubSettingsPage() {
         block: "start",
       });
     });
-  }, [searchParams, roleLoading]);
+  }, [searchParams, memberAccess.loading, canViewClubSettings]);
 
   useEffect(() => {
     if (!clubId || !user?.id || !isOwner) {
@@ -1641,7 +1602,7 @@ export default function ClubSettingsPage() {
     return <Navigate to="/app" replace />;
   }
 
-  if (roleLoading || memberAccess.loading) {
+  if (memberAccess.loading) {
     return (
       <div style={{ padding: isMobile ? "16px" : "24px" }}>
         <p className="text-sm text-muted">Loading settings…</p>
@@ -1649,11 +1610,11 @@ export default function ClubSettingsPage() {
     );
   }
 
-  if (!hasMembership || !memberAccess.hasMembership) {
+  if (!memberAccess.hasMembership) {
     return <Navigate to="/app" replace />;
   }
 
-  if (!memberAccess.canManageClubSettings) {
+  if (!canViewClubSettings) {
     return (
       <MyMembershipPanel
         club={club}

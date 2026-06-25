@@ -211,6 +211,7 @@ export function resolvePermissionRole(
   accessLevel: PermissionRole | null | undefined,
   memberRole: string | null | undefined,
 ): PermissionRole {
+  if (memberRole === "owner" || memberRole === "admin") return "president";
   if (
     accessLevel === "president" ||
     accessLevel === "managerial_executive" ||
@@ -219,7 +220,6 @@ export function resolvePermissionRole(
   ) {
     return accessLevel;
   }
-  if (memberRole === "owner" || memberRole === "admin") return "president";
   if (memberRole === "executive" || memberRole === "exec") return "executive";
   return "member";
 }
