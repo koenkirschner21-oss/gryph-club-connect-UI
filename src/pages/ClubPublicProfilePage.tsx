@@ -20,6 +20,18 @@ import {
   notifyJoinRequestSubmitted,
   resolveStudentDisplayName,
 } from "../lib/notifications";
+import {
+  clubHasPublicSocialLinks,
+  formatPublicProfileField,
+  isDisplayablePlainText,
+  mapClubRowToPublicDisplayFields,
+  PUBLIC_PROFILE_EMPTY_ABOUT,
+  PUBLIC_PROFILE_EMPTY_ANNOUNCEMENTS,
+  PUBLIC_PROFILE_EMPTY_EVENTS,
+  PUBLIC_PROFILE_EMPTY_RESOURCES,
+  resolvePublicClubDisplayFromClub,
+  type PublicClubSocialLinks,
+} from "../lib/publicClubProfileDisplay";
 import type {
   ClaimStatus,
   Club,
@@ -29,7 +41,6 @@ import type {
   MembershipType,
 } from "../types";
 import Button from "../components/ui/Button";
-import Card from "../components/ui/Card";
 import Spinner from "../components/ui/Spinner";
 import { modalOverlayStyle } from "./app/HiringBoardPage";
 
@@ -39,19 +50,34 @@ interface PublicClubProfile {
   slug: string;
   shortDescription: string;
   longDescription: string;
+  aboutText: string;
+  contactEmail: string;
+  meetingSchedule: string;
+  meetingLocation: string;
+  socialLinks: PublicClubSocialLinks;
   logoUrl?: string;
   bannerUrl?: string;
   imageUrl?: string;
   category: string;
-  instagramUrl?: string;
-  linkedinUrl?: string;
-  twitterUrl?: string;
-  websiteUrl?: string;
   createdAt?: string;
   membershipType: MembershipType;
   claimStatus: ClaimStatus;
   joinQuestions: JoinQuestion[];
   allowJoinFileUpload?: boolean;
+}
+
+interface PublicAnnouncementPreview {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+interface PublicResourcePreview {
+  id: string;
+  name: string;
+  description?: string;
+  fileUrl: string;
 }
 
 type JoinApplicationStatus = "pending" | "approved" | "rejected" | null;
@@ -410,6 +436,67 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
   };
 }
 
+function getProfileSocialLinkEntries(
+  socialLinks: PublicClubSocialLinks,
+): { href: string; label: string; icon: ReactNode }[] {
+  return [
+    socialLinks.instagram && {
+      href: socialLinks.instagram,
+      label: "Instagram",
+      icon: <InstagramBrandIcon />,
+    },
+    socialLinks.linkedin && {
+      href: socialLinks.linkedin,
+      label: "LinkedIn",
+      icon: <LinkedInBrandIcon />,
+    },
+    socialLinks.twitter && {
+      href: socialLinks.twitter,
+      label: "Twitter/X",
+      icon: <TwitterBrandIcon />,
+    },
+    socialLinks.website && {
+      href: socialLinks.website,
+      label: "Website",
+      icon: <WebsiteBrandIcon />,
+    },
+    socialLinks.discord && {
+      href: socialLinks.discord,
+      label: "Discord",
+      icon: <Globe size={14} strokeWidth={2} aria-hidden />,
+    },
+  ].filter(Boolean) as { href: string; label: string; icon: ReactNode }[];
+}
+
+function profileSectionShellStyle(): CSSProperties {
+  return {
+    background: "#1a1a1a",
+    border: "1px solid #242424",
+    borderRadius: "10px",
+    padding: "20px",
+    marginBottom: "16px",
+  };
+}
+
+function profileSectionHeadingStyle(): CSSProperties {
+  return {
+    fontSize: "15px",
+    fontWeight: 600,
+    color: "#ffffff",
+    marginBottom: "10px",
+    marginTop: 0,
+  };
+}
+
+function profileEmptyStateStyle(): CSSProperties {
+  return {
+    fontSize: "14px",
+    color: "#555555",
+    margin: 0,
+    lineHeight: 1.5,
+  };
+}
+
 function SocialLinkRow({
   href,
   label,
@@ -471,6 +558,8 @@ export default function ClubPublicProfilePage() {
   const [memberCount, setMemberCount] = useState(0);
   const [openPositionsCount, setOpenPositionsCount] = useState(0);
   const [events, setEvents] = useState<ClubEvent[]>([]);
+  const [announcements, setAnnouncements] = useState<PublicAnnouncementPreview[]>([]);
+  const [resources, setResources] = useState<PublicResourcePreview[]>([]);
   const [owners, setOwners] = useState<ClubOwnerContact[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
 
@@ -557,20 +646,25 @@ export default function ClubPublicProfilePage() {
         return;
       }
 
+      const displayFields = mapClubRowToPublicDisplayFields(
+        clubRow as Record<string, unknown>,
+      );
+
       let loaded: PublicClubProfile = {
         id: clubRow.id as string,
         name: (clubRow.name as string) ?? "",
         slug: (clubRow.slug as string) ?? slug ?? "",
-        shortDescription: (clubRow.short_description as string) ?? "",
-        longDescription: (clubRow.long_description as string) ?? "",
+        shortDescription: displayFields.shortDescription,
+        longDescription: displayFields.longDescription,
+        aboutText: displayFields.aboutText,
+        contactEmail: displayFields.contactEmail,
+        meetingSchedule: displayFields.meetingSchedule,
+        meetingLocation: displayFields.meetingLocation,
+        socialLinks: displayFields.socialLinks,
         logoUrl: (clubRow.logo_url as string) ?? undefined,
         bannerUrl: (clubRow.banner_url as string) ?? undefined,
         imageUrl: (clubRow.image_url as string) ?? undefined,
         category: (clubRow.category as string) ?? "",
-        instagramUrl: (clubRow.instagram_url as string) ?? undefined,
-        linkedinUrl: (clubRow.linkedin_url as string) ?? undefined,
-        twitterUrl: (clubRow.twitter_url as string) ?? undefined,
-        websiteUrl: (clubRow.website_url as string) ?? undefined,
         createdAt: (clubRow.created_at as string) ?? undefined,
         membershipType: normalizeMembershipType(clubRow.membership_type),
         claimStatus: normalizeClaimStatus(clubRow.claim_status),
@@ -628,7 +722,7 @@ export default function ClubPublicProfilePage() {
       setProfile(loaded);
       setApplicationStatus(userApplicationStatus);
 
-      const [{ count: members }, { count: positions }, eventsRes, ownersRes] =
+      const [{ count: members }, { count: positions }, eventsRes, ownersRes, announcementsRes, resourcesRes] =
         await Promise.all([
         supabase
           .from("club_members")
@@ -659,6 +753,20 @@ export default function ClubPublicProfilePage() {
           .eq("club_id", loaded.id)
           .eq("role", "owner")
           .eq("status", "active"),
+        supabase
+          .from("posts")
+          .select("id, title, content, created_at, visibility")
+          .eq("club_id", loaded.id)
+          .eq("visibility", "public")
+          .order("created_at", { ascending: false })
+          .limit(3),
+        supabase
+          .from("club_documents")
+          .select("id, name, description, file_url, visibility")
+          .eq("club_id", loaded.id)
+          .eq("visibility", "public")
+          .order("created_at", { ascending: false })
+          .limit(3),
       ]);
 
       if (cancelled) return;
@@ -694,6 +802,29 @@ export default function ClubPublicProfilePage() {
               (e) => e.visibility === "public",
             ),
       );
+
+      setAnnouncements(
+        (announcementsRes.data ?? []).map((row) => ({
+          id: row.id as string,
+          title: formatPublicProfileField(row.title) || "Announcement",
+          content: isDisplayablePlainText(row.content as string | null)
+            ? formatPublicProfileField(row.content)
+            : "",
+          createdAt: (row.created_at as string) ?? "",
+        })),
+      );
+
+      setResources(
+        (resourcesRes.data ?? []).map((row) => ({
+          id: row.id as string,
+          name: formatPublicProfileField(row.name) || "Resource",
+          description: isDisplayablePlainText(row.description as string | null)
+            ? formatPublicProfileField(row.description)
+            : undefined,
+          fileUrl: formatPublicProfileField(row.file_url),
+        })),
+      );
+
       setPageLoading(false);
     }
 
@@ -809,12 +940,29 @@ export default function ClubPublicProfilePage() {
     );
   }
 
+  const contextDisplay = contextClub
+    ? resolvePublicClubDisplayFromClub({
+        shortDescription: contextClub.shortDescription,
+        longDescription: contextClub.longDescription,
+        description: contextClub.description,
+        contactEmail: contextClub.contactEmail,
+        meetingSchedule: contextClub.meetingSchedule,
+        meetingLocation: contextClub.meetingLocation,
+        socialLinks: contextClub.socialLinks,
+      })
+    : null;
+
   const club: PublicClubProfile = profile ?? {
     id: contextClub!.id,
     name: contextClub!.name,
     slug: contextClub!.slug,
-    shortDescription: contextClub!.shortDescription ?? "",
-    longDescription: contextClub!.longDescription ?? contextClub!.description,
+    shortDescription: contextDisplay?.shortDescription ?? "",
+    longDescription: contextDisplay?.longDescription ?? "",
+    aboutText: contextDisplay?.aboutText ?? "",
+    contactEmail: contextDisplay?.contactEmail ?? "",
+    meetingSchedule: contextDisplay?.meetingSchedule ?? "",
+    meetingLocation: contextDisplay?.meetingLocation ?? "",
+    socialLinks: contextDisplay?.socialLinks ?? {},
     logoUrl: contextClub!.logoUrl,
     bannerUrl: contextClub!.bannerUrl,
     imageUrl: contextClub!.imageUrl,
@@ -832,8 +980,7 @@ export default function ClubPublicProfilePage() {
   const joinBadgeStyle = membershipBadgeStyle(membershipType);
   const joinBadgeLabel = membershipBadgeLabel(membershipType);
 
-  const aboutText =
-    club.longDescription?.trim() || club.shortDescription?.trim() || "";
+  const aboutText = club.aboutText;
 
   const aboutPreview =
     aboutText.length > ABOUT_PREVIEW_LENGTH
@@ -872,11 +1019,7 @@ export default function ClubPublicProfilePage() {
   const headerPadding = isMobile ? "0 16px" : "0 32px";
   const headerContainerPadding = isMobile ? "0 16px 20px" : "0 32px 20px";
 
-  const hasSocialLinks =
-    !!club.instagramUrl ||
-    !!club.linkedinUrl ||
-    !!club.twitterUrl ||
-    !!club.websiteUrl;
+  const hasSocialLinks = clubHasPublicSocialLinks(club.socialLinks);
 
   const initialsClub: Pick<Club, "name" | "abbreviation"> = {
     name: club.name,
@@ -1306,7 +1449,7 @@ export default function ClubPublicProfilePage() {
                   margin: 0,
                 }}
               >
-                {aboutText ? aboutPreview : "No description provided yet."}
+                {aboutText ? aboutPreview : PUBLIC_PROFILE_EMPTY_ABOUT}
                 {showAboutReadMore ? (
                   <>
                     {" "}
@@ -1339,6 +1482,10 @@ export default function ClubPublicProfilePage() {
               clubAbbreviation={contextClub?.abbreviation}
               onEventClick={handleEventCardClick}
             />
+
+            <AnnouncementsSection announcements={announcements} />
+
+            <ResourcesSection resources={resources} />
           </div>
 
           <aside style={{ width: isMobile ? "100%" : "280px", flexShrink: 0 }}>
@@ -1552,10 +1699,95 @@ function EventsSection({
           ) : null}
         </div>
       ) : (
-        <Card className="p-8 text-center">
-          <p className="font-medium text-white">No upcoming events</p>
-          <p className="mt-1 text-sm text-muted">Check back soon for new events.</p>
-        </Card>
+        <div style={profileSectionShellStyle()}>
+          <p style={profileEmptyStateStyle()}>{PUBLIC_PROFILE_EMPTY_EVENTS}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnnouncementsSection({
+  announcements,
+}: {
+  announcements: PublicAnnouncementPreview[];
+}) {
+  return (
+    <div style={profileSectionShellStyle()}>
+      <h2 style={profileSectionHeadingStyle()}>Announcements</h2>
+      {announcements.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {announcements.map((announcement, index) => (
+            <div
+              key={announcement.id}
+              style={{
+                borderTop: index === 0 ? undefined : "1px solid #242424",
+                paddingTop: index === 0 ? 0 : "12px",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 4px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                }}
+              >
+                {announcement.title}
+              </p>
+              {announcement.content.trim() ? (
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "13px",
+                    color: "#999999",
+                    lineHeight: 1.5,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {announcement.content.trim()}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p style={profileEmptyStateStyle()}>{PUBLIC_PROFILE_EMPTY_ANNOUNCEMENTS}</p>
+      )}
+    </div>
+  );
+}
+
+function ResourcesSection({
+  resources,
+}: {
+  resources: PublicResourcePreview[];
+}) {
+  return (
+    <div style={profileSectionShellStyle()}>
+      <h2 style={profileSectionHeadingStyle()}>Resources</h2>
+      {resources.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {resources.map((resource) => (
+            <a
+              key={resource.id}
+              href={resource.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "block",
+                color: "#E51937",
+                fontSize: "14px",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              {resource.name}
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p style={profileEmptyStateStyle()}>{PUBLIC_PROFILE_EMPTY_RESOURCES}</p>
       )}
     </div>
   );
@@ -1663,8 +1895,7 @@ function ClubAboutModal({
   onOpenWorkspace: () => void;
   onJoin: () => void;
 }) {
-  const aboutText =
-    club.longDescription?.trim() || club.shortDescription?.trim() || "";
+  const aboutText = club.aboutText;
 
   const joinLabel =
     membershipType === "approval_required"
@@ -1712,7 +1943,7 @@ function ClubAboutModal({
             whiteSpace: "pre-wrap",
           }}
         >
-          {aboutText || "No description provided yet."}
+          {aboutText || PUBLIC_PROFILE_EMPTY_ABOUT}
         </p>
 
         <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: "20px", marginBottom: "20px" }}>
@@ -1739,29 +1970,7 @@ function ClubAboutModal({
         {hasSocialLinks ? (
           <div style={{ marginBottom: "20px" }}>
             <p style={connectHeadingStyle()}>Connect</p>
-            {(
-              [
-                club.instagramUrl && {
-                  href: club.instagramUrl,
-                  label: "Instagram",
-                  icon: <InstagramBrandIcon />,
-                },
-                club.linkedinUrl && {
-                  href: club.linkedinUrl,
-                  label: "LinkedIn",
-                  icon: <LinkedInBrandIcon />,
-                },
-                club.websiteUrl && {
-                  href: club.websiteUrl,
-                  label: "Website",
-                  icon: <WebsiteBrandIcon />,
-                },
-              ].filter(Boolean) as {
-                href: string;
-                label: string;
-                icon: ReactNode;
-              }[]
-            ).map((link, index, arr) => (
+            {getProfileSocialLinkEntries(club.socialLinks).map((link, index, arr) => (
               <SocialLinkRow
                 key={link.label}
                 href={link.href}
@@ -2075,39 +2284,74 @@ function SidebarDetails({
             <ContactOwnerRow key={owner.email} owner={owner} />
           ))}
         </div>
+      ) : club.contactEmail ? (
+        <div style={{ marginTop: "16px" }}>
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#555555",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              marginBottom: "10px",
+            }}
+          >
+            Contact
+          </p>
+          <a
+            href={`mailto:${club.contactEmail}`}
+            style={{
+              fontSize: "13px",
+              color: "#cccccc",
+              textDecoration: "none",
+            }}
+          >
+            {club.contactEmail}
+          </a>
+        </div>
+      ) : null}
+
+      {club.meetingSchedule ? (
+        <div style={{ marginTop: "16px" }}>
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#555555",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              marginBottom: "6px",
+            }}
+          >
+            Meeting Schedule
+          </p>
+          <p style={{ fontSize: "13px", color: "#cccccc", margin: 0, lineHeight: 1.5 }}>
+            {club.meetingSchedule}
+          </p>
+        </div>
+      ) : null}
+
+      {club.meetingLocation ? (
+        <div style={{ marginTop: "12px" }}>
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#555555",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              marginBottom: "6px",
+            }}
+          >
+            Meeting Location
+          </p>
+          <p style={{ fontSize: "13px", color: "#cccccc", margin: 0, lineHeight: 1.5 }}>
+            {club.meetingLocation}
+          </p>
+        </div>
       ) : null}
 
       {hasSocialLinks ? (
         <div style={{ marginTop: "16px" }}>
           <p style={connectHeadingStyle()}>Connect</p>
-          {(
-            [
-              club.instagramUrl && {
-                href: club.instagramUrl,
-                label: "Instagram",
-                icon: <InstagramBrandIcon />,
-              },
-              club.linkedinUrl && {
-                href: club.linkedinUrl,
-                label: "LinkedIn",
-                icon: <LinkedInBrandIcon />,
-              },
-              club.twitterUrl && {
-                href: club.twitterUrl,
-                label: "Twitter/X",
-                icon: <TwitterBrandIcon />,
-              },
-              club.websiteUrl && {
-                href: club.websiteUrl,
-                label: "Website",
-                icon: <WebsiteBrandIcon />,
-              },
-            ].filter(Boolean) as {
-              href: string;
-              label: string;
-              icon: ReactNode;
-            }[]
-          ).map((link, index, arr) => (
+          {getProfileSocialLinkEntries(club.socialLinks).map((link, index, arr) => (
             <SocialLinkRow
               key={link.label}
               href={link.href}
