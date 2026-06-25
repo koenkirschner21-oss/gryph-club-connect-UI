@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
+import { ensureMyClubChats } from "../lib/clubChatProvisioning";
 import { uploadImage } from "../lib/uploadImage";
 import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import { useAuthContext } from "../context/useAuthContext";
@@ -530,6 +531,8 @@ export function useConversations(
     }
 
     setLoading(true);
+
+    await ensureMyClubChats(supabase, clubId);
 
     const { data: memberships, error: memErr } = await supabase
       .from("conversation_members")

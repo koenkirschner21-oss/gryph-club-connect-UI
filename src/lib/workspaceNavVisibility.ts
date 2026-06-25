@@ -37,6 +37,11 @@ export interface WorkspaceNavContext {
   accessLevel: PermissionRole | null | undefined;
   memberRole: string | null | undefined;
   flags: WorkspaceNavFlags;
+  hasActiveClubMembership: boolean;
+}
+
+function canShowClubChat(ctx: WorkspaceNavContext): boolean {
+  return ctx.hasActiveClubMembership;
 }
 
 export function shouldShowWorkspaceNavLink(
@@ -56,14 +61,14 @@ export function shouldShowWorkspaceNavLink(
   }
 
   if (ctx.isPresident) {
-    if (key === "chat") return ctx.flags.hasChat;
+    if (key === "chat") return canShowClubChat(ctx);
     return true;
   }
 
   if (ctx.permissionRole === "member") {
     switch (key) {
       case "chat":
-        return ctx.flags.hasChat;
+        return canShowClubChat(ctx);
       case "tasks":
         return ctx.flags.hasAssignedTasks;
       case "meetings":
@@ -79,7 +84,7 @@ export function shouldShowWorkspaceNavLink(
 
   switch (key) {
     case "chat":
-      return ctx.flags.hasChat;
+      return canShowClubChat(ctx);
     case "tasks":
       return can("manage_tasks") || ctx.flags.hasAssignedTasks;
     case "meetings":
@@ -128,6 +133,7 @@ export function buildWorkspaceNavContext(
   memberRole: string | null | undefined,
   permissions: ClubPermissions,
   flags: WorkspaceNavFlags,
+  hasActiveClubMembership: boolean,
 ): WorkspaceNavContext {
   return {
     permissionRole: resolvePermissionRole(accessLevel, memberRole),
@@ -136,5 +142,6 @@ export function buildWorkspaceNavContext(
     accessLevel,
     memberRole,
     flags,
+    hasActiveClubMembership,
   };
 }

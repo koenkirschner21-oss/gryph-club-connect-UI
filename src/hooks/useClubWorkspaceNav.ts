@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthContext } from "../context/useAuthContext";
+import { ensureMyClubChats } from "../lib/clubChatProvisioning";
 import { supabase } from "../lib/supabaseClient";
 import {
   buildWorkspaceNavContext,
@@ -40,6 +41,10 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
     setFlagsLoading(true);
 
     try {
+      if (access.hasMembership) {
+        await ensureMyClubChats(supabase, clubId);
+      }
+
       const [
         membershipsRes,
         assignedTasksRes,
@@ -102,11 +107,12 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
     } finally {
       setFlagsLoading(false);
     }
-  }, [clubId, members, user?.id]);
+  }, [clubId, members, user?.id, access.hasMembership]);
 
   useEffect(() => {
+    if (access.loading) return;
     void loadFlags();
-  }, [loadFlags]);
+  }, [access.loading, loadFlags]);
 
   const navContext = useMemo(
     () =>
@@ -115,8 +121,9 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
         access.role,
         access.permissions,
         flags,
+        access.hasMembership,
       ),
-    [access.accessLevel, access.permissions, access.role, flags],
+    [access.accessLevel, access.hasMembership, access.permissions, access.role, flags],
   );
 
   const isLinkVisible = useCallback(
