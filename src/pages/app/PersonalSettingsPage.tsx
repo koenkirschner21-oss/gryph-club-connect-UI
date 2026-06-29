@@ -18,15 +18,37 @@ import ImageCropModal from "../../components/ui/ImageCropModal";
 const YEAR_OPTIONS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "Graduate"] as const;
 
 const NOTIFICATION_TOGGLES = [
-  { key: "announcements", label: "New announcements in my clubs" },
-  { key: "events", label: "New events in my clubs" },
+  { key: "announcements", label: "New announcements" },
+  { key: "events", label: "New events" },
   { key: "task_assignments", label: "Task assignments" },
   { key: "task_deadline_reminders", label: "Task deadline reminders" },
   { key: "chat_messages", label: "New chat messages" },
-  { key: "chat_mentions", label: "@ mentions in chat" },
+  { key: "chat_mentions", label: "@mentions" },
+] as const;
+
+const NOTIFICATION_GROUPS = [
+  {
+    id: "club_updates",
+    title: "Club Updates",
+    toggleKeys: ["announcements", "events"] as const,
+  },
+  {
+    id: "tasks",
+    title: "Tasks",
+    toggleKeys: ["task_assignments", "task_deadline_reminders"] as const,
+  },
+  {
+    id: "messages",
+    title: "Messages",
+    toggleKeys: ["chat_messages", "chat_mentions"] as const,
+  },
 ] as const;
 
 type NotificationKey = (typeof NOTIFICATION_TOGGLES)[number]["key"];
+
+const NOTIFICATION_LABEL_BY_KEY = Object.fromEntries(
+  NOTIFICATION_TOGGLES.map((toggle) => [toggle.key, toggle.label]),
+) as Record<NotificationKey, string>;
 
 type NotificationPreferences = Record<NotificationKey, boolean>;
 
@@ -116,6 +138,44 @@ function SettingsField({
       {hint ? (
         <p style={{ fontSize: "11px", color: "#555555", margin: "6px 0 0" }}>{hint}</p>
       ) : null}
+    </div>
+  );
+}
+
+const sectionSubheadingStyle: CSSProperties = {
+  fontSize: "12px",
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: "#777777",
+  margin: "0 0 8px",
+};
+
+function NotificationGroup({
+  title,
+  toggleKeys,
+  prefs,
+  onToggle,
+  isLast = false,
+}: {
+  title: string;
+  toggleKeys: readonly NotificationKey[];
+  prefs: NotificationPreferences;
+  onToggle: (key: NotificationKey, next: boolean) => void;
+  isLast?: boolean;
+}) {
+  return (
+    <div style={{ marginBottom: isLast ? 0 : "20px" }}>
+      <h3 style={sectionSubheadingStyle}>{title}</h3>
+      {toggleKeys.map((key, index) => (
+        <NotificationToggle
+          key={key}
+          label={NOTIFICATION_LABEL_BY_KEY[key]}
+          checked={prefs[key]}
+          isLast={index === toggleKeys.length - 1}
+          onChange={(next) => onToggle(key, next)}
+        />
+      ))}
     </div>
   );
 }
@@ -684,13 +744,14 @@ export default function PersonalSettingsPage() {
         </h2>
 
         <div>
-          {NOTIFICATION_TOGGLES.map(({ key, label }, index) => (
-            <NotificationToggle
-              key={key}
-              label={label}
-              checked={notificationPrefs[key]}
-              isLast={index === NOTIFICATION_TOGGLES.length - 1}
-              onChange={(next) =>
+          {NOTIFICATION_GROUPS.map((group, index) => (
+            <NotificationGroup
+              key={group.id}
+              title={group.title}
+              toggleKeys={group.toggleKeys}
+              prefs={notificationPrefs}
+              isLast={index === NOTIFICATION_GROUPS.length - 1}
+              onToggle={(key, next) =>
                 setNotificationPrefs((prev) => ({ ...prev, [key]: next }))
               }
             />
@@ -787,9 +848,9 @@ export default function PersonalSettingsPage() {
         </button>
 
         <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: "20px" }}>
-          <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 12px" }}>
-            Permanently remove your profile data and sign out. Your login may
-            still exist until removed by an administrator.
+          <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 12px", lineHeight: 1.6 }}>
+            Permanently remove your profile data from GryphClubConnect. You will be signed out
+            immediately after confirmation.
           </p>
           <button
             type="button"
@@ -839,7 +900,7 @@ export default function PersonalSettingsPage() {
               border: "1px solid #242424",
               borderRadius: "12px",
               padding: "24px",
-              maxWidth: "400px",
+              maxWidth: "440px",
               width: "100%",
             }}
             onClick={(e) => e.stopPropagation()}
@@ -870,20 +931,36 @@ export default function PersonalSettingsPage() {
                 fontWeight: 700,
                 color: "#ffffff",
                 margin: "0 0 12px",
+                paddingRight: "24px",
               }}
             >
-              Delete account?
+              Delete your account?
             </h3>
-            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px" }}>
-              This clears your profile, leaves all clubs, and signs you out. Type{" "}
-              <strong style={{ color: "#ffffff" }}>DELETE</strong> to confirm.
-            </p>
+            <div style={{ fontSize: "13px", color: "#888888", margin: "0 0 16px", lineHeight: 1.6 }}>
+              <p style={{ margin: "0 0 10px" }}>If you continue:</p>
+              <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                <li>Your profile name, photo, program, and bio are cleared</li>
+                <li>You are removed from every club you belong to</li>
+                <li>Your notification preferences are reset</li>
+                <li>You are signed out of this device</li>
+              </ul>
+              <p style={{ margin: "12px 0 0", color: "#cccccc" }}>
+                Your login and account record in our authentication system will
+                remain until a platform administrator removes it. You will not be
+                able to use the app with that login until then.
+              </p>
+            </div>
+            <label htmlFor="delete-confirm-input" style={fieldLabelStyle}>
+              Type <span style={{ color: "#ffffff" }}>DELETE</span> to confirm
+            </label>
             <input
+              id="delete-confirm-input"
               type="text"
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
               placeholder="DELETE"
               disabled={deletingAccount}
+              autoComplete="off"
               style={{ ...inputStyle, marginBottom: "16px" }}
             />
             <button
