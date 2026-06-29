@@ -79,3 +79,61 @@ export function getUpcomingEventOccurrences<T extends { id: string; date: string
       new Date(b.occurrenceDate).getTime(),
   );
 }
+
+/** Collapse recurring/multi-date series to one row per event title (earliest first). */
+export function deduplicateUpcomingEventsByTitle<
+  T extends { title: string; occurrenceDate: string },
+>(events: T[], limit = 3): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+
+  for (const event of events) {
+    const key = event.title.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(event);
+    if (result.length >= limit) break;
+  }
+
+  return result;
+}
+
+export type DeduplicatedEventOccurrence<
+  T extends { id: string; title: string; occurrenceDate: string },
+> = T & {
+  moreDatesCount: number;
+  showRecurringBadge: boolean;
+};
+
+/** One card per event title for month/week views; keeps earliest occurrence. */
+export function deduplicateMonthlyEventsByTitle<
+  T extends { id: string; title: string; occurrenceDate: string },
+>(
+  events: T[],
+  eventRecurring: Record<string, EventRecurringMeta>,
+): DeduplicatedEventOccurrence<T>[] {
+  const grouped = new Map<string, T[]>();
+
+  for (const event of events) {
+    const key = event.title.trim().toLowerCase();
+    const existing = grouped.get(key) ?? [];
+    existing.push(event);
+    grouped.set(key, existing);
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => {
+      const sorted = [...group].sort((a, b) =>
+        a.occurrenceDate.localeCompare(b.occurrenceDate),
+      );
+      const next = sorted[0];
+      const moreDatesCount = sorted.length - 1;
+      const meta = eventRecurring[next.id];
+      return {
+        ...next,
+        moreDatesCount,
+        showRecurringBadge: Boolean(meta?.isRecurring) || moreDatesCount > 0,
+      };
+    })
+    .sort((a, b) => a.occurrenceDate.localeCompare(b.occurrenceDate));
+}

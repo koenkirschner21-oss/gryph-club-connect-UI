@@ -27,6 +27,11 @@ import {
 } from "../../lib/clubProfileCompletion";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
+import {
+  deduplicateMonthlyEventsByTitle,
+  deduplicateUpcomingEventsByTitle,
+  type EventRecurringMeta,
+} from "../../lib/eventRecurrence";
 import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { supabase } from "../../lib/supabaseClient";
 import type { Club, ClubEvent, Post, RsvpCounts, Task, TaskStatus } from "../../types";
@@ -53,11 +58,6 @@ const sectionHeading: CSSProperties = {
   fontSize: "16px",
   color: "#ffffff",
   margin: "0 0 16px",
-};
-
-const urgentSectionHeading: CSSProperties = {
-  ...sectionHeading,
-  marginBottom: "11px",
 };
 
 const THIS_WEEK_CARD_BG = "#161616";
@@ -368,11 +368,13 @@ function UrgentCountCard({
   value,
   actionLabel,
   onAction,
+  sublabel,
 }: {
   title: string;
   value: string;
   actionLabel: string;
   onAction: () => void;
+  sublabel?: string;
 }) {
   return (
     <div
@@ -412,9 +414,199 @@ function UrgentCountCard({
       >
         {title}
       </p>
+      {sublabel ? (
+        <p
+          style={{
+            margin: "0 0 12px",
+            fontSize: "12px",
+            color: "#999999",
+            lineHeight: 1.45,
+            flex: 1,
+          }}
+        >
+          {sublabel}
+        </p>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
       <button type="button" onClick={onAction} style={{ ...urgentOutlinedButtonStyle, marginTop: "auto" }}>
         {actionLabel}
       </button>
+    </div>
+  );
+}
+
+function NextMeetingUrgentCard({
+  display,
+  onAction,
+}: {
+  display: {
+    scheduled: boolean;
+    dateLine: string;
+    weekdayTimeLine: string;
+    locationLine: string;
+  };
+  onAction: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderTop: "2px solid #E51937",
+        borderRadius: "8px",
+        padding: "16px",
+        minWidth: 0,
+        height: "100%",
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <p
+        style={{
+          fontSize: display.scheduled ? "22px" : "16px",
+          fontWeight: 800,
+          color: display.scheduled ? "#ffffff" : "#777777",
+          fontStyle: display.scheduled ? undefined : "italic",
+          margin: "0 0 6px",
+          lineHeight: 1.15,
+        }}
+      >
+        {display.dateLine}
+      </p>
+      <p
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#777777",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          margin: "0 0 8px",
+        }}
+      >
+        Next Meeting
+      </p>
+      {display.weekdayTimeLine || display.locationLine ? (
+        <p
+          style={{
+            margin: "0 0 12px",
+            fontSize: "12px",
+            color: "#999999",
+            lineHeight: 1.45,
+            flex: 1,
+          }}
+        >
+          {[display.weekdayTimeLine, display.locationLine].filter(Boolean).join(" · ")}
+        </p>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
+      <button type="button" onClick={onAction} style={{ ...urgentOutlinedButtonStyle, marginTop: "auto" }}>
+        View Events
+      </button>
+    </div>
+  );
+}
+
+function RequestsApplicationsUrgentCard({
+  joinCount,
+  applicationCount,
+  onReviewRequests,
+  onReviewApplications,
+}: {
+  joinCount: number;
+  applicationCount: number;
+  onReviewRequests: () => void;
+  onReviewApplications: () => void;
+}) {
+  const total = joinCount + applicationCount;
+
+  return (
+    <div
+      style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderTop: "2px solid #E51937",
+        borderRadius: "8px",
+        padding: "16px",
+        minWidth: 0,
+        height: "100%",
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "28px",
+          fontWeight: 800,
+          color: "#ffffff",
+          margin: "0 0 6px",
+          lineHeight: 1,
+        }}
+      >
+        {total}
+      </p>
+      <p
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#777777",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          margin: "0 0 8px",
+        }}
+      >
+        Requests &amp; Applications
+      </p>
+      <p
+        style={{
+          margin: "0 0 12px",
+          fontSize: "12px",
+          color: "#999999",
+          lineHeight: 1.45,
+          flex: 1,
+        }}
+      >
+        {joinCount} join request{joinCount === 1 ? "" : "s"} · {applicationCount} application
+        {applicationCount === 1 ? "" : "s"}
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "auto" }}>
+        <button type="button" onClick={onReviewRequests} style={urgentOutlinedButtonStyle}>
+          Review Requests
+        </button>
+        <button type="button" onClick={onReviewApplications} style={urgentOutlinedButtonStyle}>
+          Review Applications
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ThisWeekPanel({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        background: THIS_WEEK_CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: "10px",
+        padding: "16px",
+        minHeight: "180px",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
+        {title}
+      </p>
+      <div style={{ flex: 1 }}>{children}</div>
     </div>
   );
 }
@@ -478,6 +670,7 @@ export interface ClubCommandCenterProps {
   upcomingOccurrences: (ClubEvent & { occurrenceDate: string })[];
   eventsLoading: boolean;
   eventRsvpCounts: Record<string, RsvpCounts>;
+  eventRecurring: Record<string, EventRecurringMeta>;
   isMobile: boolean;
   onOpenTask: (task: Task) => void;
 }
@@ -492,6 +685,7 @@ export default function ClubCommandCenter({
   upcomingOccurrences,
   eventsLoading,
   eventRsvpCounts,
+  eventRecurring,
   isMobile,
   onOpenTask,
 }: ClubCommandCenterProps) {
@@ -792,32 +986,93 @@ export default function ClubCommandCenter({
   }, [upcomingOccurrences, today, weekEnd]);
 
   const eventsThisWeekDisplay = useMemo(
-    () =>
-      [...eventsThisWeek].sort((left, right) =>
-        left.occurrenceDate.localeCompare(right.occurrenceDate),
-      ),
-    [eventsThisWeek],
+    () => deduplicateMonthlyEventsByTitle(eventsThisWeek, eventRecurring),
+    [eventsThisWeek, eventRecurring],
   );
 
-  const previewUpcomingEvents = useMemo(
-    () =>
-      [...upcomingOccurrences]
-        .sort((left, right) => left.occurrenceDate.localeCompare(right.occurrenceDate))
-        .slice(0, 3),
-    [upcomingOccurrences],
-  );
+  const eventsThisMonthCount = useMemo(() => {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
 
-  const recurringEventIdsThisWeek = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const event of eventsThisWeek) {
-      counts.set(event.id, (counts.get(event.id) ?? 0) + 1);
-    }
-    return new Set(
-      Array.from(counts.entries())
-        .filter(([, count]) => count > 1)
-        .map(([eventId]) => eventId),
+    const endOfMonth = new Date();
+    endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+    endOfMonth.setDate(0);
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    const startYmd = startOfMonth.toISOString().slice(0, 10);
+    const endYmd = endOfMonth.toISOString().slice(0, 10);
+
+    const eventsThisMonth = upcomingOccurrences.filter(
+      (event) => event.occurrenceDate >= startYmd && event.occurrenceDate <= endYmd,
     );
-  }, [eventsThisWeek]);
+    return deduplicateMonthlyEventsByTitle(eventsThisMonth, eventRecurring).length;
+  }, [upcomingOccurrences, eventRecurring]);
+
+  const previewUpcomingEvents = useMemo(() => {
+    const sorted = [...upcomingOccurrences].sort((left, right) =>
+      left.occurrenceDate.localeCompare(right.occurrenceDate),
+    );
+    return deduplicateUpcomingEventsByTitle(sorted, 3);
+  }, [upcomingOccurrences]);
+
+  const nextMeetingDisplay = useMemo(() => {
+    const scheduleText = club.meetingSchedule?.trim() ?? "";
+    const recurringOccurrences = upcomingOccurrences.filter((event) => {
+      const meta = eventRecurring[event.id];
+      return meta?.isRecurring && meta.frequency;
+    });
+    const weeklyFirst = recurringOccurrences.find((event) => {
+      const meta = eventRecurring[event.id];
+      return meta?.frequency === "weekly";
+    });
+    const nextRecurring = weeklyFirst ?? recurringOccurrences[0];
+
+    if (nextRecurring) {
+      const d = new Date(`${nextRecurring.occurrenceDate}T12:00:00`);
+      const value = d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+      const timeLabel =
+        nextRecurring.time &&
+        nextRecurring.time.trim() !== "" &&
+        nextRecurring.time.toUpperCase() !== "TBD"
+          ? formatEventTime12h(nextRecurring.time)
+          : "";
+      const locationLabel =
+        nextRecurring.location && !isHiddenLocation(nextRecurring.location)
+          ? nextRecurring.location.trim()
+          : "";
+      const weekdayTimeLine = [weekday, timeLabel].filter(Boolean).join(" · ");
+      return {
+        scheduled: true,
+        dateLine: value,
+        weekdayTimeLine,
+        locationLine: locationLabel,
+      };
+    }
+
+    if (scheduleText) {
+      return {
+        scheduled: true,
+        dateLine: scheduleText,
+        weekdayTimeLine: "",
+        locationLine:
+          club.location && !isHiddenLocation(club.location)
+            ? club.location.trim()
+            : "",
+      };
+    }
+
+    return {
+      scheduled: false,
+      dateLine: "No meetings scheduled",
+      weekdayTimeLine: "",
+      locationLine: "",
+    };
+  }, [club, upcomingOccurrences, eventRecurring]);
 
   const profileCompletion = useMemo(
     () => computeClubProfileCompletionPercent(club, posts.length > 0, upcomingOccurrences.length > 0),
@@ -831,6 +1086,97 @@ export default function ClubCommandCenter({
 
   const pendingJoinCount = pendingMembers.length;
   const pendingApplicationCount = hiringSnapshot.pendingApplicationsCount;
+  const setupComplete = profileCompletion >= 100;
+
+  const overdueTasks = useMemo(
+    () =>
+      openTasks.filter((task) => {
+        const due = parseTaskDueDate(task.dueDate);
+        return due != null && due.getTime() < today.getTime();
+      }),
+    [openTasks, today],
+  );
+
+  const needsAttentionItems = useMemo(() => {
+    const items: {
+      id: string;
+      label: string;
+      actionLabel?: string;
+      onAction?: () => void;
+    }[] = [];
+
+    if (pendingJoinCount > 0) {
+      items.push({
+        id: "join-requests",
+        label: `${pendingJoinCount} pending join request${pendingJoinCount === 1 ? "" : "s"}`,
+        actionLabel: "Review",
+        onAction: () => navigate(`${membersPath}?tab=pending`),
+      });
+    }
+
+    if (pendingApplicationCount > 0) {
+      items.push({
+        id: "applications",
+        label: `${pendingApplicationCount} pending application${pendingApplicationCount === 1 ? "" : "s"}`,
+        actionLabel: "Review",
+        onAction: () => navigate(`${recruitingPath}?tab=applications`),
+      });
+    }
+
+    if (profileCompletion < 100) {
+      items.push({
+        id: "profile-setup",
+        label:
+          profileMissingLabels.length > 0
+            ? `Profile ${profileCompletion}% complete — missing ${profileMissingLabels.join(", ")}`
+            : `Profile ${profileCompletion}% complete`,
+        actionLabel: "Complete Setup",
+        onAction: openSetupSettings,
+      });
+    }
+
+    if (overdueTasks.length > 0) {
+      items.push({
+        id: "overdue-tasks",
+        label: `${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`,
+        actionLabel: "View Tasks",
+        onAction: () => navigate(tasksPath),
+      });
+    }
+
+    for (const event of previewUpcomingEvents) {
+      const going = eventRsvpCounts[event.id]?.going ?? 0;
+      const eventDate = startOfDay(new Date(`${event.occurrenceDate}T12:00:00`));
+      const daysUntil = Math.round(
+        (eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysUntil >= 0 && daysUntil <= 14 && going < 5) {
+        items.push({
+          id: `low-rsvp-${event.id}`,
+          label: `Low RSVPs for ${event.title} (${going} going)`,
+          actionLabel: "View RSVPs",
+          onAction: () => navigate(`${eventsPath}?viewRsvps=${event.id}`),
+        });
+      }
+    }
+
+    return items.slice(0, 6);
+  }, [
+    pendingJoinCount,
+    pendingApplicationCount,
+    profileCompletion,
+    profileMissingLabels,
+    overdueTasks.length,
+    previewUpcomingEvents,
+    eventRsvpCounts,
+    today,
+    navigate,
+    membersPath,
+    recruitingPath,
+    tasksPath,
+    eventsPath,
+    openSetupSettings,
+  ]);
 
   const suggestedActions = useMemo(() => {
     const actions: SuggestedAction[] = [];
@@ -1194,10 +1540,9 @@ export default function ClubCommandCenter({
       </div>
 
       <section style={{ marginBottom: "8px", paddingBottom: 0 }}>
-        <h2 style={urgentSectionHeading}>Urgent Attention</h2>
         {tasksLoading || membersLoading || hiringSnapshot.loading ? (
           <div className="flex justify-center py-6">
-            <Spinner label="Loading urgent items…" />
+            <Spinner label="Loading command center…" />
           </div>
         ) : (
           <div
@@ -1208,28 +1553,35 @@ export default function ClubCommandCenter({
               alignItems: "stretch",
             }}
           >
-            <ProfileCompletionUrgentCard
-              percent={profileCompletion}
-              missingLabels={profileMissingLabels}
-              onAction={openSetupSettings}
+            {setupComplete ? (
+              <NextMeetingUrgentCard
+                display={nextMeetingDisplay}
+                onAction={() => navigate(eventsPath)}
+              />
+            ) : (
+              <ProfileCompletionUrgentCard
+                percent={profileCompletion}
+                missingLabels={profileMissingLabels}
+                onAction={openSetupSettings}
+              />
+            )}
+            <UrgentCountCard
+              title="Events This Month"
+              value={String(eventsThisMonthCount)}
+              actionLabel="View Events"
+              onAction={() => navigate(eventsPath)}
             />
             <UrgentCountCard
-              title="Pending Requests"
-              value={String(pendingJoinCount)}
-              actionLabel="Review Requests"
-              onAction={() => navigate(`${membersPath}?tab=pending`)}
-            />
-            <UrgentCountCard
-              title="Tasks Due This Week"
-              value={String(tasksDueThisWeek.length)}
+              title="Incomplete Club Tasks"
+              value={String(openTasks.length)}
               actionLabel="View Tasks"
               onAction={() => navigate(tasksPath)}
             />
-            <UrgentCountCard
-              title="Pending Applications"
-              value={String(pendingApplicationCount)}
-              actionLabel="Review Applications"
-              onAction={() => navigate(`${recruitingPath}?tab=applications`)}
+            <RequestsApplicationsUrgentCard
+              joinCount={pendingJoinCount}
+              applicationCount={pendingApplicationCount}
+              onReviewRequests={() => navigate(`${membersPath}?tab=pending`)}
+              onReviewApplications={() => navigate(`${recruitingPath}?tab=applications`)}
             />
           </div>
         )}
@@ -1237,24 +1589,17 @@ export default function ClubCommandCenter({
 
       <section>
         <h2 style={sectionHeading}>This Week</h2>
+        <p style={{ margin: "0 0 16px", fontSize: "14px", color: "#777777" }}>
+          Events, tasks, and actions that need attention this week.
+        </p>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
             gap: "16px",
           }}
         >
-          <div
-            style={{
-              background: THIS_WEEK_CARD_BG,
-              border: `1px solid ${CARD_BORDER}`,
-              borderRadius: "10px",
-              padding: "16px",
-            }}
-          >
-            <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
-              Events This Week
-            </p>
+          <ThisWeekPanel title="Schedule">
             {eventsLoading ? (
               <Spinner label="Loading events…" />
             ) : eventsThisWeekDisplay.length === 0 ? (
@@ -1285,7 +1630,7 @@ export default function ClubCommandCenter({
                         <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
                           {event.title}
                         </p>
-                        {recurringEventIdsThisWeek.has(event.id) ? (
+                        {event.showRecurringBadge ? (
                           <span
                             style={{
                               fontSize: "10px",
@@ -1317,19 +1662,9 @@ export default function ClubCommandCenter({
                 ))}
               </div>
             )}
-          </div>
+          </ThisWeekPanel>
 
-          <div
-            style={{
-              background: THIS_WEEK_CARD_BG,
-              border: `1px solid ${CARD_BORDER}`,
-              borderRadius: "10px",
-              padding: "16px",
-            }}
-          >
-            <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
-              Tasks Due This Week
-            </p>
+          <ThisWeekPanel title="Tasks Due">
             {tasksLoading ? (
               <Spinner label="Loading tasks…" />
             ) : tasksDueThisWeek.length === 0 ? (
@@ -1355,6 +1690,7 @@ export default function ClubCommandCenter({
                       gap: "12px",
                       borderTop: `1px solid ${CARD_BORDER}`,
                       paddingTop: "10px",
+                      cursor: "pointer",
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
@@ -1374,58 +1710,46 @@ export default function ClubCommandCenter({
                 ))}
               </div>
             )}
-          </div>
-        </div>
+          </ThisWeekPanel>
 
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "12px",
-            marginTop: "12px",
-          }}
-        >
-          <div
-            style={{
-              flex: "1 1 220px",
-              background: THIS_WEEK_CARD_BG,
-              border: `1px solid ${CARD_BORDER}`,
-              borderRadius: "10px",
-              padding: "16px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-            }}
-          >
-            <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
-              Pending join requests: <strong style={{ color: "#ffffff" }}>{pendingJoinCount}</strong>
-            </p>
-            <button type="button" style={outlineButtonStyle} onClick={() => navigate(`${membersPath}?tab=pending`)}>
-              Review Requests
-            </button>
-          </div>
-          <div
-            style={{
-              flex: "1 1 220px",
-              background: THIS_WEEK_CARD_BG,
-              border: `1px solid ${CARD_BORDER}`,
-              borderRadius: "10px",
-              padding: "16px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-            }}
-          >
-            <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
-              Pending applications:{" "}
-              <strong style={{ color: "#ffffff" }}>{pendingApplicationCount}</strong>
-            </p>
-            <button type="button" style={outlineButtonStyle} onClick={() => navigate(`${recruitingPath}?tab=applications`)}>
-              Review Applications
-            </button>
-          </div>
+          <ThisWeekPanel title="Needs Attention">
+            {tasksLoading || membersLoading || hiringSnapshot.loading ? (
+              <Spinner label="Loading…" />
+            ) : needsAttentionItems.length === 0 ? (
+              <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>
+                Nothing needs attention right now.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {needsAttentionItems.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      borderTop: `1px solid ${CARD_BORDER}`,
+                      paddingTop: "10px",
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: "12px", color: "#cccccc", lineHeight: 1.45, flex: 1 }}>
+                      {item.label}
+                    </p>
+                    {item.onAction && item.actionLabel ? (
+                      <button
+                        type="button"
+                        style={{ ...outlineButtonStyle, flexShrink: 0 }}
+                        onClick={item.onAction}
+                      >
+                        {item.actionLabel}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </ThisWeekPanel>
         </div>
       </section>
 
@@ -1439,7 +1763,7 @@ export default function ClubCommandCenter({
       >
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "24px" }}>
           <section>
-            <h2 style={sectionHeading}>Upcoming Events + RSVP Snapshot</h2>
+            <h2 style={sectionHeading}>Upcoming Events &amp; RSVPs</h2>
             {eventsLoading ? (
               <div className="flex justify-center py-6">
                 <Spinner label="Loading upcoming events…" />
@@ -1450,80 +1774,120 @@ export default function ClubCommandCenter({
               </p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {previewUpcomingEvents.map((event) => (
-                  <div
-                    key={`${event.id}-${event.occurrenceDate}`}
-                    style={{
-                      background: CARD_BG,
-                      border: `1px solid ${CARD_BORDER}`,
-                      borderRadius: "10px",
-                      padding: "16px",
-                    }}
-                  >
+                {previewUpcomingEvents.map((event) => {
+                  const rsvp = eventRsvpCounts[event.id];
+                  const going = rsvp?.going ?? 0;
+                  const maybe = rsvp?.maybe ?? 0;
+
+                  return (
                     <div
+                      key={`${event.id}-${event.occurrenceDate}`}
                       style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "14px",
+                        background: CARD_BG,
+                        border: `1px solid ${CARD_BORDER}`,
+                        borderRadius: "10px",
+                        padding: "16px",
                       }}
                     >
-                      <EventDateBadge dateStr={event.occurrenceDate} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p
-                          style={{
-                            margin: "0 0 6px",
-                            fontSize: "14px",
-                            fontWeight: 700,
-                            color: "#ffffff",
-                          }}
-                        >
-                          {event.title}
-                        </p>
-                        <p style={{ margin: "0 0 6px", fontSize: "12px", color: "#777777" }}>
-                          {formatEventDetailLine(
-                            event.occurrenceDate,
-                            event.time,
-                            event.location,
-                          )}
-                        </p>
-                        <p style={{ margin: 0, fontSize: "12px", color: "#555555" }}>
-                          {eventRsvpCounts[event.id]?.going ?? 0} RSVPs
-                        </p>
-                      </div>
                       <div
                         style={{
                           display: "flex",
-                          flexDirection: "column",
-                          alignItems: "flex-end",
-                          gap: "8px",
-                          flexShrink: 0,
+                          alignItems: "center",
+                          gap: "14px",
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
+                        <EventDateBadge dateStr={event.occurrenceDate} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p
+                            style={{
+                              margin: "0 0 4px",
+                              fontSize: "14px",
+                              fontWeight: 700,
+                              color: "#ffffff",
+                            }}
+                          >
+                            {event.title}
+                          </p>
+                          <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
+                            {formatEventDetailLine(
+                              event.occurrenceDate,
+                              event.time,
+                              event.location,
+                            )}
+                          </p>
+                        </div>
+                        <div
                           style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "#777777",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                            padding: 0,
+                            textAlign: "center",
+                            flexShrink: 0,
+                            minWidth: "72px",
+                            padding: "0 8px",
                           }}
                         >
-                          Manage Event
-                        </button>
-                        <button
-                          type="button"
-                          style={urgentOutlinedButtonStyle}
-                          onClick={() => navigate(`${eventsPath}?viewRsvps=${event.id}`)}
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: "32px",
+                              fontWeight: 800,
+                              color: going > 0 ? "#ffffff" : "#777777",
+                              lineHeight: 1,
+                            }}
+                          >
+                            {going}
+                          </p>
+                          <p
+                            style={{
+                              margin: "4px 0 0",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              color: "#777777",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.04em",
+                            }}
+                          >
+                            Going
+                          </p>
+                          {maybe > 0 ? (
+                            <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
+                              +{maybe} maybe
+                            </p>
+                          ) : null}
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: "8px",
+                            flexShrink: 0,
+                          }}
                         >
-                          View RSVPs
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "#777777",
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              padding: 0,
+                            }}
+                          >
+                            Manage Event
+                          </button>
+                          <button
+                            type="button"
+                            style={urgentOutlinedButtonStyle}
+                            onClick={() => navigate(`${eventsPath}?viewRsvps=${event.id}`)}
+                          >
+                            View RSVPs
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>

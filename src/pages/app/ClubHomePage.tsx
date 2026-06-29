@@ -20,6 +20,8 @@ import TaskDetailModal from "../../components/tasks/TaskDetailModal";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import {
+  deduplicateMonthlyEventsByTitle,
+  deduplicateUpcomingEventsByTitle,
   getUpcomingEventOccurrences,
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
@@ -196,63 +198,9 @@ function deriveAbbreviation(name: string, maxLen = 3): string {
     .toUpperCase();
 }
 
-interface DeduplicatedEvent extends ClubEvent {
-  occurrenceDate: string;
-  moreDatesCount: number;
-  showRecurringBadge: boolean;
-}
-
-function deduplicateUpcomingEventsByTitle(
-  events: (ClubEvent & { occurrenceDate: string })[],
-  limit = 3,
-): (ClubEvent & { occurrenceDate: string })[] {
-  const seen = new Set<string>();
-  const result: (ClubEvent & { occurrenceDate: string })[] = [];
-
-  for (const event of events) {
-    const key = event.title.trim().toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(event);
-    if (result.length >= limit) break;
-  }
-
-  return result;
-}
-
 function isPostPinned(post: Post): boolean {
   const extended = post as Post & { isPinned?: boolean; is_pinned?: boolean };
   return Boolean(extended.isPinned ?? extended.is_pinned);
-}
-
-function deduplicateMonthlyEvents(
-  events: (ClubEvent & { occurrenceDate: string })[],
-  eventRecurring: Record<string, EventRecurringMeta>,
-): DeduplicatedEvent[] {
-  const grouped = new Map<string, (ClubEvent & { occurrenceDate: string })[]>();
-
-  for (const event of events) {
-    const key = event.title.trim().toLowerCase();
-    const existing = grouped.get(key) ?? [];
-    existing.push(event);
-    grouped.set(key, existing);
-  }
-
-  return Array.from(grouped.values())
-    .map((group) => {
-      const sorted = [...group].sort((a, b) =>
-        a.occurrenceDate.localeCompare(b.occurrenceDate),
-      );
-      const next = sorted[0];
-      const moreDatesCount = sorted.length - 1;
-      const meta = eventRecurring[next.id];
-      return {
-        ...next,
-        moreDatesCount,
-        showRecurringBadge: Boolean(meta?.isRecurring) || moreDatesCount > 0,
-      };
-    })
-    .sort((a, b) => a.occurrenceDate.localeCompare(b.occurrenceDate));
 }
 
 function ClubLogoMark({
@@ -1383,7 +1331,7 @@ export default function ClubHomePage() {
   }, [upcomingOccurrences]);
 
   const deduplicatedEventsThisMonth = useMemo(
-    () => deduplicateMonthlyEvents(eventsThisMonth, eventRecurring),
+    () => deduplicateMonthlyEventsByTitle(eventsThisMonth, eventRecurring),
     [eventsThisMonth, eventRecurring],
   );
 
@@ -1690,6 +1638,7 @@ export default function ClubHomePage() {
           upcomingOccurrences={upcomingOccurrences}
           eventsLoading={eventsLoading}
           eventRsvpCounts={eventRsvpCounts}
+          eventRecurring={eventRecurring}
           isMobile={isMobile}
           onOpenTask={setSelectedTask}
         />
