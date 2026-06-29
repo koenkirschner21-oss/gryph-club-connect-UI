@@ -371,6 +371,7 @@ interface OrgChartMember {
   id: string;
   userId: string;
   role: MemberRole;
+  accessLevel: AccessLevel;
   title: string | null;
   reportsTo: string | null;
   fullName: string;
@@ -404,113 +405,90 @@ function OrgChartCard({
   tier,
 }: {
   member: OrgChartMember;
-  tier: "president" | "executive" | "team";
+  tier: "president" | "managerial_executive" | "executive" | "general_member";
 }) {
   const displayName = member.fullName || "Unknown";
-
-  if (tier === "president") {
-    return (
-      <div style={orgCardStyle(true)}>
-        <div className="mb-2 flex justify-center">
-          <MemberAvatar
-            avatarUrl={member.avatarUrl}
-            name={displayName}
-            size={60}
-            borderWidth={3}
-            borderColor="#E51937"
-          />
-        </div>
-        <MemberNameLink
-          userId={member.userId}
-          style={{ fontSize: "14px", fontWeight: 700, marginTop: "8px", display: "block" }}
-        >
-          {displayName}
-        </MemberNameLink>
-        <span style={{ ...accessLevelBadgeStyle("president"), marginTop: "6px" }}>
-          President
-        </span>
-        {member.title ? (
-          <p
-            style={{
-              fontSize: "11px",
-              color: "#747676",
-              fontStyle: "italic",
-              margin: "8px 0 0",
-            }}
-          >
-            {member.title}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (tier === "executive") {
-    return (
-      <div style={orgCardStyle(true)}>
-        <div className="mb-2 flex justify-center">
-          <MemberAvatar
-            avatarUrl={member.avatarUrl}
-            name={displayName}
-            size={48}
-            borderWidth={2}
-            borderColor="#E51937"
-          />
-        </div>
-        <MemberNameLink
-          userId={member.userId}
-          style={{ fontSize: "14px", fontWeight: 700, marginTop: "8px", display: "block" }}
-        >
-          {displayName}
-        </MemberNameLink>
-        <span style={{ ...accessLevelBadgeStyle("executive"), marginTop: "6px" }}>
-          Executive
-        </span>
-        {member.title ? (
-          <p
-            style={{
-              fontSize: "11px",
-              color: "#747676",
-              fontStyle: "italic",
-              margin: "8px 0 0",
-            }}
-          >
-            {member.title}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
+  const badgeLevel: AccessLevel =
+    tier === "president"
+      ? "president"
+      : tier === "managerial_executive"
+        ? "managerial_executive"
+        : tier === "executive"
+          ? "executive"
+          : "member";
+  const leadership = tier !== "general_member";
+  const avatarSize =
+    tier === "president" ? 60 : tier === "managerial_executive" ? 52 : tier === "executive" ? 48 : 36;
+  const borderWidth = tier === "president" ? 3 : tier === "general_member" ? 1 : 2;
 
   return (
-    <div style={orgCardStyle(false)}>
+    <div style={orgCardStyle(leadership)}>
       <div className="mb-2 flex justify-center">
         <MemberAvatar
           avatarUrl={member.avatarUrl}
           name={displayName}
-          size={36}
-          borderWidth={1}
-          borderColor="#333333"
+          size={avatarSize}
+          borderWidth={borderWidth}
+          borderColor={leadership ? "#E51937" : "#333333"}
         />
       </div>
       <MemberNameLink
         userId={member.userId}
-        className="block"
-        style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff", marginTop: "8px" }}
+        style={{ fontSize: "14px", fontWeight: 700, marginTop: "8px", display: "block" }}
       >
         {displayName}
       </MemberNameLink>
+      <span style={{ ...accessLevelBadgeStyle(badgeLevel), marginTop: "6px" }}>
+        {accessLevelBadgeLabel(badgeLevel)}
+      </span>
       {member.title ? (
         <p
           style={{
             fontSize: "11px",
             color: "#747676",
-            margin: 0,
+            fontStyle: tier === "general_member" ? "normal" : "italic",
+            margin: "8px 0 0",
           }}
         >
           {member.title}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function OrgChartSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: "28px" }}>
+      <p
+        style={{
+          textAlign: "center",
+          fontSize: "11px",
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          color: "#555555",
+          textTransform: "uppercase",
+          margin: "0 0 14px",
+        }}
+      >
+        {title}
+      </p>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          gap: "16px",
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -528,37 +506,20 @@ function OrgChartView({
   onInviteExecutive: () => void;
   onSwitchToMembers: () => void;
 }) {
-  const presidents = members.filter((m) => m.role === "owner");
-  const executives = members.filter((m) => m.role === "executive");
-  const leaderIds = new Set([
-    ...presidents.map((m) => m.userId),
-    ...executives.map((m) => m.userId),
-  ]);
-
-  const teamMembers = members.filter(
-    (m) =>
-      m.role !== "owner" &&
-      m.role !== "executive" &&
-      m.reportsTo &&
-      leaderIds.has(m.reportsTo),
+  const presidents = members.filter((member) => member.accessLevel === "president");
+  const managerialExecs = members.filter(
+    (member) => member.accessLevel === "managerial_executive",
   );
+  const executives = members.filter((member) => member.accessLevel === "executive");
+  const generalMembers = members.filter((member) => member.accessLevel === "member");
 
-  const teamByLeader = new Map<string, OrgChartMember[]>();
-  for (const member of teamMembers) {
-    if (!member.reportsTo) continue;
-    const list = teamByLeader.get(member.reportsTo) ?? [];
-    list.push(member);
-    teamByLeader.set(member.reportsTo, list);
-  }
-
-  const hasChart =
-    presidents.length > 0 || executives.length > 0 || teamMembers.length > 0;
-
-  const isSinglePresidentOnly =
+  const hasChart = members.length > 0;
+  const isBrandNewClub =
     totalMemberCount <= 1 &&
     presidents.length === 1 &&
+    managerialExecs.length === 0 &&
     executives.length === 0 &&
-    teamMembers.length === 0;
+    generalMembers.length === 0;
 
   if (!hasChart) {
     return (
@@ -570,64 +531,60 @@ function OrgChartView({
           borderRadius: "8px",
         }}
       >
-        <p style={{ fontSize: "14px", color: "#555555" }}>
-          No org chart to display yet. Assign presidents and executives, then
-          set &quot;Reports To&quot; for team members.
+        <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+          No org chart to display yet. Leadership roles will appear here once assigned.
         </p>
       </div>
     );
   }
 
-  return (
-    <div style={{ paddingBottom: "24px" }}>
-      {isSinglePresidentOnly ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            maxWidth: "420px",
-            margin: "0 auto",
-          }}
-        >
-          <OrgChartCard member={presidents[0]!} tier="president" />
+  if (isBrandNewClub) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          maxWidth: "360px",
+          margin: "0 auto",
+        }}
+      >
+        <OrgChartCard member={presidents[0]!} tier="president" />
+        {canInviteExecutive ? (
           <div
             style={{
-              marginTop: "24px",
+              marginTop: "16px",
               textAlign: "center",
-              padding: "20px 16px",
+              padding: "14px 12px",
               background: "#141414",
               border: "1px solid #2a2a2a",
               borderRadius: "10px",
               width: "100%",
             }}
           >
-            <p style={{ fontSize: "15px", fontWeight: 600, color: "#cccccc", margin: "0 0 8px" }}>
+            <p style={{ fontSize: "13px", fontWeight: 600, color: "#777777", margin: "0 0 6px" }}>
               Your org chart is just getting started
             </p>
-            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px", lineHeight: 1.5 }}>
-              {presidents[0]!.fullName || "Your president"} is currently the only listed leader.
-              Invite executives, coordinators, and team leads to build out your club structure.
+            <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 12px", lineHeight: 1.45 }}>
+              Invite executives to build out your club structure.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
-              {canInviteExecutive ? (
-                <button
-                  type="button"
-                  onClick={onInviteExecutive}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid #E51937",
-                    color: "#E51937",
-                    borderRadius: "6px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Invite Executive
-                </button>
-              ) : null}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
+              <button
+                type="button"
+                onClick={onInviteExecutive}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #E51937",
+                  color: "#E51937",
+                  borderRadius: "6px",
+                  padding: "6px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Invite Executive
+              </button>
               <button
                 type="button"
                 onClick={onSwitchToMembers}
@@ -636,120 +593,118 @@ function OrgChartView({
                   border: "1px solid #333333",
                   color: "#777777",
                   borderRadius: "6px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
+                  padding: "6px 14px",
+                  fontSize: "12px",
                   cursor: "pointer",
                 }}
               >
-                Switch to Members
+                View Members
               </button>
             </div>
           </div>
-        </div>
-      ) : (
-        <>
-      {presidents.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              gap: "16px",
-            }}
-          >
-            {presidents.map((president) => {
-              const directReports = teamByLeader.get(president.userId) ?? [];
-              return (
-                <div
-                  key={president.id}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                  }}
-                >
-                  <OrgChartCard member={president} tier="president" />
-                  {directReports.length > 0 ? (
-                    <>
-                      <div style={connectorLine} />
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          justifyContent: "center",
-                          gap: "12px",
-                        }}
-                      >
-                        {directReports.map((m) => (
-                          <OrgChartCard key={m.id} member={m} tier="team" />
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-          {executives.length > 0 ? <div style={connectorLine} /> : null}
-        </div>
-      ) : null}
+        ) : null}
+      </div>
+    );
+  }
 
-      {executives.length > 0 ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            marginTop: presidents.length > 0 ? 0 : undefined,
-          }}
-        >
-          {!presidents.length ? null : null}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              gap: "16px",
-            }}
-          >
-            {executives.map((executive) => {
-              const directReports = teamByLeader.get(executive.userId) ?? [];
-              return (
-                <div
-                  key={executive.id}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                  }}
-                >
-                  <OrgChartCard member={executive} tier="executive" />
-                  {directReports.length > 0 ? (
-                    <>
-                      <div style={connectorLine} />
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          justifyContent: "center",
-                          gap: "12px",
-                        }}
-                      >
-                        {directReports.map((m) => (
-                          <OrgChartCard key={m.id} member={m} tier="team" />
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+  return (
+    <div style={{ paddingBottom: "24px" }}>
+      {presidents.length > 0 ? (
+        <OrgChartSection title="President / Co-President">
+          {presidents.map((member) => (
+            <OrgChartCard key={member.id} member={member} tier="president" />
+          ))}
+        </OrgChartSection>
       ) : null}
-        </>
-      )}
+      {presidents.length > 0 && (managerialExecs.length > 0 || executives.length > 0) ? (
+        <div style={{ ...connectorLine, margin: "0 auto 20px" }} />
+      ) : null}
+      {managerialExecs.length > 0 ? (
+        <OrgChartSection title="Managerial Executives">
+          {managerialExecs.map((member) => (
+            <OrgChartCard key={member.id} member={member} tier="managerial_executive" />
+          ))}
+        </OrgChartSection>
+      ) : null}
+      {executives.length > 0 ? (
+        <OrgChartSection title="Executives">
+          {executives.map((member) => (
+            <OrgChartCard key={member.id} member={member} tier="executive" />
+          ))}
+        </OrgChartSection>
+      ) : null}
+      {generalMembers.length > 0 ? (
+        <OrgChartSection title="General Members">
+          {generalMembers.map((member) => (
+            <OrgChartCard key={member.id} member={member} tier="general_member" />
+          ))}
+        </OrgChartSection>
+      ) : null}
+    </div>
+  );
+}
+
+function DirectoryMemberCard({
+  member,
+  roleTitle,
+  isMobile,
+}: {
+  member: ClubMember;
+  roleTitle: string | null;
+  isMobile: boolean;
+}) {
+  const memberAccessLevel = accessLevelFromMember(member);
+  const displayRole = formatMemberDisplayRole(member.role, roleTitle);
+  const joinedLabel = new Date(member.joinedAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const profileMeta = [member.program, member.yearOfStudy].filter(Boolean).join(" · ");
+
+  return (
+    <div
+      style={{
+        ...memberListCardStyle,
+        flexWrap: isMobile ? "wrap" : "nowrap",
+        marginBottom: "8px",
+      }}
+    >
+      <MemberAvatar
+        avatarUrl={member.avatarUrl}
+        name={member.fullName ?? member.email ?? "U"}
+        size={40}
+      />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p style={{ margin: "0 0 6px", fontSize: "15px", fontWeight: 700, color: "#ffffff" }}>
+          {member.fullName ?? "Unknown"}
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+          <span style={accessLevelBadgeStyle(memberAccessLevel)}>
+            {accessLevelBadgeLabel(memberAccessLevel)}
+          </span>
+          {displayRole && displayRole !== accessLevelBadgeLabel(memberAccessLevel) ? (
+            <span style={{ fontSize: "12px", color: "#999999" }}>{displayRole}</span>
+          ) : null}
+        </div>
+        {profileMeta ? (
+          <p style={{ fontSize: "12px", color: "#666666", margin: "0 0 4px" }}>{profileMeta}</p>
+        ) : null}
+        <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>Joined {joinedLabel}</p>
+      </div>
+      <Link
+        to={`/app/profile/${member.userId}`}
+        style={{
+          fontSize: "12px",
+          fontWeight: 600,
+          color: "#E51937",
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+        }}
+      >
+        View Profile
+      </Link>
     </div>
   );
 }
@@ -767,6 +722,7 @@ export default function ClubMembersPage() {
   const canManageMembers = memberAccess.can("manage_members");
   const canManageRoles = memberAccess.can("manage_roles") || memberAccess.isPresident;
   const canUseMembershipQueue = canManageMembers;
+  const isDirectoryView = !canManageMembers;
 
   const {
     members,
@@ -810,9 +766,7 @@ export default function ClubMembersPage() {
     null,
   );
 
-  const isSmallClub = members.length <= 3;
-  const showInviteCodeSection =
-    canManageMembers && Boolean(club?.joinCode) && !(isSmallClub && viewMode === "list");
+  const showInviteCodeSection = canManageMembers && Boolean(club?.joinCode);
 
   const roleOrder: Record<MemberRole, number> = {
     owner: 0,
@@ -932,7 +886,13 @@ export default function ClubMembersPage() {
   }, [clubId]);
 
   useEffect(() => {
-    if (!clubId) return;
+    if (!canUseMembershipQueue && (viewMode === "pendingRequests" || viewMode === "invites")) {
+      setViewMode("list");
+    }
+  }, [canUseMembershipQueue, viewMode]);
+
+  useEffect(() => {
+    if (!clubId || !canManageMembers) return;
     void (async () => {
       const [{ count: clubInviteCount, error: clubInviteError }, { count: execInviteCount, error: execInviteError }] =
         await Promise.all([
@@ -958,7 +918,7 @@ export default function ClubMembersPage() {
       }
       setPendingInviteCount((clubInviteCount ?? 0) + (execInviteCount ?? 0));
     })();
-  }, [clubId, showInviteModal, showExecutiveInviteModal]);
+  }, [clubId, showInviteModal, showExecutiveInviteModal, canManageMembers]);
 
   useEffect(() => {
     if (viewMode === "invites" && canUseMembershipQueue) {
@@ -984,6 +944,7 @@ export default function ClubMembersPage() {
           id,
           user_id,
           role,
+          access_level,
           title,
           reports_to,
           member_profile:profiles!club_members_user_profile_fkey (
@@ -1010,13 +971,15 @@ export default function ClubMembersPage() {
       ) as Record<string, unknown> | null | undefined;
       const normalizedRole = normalizeMemberRole(row.role as string);
       const reportsTo = (row.reports_to as string | null) ?? null;
-      if (normalizedRole === "member" && !reportsTo) {
-        continue;
-      }
+      const accessLevel = accessLevelFromMember({
+        role: normalizedRole,
+        accessLevel: (row.access_level as AccessLevel | null) ?? null,
+      });
       mapped.push({
         id: row.id as string,
         userId: row.user_id as string,
         role: normalizedRole,
+        accessLevel,
         title: (row.title as string | null) ?? null,
         reportsTo,
         fullName: (profile?.full_name as string) ?? "Unknown",
@@ -1382,20 +1345,9 @@ export default function ClubMembersPage() {
               marginBottom: 0,
             }}
           >
-            Manage club members, roles, and team access.
-          </p>
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#444444",
-              marginTop: "6px",
-              marginBottom: 0,
-              lineHeight: 1.4,
-            }}
-          >
             {canManageMembers
-              ? "President leads the club; Executives manage teams; General Members participate in club activities."
-              : "Browse the member directory and org chart."}
+              ? "Manage club members, roles, and team access."
+              : "Browse club members, roles, and contact details."}
           </p>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
@@ -1734,61 +1686,74 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
-      {viewMode === "list" && isSmallClub ? (
+      {viewMode === "list" && members.length === 0 ? (
         <div
           style={{
             textAlign: "center",
-            padding: "20px 16px",
+            padding: canManageMembers ? "16px 14px" : "14px 12px",
             background: "#141414",
             border: "1px solid #2a2a2a",
             borderRadius: "10px",
             marginBottom: "16px",
           }}
         >
-          <p style={{ fontSize: "15px", fontWeight: 600, color: "#cccccc", margin: "0 0 8px" }}>
-            Your team is just getting started
+          <p
+            style={{
+              fontSize: canManageMembers ? "14px" : "13px",
+              fontWeight: 600,
+              color: "#777777",
+              margin: "0 0 6px",
+            }}
+          >
+            {canManageMembers
+              ? "Your team is just getting started"
+              : "No members listed yet"}
           </p>
-          <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px", lineHeight: 1.5 }}>
-            Invite members or executives to start building your club structure.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
-            {canManageMembers ? (
-              <button
-                type="button"
-                onClick={() => setShowInviteModal(true)}
-                style={{
-                  background: "#E51937",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "6px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Invite Member
-              </button>
-            ) : null}
-            {canUseMembershipQueue ? (
-              <button
-                type="button"
-                onClick={() => setShowExecutiveInviteModal(true)}
-                style={{
-                  background: "transparent",
-                  border: "1px solid #E51937",
-                  color: "#E51937",
-                  borderRadius: "6px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Invite Executive
-              </button>
-            ) : null}
-          </div>
+          {canManageMembers ? (
+            <>
+              <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 12px", lineHeight: 1.45 }}>
+                Invite members or executives to start building your club structure.
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(true)}
+                  style={{
+                    background: "#E51937",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 14px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Invite Member
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExecutiveInviteModal(true)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #E51937",
+                    color: "#E51937",
+                    borderRadius: "6px",
+                    padding: "6px 14px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Invite Executive
+                </button>
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: "12px", color: "#555555", margin: 0, lineHeight: 1.45 }}>
+              Members will appear here once they join the club.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -1890,14 +1855,17 @@ export default function ClubMembersPage() {
             <div
               style={{
                 textAlign: "center",
-                padding: "48px 16px",
-                background: "#1a1a1a",
-                border: "1px solid #242424",
+                padding: "48px 24px",
+                background: "#141414",
+                border: "1px solid #2a2a2a",
                 borderRadius: "10px",
               }}
             >
-              <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-                No invites sent yet.
+              <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
+                No pending invites
+              </p>
+              <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
+                Executive and member invites you send will appear here.
               </p>
             </div>
           ) : (
@@ -2017,21 +1985,7 @@ export default function ClubMembersPage() {
         </div>
       ) : null}
 
-      {viewMode === "list" && sortedMembers.length === 0 && !isSmallClub ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "48px 24px",
-            background: "#141414",
-            border: "1px solid #2a2a2a",
-            borderRadius: "10px",
-          }}
-        >
-          <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
-            No members yet. Share the join code to invite people.
-          </p>
-        </div>
-      ) : viewMode === "list" && filteredMembers.length === 0 && searchQuery.trim() ? (
+      {viewMode === "list" && filteredMembers.length === 0 && searchQuery.trim() ? (
         <div style={{ textAlign: "center", padding: "48px 24px" }}>
           <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
             No members match your search
@@ -2079,6 +2033,14 @@ export default function ClubMembersPage() {
 
             return (
             <div key={member.id}>
+            {isDirectoryView ? (
+              <DirectoryMemberCard
+                member={member}
+                roleTitle={member.roleTitle ?? memberTitles[member.id] ?? null}
+                isMobile={isMobile}
+              />
+            ) : (
+            <>
             <div
               style={{
                 ...memberListCardStyle,
@@ -2277,13 +2239,15 @@ export default function ClubMembersPage() {
                   </div>
                 </div>
               ) : null}
+            </>
+            )}
             </div>
             );
           })}
         </div>
       ) : null}
 
-      {clubId ? (
+      {canManageMembers && clubId ? (
         <ClubInviteModal
           open={showInviteModal}
           onClose={() => setShowInviteModal(false)}
@@ -2292,7 +2256,7 @@ export default function ClubMembersPage() {
         />
       ) : null}
 
-      {clubId && club ? (
+      {canManageMembers && clubId && club ? (
         <InviteExecutiveModal
           open={showExecutiveInviteModal}
           onClose={() => setShowExecutiveInviteModal(false)}
