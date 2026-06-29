@@ -18,15 +18,6 @@ const CARD_STYLE = {
   padding: "20px",
 } as const;
 
-const CHIP_BASE = {
-  borderRadius: "999px",
-  padding: "6px 12px",
-  fontSize: "12px",
-  fontWeight: 600,
-  cursor: "pointer",
-  border: "1px solid #2a2a2a",
-} as const;
-
 export type TasksTabTask = {
   id: string;
   title: string;
@@ -52,10 +43,9 @@ export type TaskClubGroup = {
 };
 
 export type TaskSortOption = "due_date" | "priority" | "status" | "club_name";
-export type TaskPriorityFilter = "all" | "high" | "medium" | "low";
 export type TaskProgressTimeRange = "week" | "month" | "semester" | "all";
 export type TaskGroupByOption = "status" | "deadline" | "club" | "priority" | "task_type";
-export type DashboardTaskScope = "assigned_to_me" | "created_by_me" | "club_tasks";
+export type DashboardTaskScope = "assigned_to_me" | "delegated";
 
 export type TaskListGroup = {
   id: string;
@@ -617,16 +607,13 @@ export function TaskBreakdownCard({
 export function DashboardTaskScopeToggle({
   active,
   onChange,
-  showClubTasks,
 }: {
   active: DashboardTaskScope;
   onChange: (scope: DashboardTaskScope) => void;
-  showClubTasks: boolean;
 }) {
   const options: { id: DashboardTaskScope; label: string }[] = [
     { id: "assigned_to_me", label: "Assigned to Me" },
-    { id: "created_by_me", label: "Created by Me" },
-    ...(showClubTasks ? [{ id: "club_tasks" as const, label: "Club Tasks" }] : []),
+    { id: "delegated", label: "Delegated" },
   ];
 
   return (
@@ -674,8 +661,6 @@ export function TasksFilterBar({
   onGroupByChange,
   sort,
   onSortChange,
-  priorityFilter,
-  onPriorityFilterChange,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -686,11 +671,7 @@ export function TasksFilterBar({
   onGroupByChange: (value: TaskGroupByOption) => void;
   sort: TaskSortOption;
   onSortChange: (value: TaskSortOption) => void;
-  priorityFilter: TaskPriorityFilter;
-  onPriorityFilterChange: (value: TaskPriorityFilter) => void;
 }) {
-  const priorities: TaskPriorityFilter[] = ["all", "high", "medium", "low"];
-
   return (
     <div style={{ marginBottom: "16px" }}>
       <div
@@ -699,7 +680,6 @@ export function TasksFilterBar({
           flexWrap: "wrap",
           gap: "12px",
           justifyContent: "flex-end",
-          marginBottom: "12px",
         }}
       >
         <label
@@ -789,31 +769,6 @@ export function TasksFilterBar({
           <option value="status">Sort: Status</option>
           <option value="club_name">Sort: Club Name</option>
         </select>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        {priorities.map((priority) => {
-          const selected = priorityFilter === priority;
-          const label =
-            priority === "all"
-              ? "All"
-              : priority.charAt(0).toUpperCase() + priority.slice(1);
-          return (
-            <button
-              key={priority}
-              type="button"
-              onClick={() => onPriorityFilterChange(priority)}
-              style={{
-                ...CHIP_BASE,
-                background: selected ? "#E51937" : "#111111",
-                border: `1px solid ${selected ? "#E51937" : "#2a2a2a"}`,
-                color: selected ? "#ffffff" : "#999999",
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
       </div>
     </div>
   );

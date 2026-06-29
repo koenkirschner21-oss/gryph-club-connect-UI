@@ -28,6 +28,22 @@ const statCardStyle: CSSProperties = {
   padding: "16px",
 };
 
+export type TasksStatCardFilter = "all" | "due_this_week" | "high_priority" | "completed";
+
+function statCardButtonStyle(isActive: boolean): CSSProperties {
+  return {
+    ...statCardStyle,
+    border: isActive ? `1px solid ${GOLD}` : `1px solid ${CARD_BORDER}`,
+    background: isActive ? "#1a1810" : CARD_BG,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    textAlign: "left",
+    width: "100%",
+    boxShadow: isActive ? `0 0 0 1px rgba(255, 196, 41, 0.2)` : undefined,
+    transition: "border-color 0.15s ease, background 0.15s ease",
+  };
+}
+
 export function CircularProgress({ percent }: { percent: number }) {
   const size = 56;
   const stroke = 4;
@@ -79,15 +95,23 @@ export function TasksListStatCards({
   dueThisWeekCount,
   highPriorityCount,
   isMobile = false,
+  activeFilter = "all",
+  onFilterChange,
 }: {
   doneCount: number;
   totalCount: number;
   dueThisWeekCount: number;
   highPriorityCount: number;
   isMobile?: boolean;
+  activeFilter?: TasksStatCardFilter;
+  onFilterChange?: (filter: TasksStatCardFilter) => void;
 }) {
   const percent = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100);
   const fillPercent = totalCount === 0 ? 0 : (doneCount / totalCount) * 100;
+
+  function handleFilter(filter: TasksStatCardFilter) {
+    onFilterChange?.(filter);
+  }
 
   return (
     <div
@@ -98,7 +122,17 @@ export function TasksListStatCards({
         marginBottom: "24px",
       }}
     >
-      <div style={{ ...statCardStyle, display: "flex", alignItems: "center", gap: "12px" }}>
+      <button
+        type="button"
+        onClick={() => handleFilter("all")}
+        aria-pressed={activeFilter === "all"}
+        style={{
+          ...statCardButtonStyle(activeFilter === "all"),
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+        }}
+      >
         <CircularProgress percent={percent} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p
@@ -134,9 +168,14 @@ export function TasksListStatCards({
             />
           </div>
         </div>
-      </div>
+      </button>
 
-      <div style={statCardStyle}>
+      <button
+        type="button"
+        onClick={() => handleFilter("due_this_week")}
+        aria-pressed={activeFilter === "due_this_week"}
+        style={statCardButtonStyle(activeFilter === "due_this_week")}
+      >
         <Calendar size={20} color="#777777" aria-hidden style={{ marginBottom: "8px" }} />
         <div style={{ fontSize: "28px", fontWeight: 700, color: "#ffffff", lineHeight: 1 }}>
           {dueThisWeekCount}
@@ -145,9 +184,14 @@ export function TasksListStatCards({
         <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#555555" }}>
           {dueThisWeekCount === 1 ? "task" : "tasks"}
         </p>
-      </div>
+      </button>
 
-      <div style={statCardStyle}>
+      <button
+        type="button"
+        onClick={() => handleFilter("high_priority")}
+        aria-pressed={activeFilter === "high_priority"}
+        style={statCardButtonStyle(activeFilter === "high_priority")}
+      >
         <Flag size={20} color={ACCENT_RED} aria-hidden style={{ marginBottom: "8px" }} />
         <div style={{ fontSize: "28px", fontWeight: 700, color: "#ffffff", lineHeight: 1 }}>
           {highPriorityCount}
@@ -156,9 +200,14 @@ export function TasksListStatCards({
         <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#555555" }}>
           {highPriorityCount === 1 ? "task" : "tasks"}
         </p>
-      </div>
+      </button>
 
-      <div style={statCardStyle}>
+      <button
+        type="button"
+        onClick={() => handleFilter("completed")}
+        aria-pressed={activeFilter === "completed"}
+        style={statCardButtonStyle(activeFilter === "completed")}
+      >
         <CheckCircle size={20} color={GOLD} aria-hidden style={{ marginBottom: "8px" }} />
         <div style={{ fontSize: "28px", fontWeight: 700, color: "#ffffff", lineHeight: 1 }}>
           {doneCount}
@@ -167,7 +216,7 @@ export function TasksListStatCards({
         <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#555555" }}>
           {doneCount === 1 ? "task" : "tasks"}
         </p>
-      </div>
+      </button>
     </div>
   );
 }

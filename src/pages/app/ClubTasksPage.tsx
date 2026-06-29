@@ -41,6 +41,7 @@ import {
   TasksListStatCards,
   TasksListTableRow,
   TaskTypeFilterDropdown,
+  type TasksStatCardFilter,
   formatDueDateSubLabel,
   parseTaskDueDay,
   sortTasksByDueDate,
@@ -48,23 +49,22 @@ import {
 
 type AssignmentTab = "assigned_to_me" | "assigned_by_me";
 
-type TaskQuickFilter = "all" | "overdue" | "high_priority" | "completed";
+const STAT_CARD_FILTER_LABELS: Record<TasksStatCardFilter, string> = {
+  all: "all",
+  due_this_week: "due this week",
+  high_priority: "high priority",
+  completed: "completed",
+};
 
-const quickFilterChips: { id: TaskQuickFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "overdue", label: "Overdue" },
-  { id: "high_priority", label: "High Priority" },
-  { id: "completed", label: "Completed" },
-];
-
-function isTaskOverdue(task: Task): boolean {
-  if (!task.dueDate || task.status === "done") return false;
+function isTaskDueThisWeek(task: Task): boolean {
+  if (task.status === "done" || !task.dueDate) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const due = new Date(task.dueDate);
-  if (Number.isNaN(due.getTime())) return false;
-  due.setHours(0, 0, 0, 0);
-  return due < today;
+  const weekEnd = new Date(today);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const due = parseTaskDueDay(task.dueDate);
+  if (!due) return false;
+  return due.getTime() >= today.getTime() && due.getTime() <= weekEnd.getTime();
 }
 
 function TaskLinkedLabel({ task }: { task: Task }) {
@@ -578,51 +578,6 @@ function TaskCommentsSection({
   );
 }
 
-function TaskFilterChipBar({
-  chips,
-  active,
-  onChange,
-}: {
-  chips: { id: TaskQuickFilter; label: string }[];
-  active: TaskQuickFilter;
-  onChange: (chip: TaskQuickFilter) => void;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "8px",
-        flex: 1,
-        minWidth: 0,
-      }}
-    >
-      {chips.map((chip) => {
-        const isActive = active === chip.id;
-        return (
-          <button
-            key={chip.id}
-            type="button"
-            onClick={() => onChange(chip.id)}
-            style={{
-              background: isActive ? "#E51937" : "transparent",
-              color: isActive ? "#ffffff" : "#999999",
-              border: isActive ? "1px solid #E51937" : "1px solid #333333",
-              borderRadius: "20px",
-              padding: "6px 14px",
-              fontSize: "12px",
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            {chip.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function AssignmentTabToggle({
   active,
@@ -765,7 +720,7 @@ export default function ClubTasksPage() {
   );
 
   const [assignmentTab, setAssignmentTab] = useState<AssignmentTab>("assigned_to_me");
-  const [activeQuickFilter, setActiveQuickFilter] = useState<TaskQuickFilter>("all");
+  const [activeQuickFilter, setActiveQuickFilter] = useState<TasksStatCardFilter>("all");
   const [activeTypeFilter, setActiveTypeFilter] = useState<TaskTypeFilter>("all");
 
   const visibleTasks = useMemo(() => {
@@ -879,38 +834,32 @@ export default function ClubTasksPage() {
     if (activeQuickFilter === "all") return typeFilteredTasks;
 
     switch (activeQuickFilter) {
-      case "overdue":
-        return typeFilteredTasks.filter(isTaskOverdue);
+      case "due_this_week":
+        return typeFilteredTasks.filter(isTaskDueThisWeek);
       case "high_priority":
-        return typeFilteredTasks.filter((t) => t.priority === "high");
+        return typeFilteredTasks.filter(
+          (task) => task.priority === "high" && task.status !== "done",
+        );
       case "completed":
-        return typeFilteredTasks.filter((t) => t.status === "done");
+        return typeFilteredTasks.filter((task) => task.status === "done");
       default:
         return typeFilteredTasks;
     }
   }, [typeFilteredTasks, activeQuickFilter]);
 
-  const filteredDoneCount = filteredTasks.filter((t) => t.status === "done").length;
-  const filteredTotalCount = filteredTasks.length;
+  const statDoneCount = typeFilteredTasks.filter((task) => task.status === "done").length;
+  const statTotalCount = typeFilteredTasks.length;
 
-  const dueThisWeekCount = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-    return filteredTasks.filter((task) => {
-      if (task.status === "done" || !task.dueDate) return false;
-      const due = parseTaskDueDay(task.dueDate);
-      if (!due) return false;
-      return due.getTime() >= today.getTime() && due.getTime() <= weekEnd.getTime();
-    }).length;
-  }, [filteredTasks]);
+  const dueThisWeekCount = useMemo(
+    () => typeFilteredTasks.filter(isTaskDueThisWeek).length,
+    [typeFilteredTasks],
+  );
 
   const highPriorityCount = useMemo(
     () =>
-      filteredTasks.filter((task) => task.priority === "high" && task.status !== "done")
+      typeFilteredTasks.filter((task) => task.priority === "high" && task.status !== "done")
         .length,
-    [filteredTasks],
+    [typeFilteredTasks],
   );
 
   const listFooterLabel = useMemo(() => {
@@ -919,8 +868,7 @@ export default function ClubTasksPage() {
     }
     const parts: string[] = [];
     if (activeQuickFilter !== "all") {
-      const chip = quickFilterChips.find((c) => c.id === activeQuickFilter);
-      parts.push(chip?.label.toLowerCase() ?? "filtered");
+      parts.push(STAT_CARD_FILTER_LABELS[activeQuickFilter]);
     }
     if (activeTypeFilter !== "all") {
       const typeChip = TASK_TYPE_FILTER_CHIPS.find((c) => c.id === activeTypeFilter);
@@ -1172,8 +1120,8 @@ export default function ClubTasksPage() {
 
   function emptyFilterMessage(): string {
     switch (activeQuickFilter) {
-      case "overdue":
-        return "No overdue tasks.";
+      case "due_this_week":
+        return "No tasks due this week.";
       case "high_priority":
         return "No high-priority tasks.";
       case "completed":
@@ -1536,34 +1484,28 @@ export default function ClubTasksPage() {
       />
 
       <TasksListStatCards
-        doneCount={filteredDoneCount}
-        totalCount={filteredTotalCount}
+        doneCount={statDoneCount}
+        totalCount={statTotalCount}
         dueThisWeekCount={dueThisWeekCount}
         highPriorityCount={highPriorityCount}
         isMobile={isMobile}
+        activeFilter={activeQuickFilter}
+        onFilterChange={setActiveQuickFilter}
       />
 
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "12px",
-          flexWrap: "wrap",
+          justifyContent: "flex-end",
           marginBottom: "16px",
           width: "100%",
         }}
       >
-        <TaskFilterChipBar
-          chips={quickFilterChips}
-          active={activeQuickFilter}
-          onChange={setActiveQuickFilter}
+        <TaskTypeFilterDropdown
+          value={activeTypeFilter}
+          onChange={setActiveTypeFilter}
         />
-        <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-          <TaskTypeFilterDropdown
-            value={activeTypeFilter}
-            onChange={setActiveTypeFilter}
-          />
-        </div>
       </div>
 
       {feedback ? (

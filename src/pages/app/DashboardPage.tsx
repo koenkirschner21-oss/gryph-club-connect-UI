@@ -58,16 +58,9 @@ import {
   useTaskBreakdown,
   useTaskProgress,
   type TaskGroupByOption,
-  type TaskPriorityFilter,
   type TaskProgressTimeRange,
   type TaskSortOption,
 } from "../dashboard/TasksTabUI";
-import {
-  cloneDefaultPermissions,
-  hasClubPermission,
-  isPresidentAccess,
-} from "../../lib/clubPermissions";
-import type { AccessLevel, Club, MemberRole } from "../../types";
 import {
   EventsTabHeader,
   EventsTabTimeline,
@@ -2551,52 +2544,17 @@ function EventsTab({
 // ---------------------------------------------------------------------------
 // Tasks Tab
 // ---------------------------------------------------------------------------
-function normalizeDashboardMemberRole(role: string): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
-}
-
-function normalizeDashboardAccessLevel(
-  value: string | null | undefined,
-): AccessLevel | null {
-  if (
-    value === "president" ||
-    value === "managerial_executive" ||
-    value === "executive" ||
-    value === "member"
-  ) {
-    return value;
-  }
-  return null;
-}
-
-function clubCanManageTasks(
-  club: Club | undefined,
-  role: MemberRole,
-  accessLevel: AccessLevel | null,
-): boolean {
-  const permissions = club?.customPermissions ?? cloneDefaultPermissions();
-  if (isPresidentAccess(accessLevel, role)) return true;
-  return hasClubPermission(permissions, accessLevel, role, "manage_tasks");
-}
-
 function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
   const { user } = useAuthContext();
-  const { clubs, getClubById } = useClubContext();
   const [tasks, setTasks] = useState<TasksTabTask[]>([]);
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
   const [joinedClubOptions, setJoinedClubOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
-  const [accessLoading, setAccessLoading] = useState(true);
-  const [manageableClubIds, setManageableClubIds] = useState<string[]>([]);
-  const [canViewClubTasks, setCanViewClubTasks] = useState(false);
   const [taskScope, setTaskScope] = useState<DashboardTaskScope>("assigned_to_me");
   const [search, setSearch] = useState("");
   const [clubFilter, setClubFilter] = useState("all");
   const [groupBy, setGroupBy] = useState<TaskGroupByOption>("status");
   const [sort, setSort] = useState<TaskSortOption>("due_date");
-  const [priorityFilter, setPriorityFilter] = useState<TaskPriorityFilter>("all");
   const [progressRange, setProgressRange] = useState<TaskProgressTimeRange>("semester");
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
@@ -2642,74 +2600,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
   }, [joinedClubs]);
 
   useEffect(() => {
-    if (!user?.id || joinedClubs.length === 0) {
-      queueMicrotask(() => {
-        setManageableClubIds([]);
-        setCanViewClubTasks(false);
-        setAccessLoading(false);
-      });
-      return;
-    }
-
-    let cancelled = false;
-    setAccessLoading(true);
-
-    supabase
-      .from("club_members")
-      .select("club_id, role, access_level")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .in("club_id", joinedClubs)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to load task permissions:", error.message);
-          setManageableClubIds([]);
-          setCanViewClubTasks(false);
-          setAccessLoading(false);
-          return;
-        }
-
-        const manageable: string[] = [];
-        for (const row of data ?? []) {
-          const clubId = row.club_id as string;
-          const role = normalizeDashboardMemberRole((row.role as string) ?? "member");
-          const accessLevel = normalizeDashboardAccessLevel(
-            row.access_level as string | null,
-          );
-          if (clubCanManageTasks(getClubById(clubId), role, accessLevel)) {
-            manageable.push(clubId);
-          }
-        }
-
-        setManageableClubIds(manageable);
-        setCanViewClubTasks(manageable.length > 0);
-        setAccessLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [clubs, getClubById, joinedClubs, user?.id]);
-
-  useEffect(() => {
-    if (taskScope === "club_tasks" && !canViewClubTasks) {
-      setTaskScope("assigned_to_me");
-    }
-  }, [canViewClubTasks, taskScope]);
-
-  useEffect(() => {
-    if (joinedClubs.length === 0 || !user || accessLoading) {
-      if (!accessLoading && (joinedClubs.length === 0 || !user)) {
-        queueMicrotask(() => {
-          setTasks([]);
-          setLoadingTasks(false);
-        });
-      }
-      return;
-    }
-
-    if (taskScope === "club_tasks" && manageableClubIds.length === 0) {
+    if (joinedClubs.length === 0 || !user) {
       queueMicrotask(() => {
         setTasks([]);
         setLoadingTasks(false);
@@ -2725,14 +2616,16 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
       .select(
         "id, title, status, priority, task_type, due_date, created_at, club_id, assigned_to, created_by, linked_meeting_id, linked_meeting:club_meetings!tasks_linked_meeting_id_fkey ( status ), clubs:club_id ( name, logo_url, abbreviation )",
       )
-      .neq("status", "cancelled");
+      .neq("status", "cancelled")
+      .in("club_id", joinedClubs);
 
     if (taskScope === "assigned_to_me") {
-      query = query.in("club_id", joinedClubs).eq("assigned_to", user.id);
-    } else if (taskScope === "created_by_me") {
-      query = query.in("club_id", joinedClubs).eq("created_by", user.id);
+      query = query.eq("assigned_to", user.id);
     } else {
-      query = query.in("club_id", manageableClubIds);
+      query = query
+        .eq("created_by", user.id)
+        .not("assigned_to", "is", null)
+        .neq("assigned_to", user.id);
     }
 
     query
@@ -2774,7 +2667,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     return () => {
       cancelled = true;
     };
-  }, [accessLoading, joinedClubs, manageableClubIds, taskScope, user]);
+  }, [joinedClubs, taskScope, user]);
 
   useEffect(() => {
     const missingClubIds = [
@@ -2819,7 +2712,6 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     taskScope !== "assigned_to_me" ||
     search.trim().length > 0 ||
     clubFilter !== "all" ||
-    priorityFilter !== "all" ||
     sort !== "due_date";
 
   const filteredTasks = useMemo(() => {
@@ -2827,11 +2719,10 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
 
     return tasks.filter((task) => {
       if (clubFilter !== "all" && task.clubId !== clubFilter) return false;
-      if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
       if (query && !task.title.toLowerCase().includes(query)) return false;
       return true;
     });
-  }, [tasks, search, clubFilter, priorityFilter]);
+  }, [tasks, search, clubFilter]);
 
   const taskGroups = useMemo(
     () =>
@@ -2858,7 +2749,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     });
   }, [taskGroups]);
 
-  if (loadingTasks || accessLoading) {
+  if (loadingTasks) {
     return (
       <div className="flex justify-center py-12">
         <Spinner label="Loading tasks…" />
@@ -2868,19 +2759,13 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
 
   if (tasks.length === 0) {
     const emptyMessage =
-      taskScope === "created_by_me"
-        ? "No tasks created by you."
-        : taskScope === "club_tasks"
-          ? "No club tasks in your executive workspaces."
-          : "No tasks assigned to you.";
+      taskScope === "delegated"
+        ? "No tasks delegated to others."
+        : "No tasks assigned to you.";
 
     return (
       <Card className="p-10 text-center">
-        <DashboardTaskScopeToggle
-          active={taskScope}
-          onChange={setTaskScope}
-          showClubTasks={canViewClubTasks}
-        />
+        <DashboardTaskScopeToggle active={taskScope} onChange={setTaskScope} />
         <p className="text-muted">{emptyMessage}</p>
       </Card>
     );
@@ -2888,11 +2773,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
 
   return (
     <div>
-      <DashboardTaskScopeToggle
-        active={taskScope}
-        onChange={setTaskScope}
-        showClubTasks={canViewClubTasks}
-      />
+      <DashboardTaskScopeToggle active={taskScope} onChange={setTaskScope} />
       <div style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
         <TaskProgressCard
           completed={taskProgress.completed}
@@ -2916,8 +2797,6 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
         onGroupByChange={setGroupBy}
         sort={sort}
         onSortChange={setSort}
-        priorityFilter={priorityFilter}
-        onPriorityFilterChange={setPriorityFilter}
       />
 
       {taskGroups.map((group) => (

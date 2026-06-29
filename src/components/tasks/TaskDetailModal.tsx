@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Send, X } from "lucide-react";
 import LinkedMeetingCancelledLabel from "./LinkedMeetingCancelledLabel";
-import { formatTaskDate } from "../../lib/taskDueUrgency";
-import { getTaskStatusMenuItems, TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
+import { formatTaskDate, getTaskDueUrgency, taskDueBadgeConfig, taskDueDateColor } from "../../lib/taskDueUrgency";
+import { shouldSubmitTaskForReview } from "../../lib/taskCompletion";
+import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import { TASK_TYPE_BADGE_LABELS } from "../../lib/taskTypes";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
@@ -13,14 +14,81 @@ const ACCENT_RED = "#E51937";
 
 const statusLabels = TASK_STATUS_LABELS;
 
-const actionButtonStyle: CSSProperties = {
+function StatusBadge({ status }: { status: TaskStatus }) {
+  const config = {
+    todo: { border: "#444444", color: "#999999", bg: "transparent" },
+    in_progress: { border: GOLD, color: GOLD, bg: "rgba(255, 196, 41, 0.08)" },
+    done: { border: "#3d6b3d", color: "#7ecf7e", bg: "rgba(60, 120, 60, 0.1)" },
+    pending_review: { border: GOLD, color: GOLD, bg: "rgba(255, 196, 41, 0.08)" },
+    cancelled: { border: "#444444", color: "#666666", bg: "transparent" },
+  }[status];
+
+  return (
+    <span
+      style={{
+        border: `1px solid ${config.border}`,
+        background: config.bg,
+        color: config.color,
+        borderRadius: "4px",
+        padding: "3px 10px",
+        fontSize: "10px",
+        fontWeight: 700,
+        letterSpacing: "0.03em",
+        textTransform: "uppercase",
+      }}
+    >
+      {statusLabels[status]}
+    </span>
+  );
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <p
+      style={{
+        margin: "0 0 10px",
+        fontSize: "10px",
+        fontWeight: 700,
+        color: "#555555",
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+const primaryButtonStyle: CSSProperties = {
+  background: GOLD,
+  border: `1px solid ${GOLD}`,
+  borderRadius: "6px",
+  padding: "8px 16px",
+  fontSize: "12px",
+  fontWeight: 700,
+  color: "#0f0f0f",
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: CSSProperties = {
   background: "transparent",
   border: "1px solid #333333",
   borderRadius: "6px",
-  padding: "6px 12px",
+  padding: "8px 16px",
   fontSize: "12px",
   fontWeight: 600,
   color: "#cccccc",
+  cursor: "pointer",
+};
+
+const managementButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #2a2a2a",
+  borderRadius: "6px",
+  padding: "6px 12px",
+  fontSize: "11px",
+  fontWeight: 600,
+  color: "#777777",
   cursor: "pointer",
 };
 
@@ -295,41 +363,34 @@ export default function TaskDetailModal({
     }
   }
 
-  const detailRows: { label: string; value: string; node?: ReactNode }[] = [
-    {
-      label: "Assignee",
-      value: assigneeName,
-      node: (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <AvatarCircle name={assigneeName} avatarUrl={assigneeAvatarUrl} size={28} />
-          <span>{assigneeName}</span>
-        </div>
-      ),
-    },
-    {
-      label: "Due date",
-      value: task.dueDate ? formatTaskDate(task.dueDate) : "No due date",
-    },
-    { label: "Priority", value: task.priority },
-    { label: "Status", value: statusLabels[task.status] },
-    {
-      label: "Task type",
-      value: TASK_TYPE_BADGE_LABELS[task.taskType ?? "general"],
-    },
-    { label: "Created by", value: task.creatorName ?? "Unknown" },
-    {
-      label: "Created",
-      value: task.createdAt
-        ? new Date(task.createdAt).toLocaleString()
-        : "Unknown",
-    },
-    {
-      label: "Last updated",
-      value: task.createdAt
-        ? new Date(task.createdAt).toLocaleString()
-        : "Not tracked",
-    },
-  ];
+  const dueUrgency = getTaskDueUrgency(task.dueDate, task.status);
+  const dueColor = taskDueDateColor(dueUrgency);
+  const dueBadge = taskDueBadgeConfig(dueUrgency);
+  const canMarkComplete =
+    canChangeStatus &&
+    !isReviewMode &&
+    (task.status === "todo" || task.status === "in_progress");
+  const canMoveToTodo =
+    canChangeStatus &&
+    !isReviewMode &&
+    task.status !== "todo" &&
+    task.status !== "done" &&
+    task.status !== "pending_review";
+  const completeLabel =
+    userId && shouldSubmitTaskForReview(task, userId)
+      ? "Submit for Review"
+      : "Mark Complete";
+
+  const metadataFooter = [
+    task.createdAt
+      ? `Created ${new Date(task.createdAt).toLocaleString()}`
+      : null,
+    task.completedAt
+      ? `Completed ${new Date(task.completedAt).toLocaleString()}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div
@@ -379,148 +440,238 @@ export default function TaskDetailModal({
           <X size={20} />
         </button>
 
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
-          <TaskTypeBadge taskType={task.taskType} />
-          <PriorityPill priority={task.priority} />
-        </div>
-
-        <h2
-          id="task-detail-title"
-          style={{ margin: "0 0 4px", fontSize: "20px", fontWeight: 800, color: "#ffffff" }}
-        >
-          {task.title}
-        </h2>
-        <LinkedMeetingCancelledLabel task={task} />
-
-        {task.taskType === "event" && (task.linkedEventId || linkedEventFallback) ? (
-          <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#555555" }}>
-            Linked to: {task.linkedEventTitle ?? linkedEventFallback ?? "Event"}
-          </p>
-        ) : null}
-        {task.taskType === "meeting" && task.linkedMeetingId ? (
-          <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#555555" }}>
-            Linked meeting: {task.linkedMeetingTitle ?? "Meeting"}
-          </p>
-        ) : null}
-
-        {detailRows.map((row) => (
-          <div
-            key={row.label}
-            style={{
-              display: "flex",
-              gap: "12px",
-              padding: "8px 0",
-              borderBottom: "1px solid #1e1e1e",
-              fontSize: "13px",
-              alignItems: row.node ? "center" : "flex-start",
-            }}
-          >
-            <span style={{ color: "#555555", width: "110px", flexShrink: 0 }}>{row.label}</span>
-            {row.node ? (
-              <div style={{ color: "#cccccc" }}>{row.node}</div>
-            ) : (
-              <span style={{ color: "#cccccc" }}>{row.value}</span>
-            )}
-          </div>
-        ))}
-
-        <p style={{ margin: "16px 0 6px", fontSize: "11px", fontWeight: 700, color: "#555555" }}>
-          DESCRIPTION
-        </p>
-        <p
-          style={{
-            margin: 0,
-            fontSize: "14px",
-            color: "#cccccc",
-            lineHeight: 1.6,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {task.description.trim() || "No description provided."}
-        </p>
-
-        <p style={{ margin: "16px 0 8px", fontSize: "11px", fontWeight: 700, color: "#555555" }}>
-          COMMENTS ({comments.length})
-        </p>
         <div
           style={{
-            background: "#111111",
-            border: "1px solid #1e1e1e",
-            borderRadius: "8px",
-            padding: "12px",
+            paddingBottom: "16px",
+            marginBottom: "20px",
+            borderBottom: "1px solid #1e1e1e",
           }}
         >
-          {loadingComments ? (
-            <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>Loading comments…</p>
-          ) : comments.length === 0 ? (
-            <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>No comments yet.</p>
-          ) : (
-            comments.map((comment) => (
-              <div
-                key={comment.id}
-                style={{ display: "flex", gap: "8px", marginBottom: "10px" }}
-              >
-                <AvatarCircle
-                  name={comment.authorName}
-                  avatarUrl={comment.avatarUrl}
-                  size={28}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#cccccc" }}>
-                      {comment.authorName}
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#555555", marginLeft: "auto" }}>
-                      {formatCommentTime(comment.createdAt)}
-                    </span>
-                  </div>
-                  <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaaaaa" }}>
-                    {comment.content}
-                  </p>
-                </div>
-              </div>
-            ))
-          )}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+            <StatusBadge status={task.status} />
+            <PriorityPill priority={task.priority} />
+            <TaskTypeBadge taskType={task.taskType} />
+          </div>
 
-          {canComment && userId ? (
-            <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-              <input
-                type="text"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void handleSendComment();
-                }}
-                placeholder="Add a comment…"
-                style={{
-                  flex: 1,
-                  background: "#0f0f0f",
-                  border: "1px solid #2a2a2a",
-                  borderRadius: "6px",
-                  padding: "8px 10px",
-                  fontSize: "13px",
-                  color: "#ffffff",
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => void handleSendComment()}
-                disabled={sending || !draft.trim()}
-                style={{
-                  ...actionButtonStyle,
-                  opacity: sending || !draft.trim() ? 0.6 : 1,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <Send size={14} aria-hidden />
-              </button>
+          <h2
+            id="task-detail-title"
+            style={{
+              margin: 0,
+              fontSize: "22px",
+              fontWeight: 800,
+              color: "#ffffff",
+              lineHeight: 1.25,
+              paddingRight: "28px",
+            }}
+          >
+            {task.title}
+          </h2>
+          <LinkedMeetingCancelledLabel task={task} />
+        </div>
+
+        <div style={{ marginBottom: "20px" }}>
+          <SectionTitle>Assignment</SectionTitle>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              padding: "12px",
+              background: "#111111",
+              border: "1px solid #1e1e1e",
+              borderRadius: "8px",
+            }}
+          >
+            <AvatarCircle name={assigneeName} avatarUrl={assigneeAvatarUrl} size={36} />
+            <div>
+              <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
+                {assigneeName}
+              </p>
+              <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#555555" }}>
+                Assigned to
+              </p>
             </div>
+          </div>
+          {task.creatorName ? (
+            <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#555555" }}>
+              Created by {task.creatorName}
+            </p>
           ) : null}
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "20px" }}>
+        <div style={{ marginBottom: "20px" }}>
+          <SectionTitle>Timeline</SectionTitle>
+          <div
+            style={{
+              padding: "14px 16px",
+              background: dueUrgency ? "rgba(229, 25, 55, 0.06)" : "#111111",
+              border: `1px solid ${dueUrgency === "overdue" ? ACCENT_RED : dueUrgency ? GOLD : "#1e1e1e"}`,
+              borderRadius: "8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: "11px", color: "#555555" }}>Due date</p>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  fontSize: dueUrgency ? "18px" : "15px",
+                  fontWeight: dueUrgency ? 800 : 600,
+                  color: task.dueDate ? dueColor : "#555555",
+                }}
+              >
+                {task.dueDate ? formatTaskDate(task.dueDate) : "No due date"}
+              </p>
+            </div>
+            {dueBadge ? (
+              <span style={dueBadge.style}>{dueBadge.label}</span>
+            ) : dueUrgency === "due_soon" ? (
+              <span
+                style={{
+                  background: "#1a1500",
+                  border: "1px solid #FFC429",
+                  color: "#FFC429",
+                  borderRadius: "4px",
+                  padding: "1px 6px",
+                  fontSize: "9px",
+                  fontWeight: 700,
+                }}
+              >
+                DUE SOON
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: "20px" }}>
+          <SectionTitle>Details</SectionTitle>
+          {task.taskType === "event" && (task.linkedEventId || linkedEventFallback) ? (
+            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#777777" }}>
+              Linked event: {task.linkedEventTitle ?? linkedEventFallback ?? "Event"}
+            </p>
+          ) : null}
+          {task.taskType === "meeting" && task.linkedMeetingId ? (
+            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#777777" }}>
+              Linked meeting: {task.linkedMeetingTitle ?? "Meeting"}
+            </p>
+          ) : null}
+          <p
+            style={{
+              margin: 0,
+              fontSize: "14px",
+              color: "#cccccc",
+              lineHeight: 1.6,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {task.description.trim() || "No description provided."}
+          </p>
+        </div>
+
+        <div
+          style={{
+            marginBottom: "20px",
+            paddingTop: "4px",
+            borderTop: "1px solid #1e1e1e",
+          }}
+        >
+          <SectionTitle>Comments ({comments.length})</SectionTitle>
+          <div
+            style={{
+              background: "#0f0f0f",
+              border: "1px solid #1e1e1e",
+              borderRadius: "8px",
+              padding: "12px",
+            }}
+          >
+            {loadingComments ? (
+              <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>Loading comments…</p>
+            ) : comments.length === 0 ? (
+              <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>No comments yet.</p>
+            ) : (
+              comments.map((comment) => (
+                <div
+                  key={comment.id}
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    marginBottom: "10px",
+                    paddingBottom: "10px",
+                    borderBottom: "1px solid #1a1a1a",
+                  }}
+                >
+                  <AvatarCircle
+                    name={comment.authorName}
+                    avatarUrl={comment.avatarUrl}
+                    size={28}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#cccccc" }}>
+                        {comment.authorName}
+                      </span>
+                      <span style={{ fontSize: "11px", color: "#555555", marginLeft: "auto" }}>
+                        {formatCommentTime(comment.createdAt)}
+                      </span>
+                    </div>
+                    <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaaaaa" }}>
+                      {comment.content}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+
+            {canComment && userId ? (
+              <div style={{ display: "flex", gap: "8px", marginTop: comments.length > 0 ? "12px" : 0 }}>
+                <input
+                  type="text"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void handleSendComment();
+                  }}
+                  placeholder="Add a comment…"
+                  style={{
+                    flex: 1,
+                    background: "#0f0f0f",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: "6px",
+                    padding: "8px 10px",
+                    fontSize: "13px",
+                    color: "#ffffff",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSendComment()}
+                  disabled={sending || !draft.trim()}
+                  style={{
+                    ...secondaryButtonStyle,
+                    padding: "8px 12px",
+                    opacity: sending || !draft.trim() ? 0.6 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <Send size={14} aria-hidden />
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          style={{
+            paddingTop: "16px",
+            borderTop: "1px solid #1e1e1e",
+          }}
+        >
+          <SectionTitle>Actions</SectionTitle>
           {isReviewMode ? (
             <div style={{ width: "100%" }}>
               <textarea
@@ -545,58 +696,94 @@ export default function TaskDetailModal({
                 <button
                   type="button"
                   onClick={() => onApproveReview?.()}
-                  style={{ ...actionButtonStyle, borderColor: GOLD, color: GOLD }}
+                  style={primaryButtonStyle}
                 >
                   Approve
                 </button>
                 <button
                   type="button"
                   onClick={() => onSendBackReview?.(reviewNote.trim())}
-                  style={actionButtonStyle}
+                  style={secondaryButtonStyle}
                 >
                   Send Back
                 </button>
                 <button
                   type="button"
                   onClick={() => onRequestChangesReview?.(reviewNote.trim())}
-                  style={actionButtonStyle}
+                  style={secondaryButtonStyle}
                 >
                   Request Changes
                 </button>
               </div>
             </div>
-          ) : null}
-          {!isReviewMode && canChangeStatus
-            ? getTaskStatusMenuItems(task.status).map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => onStatusChange(item.status)}
-                  style={
-                    item.status === "done"
-                      ? { ...actionButtonStyle, borderColor: GOLD, color: GOLD }
-                      : actionButtonStyle
-                  }
+          ) : (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+                {canMarkComplete ? (
+                  <button
+                    type="button"
+                    onClick={() => onStatusChange("done")}
+                    style={primaryButtonStyle}
+                  >
+                    {completeLabel}
+                  </button>
+                ) : null}
+                {canMoveToTodo ? (
+                  <button
+                    type="button"
+                    onClick={() => onStatusChange("todo")}
+                    style={secondaryButtonStyle}
+                  >
+                    Move to To Do
+                  </button>
+                ) : null}
+              </div>
+              {(canEdit || canDelete) && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "8px",
+                    paddingTop: "8px",
+                    borderTop: "1px solid #1a1a1a",
+                  }}
                 >
-                  {item.label}
-                </button>
-              ))
-            : null}
-          {canEdit ? (
-            <button type="button" onClick={onEdit} style={actionButtonStyle}>
-              Edit
-            </button>
-          ) : null}
-          {canDelete ? (
-            <button
-              type="button"
-              onClick={onDelete}
-              style={{ ...actionButtonStyle, borderColor: ACCENT_RED, color: ACCENT_RED }}
-            >
-              Delete
-            </button>
-          ) : null}
+                  {canEdit ? (
+                    <button type="button" onClick={onEdit} style={managementButtonStyle}>
+                      Edit
+                    </button>
+                  ) : null}
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      onClick={onDelete}
+                      style={{
+                        ...managementButtonStyle,
+                        borderColor: "rgba(229, 25, 55, 0.4)",
+                        color: ACCENT_RED,
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </>
+          )}
         </div>
+
+        {metadataFooter ? (
+          <p
+            style={{
+              margin: "16px 0 0",
+              fontSize: "10px",
+              color: "#444444",
+              lineHeight: 1.5,
+            }}
+          >
+            {metadataFooter}
+          </p>
+        ) : null}
       </div>
     </div>
   );
