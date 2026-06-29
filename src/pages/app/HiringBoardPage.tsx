@@ -1625,19 +1625,19 @@ export function PositionQuestionBuilder({
   };
 
   return (
-    <div>
+    <div style={{ marginTop: "4px" }}>
       <p
         style={{
           fontSize: "12px",
           color: "#888888",
           textTransform: "uppercase",
           letterSpacing: "0.05em",
-          marginBottom: "10px",
+          marginBottom: "12px",
         }}
       >
         {heading}
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {questions.map((q) => (
           <div
             key={q.localId}
@@ -1645,7 +1645,7 @@ export function PositionQuestionBuilder({
               background: "#111111",
               border: "1px solid #2a2a2a",
               borderRadius: "8px",
-              padding: "12px",
+              padding: "14px",
             }}
           >
             <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>

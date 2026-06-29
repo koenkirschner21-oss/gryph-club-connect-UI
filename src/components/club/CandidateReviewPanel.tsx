@@ -324,10 +324,23 @@ export default function CandidateReviewPanel({
   return (
     <>
       {application.profile?.email ? (
-        <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 12px" }}>
+        <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px" }}>
           {application.profile.email}
         </p>
       ) : null}
+
+      <p
+        style={{
+          margin: "0 0 12px",
+          fontSize: "12px",
+          fontWeight: 700,
+          color: "#777777",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        Application Responses
+      </p>
 
       {application.answers.length === 0 ? (
         <p style={{ fontSize: "13px", color: "#cccccc", margin: "0 0 12px" }}>—</p>
@@ -838,19 +851,22 @@ function ScheduleInterviewModal({
 
   return (
     <ModalShell title={`Schedule Interview — ${applicantName}`} onClose={onClose}>
-      <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div>
+      <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "8px" }}>
         Interview type
       </label>
       <select
         value={interviewType}
         onChange={(e) => setInterviewType(e.target.value as InterviewType)}
-        style={{ ...darkInputStyle, width: "100%", marginBottom: "14px" }}
+        style={{ ...darkInputStyle, width: "100%" }}
       >
         <option value="online">Online</option>
         <option value="in_person">In Person</option>
       </select>
+      </div>
 
-      <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
+      <div style={{ display: "flex", gap: "8px" }}>
         <button
           type="button"
           onClick={() => setMode("ask_availability")}
@@ -880,7 +896,7 @@ function ScheduleInterviewModal({
       </div>
 
       {mode === "specific_times" ? (
-        <div style={{ marginBottom: "14px" }}>
+        <div>
           {[0, 1, 2].map((index) => (
             <input
               key={index}
@@ -892,26 +908,32 @@ function ScheduleInterviewModal({
                 setTimeSlots(next);
               }}
               placeholder={`Option ${index + 1}: Date and time`}
-              style={{ ...darkInputStyle, width: "100%", marginBottom: "8px" }}
+              style={{
+                ...darkInputStyle,
+                width: "100%",
+                marginBottom: index < 2 ? "8px" : 0,
+              }}
             />
           ))}
         </div>
       ) : null}
 
-      <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
+      <div>
+      <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "8px" }}>
         Optional message
       </label>
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         rows={3}
-        style={{ ...darkInputStyle, width: "100%", marginBottom: "14px", resize: "vertical" }}
+        style={{ ...darkInputStyle, width: "100%", resize: "vertical" }}
       />
+      </div>
 
       {interviewType === "in_person" ? (
-        <>
+        <div>
           <label
-            style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}
+            style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "8px" }}
           >
             Location
           </label>
@@ -920,15 +942,15 @@ function ScheduleInterviewModal({
             value={meetingLocation}
             onChange={(e) => setMeetingLocation(e.target.value)}
             placeholder="University Centre Room 103"
-            style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
+            style={{ ...darkInputStyle, width: "100%" }}
           />
-        </>
+        </div>
       ) : null}
 
       {interviewType === "online" ? (
-        <>
+        <div>
           <label
-            style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}
+            style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "8px" }}
           >
             Meeting Link
           </label>
@@ -937,12 +959,12 @@ function ScheduleInterviewModal({
             value={meetingLink}
             onChange={(e) => setMeetingLink(e.target.value)}
             placeholder="Paste Teams, Zoom, Google Meet, or other meeting link"
-            style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
+            style={{ ...darkInputStyle, width: "100%" }}
           />
-        </>
+        </div>
       ) : null}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", paddingTop: "4px" }}>
         <button type="button" style={actionButtonStyle} onClick={onClose}>
           Cancel
         </button>
@@ -963,6 +985,7 @@ function ScheduleInterviewModal({
         >
           {submitting ? "Sending…" : "Send Interview Invite"}
         </button>
+      </div>
       </div>
     </ModalShell>
   );

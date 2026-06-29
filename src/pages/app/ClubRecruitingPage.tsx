@@ -17,6 +17,7 @@ import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import CandidateReviewPanel, {
+  type CandidateReviewApplication,
   type CandidateReviewPatch,
   type CandidateReviewPendingAction,
 } from "../../components/club/CandidateReviewPanel";
@@ -135,6 +136,8 @@ interface HiringApplicationProfile {
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  program: string | null;
+  year_of_study: string | null;
 }
 
 interface HiringApplicationRow {
@@ -501,13 +504,50 @@ function matchesPositionFilter(
   }
 }
 
-function daysAgoLabel(iso: string): string {
-  const created = new Date(iso);
-  if (Number.isNaN(created.getTime())) return "Recently";
-  const days = Math.floor((Date.now() - created.getTime()) / (1000 * 60 * 60 * 24));
-  if (days <= 0) return "Applied today";
-  if (days === 1) return "Applied 1 day ago";
-  return `Applied ${days} days ago`;
+function formatAppliedDate(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "Unknown date";
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function applicantProfileLine(profile: HiringApplicationProfile | null): string | null {
+  if (!profile) return null;
+  const parts = [profile.program, profile.year_of_study].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function publicPostingUrl(listingId: string): string {
+  return `${window.location.origin}/hiring?listing=${listingId}`;
+}
+
+function toCandidateReviewApplication(app: HiringApplicationRow): CandidateReviewApplication {
+  return {
+    id: app.id,
+    listingId: app.listingId,
+    applicantId: app.applicantId,
+    status: app.status,
+    subStatus: app.subStatus,
+    createdAt: app.createdAt,
+    answers: app.answers,
+    profile: app.profile
+      ? {
+          full_name: app.profile.full_name,
+          email: app.profile.email,
+          avatar_url: app.profile.avatar_url,
+        }
+      : null,
+    interviewTimes: app.interviewTimes,
+    interviewType: app.interviewType,
+    meetingLocation: app.meetingLocation,
+    meetingLink: app.meetingLink,
+    offeredAccessLevel: app.offeredAccessLevel,
+    offeredRoleTitle: app.offeredRoleTitle,
+    positionHandling: app.positionHandling,
+  };
 }
 
 function positionApplicantSummary(position: ClubPosition): string {
@@ -520,7 +560,10 @@ function positionApplicantSummary(position: ClubPosition): string {
 
 function positionCardBorderStyle(isSelected: boolean): CSSProperties {
   if (isSelected) {
-    return { border: "1px solid #E51937" };
+    return {
+      border: "1px solid #2a2a2a",
+      borderLeft: "3px solid #E51937",
+    };
   }
   return { border: "1px solid #2a2a2a" };
 }
@@ -549,6 +592,122 @@ function toPendingPanelAction(
     return { type: "mark_reviewed" };
   }
   return { type: "modal", modal: action };
+}
+
+function ApplicationReviewModal({
+  application,
+  positionTitle,
+  positionId,
+  positionQuestions,
+  clubId,
+  clubName,
+  userId,
+  pendingAction,
+  onClose,
+  onPendingActionHandled,
+  onApplicationUpdated,
+  onStatusChanged,
+}: {
+  application: HiringApplicationRow;
+  positionTitle: string;
+  positionId: string;
+  positionQuestions: unknown;
+  clubId: string;
+  clubName: string;
+  userId: string;
+  pendingAction: CandidateReviewPendingAction | null;
+  onClose: () => void;
+  onPendingActionHandled: () => void;
+  onApplicationUpdated: (patch: CandidateReviewPatch) => void;
+  onStatusChanged: () => void;
+}) {
+  const applicantName = application.profile?.full_name ?? "Applicant";
+  const profileLine = applicantProfileLine(application.profile);
+
+  return (
+    <div role="dialog" aria-modal="true" style={modalOverlayStyle} onClick={onClose}>
+      <div
+        style={{
+          background: "#141414",
+          border: "1px solid #2a2a2a",
+          borderRadius: "12px",
+          padding: "24px",
+          maxWidth: "680px",
+          width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "12px",
+            marginBottom: "16px",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <h2
+              style={{
+                margin: "0 0 6px",
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#ffffff",
+              }}
+            >
+              {applicantName}
+            </h2>
+            {profileLine ? (
+              <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#777777" }}>
+                {profileLine}
+              </p>
+            ) : null}
+            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#555555" }}>
+              Applied {formatAppliedDate(application.createdAt)}
+            </p>
+            <span style={subStatusPillStyle(application.subStatus)}>
+              {subStatusLabel(application.subStatus)}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close application review"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#777777",
+              cursor: "pointer",
+              fontSize: "22px",
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <CandidateReviewPanel
+          application={toCandidateReviewApplication(application)}
+          positionTitle={positionTitle}
+          positionId={positionId}
+          clubId={clubId}
+          clubName={clubName}
+          userId={userId}
+          showActionBar
+          pendingAction={pendingAction}
+          onPendingActionHandled={onPendingActionHandled}
+          answerLabel={(questionId) =>
+            answerLabel(questionId, listingQuestionsForApply(positionQuestions))
+          }
+          onApplicationUpdated={onApplicationUpdated}
+          onStatusChanged={onStatusChanged}
+        />
+      </div>
+    </div>
+  );
 }
 
 function StatCard({
@@ -719,9 +878,10 @@ export default function ClubRecruitingPage() {
   const [applicantSearch, setApplicantSearch] = useState("");
   const [applicantStatusFilter, setApplicantStatusFilter] =
     useState<ApplicantPipelineFilter>("all");
-  const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(
+  const [applicationReviewModalId, setApplicationReviewModalId] = useState<string | null>(
     null,
   );
+  const [copiedPostingLinkId, setCopiedPostingLinkId] = useState<string | null>(null);
   const [openApplicantMenuId, setOpenApplicantMenuId] = useState<string | null>(
     null,
   );
@@ -927,7 +1087,7 @@ export default function ClubRecruitingPage() {
   }, [applications, applicantStatusFilter, applicantSearch]);
 
   useEffect(() => {
-    setSelectedApplicantId(null);
+    setApplicationReviewModalId(null);
     setApplicantSearch("");
     if (skipApplicantFilterResetRef.current) {
       skipApplicantFilterResetRef.current = false;
@@ -978,7 +1138,7 @@ export default function ClubRecruitingPage() {
     setExpandedPositionId(listingId);
     void loadApplicationsForPosition(listingId).then(() => {
       if (applicationId) {
-        setSelectedApplicantId(applicationId);
+        setApplicationReviewModalId(applicationId);
       }
     });
 
@@ -1142,7 +1302,7 @@ export default function ClubRecruitingPage() {
     if (expandedPositionId === positionId) {
       setExpandedPositionId(null);
       setApplications([]);
-      setSelectedApplicantId(null);
+      setApplicationReviewModalId(null);
     }
     setDeleteConfirmPosition(null);
     setOpenMenuId(null);
@@ -1177,7 +1337,7 @@ export default function ClubRecruitingPage() {
     if (applicantIds.length > 0) {
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name, email, avatar_url")
+        .select("id, full_name, email, avatar_url, program, year_of_study")
         .in("id", applicantIds);
 
       if (profilesError) {
@@ -1188,6 +1348,8 @@ export default function ClubRecruitingPage() {
           full_name: (p.full_name as string | null) ?? null,
           email: (p.email as string | null) ?? null,
           avatar_url: (p.avatar_url as string | null) ?? null,
+          program: (p.program as string | null) ?? null,
+          year_of_study: (p.year_of_study as string | null) ?? null,
         }));
       }
     }
@@ -1238,12 +1400,24 @@ export default function ClubRecruitingPage() {
     appId: string,
     action: ApplicantMoveStatusAction,
   ) {
-    setSelectedApplicantId(appId);
+    setApplicationReviewModalId(appId);
     setPendingApplicantAction({
       appId,
       action: toPendingPanelAction(action),
     });
     setOpenApplicantMenuId(null);
+  }
+
+  function handleSharePosting(listingId: string) {
+    navigator.clipboard.writeText(publicPostingUrl(listingId)).then(
+      () => {
+        setCopiedPostingLinkId(listingId);
+        setTimeout(() => setCopiedPostingLinkId(null), 2000);
+      },
+      () => {
+        window.open(publicPostingUrl(listingId), "_blank", "noopener,noreferrer");
+      },
+    );
   }
 
   async function toggleApplications(position: ClubPosition) {
@@ -1411,6 +1585,7 @@ export default function ClubRecruitingPage() {
               >
                 {position.title}
               </h3>
+              {!canManageHiring ? (
               <div
                 style={{
                   display: "flex",
@@ -1445,6 +1620,7 @@ export default function ClubRecruitingPage() {
                   </span>
                 ) : null}
               </div>
+              ) : null}
             </div>
 
             {canManageHiring && position.isOpen && !hasApplied ? (
@@ -1566,31 +1742,60 @@ export default function ClubRecruitingPage() {
               </button>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                 {position.isOpen ? (
-                  <Link
-                    to={`/hiring?listing=${position.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      background: "transparent",
-                      border: "1px solid #2a2a2a",
-                      color: "#555555",
-                      borderRadius: "8px",
-                      padding: "8px 18px",
-                      fontSize: "13px",
-                      textDecoration: "none",
-                      cursor: "pointer",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#555555";
-                      e.currentTarget.style.color = "#aaaaaa";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#2a2a2a";
-                      e.currentTarget.style.color = "#555555";
-                    }}
-                  >
-                    View Public Posting
-                  </Link>
+                  <>
+                    <Link
+                      to={`/hiring?listing=${position.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #2a2a2a",
+                        color: "#555555",
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        textDecoration: "none",
+                        cursor: "pointer",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "#555555";
+                        e.currentTarget.style.color = "#aaaaaa";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "#2a2a2a";
+                        e.currentTarget.style.color = "#555555";
+                      }}
+                    >
+                      View Public Posting
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleSharePosting(position.id);
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #2a2a2a",
+                        color: "#555555",
+                        borderRadius: "8px",
+                        padding: "8px 18px",
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "#555555";
+                        e.currentTarget.style.color = "#aaaaaa";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "#2a2a2a";
+                        e.currentTarget.style.color = "#555555";
+                      }}
+                    >
+                      {copiedPostingLinkId === position.id ? "Link copied" : "Share this posting"}
+                    </button>
+                  </>
                 ) : null}
                 <button
                   type="button"
@@ -1967,6 +2172,53 @@ export default function ClubRecruitingPage() {
                     {selectedPosition.title}
                   </p>
 
+                  {selectedPosition.isOpen ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        marginBottom: "16px",
+                      }}
+                    >
+                      <Link
+                        to={`/hiring?listing=${selectedPosition.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          background: "transparent",
+                          border: "1px solid #2a2a2a",
+                          color: "#777777",
+                          borderRadius: "6px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          textDecoration: "none",
+                        }}
+                      >
+                        View public posting
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleSharePosting(selectedPosition.id)}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid #2a2a2a",
+                          color: "#777777",
+                          borderRadius: "6px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {copiedPostingLinkId === selectedPosition.id
+                          ? "Link copied"
+                          : "Share this posting"}
+                      </button>
+                    </div>
+                  ) : null}
+
                   {appsLoading ? (
                     <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
                       Loading…
@@ -1990,12 +2242,59 @@ export default function ClubRecruitingPage() {
                         style={{ marginBottom: "12px" }}
                       />
                       <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
-                        No applicants yet
+                        No applicants yet.
                       </p>
                       <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px", maxWidth: "320px" }}>
                         Once students apply for this role, their applications will appear here for
                         review.
                       </p>
+                      {selectedPosition.isOpen ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "8px",
+                            justifyContent: "center",
+                            marginTop: "16px",
+                          }}
+                        >
+                          <Link
+                            to={`/hiring?listing=${selectedPosition.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              background: "transparent",
+                              border: "1px solid #2a2a2a",
+                              color: "#777777",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              textDecoration: "none",
+                            }}
+                          >
+                            View public posting
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleSharePosting(selectedPosition.id)}
+                            style={{
+                              background: "transparent",
+                              border: "1px solid #2a2a2a",
+                              color: "#777777",
+                              borderRadius: "6px",
+                              padding: "6px 12px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {copiedPostingLinkId === selectedPosition.id
+                              ? "Link copied"
+                              : "Share this posting"}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <>
@@ -2051,274 +2350,165 @@ export default function ClubRecruitingPage() {
                     })}
                   </div>
 
-                  {filteredApplications.length === 0 &&
-                    applicantStatusFilter === "pending" &&
-                    applications.length > 0 &&
-                    !applicantSearch.trim() &&
-                    !applications.some((app) =>
-                      matchesApplicantPipelineFilter(
-                        app.status,
-                        app.subStatus,
-                        "pending",
-                      ),
-                    ) ? (
+                  {filteredApplications.length === 0 ? (
                     <div style={{ textAlign: "center", padding: "48px 16px" }}>
                       <p style={{ fontSize: "15px", fontWeight: 600, color: "#555555", margin: 0 }}>
-                        No pending review
-                      </p>
-                      <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
-                        All applicants for this position have been reviewed.
+                        {applicantSearch.trim()
+                          ? "No applicants match your search."
+                          : applicantStatusFilter !== "all"
+                            ? "No applicants in this status."
+                            : "No applicants in this status."}
                       </p>
                     </div>
-                  ) : filteredApplications.length === 0 ? (
-                    <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
-                      No applicants match your search or filter.
-                    </p>
                   ) : (
                     <div>
                       {filteredApplications.map((app) => {
-                        const isExpanded = selectedApplicantId === app.id;
                         const moveActions = applicantMoveStatusActions(
                           app.status,
                           app.subStatus,
                         );
                         const noteCount = applicationNoteCounts[app.id] ?? 0;
                         const menuOpen = openApplicantMenuId === app.id;
+                        const profileLine = applicantProfileLine(app.profile);
 
                         return (
-                          <div key={app.id} style={{ marginBottom: "10px" }}>
+                          <div
+                            key={app.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                              width: "100%",
+                              padding: "12px 14px",
+                              background: "transparent",
+                              border: "1px solid #2a2a2a",
+                              borderRadius: "8px",
+                              flexWrap: "wrap",
+                              marginBottom: "10px",
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: "160px" }}>
+                              <p
+                                style={{
+                                  fontSize: "14px",
+                                  fontWeight: 600,
+                                  color: "#ffffff",
+                                  margin: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {app.profile?.full_name ?? "Member"}
+                              </p>
+                              {profileLine ? (
+                                <p
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "#666666",
+                                    margin: "2px 0 0",
+                                  }}
+                                >
+                                  {profileLine}
+                                </p>
+                              ) : null}
+                              <p
+                                style={{
+                                  fontSize: "12px",
+                                  color: "#555555",
+                                  margin: "4px 0 0",
+                                }}
+                              >
+                                Applied {formatAppliedDate(app.createdAt)}
+                                {noteCount > 0
+                                  ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}`
+                                  : ""}
+                              </p>
+                            </div>
+                            <span style={subStatusPillStyle(app.subStatus)}>
+                              {subStatusLabel(app.subStatus)}
+                            </span>
                             <div
                               style={{
                                 display: "flex",
                                 alignItems: "center",
-                                gap: "10px",
-                                width: "100%",
-                                padding: "10px 12px",
-                                background: isExpanded ? "#1a1a1a" : "transparent",
-                                border: isExpanded
-                                  ? "1px solid #333"
-                                  : "1px solid #2a2a2a",
-                                borderRadius: isExpanded ? "8px 8px 0 0" : "8px",
+                                gap: "8px",
                                 flexWrap: "wrap",
                               }}
                             >
-                              {app.profile?.avatar_url ? (
-                                <img
-                                  src={app.profile.avatar_url}
-                                  alt=""
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: "50%",
-                                    objectFit: "cover",
-                                    flexShrink: 0,
-                                  }}
-                                />
-                              ) : (
-                                <div
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: "50%",
-                                    background: "#242424",
-                                    color: "#E51937",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontWeight: 700,
-                                    fontSize: "13px",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {(app.profile?.full_name ?? "M")
-                                    .charAt(0)
-                                    .toUpperCase()}
-                                </div>
-                              )}
-                              <div style={{ flex: 1, minWidth: "120px" }}>
-                                <p
-                                  style={{
-                                    fontSize: "14px",
-                                    fontWeight: 600,
-                                    color: "#ffffff",
-                                    margin: 0,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {app.profile?.full_name ?? "Member"}
-                                </p>
-                                <p
-                                  style={{
-                                    fontSize: "12px",
-                                    color: "#555555",
-                                    margin: "2px 0 0",
-                                  }}
-                                >
-                                  {daysAgoLabel(app.createdAt)}
-                                  {noteCount > 0
-                                    ? ` · ${noteCount} note${noteCount === 1 ? "" : "s"}`
-                                    : null}
-                                </p>
-                              </div>
-                              <span style={subStatusPillStyle(app.subStatus)}>
-                                {subStatusLabel(app.subStatus)}
-                              </span>
-                              <div
+                              <button
+                                type="button"
+                                onClick={() => setApplicationReviewModalId(app.id)}
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "8px",
-                                  flexWrap: "wrap",
+                                  background: "#E51937",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  padding: "7px 14px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
                                 }}
                               >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedApplicantId((prev) =>
-                                      prev === app.id ? null : app.id,
-                                    )
-                                  }
-                                  style={{
-                                    background: "#E51937",
-                                    color: "#ffffff",
-                                    border: "none",
-                                    borderRadius: "6px",
-                                    padding: "7px 14px",
-                                    fontSize: "12px",
-                                    fontWeight: 600,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  View Full Application
-                                </button>
-                                {moveActions.length > 0 ? (
-                                  <div style={{ position: "relative" }}>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setOpenApplicantMenuId((prev) =>
-                                          prev === app.id ? null : app.id,
-                                        )
-                                      }
+                                View Application
+                              </button>
+                              {moveActions.length > 0 ? (
+                                <div style={{ position: "relative" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setOpenApplicantMenuId((prev) =>
+                                        prev === app.id ? null : app.id,
+                                      )
+                                    }
+                                    style={{
+                                      background: "transparent",
+                                      border: "1px solid #333333",
+                                      color: "#aaaaaa",
+                                      borderRadius: "6px",
+                                      padding: "7px 14px",
+                                      fontSize: "12px",
+                                      fontWeight: 500,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Move Status ▾
+                                  </button>
+                                  {menuOpen ? (
+                                    <div
                                       style={{
-                                        background: "transparent",
-                                        border: "1px solid #333333",
-                                        color: "#aaaaaa",
-                                        borderRadius: "6px",
-                                        padding: "7px 14px",
-                                        fontSize: "12px",
-                                        fontWeight: 500,
-                                        cursor: "pointer",
+                                        position: "absolute",
+                                        right: 0,
+                                        top: "100%",
+                                        marginTop: "4px",
+                                        background: "#151515",
+                                        border: "1px solid #2a2a2a",
+                                        borderRadius: "8px",
+                                        minWidth: "180px",
+                                        zIndex: 20,
+                                        overflow: "hidden",
                                       }}
                                     >
-                                      Move Status ▾
-                                    </button>
-                                    {menuOpen ? (
-                                      <div
-                                        style={{
-                                          position: "absolute",
-                                          right: 0,
-                                          top: "100%",
-                                          marginTop: "4px",
-                                          background: "#151515",
-                                          border: "1px solid #2a2a2a",
-                                          borderRadius: "8px",
-                                          minWidth: "180px",
-                                          zIndex: 20,
-                                          overflow: "hidden",
-                                        }}
-                                      >
-                                        {moveActions.map((action) => (
-                                          <button
-                                            key={action}
-                                            type="button"
-                                            onClick={() =>
-                                              triggerApplicantAction(app.id, action)
-                                            }
-                                            style={menuItemStyle}
-                                          >
-                                            {moveStatusActionLabel(action)}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
+                                      {moveActions.map((action) => (
+                                        <button
+                                          key={action}
+                                          type="button"
+                                          onClick={() =>
+                                            triggerApplicantAction(app.id, action)
+                                          }
+                                          style={menuItemStyle}
+                                        >
+                                          {moveStatusActionLabel(action)}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
-
-                            {isExpanded && selectedPosition && clubId && user?.id ? (
-                              <div
-                                style={{
-                                  background: "#1a1a1a",
-                                  border: "1px solid #333",
-                                  borderTop: "none",
-                                  borderRadius: "0 0 8px 8px",
-                                  padding: "12px 16px 16px",
-                                }}
-                              >
-                                <CandidateReviewPanel
-                                  application={app}
-                                  positionTitle={selectedPosition.title}
-                                  positionId={selectedPosition.id}
-                                  clubId={clubId}
-                                  clubName={clubName}
-                                  userId={user.id}
-                                  showActionBar={false}
-                                  pendingAction={
-                                    pendingApplicantAction?.appId === app.id
-                                      ? pendingApplicantAction.action
-                                      : null
-                                  }
-                                  onPendingActionHandled={() =>
-                                    setPendingApplicantAction(null)
-                                  }
-                                  answerLabel={(questionId) =>
-                                    answerLabel(
-                                      questionId,
-                                      listingQuestionsForApply(
-                                        selectedPosition.questions,
-                                      ),
-                                    )
-                                  }
-                                  onApplicationUpdated={(patch) =>
-                                    patchApplication(app.id, patch)
-                                  }
-                                  onStatusChanged={() => void loadPositions()}
-                                />
-                              </div>
-                            ) : null}
                           </div>
                         );
                       })}
-
-                      {selectedApplicantId === null ? (
-                        <div
-                          style={{
-                            textAlign: "center",
-                            padding: "32px 16px",
-                            marginTop: "8px",
-                            borderTop: "1px solid #242424",
-                          }}
-                        >
-                          <p
-                            style={{
-                              fontSize: "14px",
-                              fontWeight: 600,
-                              color: "#555555",
-                              margin: 0,
-                            }}
-                          >
-                            Select an applicant
-                          </p>
-                          <p style={{ fontSize: "13px", color: "#444444", marginTop: "6px" }}>
-                            Choose an applicant to review their application, notes, and next
-                            steps.
-                          </p>
-                        </div>
-                      ) : null}
                     </div>
                   )}
                     </>
@@ -2544,10 +2734,12 @@ export default function ClubRecruitingPage() {
               onChange={setUploadFields}
             />
 
-            <PositionQuestionBuilder
-              questions={formQuestions}
-              onChange={setFormQuestions}
-            />
+            <div style={{ marginTop: "20px" }}>
+              <PositionQuestionBuilder
+                questions={formQuestions}
+                onChange={setFormQuestions}
+              />
+            </div>
 
             {savePositionError ? (
               <p
@@ -2701,6 +2893,43 @@ export default function ClubRecruitingPage() {
           onToggleSave={() => void toggleSaveRole(viewRolePosition.id)}
         />
       ) : null}
+
+      {applicationReviewModalId && selectedPosition && clubId && user?.id
+        ? (() => {
+            const reviewApplication = applications.find(
+              (application) => application.id === applicationReviewModalId,
+            );
+            if (!reviewApplication) return null;
+            return (
+              <ApplicationReviewModal
+                application={reviewApplication}
+                positionTitle={selectedPosition.title}
+                positionId={selectedPosition.id}
+                positionQuestions={selectedPosition.questions}
+                clubId={clubId}
+                clubName={clubName}
+                userId={user.id}
+                pendingAction={
+                  pendingApplicantAction?.appId === reviewApplication.id
+                    ? pendingApplicantAction.action
+                    : null
+                }
+                onClose={() => {
+                  setApplicationReviewModalId(null);
+                  setPendingApplicantAction(null);
+                }}
+                onPendingActionHandled={() => setPendingApplicantAction(null)}
+                onApplicationUpdated={(patch) =>
+                  patchApplication(reviewApplication.id, patch)
+                }
+                onStatusChanged={() => {
+                  void loadPositions();
+                  void loadApplicationsForPosition(selectedPosition.id);
+                }}
+              />
+            );
+          })()
+        : null}
 
       {applyPosition && user?.id && clubId ? (
         <ApplicationModal
