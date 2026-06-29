@@ -8,7 +8,6 @@ import {
 } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
-import { Megaphone, Calendar } from "../../components/icons/WorkspaceIcons";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubEvents } from "../../hooks/useClubEvents";
@@ -29,7 +28,20 @@ import { filterByVisibility } from "../../lib/contentVisibility";
 import { formatNameWithRoleTitle, accessLevelFromMember, formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
-import { formatTaskDate, getTaskDueUrgency } from "../../lib/taskDueUrgency";
+import {
+  executiveTaskUrgencyBadgeStyle,
+  executiveTaskUrgencyLabel,
+  formatTaskDueWeekday,
+  getExecutiveTaskUrgency,
+} from "../../lib/executiveTaskUrgency";
+import {
+  isOpenAssigneeTask,
+  isOpenDelegatedTask,
+  isTaskAwaitingReviewFromUser,
+  resolveTaskCompletionStatus,
+} from "../../lib/taskCompletion";
+import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
+import { addTaskComment } from "../../lib/taskComments";
 import { supabase } from "../../lib/supabaseClient";
 import type {
   AccessLevel,
@@ -43,7 +55,14 @@ import type {
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 import SetupChecklist, { SetupChecklistModal } from "../../components/club/SetupChecklist";
+import CreateMenuDropdown from "../../components/club/CreateMenuDropdown";
+import NeedsReviewSection from "../../components/dashboard/NeedsReviewSection";
+import PrepareForMeetingSection from "../../components/dashboard/PrepareForMeetingSection";
 import ClubCommandCenter from "./ClubCommandCenter";
+import {
+  resolveMeetingPrepKey,
+  useMeetingPrepChecklist,
+} from "../../hooks/useMeetingPrepChecklist";
 
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
@@ -116,36 +135,6 @@ function isHiddenLocation(value: string | null | undefined): boolean {
   const upper = trimmed.toUpperCase();
   return upper === "TBD" || upper === "LOCATION TBD";
 }
-
-const quickActionButton: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
-  background: "#E51937",
-  backgroundColor: "#E51937",
-  color: "#ffffff",
-  border: "none",
-  borderRadius: "8px",
-  padding: "9px 18px",
-  fontSize: "13px",
-  fontWeight: 600,
-  textDecoration: "none",
-};
-
-const quickActionOutlineButton: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
-  background: "transparent",
-  backgroundColor: "transparent",
-  border: "1px solid #2a2a2a",
-  color: "#777777",
-  borderRadius: "8px",
-  padding: "9px 18px",
-  fontSize: "13px",
-  fontWeight: 500,
-  textDecoration: "none",
-};
 
 function formatEventTime12h(timeStr: string): string {
   const t = timeStr.trim();
@@ -641,9 +630,7 @@ function DashboardItemModal({
 }
 
 function clubHomeTaskStatusLabel(status: TaskStatus): string {
-  if (status === "in_progress") return "In Progress";
-  if (status === "done") return "Done";
-  return "To Do";
+  return TASK_STATUS_LABELS[status] ?? status;
 }
 
 function clubHomeTaskStatusPillStyle(status: TaskStatus): CSSProperties {
@@ -671,6 +658,18 @@ function clubHomeTaskStatusPillStyle(status: TaskStatus): CSSProperties {
       flexShrink: 0,
     };
   }
+  if (status === "pending_review") {
+    return {
+      background: "#1a1500",
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+      borderRadius: "20px",
+      padding: "3px 10px",
+      fontSize: "11px",
+      fontWeight: 500,
+      flexShrink: 0,
+    };
+  }
   return {
     background: "#222222",
     border: "1px solid #444444",
@@ -683,26 +682,23 @@ function clubHomeTaskStatusPillStyle(status: TaskStatus): CSSProperties {
   };
 }
 
-function clubHomeTaskLeftBorder(
-  status: TaskStatus,
-  urgency: ReturnType<typeof getTaskDueUrgency>,
-): string {
-  if (urgency === "overdue") return "#E51937";
-  if (status === "in_progress") return "#FFC429";
-  return "#2a2a2a";
-}
-
-function NeedsAttentionTaskRow({
+function ExecutiveMyTaskRow({
   task,
   onClick,
 }: {
   task: Task;
   onClick: () => void;
 }) {
-  const urgency = getTaskDueUrgency(task.dueDate, task.status);
-  const dueLabel = task.dueDate ? formatTaskDate(task.dueDate) : null;
-  const leftBorder = clubHomeTaskLeftBorder(task.status, urgency);
-  const metaParts = [task.assigneeName, dueLabel].filter(Boolean);
+  const urgency = getExecutiveTaskUrgency(task.dueDate, task.status);
+  const urgencyLabel = executiveTaskUrgencyLabel(urgency);
+  const urgencyStyle = executiveTaskUrgencyBadgeStyle(urgency);
+  const leftBorder =
+    urgency === "overdue"
+      ? "#E51937"
+      : task.status === "in_progress"
+        ? "#FFC429"
+        : "#2a2a2a";
+  const dueLabel = task.dueDate ? formatTaskDueWeekday(task.dueDate) : null;
 
   return (
     <div
@@ -730,38 +726,102 @@ function NeedsAttentionTaskRow({
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p
-          style={{
-            fontSize: "14px",
-            fontWeight: 700,
-            color: "#ffffff",
-            margin: "0 0 4px",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {task.title}
-        </p>
-        <LinkedMeetingCancelledLabel task={task} />
-        {metaParts.length > 0 ? (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
           <p
             style={{
-              fontSize: "12px",
-              color: "#777777",
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "#ffffff",
               margin: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            {metaParts.join(" · ")}
+            {task.title}
           </p>
+          {urgencyLabel && urgencyStyle ? (
+            <span style={urgencyStyle}>{urgencyLabel}</span>
+          ) : null}
+        </div>
+        <LinkedMeetingCancelledLabel task={task} />
+        {dueLabel ? (
+          <p style={{ fontSize: "12px", color: "#777777", margin: 0 }}>{dueLabel}</p>
         ) : null}
       </div>
       <span style={clubHomeTaskStatusPillStyle(task.status)}>
         {clubHomeTaskStatusLabel(task.status)}
       </span>
+    </div>
+  );
+}
+
+function ExecutiveDelegatedTaskRow({
+  task,
+  onClick,
+}: {
+  task: Task;
+  onClick: () => void;
+}) {
+  const urgency = getExecutiveTaskUrgency(task.dueDate, task.status);
+  const urgencyLabel = executiveTaskUrgencyLabel(urgency);
+  const urgencyStyle = executiveTaskUrgencyBadgeStyle(urgency);
+  const duePart = task.dueDate ? formatTaskDueWeekday(task.dueDate) : "No due date";
+  const metaLine = `Assigned to: ${task.assigneeName ?? "Unassigned"} · ${duePart} · ${clubHomeTaskStatusLabel(task.status)}`;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "12px",
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: "8px",
+        padding: "14px 16px",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {task.title}
+          </p>
+          {urgencyLabel && urgencyStyle ? (
+            <span style={urgencyStyle}>{urgencyLabel}</span>
+          ) : null}
+        </div>
+        <LinkedMeetingCancelledLabel task={task} />
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#777777",
+            margin: 0,
+            lineHeight: 1.45,
+          }}
+        >
+          {metaLine}
+        </p>
+      </div>
     </div>
   );
 }
@@ -811,6 +871,7 @@ function UpcomingEventRow({
   clubAbbreviation,
   clubLogoUrl,
   onOpen,
+  actionLabel = "View Event →",
 }: {
   title: string;
   date: string;
@@ -820,6 +881,7 @@ function UpcomingEventRow({
   clubAbbreviation?: string;
   clubLogoUrl?: string;
   onOpen: () => void;
+  actionLabel?: string;
 }) {
   const timeLabel =
     time && time.trim() !== "" && time.toUpperCase() !== "TBD"
@@ -894,7 +956,7 @@ function UpcomingEventRow({
           fontWeight: 500,
         }}
       >
-        View Event →
+        {actionLabel}
       </span>
     </div>
   );
@@ -1095,6 +1157,7 @@ export default function ClubHomePage() {
   const eventsPath = `${clubBasePath}/events`;
   const announcementsPath = `${clubBasePath}/announcements`;
   const tasksPath = `${clubBasePath}/tasks`;
+  const recruitingPath = `${clubBasePath}/recruiting`;
 
   const contextRole = clubId
     ? getUserRole(clubId) ?? userRoles[clubId] ?? null
@@ -1104,7 +1167,6 @@ export default function ClubHomePage() {
   const [userRoleTitle, setUserRoleTitle] = useState<string | null>(null);
   const [userAccessLevel, setUserAccessLevel] = useState<AccessLevel>("member");
   const [profileFullName, setProfileFullName] = useState<string | null>(null);
-  const [newEventHovered, setNewEventHovered] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Post | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<
     (ClubEvent & { occurrenceDate: string }) | null
@@ -1120,11 +1182,15 @@ export default function ClubHomePage() {
   const memberAccess = useClubMemberAccess(clubId);
   const canManageTasks =
     memberAccess.isPresident || memberAccess.can("manage_tasks");
+  const canManageEvents =
+    memberAccess.isPresident || memberAccess.can("manage_events");
+  const canCreateAnnouncement =
+    memberAccess.isPresident || memberAccess.can("manage_announcements");
+  const canCreateTask =
+    memberAccess.isPresident || memberAccess.can("manage_tasks");
+  const canCreateHiring =
+    memberAccess.isPresident || memberAccess.can("manage_hiring");
   const [openTaskCount, setOpenTaskCount] = useState(0);
-  const [openTasksPreview, setOpenTasksPreview] = useState<
-    Pick<Task, "id" | "title" | "status" | "dueDate">[]
-  >([]);
-  const [openTasksPreviewLoading, setOpenTasksPreviewLoading] = useState(true);
 
   useEffect(() => {
     if (!user?.id) {
@@ -1199,7 +1265,7 @@ export default function ClubHomePage() {
 
   const { events, loading: eventsLoading, refresh: refreshEvents } = useClubEvents(clubId);
   const { posts, loading: postsLoading, refresh: refreshPosts } = useClubPosts(clubId);
-  const { tasks, loading: tasksLoading, updateTask, deleteTask } = useClubTasks(clubId);
+  const { tasks, loading: tasksLoading, updateTask, deleteTask, createTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
 
@@ -1349,7 +1415,8 @@ export default function ClubHomePage() {
         .select("id", { count: "exact", head: true })
         .eq("club_id", clubId)
         .neq("status", "done")
-        .neq("status", "cancelled");
+        .neq("status", "cancelled")
+        .neq("status", "pending_review");
 
       if (!canManageTasks) {
         query = query.eq("assigned_to", user!.id);
@@ -1371,48 +1438,6 @@ export default function ClubHomePage() {
       cancelled = true;
     };
   }, [clubId, tasks.length, user?.id, canManageTasks]);
-
-  useEffect(() => {
-    if (!clubId) {
-      setOpenTasksPreview([]);
-      setOpenTasksPreviewLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadOpenTasksPreview() {
-      setOpenTasksPreviewLoading(true);
-      const { data, error } = await supabase
-        .from("tasks")
-        .select("id, title, status, due_date")
-        .eq("club_id", clubId)
-        .neq("status", "done")
-        .order("due_date", { ascending: true, nullsFirst: false })
-        .limit(5);
-
-      if (cancelled) return;
-      if (error) {
-        console.error("Failed to load open tasks preview:", error.message);
-        setOpenTasksPreview([]);
-      } else {
-        setOpenTasksPreview(
-          (data ?? []).map((row) => ({
-            id: row.id as string,
-            title: (row.title as string) ?? "",
-            status: (row.status as TaskStatus) ?? "todo",
-            dueDate: (row.due_date as string) ?? undefined,
-          })),
-        );
-      }
-      setOpenTasksPreviewLoading(false);
-    }
-
-    void loadOpenTasksPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [clubId, tasks.length]);
 
   const nextEvent = upcomingOccurrences[0];
 
@@ -1474,25 +1499,64 @@ export default function ClubHomePage() {
     };
   }, [club, upcomingOccurrences, eventRecurring]);
 
-  const executiveTasks = useMemo(() => {
-    return tasks.filter((t) => t.assignedTo === user?.id || t.createdBy === user?.id);
-  }, [tasks, userRole, user?.id]);
+  const isPrivileged = isPrivilegedClubRole(userRole);
 
-  const memberTasks = useMemo(
-    () => tasks.filter((t) => t.assignedTo === user?.id),
+  const myOpenTasksCount = useMemo(
+    () =>
+      user?.id
+        ? tasks.filter((task) => isOpenAssigneeTask(task, user.id)).length
+        : 0,
     [tasks, user?.id],
   );
 
-  const tasksForRole =
-    userRole === "owner" ? tasks : userRole === "executive" ? executiveTasks : memberTasks;
-  const attentionTasks = useMemo(
+  const delegatedOpenTasksCount = useMemo(
     () =>
-      tasksForRole
-        .filter((task) => task.status === "todo" || task.status === "in_progress")
-        .slice(0, 4),
-    [tasksForRole],
+      user?.id
+        ? tasks.filter((task) => isOpenDelegatedTask(task, user.id)).length
+        : 0,
+    [tasks, user?.id],
   );
-  const isPrivileged = isPrivilegedClubRole(userRole);
+
+  const myTasksPreview = useMemo(() => {
+    if (!user?.id) return [];
+    return tasks
+      .filter((task) => isOpenAssigneeTask(task, user.id))
+      .sort((left, right) => {
+        const leftUrgency = getExecutiveTaskUrgency(left.dueDate, left.status);
+        const rightUrgency = getExecutiveTaskUrgency(right.dueDate, right.status);
+        const rank = (value: ReturnType<typeof getExecutiveTaskUrgency>) => {
+          if (value === "overdue") return 0;
+          if (value === "due_today") return 1;
+          if (value === "due_this_week") return 2;
+          if (value === "upcoming") return 3;
+          return 4;
+        };
+        const urgencyDiff = rank(leftUrgency) - rank(rightUrgency);
+        if (urgencyDiff !== 0) return urgencyDiff;
+        return (left.dueDate ?? "").localeCompare(right.dueDate ?? "");
+      })
+      .slice(0, 4);
+  }, [tasks, user?.id]);
+
+  const delegatedTasksPreview = useMemo(() => {
+    if (!user?.id) return [];
+    return tasks
+      .filter(
+        (task) =>
+          task.createdBy === user.id &&
+          task.assignedTo &&
+          task.assignedTo !== user.id &&
+          (task.status === "todo" || task.status === "in_progress"),
+      )
+      .sort((left, right) => (left.dueDate ?? "").localeCompare(right.dueDate ?? ""))
+      .slice(0, 4);
+  }, [tasks, user?.id]);
+
+  const needsReviewTasks = useMemo(() => {
+    if (!user?.id) return [];
+    return tasks.filter((task) => isTaskAwaitingReviewFromUser(task, user.id));
+  }, [tasks, user?.id]);
+
   const isPresidentCommandCenter =
     memberAccess.isPresident || userRole === "owner" || userAccessLevel === "president";
   const visibilityContext = useMemo(
@@ -1513,6 +1577,72 @@ export default function ClubHomePage() {
     () => filterByVisibility(posts, visibilityContext).slice(0, 3),
     [posts, visibilityContext],
   );
+
+  const prepMeetingEvent = useMemo(() => {
+    const recurringOccurrences = upcomingOccurrences.filter((event) => {
+      const meta = eventRecurring[event.id];
+      return meta?.isRecurring && meta.frequency;
+    });
+    const weeklyFirst = recurringOccurrences.find((event) => {
+      const meta = eventRecurring[event.id];
+      return meta?.frequency === "weekly";
+    });
+    return weeklyFirst ?? recurringOccurrences[0] ?? nextEvent ?? null;
+  }, [upcomingOccurrences, eventRecurring, nextEvent]);
+
+  const meetingPrepKey = resolveMeetingPrepKey(
+    prepMeetingEvent,
+    club?.meetingSchedule,
+  );
+
+  const {
+    items: meetingPrepItems,
+    loading: meetingPrepLoading,
+    toggleItem: toggleMeetingPrepItem,
+    markConverted: markMeetingPrepConverted,
+  } = useMeetingPrepChecklist(
+    isPrivileged ? clubId : undefined,
+    isPrivileged ? meetingPrepKey : null,
+  );
+
+  const executiveCreateOptions = useMemo(() => {
+    const options: { label: string; onClick: () => void }[] = [];
+    if (canCreateAnnouncement) {
+      options.push({
+        label: "Announcement",
+        onClick: () => navigate(`${announcementsPath}?openCreate=true`),
+      });
+    }
+    if (canManageEvents) {
+      options.push({
+        label: "Event",
+        onClick: () => navigate(`${eventsPath}?openCreate=true`),
+      });
+    }
+    if (canCreateTask) {
+      options.push({
+        label: "Task",
+        onClick: () => navigate(`${tasksPath}?openCreate=true`),
+      });
+    }
+    if (canCreateHiring) {
+      options.push({
+        label: "Hiring Role",
+        onClick: () => navigate(`${recruitingPath}?openCreate=true`),
+      });
+    }
+    return options;
+  }, [
+    canCreateAnnouncement,
+    canManageEvents,
+    canCreateTask,
+    canCreateHiring,
+    navigate,
+    announcementsPath,
+    eventsPath,
+    tasksPath,
+    recruitingPath,
+  ]);
 
   const rolePillLabel = !isPrivileged
     ? formatAccessLevelWithMemberTitle("member", "member", userRoleTitle)
@@ -1592,6 +1722,71 @@ export default function ClubHomePage() {
 
   const taskCommenterName =
     fullNameSource || user?.email?.split("@")[0] || "A member";
+
+  const isReviewingTask =
+    detailTask != null &&
+    user?.id != null &&
+    isTaskAwaitingReviewFromUser(detailTask, user.id);
+
+  async function handleTaskStatusChange(taskId: string, newStatus: TaskStatus) {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || !user?.id) return;
+
+    let resolvedStatus = newStatus;
+    let completedAt: string | null | undefined;
+
+    if (newStatus === "done") {
+      resolvedStatus = resolveTaskCompletionStatus(task, user.id);
+      if (resolvedStatus === "pending_review") {
+        completedAt = new Date().toISOString();
+      }
+    }
+
+    await updateTask(taskId, {
+      status: resolvedStatus,
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    });
+  }
+
+  async function handleApproveReview(task: Task) {
+    await updateTask(task.id, {
+      status: "done",
+      completedAt: new Date().toISOString(),
+    });
+    setSelectedTask(null);
+  }
+
+  async function handleSendBackReview(task: Task, note: string) {
+    if (note.trim() && user?.id) {
+      await addTaskComment(task.id, user.id, note.trim());
+    }
+    await updateTask(task.id, { status: "in_progress", completedAt: null });
+    setSelectedTask(null);
+  }
+
+  async function handleRequestChangesReview(task: Task, note: string) {
+    if (note.trim() && user?.id) {
+      await addTaskComment(
+        task.id,
+        user.id,
+        `Change requested: ${note.trim()}`,
+      );
+    }
+    await updateTask(task.id, { status: "in_progress", completedAt: null });
+    setSelectedTask(null);
+  }
+
+  async function handleConvertPrepItem(item: { id: string; label: string }) {
+    const taskId = await createTask({
+      title: item.label,
+      description: "",
+      priority: "medium",
+    });
+    if (taskId) {
+      await markMeetingPrepConverted(item.id, taskId);
+      navigate(`${tasksPath}?edit=${taskId}`);
+    }
+  }
 
   return (
     <div
@@ -1679,53 +1874,45 @@ export default function ClubHomePage() {
         </div>
 
         {isPrivileged ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-            <button
-              type="button"
-              onClick={() => navigate(`${announcementsPath}?create=true`)}
-              style={{
-                ...quickActionButton,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              <Megaphone size={16} strokeWidth={2} aria-hidden />
-              New Announcement
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`${eventsPath}?create=true`)}
-              onMouseEnter={() => setNewEventHovered(true)}
-              onMouseLeave={() => setNewEventHovered(false)}
-              style={{
-                ...quickActionOutlineButton,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                borderColor: newEventHovered ? "#555555" : "#2a2a2a",
-                color: newEventHovered ? "#cccccc" : "#777777",
-              }}
-            >
-              <Calendar size={16} strokeWidth={2} aria-hidden />
-              New Event
-            </button>
-          </div>
+          <CreateMenuDropdown options={executiveCreateOptions} />
         ) : null}
       </div>
 
-      <div
-        className={`grid items-stretch gap-4 ${
-          isMobile ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"
-        }`}
-      >
-        {canManageTasks ? (
+      {isPrivileged ? (
+        <div
+          className={`grid items-stretch gap-4 ${
+            isMobile ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-4"
+          }`}
+        >
           <ClubStatCard
-            label="Club Open Tasks"
-            value={openTaskCount}
-            sublabel="Incomplete club tasks"
+            label="My Tasks"
+            value={myOpenTasksCount}
+            sublabel="Assigned to you"
             borderAccentColor="#E51937"
             to={tasksPath}
           />
-        ) : (
+          <ClubStatCard
+            label="Tasks I've Assigned"
+            value={delegatedOpenTasksCount}
+            sublabel="Delegated to others"
+            borderAccentColor="#E51937"
+            to={`${tasksPath}?tab=assigned_by_me`}
+          />
+          <ClubStatCard
+            label="Events This Month"
+            value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
+            sublabel="Club events this month"
+            borderAccentColor="#FFC429"
+            to={eventsPath}
+          />
+          <NextMeetingStatCard display={nextMeetingDisplay} to={eventsPath} />
+        </div>
+      ) : (
+        <div
+          className={`grid items-stretch gap-4 ${
+            isMobile ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"
+          }`}
+        >
           <ClubStatCard
             label="My Open Tasks"
             value={openTaskCount}
@@ -1733,16 +1920,16 @@ export default function ClubHomePage() {
             borderAccentColor="#E51937"
             to={tasksPath}
           />
-        )}
-        <ClubStatCard
-          label="Events This Month"
-          value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
-          sublabel="Club events this month"
-          borderAccentColor="#FFC429"
-          to={eventsPath}
-        />
-        <NextMeetingStatCard display={nextMeetingDisplay} to={eventsPath} />
-      </div>
+          <ClubStatCard
+            label="Events This Month"
+            value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
+            sublabel="Club events this month"
+            borderAccentColor="#FFC429"
+            to={eventsPath}
+          />
+          <NextMeetingStatCard display={nextMeetingDisplay} to={eventsPath} />
+        </div>
+      )}
 
       {!isPrivileged ? (
         <div style={{ ...dashboardColumnStack, marginTop: "28px" }}>
@@ -1824,7 +2011,6 @@ export default function ClubHomePage() {
         </div>
       ) : (
       <div
-        data-open-preview-count={openTasksPreview.length}
         style={{
           display: "grid",
           gridTemplateColumns: isMobile ? "1fr" : "3fr 2fr",
@@ -1834,18 +2020,31 @@ export default function ClubHomePage() {
         }}
       >
         <div style={dashboardColumnStack}>
+          <NeedsReviewSection
+            tasks={needsReviewTasks}
+            loading={tasksLoading}
+            onReviewTask={setSelectedTask}
+          />
+
+          <PrepareForMeetingSection
+            items={meetingPrepItems}
+            loading={meetingPrepLoading}
+            onToggle={(itemId, checked) => void toggleMeetingPrepItem(itemId, checked)}
+            onConvertToTask={(item) => void handleConvertPrepItem(item)}
+          />
+
           <div style={dashboardSectionBlockFixed}>
             <div style={sectionBlockHeader}>
-              <h2 style={sectionHeading}>Tasks</h2>
+              <h2 style={sectionHeading}>My Tasks</h2>
               <Link to={tasksPath} style={viewAllLink}>
                 View All →
               </Link>
             </div>
-            {tasksLoading || openTasksPreviewLoading ? (
+            {tasksLoading ? (
               <div className="flex justify-center py-6">
                 <Spinner label="Loading tasks…" />
               </div>
-            ) : attentionTasks.length === 0 ? (
+            ) : myTasksPreview.length === 0 ? (
               <div
                 style={{
                   backgroundColor: CARD_BG,
@@ -1855,23 +2054,58 @@ export default function ClubHomePage() {
                 }}
               >
                 <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
-                  {isPrivileged
-                    ? "No open tasks in this club."
-                    : "No open tasks assigned to you."}
+                  No open tasks assigned to you.
                 </p>
               </div>
             ) : (
               <div style={dashboardListStack}>
-                {attentionTasks.map((task) => (
-                  <NeedsAttentionTaskRow
+                {myTasksPreview.map((task) => (
+                  <ExecutiveMyTaskRow
                     key={task.id}
                     task={task}
                     onClick={() => setSelectedTask(task)}
                   />
                 ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          <div style={dashboardSectionBlockFixed}>
+            <div style={sectionBlockHeader}>
+              <h2 style={sectionHeading}>Tasks I&apos;ve Assigned</h2>
+              <Link to={`${tasksPath}?tab=assigned_by_me`} style={viewAllLink}>
+                View All →
+              </Link>
+            </div>
+            {tasksLoading ? (
+              <div className="flex justify-center py-6">
+                <Spinner label="Loading tasks…" />
+              </div>
+            ) : delegatedTasksPreview.length === 0 ? (
+              <div
+                style={{
+                  backgroundColor: CARD_BG,
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "12px",
+                  padding: "24px 20px",
+                }}
+              >
+                <p style={{ fontSize: "14px", color: "#777777", margin: 0 }}>
+                  No delegated tasks in progress.
+                </p>
+              </div>
+            ) : (
+              <div style={dashboardListStack}>
+                {delegatedTasksPreview.map((task) => (
+                  <ExecutiveDelegatedTaskRow
+                    key={task.id}
+                    task={task}
+                    onClick={() => setSelectedTask(task)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
           <div style={dashboardSectionBlock}>
             <div style={sectionBlockHeader}>
@@ -1915,7 +2149,14 @@ export default function ClubHomePage() {
                     clubName={club.name}
                     clubAbbreviation={club.abbreviation}
                     clubLogoUrl={club.logoUrl}
-                    onOpen={() => setSelectedEvent(event)}
+                    actionLabel={canManageEvents ? "Manage Event →" : "View Event →"}
+                    onOpen={() => {
+                      if (canManageEvents) {
+                        navigate(`${eventsPath}?manageEvent=${event.id}`);
+                      } else {
+                        setSelectedEvent(event);
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -2124,9 +2365,12 @@ export default function ClubHomePage() {
           onClose={() => setSelectedTask(null)}
           assigneeName={assigneeDisplayFor(detailTask)}
           assigneeAvatarUrl={assigneeAvatarFor(detailTask)}
-          canEdit={isPrivileged}
-          canDelete={isPrivileged}
-          canChangeStatus={isPrivileged || detailTask.assignedTo === user?.id}
+          canEdit={isPrivileged && !isReviewingTask}
+          canDelete={isPrivileged && !isReviewingTask}
+          canChangeStatus={
+            !isReviewingTask &&
+            (isPrivileged || detailTask.assignedTo === user?.id)
+          }
           canComment={isPrivileged || detailTask.assignedTo === user?.id}
           commenterName={taskCommenterName}
           userId={user?.id}
@@ -2138,7 +2382,13 @@ export default function ClubHomePage() {
             void deleteTask(detailTask.id);
             setSelectedTask(null);
           }}
-          onStatusChange={(status) => void updateTask(detailTask.id, { status })}
+          onStatusChange={(status) => void handleTaskStatusChange(detailTask.id, status)}
+          isReviewMode={isReviewingTask}
+          onApproveReview={() => void handleApproveReview(detailTask)}
+          onSendBackReview={(note) => void handleSendBackReview(detailTask, note)}
+          onRequestChangesReview={(note) =>
+            void handleRequestChangesReview(detailTask, note)
+          }
         />
       ) : null}
     </div>

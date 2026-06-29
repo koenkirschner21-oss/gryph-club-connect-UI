@@ -10,13 +10,16 @@ import {
   Briefcase,
   Calendar,
   CheckSquare,
-  ChevronDown,
   ClipboardList,
   Image,
   Megaphone,
   UserPlus,
   Users,
 } from "lucide-react";
+import { useAuthContext } from "../../context/useAuthContext";
+import CreateMenuDropdown from "../../components/club/CreateMenuDropdown";
+import NeedsReviewSection from "../../components/dashboard/NeedsReviewSection";
+import { isTaskAwaitingReviewFromUser } from "../../lib/taskCompletion";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import {
   buildClubSettingsSectionPath,
@@ -690,9 +693,9 @@ export default function ClubCommandCenter({
   onOpenTask,
 }: ClubCommandCenterProps) {
   const navigate = useNavigate();
+  const { user } = useAuthContext();
   const { pendingMembers, loading: membersLoading } = useClubMembers(clubId);
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [hiringSnapshot, setHiringSnapshot] = useState<HiringSnapshot>({
     openRolesCount: 0,
     pendingApplicationsCount: 0,
@@ -713,18 +716,6 @@ export default function ClubCommandCenter({
   const setupSettingsPath = resolveClubSetupSettingsPath(settingsPath, club);
 
   const openSetupSettings = () => navigate(setupSettingsPath);
-
-  useEffect(() => {
-    if (!createOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest("[data-create-menu]")) {
-        setCreateOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [createOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1087,6 +1078,11 @@ export default function ClubCommandCenter({
   const pendingJoinCount = pendingMembers.length;
   const pendingApplicationCount = hiringSnapshot.pendingApplicationsCount;
   const setupComplete = profileCompletion >= 100;
+
+  const needsReviewTasks = useMemo(() => {
+    if (!user?.id) return [];
+    return tasks.filter((task) => isTaskAwaitingReviewFromUser(task, user.id));
+  }, [tasks, user?.id]);
 
   const overdueTasks = useMemo(
     () =>
@@ -1480,64 +1476,14 @@ export default function ClubCommandCenter({
           </div>
         </div>
 
-        <div style={{ position: "relative" }} data-create-menu>
-          <button
-            type="button"
-            onClick={() => setCreateOpen((open) => !open)}
-            style={{
-              ...actionButtonStyle,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "10px 16px",
-              fontSize: "13px",
-            }}
-          >
-            Create
-            <ChevronDown size={16} aria-hidden />
-          </button>
-          {createOpen ? (
-            <div
-              style={{
-                position: "absolute",
-                right: 0,
-                top: "calc(100% + 6px)",
-                minWidth: "180px",
-                background: "#151515",
-                border: `1px solid ${CARD_BORDER}`,
-                borderRadius: "8px",
-                overflow: "hidden",
-                zIndex: 20,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-              }}
-            >
-              {createOptions.map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  onClick={() => {
-                    setCreateOpen(false);
-                    option.onClick();
-                  }}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    textAlign: "left",
-                    background: "transparent",
-                    border: "none",
-                    color: "#cccccc",
-                    padding: "10px 14px",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                  }}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <CreateMenuDropdown options={createOptions} />
       </div>
+
+      <NeedsReviewSection
+        tasks={needsReviewTasks}
+        loading={tasksLoading}
+        onReviewTask={onOpenTask}
+      />
 
       <section style={{ marginBottom: "8px", paddingBottom: 0 }}>
         {tasksLoading || membersLoading || hiringSnapshot.loading ? (
