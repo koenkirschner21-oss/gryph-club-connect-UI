@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Download,
   Eye,
+  Globe,
   Info,
   Megaphone,
   Users,
@@ -67,6 +68,15 @@ import {
   type TaskRow,
 } from "../../lib/analyticsMetrics";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  buildProfileViewsOverTime,
+  buildPublicProfileSectionInsight,
+  countEventsByType,
+  fetchClubSavedCount,
+  fetchPublicProfileEvents,
+  isLowPublicProfileData,
+  type PublicProfileEventRow,
+} from "../../lib/publicProfileAnalytics";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 
@@ -792,6 +802,8 @@ export default function ClubAnalyticsPage() {
   const [hiringApplications, setHiringApplications] = useState<HiringApplicationRow[]>([]);
   const [hiringListings, setHiringListings] = useState<HiringListingRow[]>([]);
   const [openHiringListingsCount, setOpenHiringListingsCount] = useState(0);
+  const [profileEvents, setProfileEvents] = useState<PublicProfileEventRow[]>([]);
+  const [savedClubCount, setSavedClubCount] = useState(0);
   const [assigneeNames, setAssigneeNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -864,7 +876,8 @@ export default function ClubAnalyticsPage() {
         ),
       );
 
-      const [rsvpsRes, viewsRes, appsRes, profilesRes] = await Promise.all([
+      const [rsvpsRes, viewsRes, appsRes, profilesRes, profileEventsRes, savedCount] =
+        await Promise.all([
         eventIds.length > 0
           ? supabase
               .from("event_rsvps")
@@ -886,6 +899,8 @@ export default function ClubAnalyticsPage() {
         assigneeIds.length > 0
           ? supabase.from("profiles").select("id, full_name").in("id", assigneeIds)
           : Promise.resolve({ data: [], error: null }),
+        fetchPublicProfileEvents(clubId!),
+        fetchClubSavedCount(clubId!),
       ]);
 
       if (cancelled) return;
@@ -917,6 +932,8 @@ export default function ClubAnalyticsPage() {
         listingRows.filter((listing) => listing.is_open !== false).length,
       );
       setAssigneeNames(nameMap);
+      setProfileEvents(profileEventsRes);
+      setSavedClubCount(savedCount);
       setLoading(false);
     }
 
@@ -962,6 +979,32 @@ export default function ClubAnalyticsPage() {
     () => filterRowsSince(hiringApplications, (row) => row.created_at, rangeStart),
     [hiringApplications, rangeStart],
   );
+  const scopedProfileEvents = useMemo(
+    () => filterRowsSince(profileEvents, (row) => row.created_at, rangeStart),
+    [profileEvents, rangeStart],
+  );
+
+  const profilePageViews = countEventsByType(scopedProfileEvents, "page_view");
+  const profileJoinClicks =
+    countEventsByType(scopedProfileEvents, "join_click") +
+    countEventsByType(scopedProfileEvents, "join_request");
+  const profileEventClicks = countEventsByType(scopedProfileEvents, "event_click");
+  const profileHiringClicks = countEventsByType(scopedProfileEvents, "hiring_click");
+  const profileViewsTrend = useMemo(
+    () => buildProfileViewsOverTime(scopedProfileEvents),
+    [scopedProfileEvents],
+  );
+  const profileInsight = useMemo(
+    () =>
+      buildPublicProfileSectionInsight({
+        totalEvents: scopedProfileEvents.length,
+        pageViews: profilePageViews,
+        joinClicks: profileJoinClicks,
+        savedCount: savedClubCount,
+      }),
+    [scopedProfileEvents.length, profilePageViews, profileJoinClicks, savedClubCount],
+  );
+  const lowProfileData = isLowPublicProfileData(scopedProfileEvents.length);
 
   const activeMemberCount = members.length;
   const memberGrowth = useMemo(() => buildMemberGrowth(scopedMembers), [scopedMembers]);
@@ -1725,6 +1768,116 @@ export default function ClubAnalyticsPage() {
           </div>
         </ChartsGrid>
         <SectionInsightBox insight={announcementInsight} />
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Public Profile" icon={<Globe size={20} aria-hidden />}>
+        {lowProfileData ? (
+          <div
+            style={{
+              ...chartCardStyle,
+              marginBottom: "16px",
+              borderLeft: `3px solid ${MUTED}`,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#cccccc" }}>
+              Tracking is live, but data is still thin
+            </p>
+            <p style={{ margin: "8px 0 0", fontSize: "13px", color: MUTED, lineHeight: 1.6 }}>
+              Profile views and clicks are recorded from your public club page. Share the link
+              to build a meaningful picture — numbers below reflect real activity only.
+            </p>
+          </div>
+        ) : null}
+        <StatCardsRow isMobile={isMobile}>
+          <StatCard
+            label="Profile Views"
+            value={profilePageViews}
+            topColor={ACCENT_RED}
+            icon={<Globe size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Saved / Followed"
+            value={savedClubCount}
+            topColor={ACCENT_GOLD}
+            valueColor={ACCENT_GOLD}
+            icon={<Users size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+          <StatCard
+            label="Join Clicks"
+            value={profileJoinClicks}
+            topColor="#777777"
+            icon={<Users size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Event Clicks"
+            value={profileEventClicks}
+            topColor={ACCENT_GOLD}
+            icon={<Calendar size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+        </StatCardsRow>
+        <ChartsGrid isMobile={isMobile}>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Profile Views Over Time" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {profilePageViews === 0 ? (
+                <AnalyticsBuildingMessage message="No profile views tracked yet" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={profileViewsTrend}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Line
+                      type="monotone"
+                      dataKey="views"
+                      name="Views"
+                      stroke={ACCENT_RED}
+                      strokeWidth={2}
+                      dot={{ fill: ACCENT_RED, r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Public Profile Actions" />
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {[
+                { label: "Join clicks / requests", value: profileJoinClicks },
+                { label: "Event card clicks", value: profileEventClicks },
+                { label: "Hiring post clicks", value: profileHiringClicks },
+                { label: "Save clicks", value: countEventsByType(scopedProfileEvents, "save_click") },
+              ].map((row) => (
+                <div
+                  key={row.label}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "10px 12px",
+                    background: "#121212",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    color: "#cccccc",
+                  }}
+                >
+                  <span>{row.label}</span>
+                  <span style={{ fontWeight: 700, color: "#ffffff" }}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </ChartsGrid>
+        <SectionInsightBox insight={profileInsight} />
       </AnalyticsSection>
     </div>
   );

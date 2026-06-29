@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { Globe, Users, X, MoreHorizontal } from "lucide-react";
 import { useClubContext } from "../context/useClubContext";
@@ -32,6 +32,7 @@ import {
   resolvePublicClubDisplayFromClub,
   type PublicClubSocialLinks,
 } from "../lib/publicClubProfileDisplay";
+import { recordPublicProfileEvent } from "../lib/publicProfileAnalytics";
 import type {
   ClaimStatus,
   Club,
@@ -578,6 +579,7 @@ export default function ClubPublicProfilePage() {
   const [showReportMenu, setShowReportMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportConfirmation, setReportConfirmation] = useState<string | null>(null);
+  const trackedPageViewClubId = useRef<string | null>(null);
 
   const clubId = profile?.id ?? contextClub?.id;
   const joined = clubId ? isJoined(clubId) : false;
@@ -613,6 +615,13 @@ export default function ClubPublicProfilePage() {
     const timer = window.setTimeout(() => setReportConfirmation(null), 6000);
     return () => window.clearTimeout(timer);
   }, [reportConfirmation]);
+
+  useEffect(() => {
+    if (!clubId || pageLoading) return;
+    if (trackedPageViewClubId.current === clubId) return;
+    trackedPageViewClubId.current = clubId;
+    void recordPublicProfileEvent(clubId, "page_view");
+  }, [clubId, pageLoading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -843,6 +852,7 @@ export default function ClubPublicProfilePage() {
       leaveClub(clubId);
       return;
     }
+    void recordPublicProfileEvent(clubId, "join_click");
     setJoining(true);
     setJoinError(false);
     const ok = await joinClub(clubId);
@@ -880,6 +890,7 @@ export default function ClubPublicProfilePage() {
       return;
     }
 
+    void recordPublicProfileEvent(clubId, "join_request");
     setApplicationStatus("pending");
     setShowApplicationModal(false);
 
@@ -904,7 +915,19 @@ export default function ClubPublicProfilePage() {
       navigate(`/signup?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
+    if (clubId) void recordPublicProfileEvent(clubId, "join_click");
     setShowApplicationModal(true);
+  }
+
+  function handleSaveClubClick() {
+    if (!clubId) return;
+    if (!saved) void recordPublicProfileEvent(clubId, "save_click");
+    toggleSaveClub(clubId);
+  }
+
+  function handleHiringClick() {
+    if (clubId) void recordPublicProfileEvent(clubId, "hiring_click");
+    navigate(user && joined ? `/app/clubs/${clubId}/recruiting` : "/hiring");
   }
 
   function handleOpenReportClub() {
@@ -997,6 +1020,7 @@ export default function ClubPublicProfilePage() {
   }
 
   function handleEventCardClick(event: ClubEvent) {
+    if (clubId) void recordPublicProfileEvent(clubId, "event_click", event.id);
     if (joined) {
       navigate(`/app/clubs/${club.id}/events`);
       return;
@@ -1127,7 +1151,7 @@ export default function ClubPublicProfilePage() {
             >
               <button
                 type="button"
-                onClick={() => toggleSaveClub(club.id)}
+                onClick={handleSaveClubClick}
                 onMouseEnter={() => setBookmarkHovered(true)}
                 onMouseLeave={() => setBookmarkHovered(false)}
                 aria-label={saved ? "Unsave club" : "Save club"}
@@ -1215,7 +1239,7 @@ export default function ClubPublicProfilePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => toggleSaveClub(club.id)}
+                    onClick={handleSaveClubClick}
                     style={{
                       background: "transparent",
                       border: "1px solid #333333",
@@ -1236,7 +1260,7 @@ export default function ClubPublicProfilePage() {
               ) : claimPending ? (
                 <button
                   type="button"
-                  onClick={() => toggleSaveClub(club.id)}
+                  onClick={handleSaveClubClick}
                   style={{
                     background: "transparent",
                     border: "1px solid #333333",
@@ -1517,9 +1541,7 @@ export default function ClubPublicProfilePage() {
                 hasSocialLinks={hasSocialLinks}
                 club={club}
                 openPositionsCount={openPositionsCount}
-                user={user}
-                joined={joined}
-                navigate={navigate}
+                onHiringClick={handleHiringClick}
               />
             </div>
           </aside>
@@ -2237,18 +2259,14 @@ function SidebarDetails({
   hasSocialLinks,
   club,
   openPositionsCount,
-  user,
-  joined,
-  navigate,
+  onHiringClick,
 }: {
   memberCount: number;
   owners: ClubOwnerContact[];
   hasSocialLinks: boolean;
   club: PublicClubProfile;
   openPositionsCount: number;
-  user: ReturnType<typeof useAuthContext>["user"];
-  joined: boolean;
-  navigate: ReturnType<typeof useNavigate>;
+  onHiringClick: () => void;
 }) {
   return (
     <>
@@ -2397,13 +2415,7 @@ function SidebarDetails({
           </p>
           <button
             type="button"
-            onClick={() =>
-              navigate(
-                user && joined
-                  ? `/app/clubs/${club.id}/recruiting`
-                  : "/hiring",
-              )
-            }
+            onClick={onHiringClick}
             style={{
               width: "100%",
               marginTop: "12px",
