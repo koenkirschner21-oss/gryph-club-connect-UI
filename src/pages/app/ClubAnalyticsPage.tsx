@@ -3,14 +3,14 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
-  Bell,
+  Briefcase,
   Calendar,
   CheckCircle,
   CheckSquare,
   Download,
+  Eye,
   Info,
   Megaphone,
-  TrendingUp,
   Users,
 } from "lucide-react";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -20,8 +20,6 @@ import {
   CartesianGrid,
   Cell,
   Label,
-  LabelList,
-  Legend,
   Line,
   LineChart,
   Pie,
@@ -31,6 +29,43 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import {
+  buildAnnouncementSectionInsight,
+  buildAnnouncementSeenBreakdown,
+  buildAnnouncementViewsOverTime,
+  buildEventAttendanceTrend,
+  buildEventCategoryBreakdown,
+  buildEventSectionInsight,
+  buildExecutiveBreakdown,
+  buildHiringByRole,
+  buildHiringByStatus,
+  buildHiringFunnel,
+  buildHiringSectionInsight,
+  buildMemberGrowth,
+  buildMemberSectionInsight,
+  buildMostViewedAnnouncements,
+  buildRsvpBreakdown,
+  buildTaskBreakdown,
+  buildTaskCompletionOverTime,
+  buildTaskSectionInsight,
+  buildTasksByAssignee,
+  buildTopAttendedEvents,
+  computeOverallSeenRate,
+  countNewMembersThisMonth,
+  countOverdueTasks,
+  isExecutiveMember,
+  sectionInsightStyle,
+  toMonthlyNewMembers,
+  type EventRow,
+  type HiringApplicationRow,
+  type HiringListingRow,
+  type MemberRow,
+  type PostRow,
+  type PostViewRow,
+  type RsvpRow,
+  type SectionInsight,
+  type TaskRow,
+} from "../../lib/analyticsMetrics";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
@@ -44,6 +79,7 @@ const ACCENT_GOLD = "#FFC429";
 const GRID = "#1e1e1e";
 
 type TimeRange = "30d" | "semester" | "year" | "all";
+type MemberGrowthMode = "cumulative" | "monthly";
 
 const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: "30d", label: "30 Days" },
@@ -81,46 +117,6 @@ const EVENT_TYPE_FALLBACK_COLORS = [
   "#2a2a2a",
 ];
 
-interface MemberRow {
-  created_at: string;
-  role: string;
-}
-
-interface TaskRow {
-  status: string;
-  created_at: string;
-}
-
-interface PostRow {
-  created_at: string;
-}
-
-interface EventRow {
-  id: string;
-  title: string;
-  date: string;
-  category: string | null;
-  visibility?: string | null;
-}
-
-interface RsvpRow {
-  status: string;
-  event_id: string;
-}
-
-interface DirectMessageRow {
-  created_at: string;
-}
-
-interface InsightItem {
-  text: string;
-  dotColor: string;
-  sentiment: "warning" | "positive" | "neutral";
-}
-
-type MemberGrowthMode = "cumulative" | "monthly";
-type EventAttendanceFilter = "all" | "public" | "internal";
-
 interface StatTrend {
   percent: number;
   positive: boolean;
@@ -140,6 +136,50 @@ const chartEmptyStyle: CSSProperties = {
   fontSize: "13px",
   color: "#555555",
   textAlign: "center",
+};
+
+const chartCardStyle: CSSProperties = {
+  background: CARD_BG,
+  borderTop: `1px solid ${CARD_BORDER}`,
+  borderRight: `1px solid ${CARD_BORDER}`,
+  borderBottom: `1px solid ${CARD_BORDER}`,
+  borderLeft: `1px solid ${CARD_BORDER}`,
+  borderRadius: "10px",
+  padding: "24px",
+};
+
+const chartDropdownStyle: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #2a2a2a",
+  borderRadius: "8px",
+  padding: "6px 12px",
+  color: "#cccccc",
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
+const chartTitleStyle: CSSProperties = {
+  fontWeight: 700,
+  fontSize: "15px",
+  color: "#ffffff",
+  margin: "0 0 16px",
+};
+
+const chartAxisProps = {
+  tick: { fill: MUTED, fontSize: 11 },
+  axisLine: { stroke: GRID },
+  tickLine: false,
+};
+
+const tooltipStyle = {
+  contentStyle: {
+    backgroundColor: CARD_BG,
+    border: `1px solid ${CARD_BORDER}`,
+    borderRadius: "8px",
+    fontSize: "12px",
+    color: "#ffffff",
+  },
+  labelStyle: { color: MUTED },
 };
 
 function timeRangeStart(range: TimeRange): Date | null {
@@ -175,84 +215,8 @@ function filterRowsSince<T>(
   });
 }
 
-function AnalyticsBuildingMessage() {
-  return (
-    <div
-      style={{
-        ...chartEmptyStyle,
-        flexDirection: "column",
-        gap: "8px",
-        padding: "16px",
-      }}
-    >
-      <p
-        style={{
-          fontSize: "14px",
-          fontWeight: 600,
-          color: "#555555",
-          margin: 0,
-        }}
-      >
-        Analytics are still building
-      </p>
-      <p
-        style={{
-          fontSize: "12px",
-          color: "#444444",
-          margin: 0,
-          lineHeight: 1.5,
-          maxWidth: "280px",
-        }}
-      >
-        As your club gets more members, RSVPs, announcements, and task activity, this
-        page will become more useful.
-      </p>
-    </div>
-  );
-}
-
-function memberGrowthIsSparse(totalMembers: number, chartData: { count: number }[]): boolean {
-  if (totalMembers <= 1) return true;
-  if (chartData.length === 0) return true;
-  const counts = chartData.map((point) => point.count);
-  const max = Math.max(...counts);
-  const min = Math.min(...counts);
-  return max <= 2 && max - min <= 1;
-}
-
-function eventAttendanceIsSparse(
-  attendance: { going: number; maybe: number; notGoing: number }[],
-): boolean {
-  if (attendance.length === 0) return true;
-  return !attendance.some(
-    (event) => event.going + event.maybe + event.notGoing > 0,
-  );
-}
-
-const chartCardStyle: CSSProperties = {
-  background: CARD_BG,
-  borderTop: `1px solid ${CARD_BORDER}`,
-  borderRight: `1px solid ${CARD_BORDER}`,
-  borderBottom: `1px solid ${CARD_BORDER}`,
-  borderLeft: `1px solid ${CARD_BORDER}`,
-  borderRadius: "10px",
-  padding: "24px",
-};
-
-const chartDropdownStyle: CSSProperties = {
-  background: "#1a1a1a",
-  border: "1px solid #2a2a2a",
-  borderRadius: "8px",
-  padding: "6px 12px",
-  color: "#cccccc",
-  fontSize: "12px",
-  cursor: "pointer",
-};
-
-function insightDotColor(sentiment: InsightItem["sentiment"]): string {
-  if (sentiment === "warning") return ACCENT_RED;
-  if (sentiment === "positive") return ACCENT_GOLD;
-  return MUTED;
+function toMonthlyGrowth(points: { label: string; count: number }[]) {
+  return toMonthlyNewMembers(points);
 }
 
 function oneYearAgoDate(): Date {
@@ -272,14 +236,21 @@ function computeYearOverYearTrend(
   return { percent: Math.abs(percent), positive: percent > 0 };
 }
 
-function toMonthlyGrowth(points: { label: string; count: number }[]) {
-  return points.map((point, index) => {
-    const previous = index > 0 ? points[index - 1].count : 0;
-    return {
-      label: point.label,
-      count: Math.max(0, point.count - previous),
-    };
-  });
+function AnalyticsBuildingMessage({ message }: { message?: string }) {
+  return (
+    <div
+      style={{
+        ...chartEmptyStyle,
+        flexDirection: "column",
+        gap: "8px",
+        padding: "16px",
+      }}
+    >
+      <p style={{ fontSize: "14px", fontWeight: 600, color: MUTED, margin: 0 }}>
+        {message ?? "Not enough data yet"}
+      </p>
+    </div>
+  );
 }
 
 function MemberGrowthTooltip({
@@ -292,7 +263,6 @@ function MemberGrowthTooltip({
   label?: string;
 }) {
   if (!active || !payload?.length) return null;
-
   const count = payload[0]?.value ?? 0;
   return (
     <div
@@ -334,300 +304,6 @@ function ChartCardHeader({
       {action}
     </div>
   );
-}
-
-const chartTitleStyle: CSSProperties = {
-  fontWeight: 700,
-  fontSize: "15px",
-  color: "#ffffff",
-  margin: "0 0 16px",
-};
-
-const chartAxisProps = {
-  tick: { fill: MUTED, fontSize: 11 },
-  axisLine: { stroke: GRID },
-  tickLine: false,
-};
-
-const tooltipStyle = {
-  contentStyle: {
-    backgroundColor: CARD_BG,
-    border: `1px solid ${CARD_BORDER}`,
-    borderRadius: "8px",
-    fontSize: "12px",
-    color: "#ffffff",
-  },
-  labelStyle: { color: MUTED },
-};
-
-function truncateLabel(value: string, max = 12): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}...`;
-}
-
-function countNewMembersThisMonth(members: MemberRow[]): number {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  return members.filter((m) => new Date(m.created_at) >= monthStart).length;
-}
-
-function countPostsThisMonth(posts: PostRow[]): number {
-  const thisMonth = monthKey(new Date());
-  return posts.filter((p) => monthKey(new Date(p.created_at)) === thisMonth).length;
-}
-
-function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function buildMemberGrowth(members: MemberRow[]) {
-  const points: { label: string; count: number }[] = [];
-  const now = new Date();
-
-  for (let i = 5; i >= 0; i--) {
-    const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const endOfMonth = new Date(
-      monthDate.getFullYear(),
-      monthDate.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
-    const count = members.filter(
-      (m) => new Date(m.created_at) <= endOfMonth,
-    ).length;
-    points.push({
-      label: monthDate.toLocaleDateString("en-US", {
-        month: "short",
-        year: "2-digit",
-      }),
-      count,
-    });
-  }
-
-  return points;
-}
-
-function buildEventAttendance(events: EventRow[], rsvps: RsvpRow[]) {
-  const sorted = [...events]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5)
-    .reverse();
-
-  return sorted.map((event) => {
-    const eventRsvps = rsvps.filter((r) => r.event_id === event.id);
-    return {
-      name: truncateLabel(event.title, 12),
-      going: eventRsvps.filter((r) => r.status === "going").length,
-      maybe: eventRsvps.filter((r) => r.status === "maybe").length,
-      notGoing: eventRsvps.filter((r) => r.status === "not_going").length,
-    };
-  });
-}
-
-function buildTaskBreakdown(tasks: TaskRow[]) {
-  const todo = tasks.filter((t) => t.status === "todo").length;
-  const inProgress = tasks.filter((t) => t.status === "in_progress").length;
-  const done = tasks.filter((t) => t.status === "done").length;
-  return [
-    { name: "To Do", value: todo, color: "#555555" },
-    { name: "In Progress", value: inProgress, color: ACCENT_RED },
-    { name: "Done", value: done, color: ACCENT_GOLD },
-  ];
-}
-
-function buildEventCategoryBreakdown(events: EventRow[]) {
-  const counts = new Map<string, number>();
-  for (const event of events) {
-    const key = event.category?.trim() || "general";
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .map(([key, value], index) => ({
-      name: EVENT_CATEGORY_LABELS[key] ?? key,
-      value,
-      color:
-        EVENT_CATEGORY_COLORS[key] ??
-        EVENT_TYPE_FALLBACK_COLORS[index % EVENT_TYPE_FALLBACK_COLORS.length],
-    }))
-    .sort((a, b) => b.value - a.value);
-}
-
-function buildInsights(params: {
-  members: MemberRow[];
-  tasks: TaskRow[];
-  events: EventRow[];
-  rsvps: RsvpRow[];
-  posts: PostRow[];
-  dmMessages: DirectMessageRow[];
-}): InsightItem[] {
-  const insights: InsightItem[] = [];
-  const newThisMonth = countNewMembersThisMonth(params.members);
-  const totalTasks = params.tasks.length;
-  const doneTasks = params.tasks.filter((t) => t.status === "done").length;
-  const taskPct =
-    totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  const postsThisMonth = countPostsThisMonth(params.posts);
-
-  if (newThisMonth === 0) {
-    insights.push({
-      sentiment: "warning",
-      dotColor: ACCENT_RED,
-      text: "No new members this month. Share your invite code to grow your club.",
-    });
-  } else {
-    insights.push({
-      sentiment: "positive",
-      dotColor: ACCENT_GOLD,
-      text: `${newThisMonth} new member${newThisMonth === 1 ? "" : "s"} joined this month — keep the momentum going.`,
-    });
-  }
-
-  if (totalTasks === 0) {
-    insights.push({
-      sentiment: "neutral",
-      dotColor: MUTED,
-      text: "No tasks tracked yet. Create tasks to monitor team progress.",
-    });
-  } else if (taskPct < 50) {
-    insights.push({
-      sentiment: "warning",
-      dotColor: ACCENT_RED,
-      text: `Task completion is low — ${doneTasks} of ${totalTasks} tasks are done. Review assignments or update task statuses.`,
-    });
-  } else {
-    insights.push({
-      sentiment: "positive",
-      dotColor: ACCENT_GOLD,
-      text: `${taskPct}% of tasks are complete (${doneTasks} of ${totalTasks}).`,
-    });
-  }
-
-  if (postsThisMonth === 0) {
-    insights.push({
-      sentiment: "warning",
-      dotColor: ACCENT_RED,
-      text: "No announcements this month. Post an update to keep members engaged.",
-    });
-  } else {
-    insights.push({
-      sentiment: "positive",
-      dotColor: ACCENT_GOLD,
-      text: `${postsThisMonth} announcement${postsThisMonth === 1 ? "" : "s"} posted this month.`,
-    });
-  }
-
-  const categoryCounts = buildEventCategoryBreakdown(params.events);
-  if (categoryCounts.length > 0) {
-    const top = categoryCounts[0];
-    insights.push({
-      sentiment: "neutral",
-      dotColor: MUTED,
-      text: `Most common event type: ${top.name} (${top.value} event${top.value === 1 ? "" : "s"}).`,
-    });
-  }
-
-  let bestEvent: { title: string; going: number } | null = null;
-  for (const event of params.events) {
-    const going = params.rsvps.filter(
-      (r) => r.event_id === event.id && r.status === "going",
-    ).length;
-    if (!bestEvent || going > bestEvent.going) {
-      bestEvent = { title: event.title, going };
-    }
-  }
-  if (bestEvent && bestEvent.going > 0) {
-    insights.push({
-      sentiment: "neutral",
-      dotColor: MUTED,
-      text: `Top attendance: ${bestEvent.title} with ${bestEvent.going} going.`,
-    });
-  }
-
-  if (params.dmMessages.length > 0) {
-    const last7 = params.dmMessages.filter((m) => {
-      const d = new Date(m.created_at);
-      return d >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    }).length;
-    insights.push({
-      sentiment: "neutral",
-      dotColor: MUTED,
-      text: `${last7} direct message${last7 === 1 ? "" : "s"} sent in the last 7 days.`,
-    });
-  }
-
-  return insights.slice(0, 5).map((insight) => ({
-    ...insight,
-    dotColor: insightDotColor(insight.sentiment),
-  }));
-}
-
-interface RecommendedAction {
-  icon: "CheckSquare" | "Bell" | "Users" | "Calendar";
-  text: string;
-  color: string;
-}
-
-function buildRecommendedActions(params: {
-  taskCompletionRate: number;
-  announcementsThisMonth: number;
-  totalMembers: number;
-}): RecommendedAction[] {
-  const actions: RecommendedAction[] = [];
-
-  if (params.taskCompletionRate === 0) {
-    actions.push({
-      icon: "CheckSquare",
-      text: "Mark completed tasks as done to improve your tracking.",
-      color: ACCENT_GOLD,
-    });
-  }
-  if (params.announcementsThisMonth === 0) {
-    actions.push({
-      icon: "Bell",
-      text: "Post an announcement to keep your members informed.",
-      color: ACCENT_RED,
-    });
-  }
-  if (params.totalMembers < 5) {
-    actions.push({
-      icon: "Users",
-      text: "Invite more members using your club invite code.",
-      color: ACCENT_GOLD,
-    });
-  }
-  actions.push({
-    icon: "Calendar",
-    text: "Add RSVP questions to upcoming public events.",
-    color: MUTED,
-  });
-
-  return actions.slice(0, 4);
-}
-
-function RecommendedActionIcon({
-  icon,
-  color,
-}: {
-  icon: RecommendedAction["icon"];
-  color: string;
-}) {
-  const props = { size: 16, color, "aria-hidden": true as const };
-  switch (icon) {
-    case "CheckSquare":
-      return <CheckSquare {...props} />;
-    case "Bell":
-      return <Bell {...props} />;
-    case "Users":
-      return <Users {...props} />;
-    case "Calendar":
-      return <Calendar {...props} />;
-    default:
-      return <Calendar {...props} />;
-  }
 }
 
 function StatCard({
@@ -676,7 +352,6 @@ function StatCard({
         >
           <span style={{ color: iconColor, display: "flex" }}>{icon}</span>
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
@@ -686,18 +361,11 @@ function StatCard({
               marginBottom: "8px",
             }}
           >
-            <span
-              style={{
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#ffffff",
-              }}
-            >
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
               {label}
             </span>
-            <Info size={12} color="#555555" aria-hidden />
+            <Info size={12} color={MUTED} aria-hidden />
           </div>
-
           <p
             style={{
               fontSize: "28px",
@@ -709,7 +377,6 @@ function StatCard({
           >
             {value}
           </p>
-
           {trend ? (
             <div
               style={{
@@ -726,9 +393,7 @@ function StatCard({
               ) : (
                 <ArrowDown size={14} aria-hidden />
               )}
-              <span>
-                {trend.percent}% vs last year
-              </span>
+              <span>{trend.percent}% vs last year</span>
             </div>
           ) : null}
         </div>
@@ -751,7 +416,7 @@ function ExportMenuButton() {
         border: "1px solid #2a2a2a",
         borderRadius: "8px",
         padding: "8px 16px",
-        color: "#555555",
+        color: MUTED,
         fontSize: "13px",
         cursor: "not-allowed",
         opacity: 0.85,
@@ -809,41 +474,281 @@ function TaskBreakdownLegend({
   );
 }
 
-function CardFooterLink({
-  left,
-  rightHref,
-  rightLabel,
+function SectionInsightBox({ insight }: { insight: SectionInsight }) {
+  return <p style={sectionInsightStyle(insight.sentiment)}>{insight.text}</p>;
+}
+
+function AnalyticsSection({
+  title,
+  icon,
+  children,
 }: {
-  left?: ReactNode;
-  rightHref: string;
-  rightLabel: string;
+  title: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section style={{ marginBottom: "32px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          marginBottom: "16px",
+        }}
+      >
+        <span style={{ color: ACCENT_RED, display: "flex" }}>{icon}</span>
+        <h2
+          style={{
+            fontSize: "18px",
+            fontWeight: 800,
+            color: "#ffffff",
+            margin: 0,
+          }}
+        >
+          {title}
+        </h2>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function StatCardsRow({
+  isMobile,
+  children,
+}: {
+  isMobile: boolean;
+  children: ReactNode;
 }) {
   return (
     <div
       style={{
-        borderTop: "1px solid #2a2a2a",
-        paddingTop: "12px",
-        marginTop: "12px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: "12px",
-        flexWrap: "wrap",
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: "16px",
+        marginBottom: "16px",
       }}
     >
-      <div>{left}</div>
-      <Link
-        to={rightHref}
-        style={{
-          fontSize: "13px",
-          color: ACCENT_RED,
-          textDecoration: "none",
-          fontWeight: 600,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {rightLabel}
-      </Link>
+      {children}
+    </div>
+  );
+}
+
+function ChartsGrid({
+  isMobile,
+  children,
+}: {
+  isMobile: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(300px, 1fr))",
+        gap: "16px",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DonutChart({
+  data,
+  total,
+  centerLabel,
+}: {
+  data: { name: string; value: number; color: string }[];
+  total: number;
+  centerLabel?: string;
+}) {
+  if (total === 0 || data.every((segment) => segment.value === 0)) {
+    return <AnalyticsBuildingMessage />;
+  }
+  return (
+    <>
+      <div style={{ width: "100%", minWidth: 0, height: "180px" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={70}
+              paddingAngle={2}
+              labelLine={false}
+            >
+              {data.map((entry) => (
+                <Cell key={entry.name} fill={entry.color} />
+              ))}
+              <Label
+                value={centerLabel ?? total}
+                position="center"
+                fill="#ffffff"
+                fontSize={18}
+                fontWeight={700}
+              />
+            </Pie>
+            <Tooltip {...tooltipStyle} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <TaskBreakdownLegend segments={data} total={total} />
+    </>
+  );
+}
+
+function TopEventsList({
+  events,
+}: {
+  events: ReturnType<typeof buildTopAttendedEvents>;
+}) {
+  if (events.length === 0) {
+    return <AnalyticsBuildingMessage message="No RSVP data for events yet" />;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      {events.map((event, index) => (
+        <div
+          key={event.id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: "10px 12px",
+            background: "#121212",
+            borderRadius: "8px",
+            border: "1px solid #1e1e1e",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#ffffff",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {index + 1}. {event.title}
+            </p>
+            <p style={{ margin: "4px 0 0", fontSize: "12px", color: MUTED }}>
+              {event.going} going · {event.maybe} maybe
+            </p>
+          </div>
+          <span style={{ fontSize: "12px", color: ACCENT_GOLD, fontWeight: 600 }}>
+            {event.going}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HiringFunnelVisual({
+  stages,
+}: {
+  stages: ReturnType<typeof buildHiringFunnel>;
+}) {
+  if (stages.length === 0) {
+    return <AnalyticsBuildingMessage message="No applicants in the funnel yet" />;
+  }
+  const max = Math.max(...stages.map((stage) => stage.count), 1);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      {stages.map((stage) => (
+        <div key={stage.stage}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: "12px",
+              color: "#cccccc",
+              marginBottom: "4px",
+            }}
+          >
+            <span>{stage.stage}</span>
+            <span>{stage.count}</span>
+          </div>
+          <div
+            style={{
+              height: "8px",
+              background: "#1a1a1a",
+              borderRadius: "4px",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.max(8, (stage.count / max) * 100)}%`,
+                height: "100%",
+                background: stage.color,
+                borderRadius: "4px",
+              }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MostViewedList({
+  posts,
+}: {
+  posts: ReturnType<typeof buildMostViewedAnnouncements>;
+}) {
+  if (posts.length === 0) {
+    return <AnalyticsBuildingMessage message="No announcement views recorded yet" />;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      {posts.map((post, index) => (
+        <div
+          key={post.id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: "10px 12px",
+            background: "#121212",
+            borderRadius: "8px",
+            border: "1px solid #1e1e1e",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#ffffff",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {index + 1}. {post.title}
+            </p>
+            <p style={{ margin: "4px 0 0", fontSize: "12px", color: MUTED }}>
+              {post.seenRate}% seen rate
+            </p>
+          </div>
+          <span style={{ fontSize: "12px", color: ACCENT_GOLD, fontWeight: 600 }}>
+            {post.views} views
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -866,13 +771,7 @@ function ChartSkeleton() {
           marginBottom: "20px",
         }}
       />
-      <div
-        style={{
-          height: "200px",
-          background: PAGE_BG,
-          borderRadius: "8px",
-        }}
-      />
+      <div style={{ height: "200px", background: PAGE_BG, borderRadius: "8px" }} />
     </div>
   );
 }
@@ -887,14 +786,17 @@ export default function ClubAnalyticsPage() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [posts, setPosts] = useState<PostRow[]>([]);
+  const [postViews, setPostViews] = useState<PostViewRow[]>([]);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [rsvps, setRsvps] = useState<RsvpRow[]>([]);
-  const [dmMessages, setDmMessages] = useState<DirectMessageRow[]>([]);
+  const [hiringApplications, setHiringApplications] = useState<HiringApplicationRow[]>([]);
+  const [hiringListings, setHiringListings] = useState<HiringListingRow[]>([]);
+  const [openHiringListingsCount, setOpenHiringListingsCount] = useState(0);
+  const [assigneeNames, setAssigneeNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
   const [memberGrowthMode, setMemberGrowthMode] = useState<MemberGrowthMode>("cumulative");
-  const [attendanceFilter, setAttendanceFilter] = useState<EventAttendanceFilter>("all");
 
   useEffect(() => {
     if (!clubId || !canViewAnalytics) {
@@ -913,20 +815,26 @@ export default function ClubAnalyticsPage() {
         tasksRes,
         postsRes,
         eventsRes,
-        conversationsRes,
+        listingsRes,
       ] = await Promise.all([
         supabase
           .from("club_members")
-          .select("created_at, role")
+          .select("created_at, role, access_level")
           .eq("club_id", clubId)
           .eq("status", "active"),
-        supabase.from("tasks").select("status, created_at").eq("club_id", clubId),
-        supabase.from("posts").select("created_at").eq("club_id", clubId),
+        supabase
+          .from("tasks")
+          .select("status, created_at, assigned_to, due_date")
+          .eq("club_id", clubId),
+        supabase.from("posts").select("id, title, created_at").eq("club_id", clubId),
         supabase
           .from("events")
           .select("id, title, date, category, visibility")
           .eq("club_id", clubId),
-        supabase.from("conversations").select("id").eq("club_id", clubId),
+        supabase
+          .from("hiring_listings")
+          .select("id, title, is_open")
+          .eq("club_id", clubId),
       ]);
 
       if (cancelled) return;
@@ -936,57 +844,79 @@ export default function ClubAnalyticsPage() {
       if (tasksRes.error) failures.push("tasks");
       if (postsRes.error) failures.push("posts");
       if (eventsRes.error) failures.push("events");
-      if (conversationsRes.error) {
-        console.error(
-          "Failed to load conversations for analytics:",
-          conversationsRes.error.message,
-        );
-      }
+      if (listingsRes.error) failures.push("hiring listings");
 
       const eventRows = (eventsRes.data ?? []) as EventRow[];
-      const eventIds = eventRows.map((e) => e.id);
+      const postRows = (postsRes.data ?? []) as PostRow[];
+      const listingRows = (listingsRes.data ?? []) as (HiringListingRow & {
+        is_open?: boolean;
+      })[];
+      const taskRows = (tasksRes.data ?? []) as TaskRow[];
 
-      let rsvpRows: RsvpRow[] = [];
-      if (eventIds.length > 0) {
-        const rsvpsRes = await supabase
-          .from("event_rsvps")
-          .select("status, event_id")
-          .in("event_id", eventIds);
-        if (rsvpsRes.error) {
-          failures.push("RSVPs");
-        } else {
-          rsvpRows = (rsvpsRes.data ?? []) as RsvpRow[];
-        }
-      }
-
-      const conversationIds = (conversationsRes.data ?? []).map(
-        (c) => c.id as string,
+      const eventIds = eventRows.map((event) => event.id);
+      const postIds = postRows.map((post) => post.id);
+      const listingIds = listingRows.map((listing) => listing.id);
+      const assigneeIds = Array.from(
+        new Set(
+          taskRows
+            .map((task) => task.assigned_to)
+            .filter((id): id is string => Boolean(id)),
+        ),
       );
-      let dmRows: DirectMessageRow[] = [];
-      if (conversationIds.length > 0) {
-        const dmRes = await supabase
-          .from("direct_messages")
-          .select("created_at")
-          .in("conversation_id", conversationIds);
-        if (dmRes.error) {
-          console.error("Failed to load messages for analytics:", dmRes.error.message);
-        } else {
-          dmRows = (dmRes.data ?? []) as DirectMessageRow[];
-        }
-      }
+
+      const [rsvpsRes, viewsRes, appsRes, profilesRes] = await Promise.all([
+        eventIds.length > 0
+          ? supabase
+              .from("event_rsvps")
+              .select("status, event_id")
+              .in("event_id", eventIds)
+          : Promise.resolve({ data: [], error: null }),
+        postIds.length > 0
+          ? supabase
+              .from("post_views")
+              .select("post_id, user_id, viewed_at")
+              .in("post_id", postIds)
+          : Promise.resolve({ data: [], error: null }),
+        listingIds.length > 0
+          ? supabase
+              .from("hiring_applications")
+              .select("id, listing_id, status, sub_status, created_at")
+              .in("listing_id", listingIds)
+          : Promise.resolve({ data: [], error: null }),
+        assigneeIds.length > 0
+          ? supabase.from("profiles").select("id, full_name").in("id", assigneeIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
       if (cancelled) return;
+
+      if (rsvpsRes.error) failures.push("RSVPs");
+      if (viewsRes.error) failures.push("announcement views");
+      if (appsRes.error) failures.push("hiring applications");
+
+      const nameMap: Record<string, string> = {};
+      for (const row of profilesRes.data ?? []) {
+        nameMap[row.id as string] = ((row.full_name as string | null) ?? "Member").trim();
+      }
 
       if (failures.length > 0) {
         setError(`Failed to load: ${failures.join(", ")}`);
       }
 
       setMembers((membersRes.data ?? []) as MemberRow[]);
-      setTasks((tasksRes.data ?? []) as TaskRow[]);
-      setPosts((postsRes.data ?? []) as PostRow[]);
+      setTasks(taskRows);
+      setPosts(postRows);
+      setPostViews((viewsRes.data ?? []) as PostViewRow[]);
       setEvents(eventRows);
-      setRsvps(rsvpRows);
-      setDmMessages(dmRows);
+      setRsvps((rsvpsRes.data ?? []) as RsvpRow[]);
+      setHiringApplications((appsRes.data ?? []) as HiringApplicationRow[]);
+      setHiringListings(
+        listingRows.map(({ id, title }) => ({ id, title })),
+      );
+      setOpenHiringListingsCount(
+        listingRows.filter((listing) => listing.is_open !== false).length,
+      );
+      setAssigneeNames(nameMap);
       setLoading(false);
     }
 
@@ -1011,6 +941,11 @@ export default function ClubAnalyticsPage() {
     () => filterRowsSince(posts, (row) => row.created_at, rangeStart),
     [posts, rangeStart],
   );
+  const scopedPostIds = useMemo(() => new Set(scopedPosts.map((post) => post.id)), [scopedPosts]);
+  const scopedPostViews = useMemo(
+    () => postViews.filter((view) => scopedPostIds.has(view.post_id)),
+    [postViews, scopedPostIds],
+  );
   const scopedEvents = useMemo(
     () => filterRowsSince(events, (row) => row.date, rangeStart),
     [events, rangeStart],
@@ -1023,89 +958,147 @@ export default function ClubAnalyticsPage() {
     () => rsvps.filter((row) => scopedEventIds.has(row.event_id)),
     [rsvps, scopedEventIds],
   );
-  const scopedDmMessages = useMemo(
-    () => filterRowsSince(dmMessages, (row) => row.created_at, rangeStart),
-    [dmMessages, rangeStart],
+  const scopedApplications = useMemo(
+    () => filterRowsSince(hiringApplications, (row) => row.created_at, rangeStart),
+    [hiringApplications, rangeStart],
   );
 
+  const activeMemberCount = members.length;
   const memberGrowth = useMemo(() => buildMemberGrowth(scopedMembers), [scopedMembers]);
   const memberGrowthChartData = useMemo(
     () =>
-      memberGrowthMode === "monthly"
-        ? toMonthlyGrowth(memberGrowth)
-        : memberGrowth,
+      memberGrowthMode === "monthly" ? toMonthlyGrowth(memberGrowth) : memberGrowth,
     [memberGrowth, memberGrowthMode],
   );
-  const filteredEventsForAttendance = useMemo(() => {
-    let list = scopedEvents;
-    if (attendanceFilter === "public") {
-      list = list.filter((event) => event.visibility !== "members_only");
-    } else if (attendanceFilter === "internal") {
-      list = list.filter((event) => event.visibility === "members_only");
-    }
-    return list;
-  }, [scopedEvents, attendanceFilter]);
-  const eventAttendance = useMemo(
-    () => buildEventAttendance(filteredEventsForAttendance, scopedRsvps),
-    [filteredEventsForAttendance, scopedRsvps],
+  const newMembersByMonth = useMemo(
+    () => toMonthlyNewMembers(memberGrowth),
+    [memberGrowth],
   );
-  const taskBreakdown = useMemo(() => buildTaskBreakdown(scopedTasks), [scopedTasks]);
+  const executiveBreakdown = useMemo(
+    () => buildExecutiveBreakdown(scopedMembers),
+    [scopedMembers],
+  );
+  const memberInsight = useMemo(
+    () => buildMemberSectionInsight(scopedMembers),
+    [scopedMembers],
+  );
+
+  const eventAttendanceTrend = useMemo(
+    () => buildEventAttendanceTrend(scopedEvents, scopedRsvps),
+    [scopedEvents, scopedRsvps],
+  );
+  const rsvpBreakdown = useMemo(() => buildRsvpBreakdown(scopedRsvps), [scopedRsvps]);
+  const topAttendedEvents = useMemo(
+    () => buildTopAttendedEvents(scopedEvents, scopedRsvps),
+    [scopedEvents, scopedRsvps],
+  );
   const eventCategories = useMemo(
-    () => buildEventCategoryBreakdown(scopedEvents),
+    () =>
+      buildEventCategoryBreakdown(
+        scopedEvents,
+        EVENT_CATEGORY_LABELS,
+        EVENT_CATEGORY_COLORS,
+        EVENT_TYPE_FALLBACK_COLORS,
+      ),
     [scopedEvents],
   );
-  const insights = useMemo(
+  const eventInsight = useMemo(
+    () => buildEventSectionInsight(scopedEvents, scopedRsvps),
+    [scopedEvents, scopedRsvps],
+  );
+
+  const taskBreakdown = useMemo(() => buildTaskBreakdown(scopedTasks), [scopedTasks]);
+  const taskCompletionOverTime = useMemo(
+    () => buildTaskCompletionOverTime(scopedTasks),
+    [scopedTasks],
+  );
+  const tasksByAssignee = useMemo(
+    () => buildTasksByAssignee(scopedTasks, assigneeNames),
+    [scopedTasks, assigneeNames],
+  );
+  const overdueTasks = useMemo(() => countOverdueTasks(scopedTasks), [scopedTasks]);
+  const taskInsight = useMemo(() => buildTaskSectionInsight(scopedTasks), [scopedTasks]);
+
+  const hiringByStatus = useMemo(
+    () => buildHiringByStatus(scopedApplications),
+    [scopedApplications],
+  );
+  const hiringByRole = useMemo(
+    () => buildHiringByRole(scopedApplications, hiringListings),
+    [scopedApplications, hiringListings],
+  );
+  const hiringFunnel = useMemo(
+    () => buildHiringFunnel(scopedApplications),
+    [scopedApplications],
+  );
+  const hiringInsight = useMemo(
     () =>
-      buildInsights({
-        members: scopedMembers,
-        tasks: scopedTasks,
-        events: scopedEvents,
-        rsvps: scopedRsvps,
-        posts: scopedPosts,
-        dmMessages: scopedDmMessages,
-      }),
-    [scopedMembers, scopedTasks, scopedEvents, scopedRsvps, scopedPosts, scopedDmMessages],
+      buildHiringSectionInsight(
+        scopedApplications,
+        openHiringListingsCount,
+      ),
+    [scopedApplications, openHiringListingsCount],
+  );
+
+  const announcementViewsTrend = useMemo(
+    () => buildAnnouncementViewsOverTime(scopedPostViews),
+    [scopedPostViews],
+  );
+  const overallSeenRate = useMemo(
+    () => computeOverallSeenRate(scopedPosts, scopedPostViews, activeMemberCount),
+    [scopedPosts, scopedPostViews, activeMemberCount],
+  );
+  const announcementSeenBreakdown = useMemo(
+    () =>
+      buildAnnouncementSeenBreakdown(scopedPosts, scopedPostViews, activeMemberCount),
+    [scopedPosts, scopedPostViews, activeMemberCount],
+  );
+  const mostViewedAnnouncements = useMemo(
+    () =>
+      buildMostViewedAnnouncements(scopedPosts, scopedPostViews, activeMemberCount),
+    [scopedPosts, scopedPostViews, activeMemberCount],
+  );
+  const announcementInsight = useMemo(
+    () =>
+      buildAnnouncementSectionInsight(
+        scopedPosts,
+        scopedPostViews,
+        activeMemberCount,
+      ),
+    [scopedPosts, scopedPostViews, activeMemberCount],
   );
 
   const totalMembers = scopedMembers.length;
+  const executivesCount = scopedMembers.filter(isExecutiveMember).length;
+  const newThisMonth = countNewMembersThisMonth(scopedMembers);
   const totalEvents = scopedEvents.length;
-  const totalAnnouncements = scopedPosts.length;
+  const totalRsvps = scopedRsvps.length;
+  const goingRsvps = scopedRsvps.filter((row) => row.status === "going").length;
+  const goingRate =
+    totalRsvps > 0 ? Math.round((goingRsvps / totalRsvps) * 100) : 0;
   const totalTasks = scopedTasks.length;
-  const doneTasks = scopedTasks.filter((t) => t.status === "done").length;
+  const doneTasks = scopedTasks.filter((task) => task.status === "done").length;
   const taskCompletionRate =
     totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  const announcementsThisMonth = countPostsThisMonth(scopedPosts);
+  const inProgressTasks = scopedTasks.filter(
+    (task) => task.status === "in_progress",
+  ).length;
+  const totalApplicants = scopedApplications.length;
+  const interviewApplicants = hiringByStatus.find(
+    (segment) => segment.name === "Interview",
+  )?.value ?? 0;
+  const acceptedApplicants = hiringByStatus.find(
+    (segment) => segment.name === "Accepted",
+  )?.value ?? 0;
+  const totalAnnouncementViews = scopedPostViews.length;
 
   const yearAgo = oneYearAgoDate();
   const membersYearAgo = scopedMembers.filter(
     (member) => new Date(member.created_at) <= yearAgo,
   ).length;
-  const eventsYearAgo = scopedEvents.filter((event) => {
-    const eventDate = new Date(event.date);
-    return !Number.isNaN(eventDate.getTime()) && eventDate <= yearAgo;
-  }).length;
-  const announcementsYearAgo = scopedPosts.filter(
-    (post) => new Date(post.created_at) <= yearAgo,
-  ).length;
-
   const memberTrend = computeYearOverYearTrend(totalMembers, membersYearAgo);
-  const eventTrend = computeYearOverYearTrend(totalEvents, eventsYearAgo);
-  const announcementTrend = computeYearOverYearTrend(
-    totalAnnouncements,
-    announcementsYearAgo,
-  );
 
-  const tasksBasePath = clubId ? `/app/clubs/${clubId}` : "/app";
-
-  const recommendedActions = useMemo(
-    () =>
-      buildRecommendedActions({
-        taskCompletionRate,
-        announcementsThisMonth,
-        totalMembers,
-      }),
-    [taskCompletionRate, announcementsThisMonth, totalMembers],
-  );
+  const clubBasePath = clubId ? `/app/clubs/${clubId}` : "/app";
 
   if (memberAccess.loading) {
     return (
@@ -1132,47 +1125,12 @@ export default function ClubAnalyticsPage() {
               marginBottom: "8px",
             }}
           />
-          <div
-            style={{
-              height: "14px",
-              width: "260px",
-              background: GRID,
-              borderRadius: "4px",
-            }}
-          />
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "16px",
-            marginBottom: "24px",
-          }}
-        >
-          {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              style={{
-                background: CARD_BG,
-                border: `1px solid ${CARD_BORDER}`,
-                borderRadius: "8px",
-                padding: "16px",
-                minHeight: "88px",
-              }}
-            />
-          ))}
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "16px",
-          }}
-        >
+        <ChartsGrid isMobile={isMobile}>
           <ChartSkeleton />
           <ChartSkeleton />
           <ChartSkeleton />
-        </div>
+        </ChartsGrid>
       </div>
     );
   }
@@ -1200,15 +1158,8 @@ export default function ClubAnalyticsPage() {
             >
               Club Analytics
             </h1>
-            <p
-              style={{
-                fontSize: "14px",
-                color: MUTED,
-                marginTop: "4px",
-                marginBottom: 0,
-              }}
-            >
-              Track membership, engagement, events, and team activity.
+            <p style={{ fontSize: "14px", color: MUTED, marginTop: "4px", marginBottom: 0 }}>
+              Membership, events, tasks, hiring, and announcement insights.
             </p>
           </div>
           <ExportMenuButton />
@@ -1263,387 +1214,518 @@ export default function ClubAnalyticsPage() {
         </div>
       ) : null}
 
-      {/* Section 1 — Key Stats */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <StatCard
-          label="Total Members"
-          value={totalMembers}
-          topColor="#777777"
-          icon={<Users size={22} aria-hidden />}
-          iconBg="rgba(229, 25, 55, 0.15)"
-          iconColor={ACCENT_RED}
-          trend={memberTrend}
-        />
-        <StatCard
-          label="Total Events"
-          value={totalEvents}
-          topColor={ACCENT_RED}
-          icon={<Calendar size={22} aria-hidden />}
-          iconBg="rgba(229, 25, 55, 0.15)"
-          iconColor={ACCENT_RED}
-          trend={eventTrend}
-        />
-        <StatCard
-          label="Task Completion Rate"
-          value={`${taskCompletionRate}%`}
-          topColor={ACCENT_GOLD}
-          valueColor={ACCENT_GOLD}
-          icon={<CheckCircle size={22} aria-hidden />}
-          iconBg="rgba(255, 196, 41, 0.15)"
-          iconColor={ACCENT_GOLD}
-        />
-        <StatCard
-          label="Total Announcements"
-          value={totalAnnouncements}
-          topColor="#777777"
-          icon={<Megaphone size={22} aria-hidden />}
-          iconBg="rgba(229, 25, 55, 0.15)"
-          iconColor={ACCENT_RED}
-          trend={announcementTrend}
-        />
-      </div>
-
-      {/* Section 2 — Charts row */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(320px, 1fr))",
-          gap: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <div style={chartCardStyle}>
-          <ChartCardHeader
-            title="Member Growth"
-            action={
-              <select
-                value={memberGrowthMode}
-                onChange={(event) =>
-                  setMemberGrowthMode(event.target.value as MemberGrowthMode)
-                }
-                style={chartDropdownStyle}
-                aria-label="Member growth view"
-              >
-                <option value="cumulative">Cumulative</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            }
+      <AnalyticsSection title="Members" icon={<Users size={20} aria-hidden />}>
+        <StatCardsRow isMobile={isMobile}>
+          <StatCard
+            label="Total Members"
+            value={totalMembers}
+            topColor="#777777"
+            icon={<Users size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+            trend={memberTrend}
           />
-          <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
-            {memberGrowthIsSparse(totalMembers, memberGrowthChartData) ? (
-              <AnalyticsBuildingMessage />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={memberGrowthChartData}
-                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid stroke={GRID} vertical={false} />
-                  <XAxis dataKey="label" {...chartAxisProps} />
-                  <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
-                  <Tooltip content={<MemberGrowthTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke={ACCENT_RED}
-                    strokeWidth={2}
-                    dot={{ fill: ACCENT_RED, r: 3 }}
-                    activeDot={{ r: 5, fill: ACCENT_RED, stroke: "#ffffff", strokeWidth: 2 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        <div style={chartCardStyle}>
-          <ChartCardHeader
-            title="Event Attendance"
-            action={
-              <select
-                value={attendanceFilter}
-                onChange={(event) =>
-                  setAttendanceFilter(event.target.value as EventAttendanceFilter)
-                }
-                style={chartDropdownStyle}
-                aria-label="Event attendance filter"
-              >
-                <option value="all">All Events</option>
-                <option value="public">Public Only</option>
-                <option value="internal">Internal Only</option>
-              </select>
-            }
+          <StatCard
+            label="New This Month"
+            value={newThisMonth}
+            topColor={ACCENT_GOLD}
+            valueColor={ACCENT_GOLD}
+            icon={<Users size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
           />
-          <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
-            {eventAttendanceIsSparse(eventAttendance) ? (
-              <AnalyticsBuildingMessage />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={eventAttendance}
-                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+          <StatCard
+            label="Executives"
+            value={executivesCount}
+            topColor={ACCENT_GOLD}
+            icon={<Users size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+          <StatCard
+            label="General Members"
+            value={Math.max(0, totalMembers - executivesCount)}
+            topColor="#777777"
+            icon={<Users size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+        </StatCardsRow>
+        <ChartsGrid isMobile={isMobile}>
+          <div style={chartCardStyle}>
+            <ChartCardHeader
+              title="Member Growth"
+              action={
+                <select
+                  value={memberGrowthMode}
+                  onChange={(event) =>
+                    setMemberGrowthMode(event.target.value as MemberGrowthMode)
+                  }
+                  style={chartDropdownStyle}
+                  aria-label="Member growth view"
                 >
-                  <CartesianGrid stroke={GRID} vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    {...chartAxisProps}
-                    tickFormatter={(value) => truncateLabel(String(value), 12)}
-                  />
-                  <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
-                  <Tooltip {...tooltipStyle} />
-                  <Legend
-                    wrapperStyle={{ fontSize: "11px", color: MUTED }}
-                    iconType="circle"
-                  />
-                  <Bar dataKey="going" name="Going" fill={ACCENT_GOLD} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="maybe" name="Maybe" fill="#555555" radius={[4, 4, 0, 0]} />
-                  <Bar
-                    dataKey="notGoing"
-                    name="Not Going"
-                    fill={ACCENT_RED}
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Section 3 — Smaller charts + insights */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: "16px",
-        }}
-      >
-        <div style={chartCardStyle}>
-          <h3 style={chartTitleStyle}>Task Breakdown</h3>
-          <div
-            style={{ width: "100%", minWidth: 0, height: "180px", position: "relative" }}
-          >
-            {totalTasks === 0 ? (
-              <AnalyticsBuildingMessage />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={taskBreakdown}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={2}
-                    labelLine={false}
-                  >
-                    {taskBreakdown.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                    <Label
-                      value={totalTasks}
-                      position="center"
-                      fill="#ffffff"
-                      fontSize={18}
-                      fontWeight={700}
-                    />
-                  </Pie>
-                  <Tooltip {...tooltipStyle} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          {totalTasks > 0 ? (
-            <>
-              <TaskBreakdownLegend segments={taskBreakdown} total={totalTasks} />
-              <CardFooterLink
-                rightHref={`${tasksBasePath}/tasks`}
-                rightLabel="View all tasks →"
-              />
-            </>
-          ) : null}
-        </div>
-
-        <div style={chartCardStyle}>
-          <h3 style={chartTitleStyle}>Event Types</h3>
-          <div
-            style={{
-              width: "100%",
-              minWidth: 0,
-              height: Math.max(180, eventCategories.length * 36),
-            }}
-          >
-            {totalEvents === 0 ? (
-              <AnalyticsBuildingMessage />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={eventCategories}
-                  layout="vertical"
-                  margin={{ top: 4, right: 32, left: 8, bottom: 4 }}
-                >
-                  <CartesianGrid stroke={GRID} horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} {...chartAxisProps} axisLine={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={110}
-                    tick={{ fill: MUTED, fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip {...tooltipStyle} />
-                  <Bar dataKey="value" name="Events" radius={[0, 4, 4, 0]}>
-                    {eventCategories.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                    <LabelList
-                      dataKey="value"
-                      position="right"
-                      fill="#cccccc"
-                      fontSize={12}
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          {eventCategories.length > 0 ? (
-            <CardFooterLink
-              left={
-                <span style={{ fontSize: "13px", color: "#777777" }}>
-                  Total Events: {totalEvents}
-                </span>
+                  <option value="cumulative">Cumulative</option>
+                  <option value="monthly">Monthly</option>
+                </select>
               }
-              rightHref={`${tasksBasePath}/events`}
-              rightLabel="View all events →"
             />
-          ) : null}
-        </div>
-
-        <div style={chartCardStyle}>
-          <h3
-            style={{
-              ...chartTitleStyle,
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <TrendingUp size={16} color={ACCENT_GOLD} aria-hidden />
-            Insights
-          </h3>
-          <div>
-            {insights.length === 0 ? (
-              <p style={{ fontSize: "13px", color: MUTED, margin: 0 }}>
-                Not enough data for insights yet.
-              </p>
-            ) : (
-              insights.map((insight, index) => (
-                <div
-                  key={insight.text}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "10px",
-                    padding: "10px 0",
-                    borderBottom:
-                      index < insights.length - 1
-                        ? "1px solid #1a1a1a"
-                        : "none",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      background: insight.dotColor,
-                      flexShrink: 0,
-                      marginTop: "6px",
-                    }}
-                  />
-                  <p
-                    style={{
-                      fontSize: "13px",
-                      color: "#cccccc",
-                      margin: 0,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    {insight.text}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-          {insights.length > 0 ? (
-            <div style={{ marginTop: "12px" }}>
-              <Link
-                to={`${tasksBasePath}/analytics`}
-                style={{
-                  fontSize: "13px",
-                  color: ACCENT_RED,
-                  textDecoration: "none",
-                  fontWeight: 600,
-                }}
-              >
-                View full report →
-              </Link>
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {totalMembers === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={memberGrowthChartData}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip content={<MemberGrowthTooltip />} />
+                    <Line
+                      type="monotone"
+                      dataKey="count"
+                      stroke={ACCENT_RED}
+                      strokeWidth={2}
+                      dot={{ fill: ACCENT_RED, r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </div>
-          ) : null}
-        </div>
-
-        <div
-          style={{
-            background: CARD_BG,
-            border: `1px solid ${CARD_BORDER}`,
-            borderRadius: "10px",
-            padding: "24px",
-            gridColumn: isMobile ? undefined : "1 / -1",
-          }}
-        >
-          <h3 style={chartTitleStyle}>Recommended Actions</h3>
-          <div>
-            {recommendedActions.map((action, index) => (
-              <div
-                key={action.text}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 0",
-                  borderBottom:
-                    index < recommendedActions.length - 1
-                      ? "1px solid #1a1a1a"
-                      : "none",
-                }}
-              >
-                <RecommendedActionIcon icon={action.icon} color={action.color} />
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#cccccc",
-                    margin: 0,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {action.text}
-                </p>
-              </div>
-            ))}
           </div>
-        </div>
-      </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="New Members by Month" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {totalMembers === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={newMembersByMonth}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Bar dataKey="count" name="New members" fill={ACCENT_GOLD} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Executive vs General" />
+            <DonutChart
+              data={executiveBreakdown}
+              total={totalMembers}
+              centerLabel={`${totalMembers}`}
+            />
+          </div>
+        </ChartsGrid>
+        <SectionInsightBox insight={memberInsight} />
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Events & RSVPs" icon={<Calendar size={20} aria-hidden />}>
+        <StatCardsRow isMobile={isMobile}>
+          <StatCard
+            label="Total Events"
+            value={totalEvents}
+            topColor={ACCENT_RED}
+            icon={<Calendar size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Total RSVPs"
+            value={totalRsvps}
+            topColor="#777777"
+            icon={<Calendar size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Going Rate"
+            value={`${goingRate}%`}
+            topColor={ACCENT_GOLD}
+            valueColor={ACCENT_GOLD}
+            icon={<Calendar size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+          <StatCard
+            label="Top Event Going"
+            value={topAttendedEvents[0]?.going ?? 0}
+            topColor={ACCENT_GOLD}
+            icon={<Calendar size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+        </StatCardsRow>
+        <ChartsGrid isMobile={isMobile}>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Attendance Trend" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {totalEvents === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={eventAttendanceTrend}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Line
+                      type="monotone"
+                      dataKey="going"
+                      name="Going"
+                      stroke={ACCENT_GOLD}
+                      strokeWidth={2}
+                      dot={{ fill: ACCENT_GOLD, r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="RSVP Breakdown" />
+            <DonutChart
+              data={rsvpBreakdown}
+              total={totalRsvps}
+              centerLabel={`${totalRsvps}`}
+            />
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Event Types" />
+            <div style={{ width: "100%", minWidth: 0, height: Math.max(180, eventCategories.length * 36) }}>
+              {totalEvents === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={eventCategories}
+                    layout="vertical"
+                    margin={{ top: 4, right: 32, left: 8, bottom: 4 }}
+                  >
+                    <CartesianGrid stroke={GRID} horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={110}
+                      tick={{ fill: MUTED, fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip {...tooltipStyle} />
+                    <Bar dataKey="value" name="Events" radius={[0, 4, 4, 0]}>
+                      {eventCategories.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Top Attended Events" />
+            <TopEventsList events={topAttendedEvents} />
+            {topAttendedEvents.length > 0 ? (
+              <div style={{ marginTop: "12px" }}>
+                <Link
+                  to={`${clubBasePath}/events`}
+                  style={{ fontSize: "13px", color: ACCENT_RED, textDecoration: "none", fontWeight: 600 }}
+                >
+                  View all events →
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        </ChartsGrid>
+        <SectionInsightBox insight={eventInsight} />
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Tasks" icon={<CheckSquare size={20} aria-hidden />}>
+        <StatCardsRow isMobile={isMobile}>
+          <StatCard
+            label="Total Tasks"
+            value={totalTasks}
+            topColor="#777777"
+            icon={<CheckSquare size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Completion Rate"
+            value={`${taskCompletionRate}%`}
+            topColor={ACCENT_GOLD}
+            valueColor={ACCENT_GOLD}
+            icon={<CheckCircle size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+          <StatCard
+            label="Overdue"
+            value={overdueTasks}
+            topColor={ACCENT_RED}
+            valueColor={overdueTasks > 0 ? ACCENT_RED : "#ffffff"}
+            icon={<CheckSquare size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="In Progress"
+            value={inProgressTasks}
+            topColor={ACCENT_RED}
+            icon={<CheckSquare size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+        </StatCardsRow>
+        <ChartsGrid isMobile={isMobile}>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Task Status" />
+            <DonutChart data={taskBreakdown} total={totalTasks} centerLabel={`${totalTasks}`} />
+            {totalTasks > 0 ? (
+              <div style={{ marginTop: "8px" }}>
+                <Link
+                  to={`${clubBasePath}/tasks`}
+                  style={{ fontSize: "13px", color: ACCENT_RED, textDecoration: "none", fontWeight: 600 }}
+                >
+                  View all tasks →
+                </Link>
+              </div>
+            ) : null}
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Completion Rate Over Time" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {totalTasks === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={taskCompletionOverTime}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis domain={[0, 100]} {...chartAxisProps} axisLine={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Line
+                      type="monotone"
+                      dataKey="rate"
+                      name="Completion %"
+                      stroke={ACCENT_GOLD}
+                      strokeWidth={2}
+                      dot={{ fill: ACCENT_GOLD, r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Open Tasks by Assignee" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {tasksByAssignee.length === 0 ? (
+                <AnalyticsBuildingMessage message="No assigned open tasks" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={tasksByAssignee} layout="vertical" margin={{ left: 8, right: 16 }}>
+                    <CartesianGrid stroke={GRID} horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={100}
+                      tick={{ fill: MUTED, fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip {...tooltipStyle} />
+                    <Bar dataKey="count" fill={ACCENT_RED} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </ChartsGrid>
+        <SectionInsightBox insight={taskInsight} />
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Hiring" icon={<Briefcase size={20} aria-hidden />}>
+        <StatCardsRow isMobile={isMobile}>
+          <StatCard
+            label="Applicants"
+            value={totalApplicants}
+            topColor={ACCENT_RED}
+            icon={<Briefcase size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Open Roles"
+            value={openHiringListingsCount}
+            topColor="#777777"
+            icon={<Briefcase size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="In Interview"
+            value={interviewApplicants}
+            topColor="#6b7cff"
+            icon={<Briefcase size={22} aria-hidden />}
+            iconBg="rgba(107, 124, 255, 0.15)"
+            iconColor="#6b7cff"
+          />
+          <StatCard
+            label="Accepted"
+            value={acceptedApplicants}
+            topColor={ACCENT_GOLD}
+            valueColor={ACCENT_GOLD}
+            icon={<Briefcase size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+        </StatCardsRow>
+        <ChartsGrid isMobile={isMobile}>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Applicants by Status" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {totalApplicants === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={hiringByStatus}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="name" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                      {hiringByStatus.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Applicants per Role" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {hiringByRole.length === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={hiringByRole} layout="vertical" margin={{ left: 8, right: 16 }}>
+                    <CartesianGrid stroke={GRID} horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={100}
+                      tick={{ fill: MUTED, fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip {...tooltipStyle} />
+                    <Bar dataKey="count" fill={ACCENT_GOLD} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Hiring Funnel" />
+            <HiringFunnelVisual stages={hiringFunnel} />
+            {totalApplicants > 0 ? (
+              <div style={{ marginTop: "12px" }}>
+                <Link
+                  to={`${clubBasePath}/recruiting`}
+                  style={{ fontSize: "13px", color: ACCENT_RED, textDecoration: "none", fontWeight: 600 }}
+                >
+                  Open recruiting →
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        </ChartsGrid>
+        <SectionInsightBox insight={hiringInsight} />
+      </AnalyticsSection>
+
+      <AnalyticsSection title="Announcements" icon={<Megaphone size={20} aria-hidden />}>
+        <StatCardsRow isMobile={isMobile}>
+          <StatCard
+            label="Announcements"
+            value={scopedPosts.length}
+            topColor="#777777"
+            icon={<Megaphone size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Total Views"
+            value={totalAnnouncementViews}
+            topColor={ACCENT_RED}
+            icon={<Eye size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+          <StatCard
+            label="Seen Rate"
+            value={`${overallSeenRate}%`}
+            topColor={ACCENT_GOLD}
+            valueColor={ACCENT_GOLD}
+            icon={<Eye size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+          <StatCard
+            label="Unread Slots"
+            value={announcementSeenBreakdown[1]?.value ?? 0}
+            topColor="#777777"
+            icon={<Megaphone size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+          />
+        </StatCardsRow>
+        <ChartsGrid isMobile={isMobile}>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Views Over Time" />
+            <div style={{ width: "100%", minWidth: 0, height: "200px" }}>
+              {scopedPosts.length === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={announcementViewsTrend}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Line
+                      type="monotone"
+                      dataKey="views"
+                      name="Views"
+                      stroke={ACCENT_RED}
+                      strokeWidth={2}
+                      dot={{ fill: ACCENT_RED, r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Seen vs Not Seen" />
+            <DonutChart
+              data={announcementSeenBreakdown}
+              total={announcementSeenBreakdown.reduce((sum, row) => sum + row.value, 0)}
+            />
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Most Viewed" />
+            <MostViewedList posts={mostViewedAnnouncements} />
+          </div>
+        </ChartsGrid>
+        <SectionInsightBox insight={announcementInsight} />
+      </AnalyticsSection>
     </div>
   );
 }
