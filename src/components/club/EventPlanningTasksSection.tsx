@@ -4,7 +4,8 @@ import { useAuthContext } from "../../context/useAuthContext";
 import type { UseClubTasksReturn } from "../../hooks/useClubTasks";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
-import { getTaskStatusMenuItems } from "../../lib/taskStatusActions";
+import { resolveTaskCompletionStatus } from "../../lib/taskCompletion";
+import { getTaskStatusMenuItems, TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import {
   EVENT_PLANNING_TASK_TITLES,
   TASK_TYPE_BADGE_LABELS,
@@ -18,12 +19,7 @@ import FormInput from "../ui/FormInput";
 const GOLD = "#FFC429";
 const ACCENT_RED = "#E51937";
 
-const statusLabels: Record<TaskStatus, string> = {
-  todo: "To Do",
-  in_progress: "In Progress",
-  done: "Done",
-  cancelled: "Cancelled",
-};
+const statusLabels = TASK_STATUS_LABELS;
 
 const useTemplateButtonClass =
   "rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-[#cccccc] transition-colors hover:border-[#555555] hover:text-white";
@@ -586,13 +582,34 @@ export default function EventPlanningTasksSection({
   }
 
   async function handleStatusChange(taskId: string, status: TaskStatus) {
-    const ok = await updateTask(taskId, { status });
+    const task = planningTasks.find((item) => item.id === taskId);
+    let resolvedStatus = status;
+    let completedAt: string | null | undefined;
+
+    if (status === "done" && task && user?.id) {
+      resolvedStatus = resolveTaskCompletionStatus(task, user.id);
+      if (resolvedStatus === "pending_review") {
+        completedAt = new Date().toISOString();
+      }
+    }
+
+    const ok = await updateTask(taskId, {
+      status: resolvedStatus,
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    });
     if (ok) {
       onFeedback({
         type: "success",
-        text: status === "done" ? "Task marked complete." : "Task status updated.",
+        text:
+          resolvedStatus === "pending_review"
+            ? "Task submitted for review."
+            : resolvedStatus === "done"
+              ? "Task marked complete."
+              : "Task status updated.",
       });
-      setDetailTask((prev) => (prev?.id === taskId ? { ...prev, status } : prev));
+      setDetailTask((prev) =>
+        prev?.id === taskId ? { ...prev, status: resolvedStatus } : prev,
+      );
     } else {
       onFeedback({ type: "error", text: "Could not update task status." });
     }

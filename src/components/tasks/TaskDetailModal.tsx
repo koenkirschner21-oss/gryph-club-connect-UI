@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { Send, X } from "lucide-react";
 import LinkedMeetingCancelledLabel from "./LinkedMeetingCancelledLabel";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
-import { getTaskStatusMenuItems } from "../../lib/taskStatusActions";
+import { getTaskStatusMenuItems, TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import { TASK_TYPE_BADGE_LABELS } from "../../lib/taskTypes";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
@@ -11,12 +11,7 @@ import type { Task, TaskStatus } from "../../types";
 const GOLD = "#FFC429";
 const ACCENT_RED = "#E51937";
 
-const statusLabels: Record<TaskStatus, string> = {
-  todo: "To Do",
-  in_progress: "In Progress",
-  done: "Done",
-  cancelled: "Cancelled",
-};
+const statusLabels = TASK_STATUS_LABELS;
 
 const actionButtonStyle: CSSProperties = {
   background: "transparent",
@@ -202,6 +197,10 @@ export interface TaskDetailModalProps {
   onDelete: () => void;
   onStatusChange: (status: TaskStatus) => void;
   linkedEventFallback?: string;
+  isReviewMode?: boolean;
+  onApproveReview?: () => void;
+  onSendBackReview?: (note: string) => void;
+  onRequestChangesReview?: (note: string) => void;
 }
 
 export default function TaskDetailModal({
@@ -220,11 +219,16 @@ export default function TaskDetailModal({
   onDelete,
   onStatusChange,
   linkedEventFallback,
+  isReviewMode = false,
+  onApproveReview,
+  onSendBackReview,
+  onRequestChangesReview,
 }: TaskDetailModalProps) {
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(true);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
 
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
@@ -517,7 +521,52 @@ export default function TaskDetailModal({
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "20px" }}>
-          {canChangeStatus
+          {isReviewMode ? (
+            <div style={{ width: "100%" }}>
+              <textarea
+                value={reviewNote}
+                onChange={(event) => setReviewNote(event.target.value)}
+                placeholder="Optional note for send-back or change request…"
+                rows={3}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#0f0f0f",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "6px",
+                  padding: "8px 10px",
+                  fontSize: "13px",
+                  color: "#ffffff",
+                  marginBottom: "10px",
+                  resize: "vertical",
+                }}
+              />
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => onApproveReview?.()}
+                  style={{ ...actionButtonStyle, borderColor: GOLD, color: GOLD }}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSendBackReview?.(reviewNote.trim())}
+                  style={actionButtonStyle}
+                >
+                  Send Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRequestChangesReview?.(reviewNote.trim())}
+                  style={actionButtonStyle}
+                >
+                  Request Changes
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {!isReviewMode && canChangeStatus
             ? getTaskStatusMenuItems(task.status).map((item) => (
                 <button
                   key={item.label}

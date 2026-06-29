@@ -20,6 +20,7 @@ const TASK_SELECT = `
   due_date,
   created_by,
   created_at,
+  completed_at,
   assignee:profiles!tasks_assigned_profile_fkey (
     id,
     full_name,
@@ -73,6 +74,7 @@ function mapTaskRow(row: Record<string, unknown>): Task {
     dueDate: (row.due_date as string) ?? undefined,
     createdBy: (row.created_by as string) ?? "",
     createdAt: (row.created_at as string) ?? "",
+    completedAt: (row.completed_at as string) ?? undefined,
   };
 }
 
@@ -98,6 +100,7 @@ function mapTaskRowFallback(row: Record<string, unknown>): Task {
     dueDate: (row.due_date as string) ?? undefined,
     createdBy: (row.created_by as string) ?? "",
     createdAt: (row.created_at as string) ?? "",
+    completedAt: (row.completed_at as string) ?? undefined,
   };
 }
 
@@ -116,6 +119,7 @@ const TASK_SELECT_FALLBACK = `
   due_date,
   created_by,
   created_at,
+  completed_at,
   assignee:profiles!tasks_assigned_profile_fkey (
     id,
     full_name,
@@ -158,6 +162,7 @@ export interface UseClubTasksReturn {
       linkedEventId: string | null;
       linkedMeetingId: string | null;
       linkedHiringListingId: string | null;
+      completedAt: string | null;
     }>,
   ) => Promise<boolean>;
   deleteTask: (taskId: string) => Promise<boolean>;
@@ -314,6 +319,7 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
         linkedEventId: string | null;
         linkedMeetingId: string | null;
         linkedHiringListingId: string | null;
+        completedAt: string | null;
       }>,
     ): Promise<boolean> => {
       const row: Record<string, unknown> = {};
@@ -329,6 +335,7 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
       if (fields.linkedHiringListingId !== undefined) {
         row.linked_hiring_listing_id = fields.linkedHiringListingId;
       }
+      if (fields.completedAt !== undefined) row.completed_at = fields.completedAt;
 
       const { data, error: err } = await supabase
         .from("tasks")

@@ -178,7 +178,7 @@ export interface Message {
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
-export type TaskStatus = "todo" | "in_progress" | "done" | "cancelled";
+export type TaskStatus = "todo" | "in_progress" | "done" | "cancelled" | "pending_review";
 export type TaskPriority = "low" | "medium" | "high";
 export type TaskType = "general" | "event" | "hiring" | "setup" | "meeting";
 
@@ -205,6 +205,7 @@ export interface Task {
   dueDate?: string;
   createdBy: string;
   createdAt: string;
+  completedAt?: string;
 }
 
 // ---------------------------------------------------------------------------

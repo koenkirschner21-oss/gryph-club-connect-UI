@@ -15,6 +15,8 @@ import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
+import { resolveTaskCompletionStatus, isTaskAwaitingReviewFromUser } from "../../lib/taskCompletion";
+import { addTaskComment } from "../../lib/taskComments";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import type { Task, TaskStatus, TaskPriority, TaskType } from "../../types";
 import {
@@ -770,7 +772,9 @@ export default function ClubTasksPage() {
     const activeTasks = enrichedTasks.filter((task) => task.status !== "cancelled");
 
     if (!canManageTasks) {
-      return activeTasks.filter((task) => task.assignedTo === user?.id);
+      return activeTasks.filter(
+      (task) => task.assignedTo === user?.id && task.status !== "pending_review",
+    );
     }
 
     if (activeTypeFilter === "event") {
@@ -786,7 +790,9 @@ export default function ClubTasksPage() {
       );
     }
 
-    return activeTasks.filter((task) => task.assignedTo === user?.id);
+    return activeTasks.filter(
+      (task) => task.assignedTo === user?.id && task.status !== "pending_review",
+    );
   }, [enrichedTasks, assignmentTab, user?.id, canManageTasks, activeTypeFilter]);
 
 
@@ -1065,10 +1071,59 @@ export default function ClubTasksPage() {
 
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     setStatusAnimatingId(taskId);
-    const ok = await updateTask(taskId, { status: newStatus });
+    const task = enrichedTasks.find((item) => item.id === taskId);
+    let resolvedStatus = newStatus;
+    let completedAt: string | null | undefined;
+
+    if (newStatus === "done" && task && user?.id) {
+      resolvedStatus = resolveTaskCompletionStatus(task, user.id);
+      if (resolvedStatus === "pending_review") {
+        completedAt = new Date().toISOString();
+      }
+    }
+
+    const ok = await updateTask(taskId, {
+      status: resolvedStatus,
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    });
     window.setTimeout(() => setStatusAnimatingId(null), 280);
     if (!ok) {
       setFeedback({ type: "error", text: "Failed to update status." });
+    } else if (resolvedStatus === "pending_review") {
+      setFeedback({ type: "success", text: "Task submitted for review." });
+    }
+  }
+
+  async function handleApproveReview(task: Task) {
+    const ok = await updateTask(task.id, {
+      status: "done",
+      completedAt: new Date().toISOString(),
+    });
+    if (ok) {
+      setFeedback({ type: "success", text: "Task approved." });
+      closeTaskDetail();
+    }
+  }
+
+  async function handleSendBackReview(task: Task, note: string) {
+    if (note.trim() && user?.id) {
+      await addTaskComment(task.id, user.id, note.trim());
+    }
+    const ok = await updateTask(task.id, { status: "in_progress", completedAt: null });
+    if (ok) {
+      setFeedback({ type: "success", text: "Task sent back." });
+      closeTaskDetail();
+    }
+  }
+
+  async function handleRequestChangesReview(task: Task, note: string) {
+    if (note.trim() && user?.id) {
+      await addTaskComment(task.id, user.id, `Change requested: ${note.trim()}`);
+    }
+    const ok = await updateTask(task.id, { status: "in_progress", completedAt: null });
+    if (ok) {
+      setFeedback({ type: "success", text: "Changes requested." });
+      closeTaskDetail();
     }
   }
 
@@ -1084,6 +1139,11 @@ export default function ClubTasksPage() {
   const detailTask = selectedTask
     ? enrichedTasks.find((t) => t.id === selectedTask.id) ?? selectedTask
     : null;
+
+  const isReviewingTask =
+    detailTask != null &&
+    user?.id != null &&
+    isTaskAwaitingReviewFromUser(detailTask, user.id);
 
   function assigneeAvatarFor(task: Task): string | undefined {
     if (task.assigneeAvatar) return task.assigneeAvatar;
@@ -1183,11 +1243,23 @@ export default function ClubTasksPage() {
   }
 
   function renderListSections(tasks: Task[]) {
-    const sectionOrder: TaskStatus[] = ["todo", "in_progress", "done"];
+    const sectionOrder: TaskStatus[] = [
+      "pending_review",
+      "todo",
+      "in_progress",
+      "done",
+    ];
     const sections = sectionOrder
       .map((status) => ({
         status,
-        tasks: tasks.filter((task) => task.status === status),
+        tasks: tasks.filter((task) => {
+          if (status === "pending_review") {
+            return user?.id
+              ? isTaskAwaitingReviewFromUser(task, user.id)
+              : false;
+          }
+          return task.status === status;
+        }),
       }))
       .filter((section) => section.tasks.length > 0);
 
@@ -1746,9 +1818,12 @@ export default function ClubTasksPage() {
           onClose={closeTaskDetail}
           assigneeName={assigneeDisplayFor(detailTask)}
           assigneeAvatarUrl={assigneeAvatarFor(detailTask)}
-          canEdit={canManageTasks}
-          canDelete={canManageTasks}
-          canChangeStatus={canManageTasks || detailTask.assignedTo === user?.id}
+          canEdit={canManageTasks && !isReviewingTask}
+          canDelete={canManageTasks && !isReviewingTask}
+          canChangeStatus={
+            !isReviewingTask &&
+            (canManageTasks || detailTask.assignedTo === user?.id)
+          }
           canComment={canManageTasks || detailTask.assignedTo === user?.id}
           commenterName={myCommenterName}
           userId={user?.id}
@@ -1761,6 +1836,12 @@ export default function ClubTasksPage() {
             closeTaskDetail();
           }}
           onStatusChange={(status) => void handleStatusChange(detailTask.id, status)}
+          isReviewMode={isReviewingTask}
+          onApproveReview={() => void handleApproveReview(detailTask)}
+          onSendBackReview={(note) => void handleSendBackReview(detailTask, note)}
+          onRequestChangesReview={(note) =>
+            void handleRequestChangesReview(detailTask, note)
+          }
         />
       ) : null}
 

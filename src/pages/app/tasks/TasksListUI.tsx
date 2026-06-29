@@ -466,16 +466,21 @@ export function TasksListColumnHeaders() {
   );
 }
 
-const sectionUnderlineColor: Record<"todo" | "in_progress" | "done", string> = {
+const sectionUnderlineColor: Record<
+  "todo" | "in_progress" | "done" | "pending_review",
+  string
+> = {
   todo: ACCENT_RED,
   in_progress: GOLD,
   done: "#555555",
+  pending_review: GOLD,
 };
 
-const sectionLabels: Record<"todo" | "in_progress" | "done", string> = {
+const sectionLabels: Record<"todo" | "in_progress" | "done" | "pending_review", string> = {
   todo: "To Do",
   in_progress: "In Progress",
   done: "Done",
+  pending_review: "Needs Review",
 };
 
 export function TasksListSectionHeader({
@@ -484,7 +489,7 @@ export function TasksListSectionHeader({
   nextDueLabel,
   nextDueOverdue,
 }: {
-  sectionStatus: "todo" | "in_progress" | "done";
+  sectionStatus: "todo" | "in_progress" | "done" | "pending_review";
   count: number;
   nextDueLabel?: string | null;
   nextDueOverdue?: boolean;

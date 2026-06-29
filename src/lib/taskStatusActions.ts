@@ -5,6 +5,14 @@ export interface TaskStatusMenuItem {
   status: TaskStatus;
 }
 
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  todo: "To Do",
+  in_progress: "In Progress",
+  done: "Done",
+  cancelled: "Cancelled",
+  pending_review: "Pending Review",
+};
+
 /** Status transitions available from list/detail menus and modals. */
 export function getTaskStatusMenuItems(current: TaskStatus): TaskStatusMenuItem[] {
   if (current === "cancelled") return [];
@@ -19,6 +27,10 @@ export function getTaskStatusMenuItems(current: TaskStatus): TaskStatusMenuItem[
   if (current === "in_progress") {
     items.push({ label: "Move to To Do", status: "todo" });
     items.push({ label: "Mark Complete", status: "done" });
+  }
+
+  if (current === "pending_review") {
+    return [];
   }
 
   if (current === "done") {
