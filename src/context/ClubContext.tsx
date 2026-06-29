@@ -14,6 +14,14 @@ import {
 } from "../lib/clubJoinUtils";
 import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { parseClubPermissions } from "../lib/clubPermissions";
+import {
+  extractEmbeddedRequestMetadata,
+  readClubContactEmailFromRow,
+  readClubLongDescriptionFromRow,
+  readClubMeetingLocationFromRow,
+  readClubMeetingScheduleFromRow,
+  sanitizeLongDescriptionForSave,
+} from "../lib/clubRowMapping";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club, MemberRole, JoinAnswer } from "../types";
@@ -38,17 +46,19 @@ function readStoredActiveClubId(): string | null {
 
 /** Map a Supabase clubs row to our Club type. */
 function mapRow(row: Record<string, unknown>): Club {
+  const embeddedMeta = extractEmbeddedRequestMetadata(row);
+
   return {
     id: row.id as string,
     name: (row.name as string) ?? "",
     slug: (row.slug as string) ?? (row.id as string),
     description: (row.description as string) ?? "",
     shortDescription: (row.short_description as string) ?? undefined,
-    longDescription: (row.long_description as string) ?? undefined,
+    longDescription: readClubLongDescriptionFromRow(row),
     category: (row.category as string) ?? "",
     memberCount: (row.member_count as number) ?? 0,
-    meetingSchedule: (row.meeting_schedule as string) ?? "",
-    meetingLocation: (row.meeting_location as string) ?? undefined,
+    meetingSchedule: readClubMeetingScheduleFromRow(row, embeddedMeta),
+    meetingLocation: readClubMeetingLocationFromRow(row, embeddedMeta),
     location: (row.location as string) ?? "",
     imageUrl:
       (row.image_url as string) ??
@@ -58,7 +68,7 @@ function mapRow(row: Record<string, unknown>): Club {
     bannerUrl: (row.banner_url as string) ?? undefined,
     brandColor: (row.brand_color as string) ?? undefined,
     tags: normalizeTags(row.tags as string | string[] | null | undefined),
-    contactEmail: (row.contact_email as string) ?? "",
+    contactEmail: readClubContactEmailFromRow(row, embeddedMeta),
     isPublic: (row.is_public as boolean) ?? true,
     isFeatured: (row.is_featured as boolean) ?? false,
     isVerified: (row.is_verified as boolean) ?? false,
@@ -491,7 +501,8 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.shortDescription !== undefined)
         row.short_description = fields.shortDescription;
       if (fields.longDescription !== undefined)
-        row.long_description = fields.longDescription;
+        row.long_description =
+          sanitizeLongDescriptionForSave(fields.longDescription) ?? null;
       if (fields.category !== undefined) row.category = fields.category;
       if (fields.abbreviation !== undefined)
         row.abbreviation = fields.abbreviation;

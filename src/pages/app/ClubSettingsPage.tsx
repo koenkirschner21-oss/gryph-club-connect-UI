@@ -12,6 +12,7 @@ import { Users, ClipboardList, Link2, Bookmark, Camera, Globe, Check, Lock, X } 
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
+import { CLUB_LONG_DESCRIPTION_PLACEHOLDER } from "../../lib/clubRowMapping";
 import { supabase } from "../../lib/supabaseClient";
 import {
   defaultJoinQuestions,
@@ -1079,8 +1080,11 @@ export default function ClubSettingsPage() {
 
   useEffect(() => {
     if (!club) return;
-    setSavedSnapshot(buildSnapshot());
-  }, [club?.id, buildSnapshot]);
+    const snapshot = buildSnapshot();
+    applySnapshot(snapshot);
+    setSavedSnapshot(snapshot);
+    setHasUnsavedChanges(false);
+  }, [club?.id]);
 
   useEffect(() => {
     const section = searchParams.get("section");
@@ -1791,7 +1795,7 @@ export default function ClubSettingsPage() {
               value={longDescription}
               onChange={setLongDescription}
               onDirty={markDirty}
-              placeholder="A detailed description of your club, its mission, and activities…"
+              placeholder={CLUB_LONG_DESCRIPTION_PLACEHOLDER}
               maxLength={1000}
             />
             <p

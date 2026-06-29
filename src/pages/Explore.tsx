@@ -11,6 +11,13 @@ import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
 import { sortClubsByMemberActivity } from "../lib/clubUtils";
+import {
+  extractEmbeddedRequestMetadata,
+  readClubContactEmailFromRow,
+  readClubLongDescriptionFromRow,
+  readClubMeetingLocationFromRow,
+  readClubMeetingScheduleFromRow,
+} from "../lib/clubRowMapping";
 import { supabase } from "../lib/supabaseClient";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import ExploreClubCard from "../components/ui/ExploreClubCard";
@@ -303,17 +310,19 @@ function HorizontalClubRow({
 }
 
 function mapPublicClubRow(row: Record<string, unknown>): Club {
+  const embeddedMeta = extractEmbeddedRequestMetadata(row);
+
   return {
     id: row.id as string,
     name: (row.name as string) ?? "",
     slug: (row.slug as string) ?? (row.id as string),
     description: (row.description as string) ?? "",
     shortDescription: (row.short_description as string) ?? undefined,
-    longDescription: (row.long_description as string) ?? undefined,
+    longDescription: readClubLongDescriptionFromRow(row),
     category: (row.category as string) ?? "",
     memberCount: (row.member_count as number) ?? 0,
-    meetingSchedule: (row.meeting_schedule as string) ?? "",
-    meetingLocation: (row.meeting_location as string) ?? undefined,
+    meetingSchedule: readClubMeetingScheduleFromRow(row, embeddedMeta),
+    meetingLocation: readClubMeetingLocationFromRow(row, embeddedMeta),
     location: (row.location as string) ?? "",
     imageUrl:
       (row.image_url as string) ??
@@ -323,7 +332,7 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
     bannerUrl: (row.banner_url as string) ?? undefined,
     brandColor: (row.brand_color as string) ?? undefined,
     tags: normalizeTags(row.tags as string | string[] | null | undefined),
-    contactEmail: (row.contact_email as string) ?? "",
+    contactEmail: readClubContactEmailFromRow(row, embeddedMeta),
     isPublic: (row.is_public as boolean) ?? true,
     isFeatured: (row.is_featured as boolean) ?? false,
     isVerified: (row.is_verified as boolean) ?? false,
