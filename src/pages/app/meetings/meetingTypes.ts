@@ -1,4 +1,5 @@
 import type { InviteeGroup, MeetingFormat, MeetingType } from "../../../lib/meetingMetadata";
+import type { TaskPriority } from "../../../types";
 
 export type MeetingStatus = "upcoming" | "completed" | "cancelled";
 export type RecurrencePattern = "weekly" | "biweekly" | "monthly";
@@ -20,12 +21,15 @@ export interface ClubMeeting {
   createdBy: string | null;
   createdAt: string;
   actionItemCount: number;
+  openActionItemCount: number;
 }
 
 export interface MeetingActionItem {
   id: string;
   meetingId: string;
   title: string;
+  description: string;
+  priority: TaskPriority;
   assigneeId: string | null;
   assigneeName: string | null;
   dueDate: string | null;

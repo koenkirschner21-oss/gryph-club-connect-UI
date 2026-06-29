@@ -27,9 +27,10 @@ import {
 } from "./meetings/meetingUtils";
 import { parseMeetingNotes, resolveInviteeUserIds } from "../../lib/meetingMetadata";
 import type { MeetingType } from "../../lib/meetingMetadata";
+import { meetingNeedsRecap, meetingPrepStatus } from "./meetings/meetingDisplayHelpers";
 import { supabase } from "../../lib/supabaseClient";
 
-type PageTab = "upcoming" | "past" | "my_actions";
+type PageTab = "upcoming" | "past" | "follow_ups";
 
 export default function ClubMeetingsPage() {
   const { clubId, meetingId } = useParams<{ clubId: string; meetingId?: string }>();
@@ -44,7 +45,7 @@ export default function ClubMeetingsPage() {
   const canManageMeetings =
     memberAccess.isPresident || memberAccess.can("manage_meetings");
   const [meetings, setMeetings] = useState<ClubMeeting[]>([]);
-  const [myActionItems, setMyActionItems] = useState<MeetingActionItem[]>([]);
+  const [clubActionItems, setClubActionItems] = useState<MeetingActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<PageTab>("upcoming");
   const [showPast, setShowPast] = useState(false);
@@ -99,65 +100,80 @@ export default function ClubMeetingsPage() {
     const rows = data ?? [];
     const meetingIds = rows.map((row) => row.id as string);
     const counts: Record<string, number> = {};
+    const openCounts: Record<string, number> = {};
 
     if (meetingIds.length > 0) {
       const { data: items } = await supabase
         .from("meeting_action_items")
-        .select("meeting_id")
+        .select("meeting_id, status")
         .in("meeting_id", meetingIds);
 
       for (const item of items ?? []) {
         const id = item.meeting_id as string;
         counts[id] = (counts[id] ?? 0) + 1;
+        if ((item.status as string) !== "completed") {
+          openCounts[id] = (openCounts[id] ?? 0) + 1;
+        }
       }
     }
 
     setMeetings(
       rows.map((row) =>
-        mapMeetingRow(row as Record<string, unknown>, counts[row.id as string] ?? 0),
+        mapMeetingRow(
+          row as Record<string, unknown>,
+          counts[row.id as string] ?? 0,
+          openCounts[row.id as string] ?? 0,
+        ),
       ),
     );
     setLoading(false);
   }, [clubId]);
 
-  const loadMyActionItems = useCallback(async () => {
-    if (!clubId || !user?.id) return;
+  const loadClubActionItems = useCallback(async () => {
+    if (!clubId) return;
+
+    const { data: meetingRows } = await supabase
+      .from("club_meetings")
+      .select("id")
+      .eq("club_id", clubId);
+
+    const meetingIds = (meetingRows ?? []).map((row) => row.id as string);
+    if (meetingIds.length === 0) {
+      setClubActionItems([]);
+      return;
+    }
 
     const { data, error } = await supabase
       .from("meeting_action_items")
       .select(
-        `id, meeting_id, title, assignee_id, due_date, status, linked_task_id, created_at,
+        `id, meeting_id, title, description, priority, assignee_id, due_date, status, linked_task_id, created_at,
          assignee:profiles!meeting_action_items_assignee_profile_fkey ( full_name ),
          meeting:club_meetings!meeting_action_items_meeting_id_fkey ( title, club_id )`,
       )
-      .eq("assignee_id", user.id)
+      .in("meeting_id", meetingIds)
       .order("created_at", { ascending: false });
 
     if (error) {
       const { data: fallback } = await supabase
         .from("meeting_action_items")
         .select("*")
-        .eq("assignee_id", user.id)
+        .in("meeting_id", meetingIds)
         .order("created_at", { ascending: false });
-      setMyActionItems((fallback ?? []).map((row) => mapActionItemRow(row as Record<string, unknown>)));
+      setClubActionItems(
+        (fallback ?? []).map((row) => mapActionItemRow(row as Record<string, unknown>)),
+      );
       return;
     }
 
-    const filtered = (data ?? []).filter((row) => {
-      const meetingRaw = row.meeting;
-      const meeting = Array.isArray(meetingRaw) ? meetingRaw[0] : meetingRaw;
-      return (meeting as { club_id?: string } | null)?.club_id === clubId;
-    });
-
-    setMyActionItems(filtered.map((row) => mapActionItemRow(row as Record<string, unknown>)));
-  }, [clubId, user?.id]);
+    setClubActionItems((data ?? []).map((row) => mapActionItemRow(row as Record<string, unknown>)));
+  }, [clubId]);
 
   useEffect(() => {
     if (!meetingId || meetingId === "new") {
       void loadMeetings();
-      void loadMyActionItems();
+      void loadClubActionItems();
     }
-  }, [loadMeetings, loadMyActionItems, meetingId]);
+  }, [loadMeetings, loadClubActionItems, meetingId]);
 
   useEffect(() => {
     if (isCreateRoute && isPrivileged) {
@@ -199,11 +215,21 @@ export default function ClubMeetingsPage() {
     ? upcomingMeetings.slice(1)
     : upcomingMeetings;
 
-  const openActionItemCount = useMemo(
+  const myActionItems = useMemo(() => {
+    if (!user?.id) return clubActionItems;
+    return clubActionItems.filter((item) => item.assigneeId === user.id);
+  }, [clubActionItems, user?.id]);
+
+  const openFollowUps = useMemo(
+    () => clubActionItems.filter((item) => item.status !== "completed"),
+    [clubActionItems],
+  );
+
+  const openFollowUpCount = useMemo(
     () =>
       visibleMeetings
         .filter((meeting) => meeting.status !== "cancelled")
-        .reduce((sum, meeting) => sum + meeting.actionItemCount, 0),
+        .reduce((sum, meeting) => sum + meeting.openActionItemCount, 0),
     [visibleMeetings],
   );
 
@@ -232,20 +258,23 @@ export default function ClubMeetingsPage() {
     }).length;
   }, [myActionItems]);
 
-  const completedMeetingsCount = useMemo(
-    () => pastMeetings.filter((meeting) => meeting.status !== "cancelled").length,
+  const needsRecapCount = useMemo(
+    () => pastMeetings.filter((meeting) => meetingNeedsRecap(meeting)).length,
     [pastMeetings],
   );
 
-  const recentNotesMeetings = useMemo(() => {
+  const needsRecapMeetings = useMemo(() => {
     return visibleMeetings
-      .filter((meeting) => {
-        const { meetingNotes } = parseMeetingNotes(meeting.notes);
-        return Boolean(meetingNotes.trim());
-      })
+      .filter((meeting) => meetingNeedsRecap(meeting))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 3);
   }, [visibleMeetings]);
+
+  const upcomingPrepMeetings = useMemo(() => {
+    return upcomingMeetings
+      .filter((meeting) => meetingPrepStatus(meeting) === "Needs prep")
+      .slice(0, 3);
+  }, [upcomingMeetings]);
 
   const openCreate = (type?: MeetingType) => {
     const params = new URLSearchParams();
@@ -404,16 +433,16 @@ export default function ClubMeetingsPage() {
         <MeetingsStatCards
           upcomingCount={upcomingMeetings.length}
           nextMeeting={nextMeeting}
-          openActionItemCount={openActionItemCount}
+          openFollowUpCount={openFollowUpCount}
           dueThisWeekCount={dueThisWeekCount}
-          completedCount={completedMeetingsCount}
+          needsRecapCount={needsRecapCount}
           isMobile={isMobile}
         />
       ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "24px" }}>
         <TabButton active={activeTab === "upcoming"} onClick={() => setActiveTab("upcoming")}>
-          Upcoming Meetings
+          Upcoming
         </TabButton>
         <TabButton
           active={activeTab === "past"}
@@ -422,10 +451,10 @@ export default function ClubMeetingsPage() {
             setShowPast(false);
           }}
         >
-          Past Meetings
+          Past
         </TabButton>
-        <TabButton active={activeTab === "my_actions"} onClick={() => setActiveTab("my_actions")}>
-          My Action Items
+        <TabButton active={activeTab === "follow_ups"} onClick={() => setActiveTab("follow_ups")}>
+          Follow-Ups
         </TabButton>
       </div>
 
@@ -433,8 +462,8 @@ export default function ClubMeetingsPage() {
         <div className="flex justify-center py-12">
           <Spinner label="Loading meetings…" />
         </div>
-      ) : activeTab === "my_actions" ? (
-        <MyActionItemsSection clubId={clubId} items={myActionItems} />
+      ) : activeTab === "follow_ups" ? (
+        <FollowUpsSection clubId={clubId} items={openFollowUps} />
       ) : activeTab === "past" ? (
         <section>
           <button
@@ -501,14 +530,16 @@ export default function ClubMeetingsPage() {
           isPrivileged={isPrivileged}
           isMobile={isMobile}
           actionItemsDueSoon={actionItemsDueSoon}
-          recentNotesMeetings={recentNotesMeetings}
+          needsRecapMeetings={needsRecapMeetings}
+          upcomingPrepMeetings={upcomingPrepMeetings}
           onEdit={openEdit}
           onCancel={requestCancelMeeting}
-          onViewAllActions={() => setActiveTab("my_actions")}
-          onViewAllNotes={() => {
+          onViewAllActions={() => setActiveTab("follow_ups")}
+          onViewAllRecap={() => {
             setActiveTab("past");
             setShowPast(true);
           }}
+          onViewAllPrep={() => setActiveTab("upcoming")}
         />
       )}
 
@@ -605,7 +636,7 @@ function EmptyMeetingsState({
   );
 }
 
-function MyActionItemsSection({
+function FollowUpsSection({
   clubId,
   items,
 }: {
@@ -615,10 +646,16 @@ function MyActionItemsSection({
   if (items.length === 0) {
     return (
       <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-        No action items assigned to you.
+        No open follow-ups from club meetings.
       </p>
     );
   }
+
+  const priorityColor = (priority: MeetingActionItem["priority"]) => {
+    if (priority === "high") return "#E51937";
+    if (priority === "low") return "#777777";
+    return "#FFC429";
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -632,13 +669,42 @@ function MyActionItemsSection({
             padding: "14px 16px",
           }}
         >
-          <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
-            {item.title}
-          </p>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "8px",
+              marginBottom: "6px",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
+              {item.title}
+            </p>
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 600,
+                color: priorityColor(item.priority),
+                textTransform: "uppercase",
+              }}
+            >
+              {item.priority}
+            </span>
+          </div>
+          {item.description ? (
+            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#999999", lineHeight: 1.45 }}>
+              {item.description}
+            </p>
+          ) : null}
           <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#777777" }}>
-            {item.meetingTitle ? `From: ${item.meetingTitle}` : "Meeting action item"}
+            {item.assigneeName ?? "Unassigned"}
             {item.dueDate ? ` · Due ${item.dueDate}` : ""}
-            {item.status === "completed" ? " · Completed" : ""}
+            {item.linkedTaskId ? " · Linked task" : ""}
+          </p>
+          <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#666666" }}>
+            Source: {item.meetingTitle ?? "Meeting"}
           </p>
           <Link
             to={`/app/clubs/${clubId}/meetings/${item.meetingId}`}

@@ -95,6 +95,7 @@ export function emptyCreateForm(presetType?: MeetingType): MeetingCreateFormStat
 export function mapMeetingRow(
   row: Record<string, unknown>,
   actionItemCount = 0,
+  openActionItemCount = actionItemCount,
 ): ClubMeeting {
   return {
     id: row.id as string,
@@ -112,6 +113,7 @@ export function mapMeetingRow(
     createdBy: (row.created_by as string | null) ?? null,
     createdAt: (row.created_at as string) ?? "",
     actionItemCount,
+    openActionItemCount,
   };
 }
 
@@ -120,10 +122,15 @@ export function mapActionItemRow(row: Record<string, unknown>): import("./meetin
   const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw;
   const meetingRaw = row.meeting;
   const meeting = Array.isArray(meetingRaw) ? meetingRaw[0] : meetingRaw;
+  const priorityRaw = (row.priority as string | null) ?? "medium";
+  const priority =
+    priorityRaw === "high" || priorityRaw === "low" ? priorityRaw : "medium";
   return {
     id: row.id as string,
     meetingId: row.meeting_id as string,
     title: (row.title as string) ?? "",
+    description: (row.description as string | null) ?? "",
+    priority,
     assigneeId: (row.assignee_id as string | null) ?? null,
     assigneeName: ((profile as { full_name?: string } | null)?.full_name ?? null),
     dueDate: (row.due_date as string | null) ?? null,

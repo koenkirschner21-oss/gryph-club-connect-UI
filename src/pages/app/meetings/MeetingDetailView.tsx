@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ExternalLink, MapPin, Trash2, Video } from "lucide-react";
+import { ArrowLeft, ExternalLink, Link2, MapPin, Trash2, Users, Video } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useClubMembers } from "../../../hooks/useClubMembers";
 import { useIsMobile } from "../../../hooks/useWindowWidth";
@@ -9,13 +9,19 @@ import {
   isUserInvitedToMeeting,
   parseAgendaItems,
   parseMeetingNotes,
+  resolveInviteeUserIds,
   serializeAgendaItems,
   serializeMeetingNotes,
   type MeetingMetadata,
 } from "../../../lib/meetingMetadata";
 import { supabase } from "../../../lib/supabaseClient";
+import type { TaskPriority } from "../../../types";
 import { MeetingTypeBadge } from "./MeetingCard";
 import { MeetingDateBadge } from "./MeetingsListUI";
+import {
+  canJoinMeeting,
+  formatLinkLocationStatus,
+} from "./meetingDisplayHelpers";
 import {
   CARD_BG,
   CARD_BORDER,
@@ -29,7 +35,6 @@ import {
   formatMeetingDateTime,
   mapActionItemRow,
   mapMeetingRow,
-  meetingLinkButtonLabel,
   meetingTypeLabel,
 } from "./meetingUtils";
 
@@ -100,6 +105,8 @@ export function MeetingDetailView({
   const [decisionsDraft, setDecisionsDraft] = useState("");
   const [addingItem, setAddingItem] = useState(false);
   const [newItemTitle, setNewItemTitle] = useState("");
+  const [newItemDescription, setNewItemDescription] = useState("");
+  const [newItemPriority, setNewItemPriority] = useState<TaskPriority>("medium");
   const [newItemAssignee, setNewItemAssignee] = useState("");
   const [newItemDueDate, setNewItemDueDate] = useState("");
   const [convertingId, setConvertingId] = useState<string | null>(null);
@@ -130,12 +137,16 @@ export function MeetingDetailView({
       return;
     }
 
-    const { count } = await supabase
+    const { data: itemRows } = await supabase
       .from("meeting_action_items")
-      .select("id", { count: "exact", head: true })
+      .select("status")
       .eq("meeting_id", meetingId);
 
-    const mapped = mapMeetingRow(data as Record<string, unknown>, count ?? 0);
+    const total = itemRows?.length ?? 0;
+    const open =
+      itemRows?.filter((row) => (row.status as string) !== "completed").length ?? 0;
+
+    const mapped = mapMeetingRow(data as Record<string, unknown>, total, open);
     const parsedNotes = parseMeetingNotes(mapped.notes);
     setMeeting(mapped);
     setMetadata(parsedNotes.metadata);
@@ -149,7 +160,7 @@ export function MeetingDetailView({
     const { data, error } = await supabase
       .from("meeting_action_items")
       .select(
-        `id, meeting_id, title, assignee_id, due_date, status, linked_task_id, created_at,
+        `id, meeting_id, title, description, priority, assignee_id, due_date, status, linked_task_id, created_at,
          assignee:profiles!meeting_action_items_assignee_profile_fkey ( full_name )`,
       )
       .eq("meeting_id", meetingId)
@@ -228,11 +239,15 @@ export function MeetingDetailView({
     await supabase.from("meeting_action_items").insert({
       meeting_id: meetingId,
       title: newItemTitle.trim(),
+      description: newItemDescription.trim(),
+      priority: newItemPriority,
       assignee_id: newItemAssignee || null,
       due_date: newItemDueDate || null,
     });
     setAddingItem(false);
     setNewItemTitle("");
+    setNewItemDescription("");
+    setNewItemPriority("medium");
     setNewItemAssignee("");
     setNewItemDueDate("");
     void loadActionItems();
@@ -248,9 +263,11 @@ export function MeetingDetailView({
       .insert({
         club_id: clubId,
         title: item.title,
-        description: `From meeting: ${meeting.title}`,
+        description: item.description?.trim()
+          ? item.description
+          : `From meeting: ${meeting.title}`,
         status: "todo",
-        priority: "medium",
+        priority: item.priority,
         task_type: "meeting",
         linked_meeting_id: meetingId,
         assigned_to: item.assigneeId,
@@ -302,8 +319,32 @@ export function MeetingDetailView({
     metadata.customInviteeIds,
   );
 
+  const invitedMemberIds = resolveInviteeUserIds(
+    metadata.inviteeGroup,
+    members,
+    metadata.customInviteeIds ?? [],
+  );
+  const invitedMembers = activeMembers.filter((member) =>
+    invitedMemberIds.includes(member.userId),
+  );
+
+  const meetingFormat = metadata.format ?? "in_person";
+  const showJoin = canJoinMeeting(meeting, meetingFormat);
+  const formatLabel =
+    meetingFormat === "online"
+      ? "Online"
+      : meetingFormat === "hybrid"
+        ? "Hybrid"
+        : "In-Person";
+
+  const priorityColor = (priority: TaskPriority) => {
+    if (priority === "high") return "#E51937";
+    if (priority === "low") return "#777777";
+    return "#FFC429";
+  };
+
   return (
-    <div style={{ padding: "24px 20px", maxWidth: "1100px" }}>
+    <div style={{ padding: isMobile ? "16px" : "24px", width: "100%" }}>
       <button
         type="button"
         onClick={() => navigate(`/app/clubs/${clubId}/meetings`)}
@@ -359,18 +400,17 @@ export function MeetingDetailView({
             <p style={{ margin: 0, fontSize: "14px", color: "#999999" }}>
               {formatMeetingDateTime(meeting.date)}
               {" · "}
-              {metadata.format === "online"
-                ? "Online"
-                : metadata.format === "hybrid"
-                  ? "Hybrid"
-                  : "In-Person"}
+              {formatLabel}
               {" · "}
               {inviteeLabel}
+            </p>
+            <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#777777" }}>
+              {formatLinkLocationStatus(meeting, meetingFormat)}
             </p>
           </div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          {meeting.meetingLink?.trim() ? (
+          {showJoin && meeting.meetingLink?.trim() ? (
             <a
               href={meeting.meetingLink}
               target="_blank"
@@ -384,7 +424,7 @@ export function MeetingDetailView({
               }}
             >
               <ExternalLink size={14} aria-hidden />
-              {meetingLinkButtonLabel(meeting.meetingLink)}
+              Join Meeting
             </a>
           ) : null}
           {isPrivileged ? (
@@ -398,8 +438,9 @@ export function MeetingDetailView({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.4fr) minmax(0, 1fr)",
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.5fr) minmax(0, 1fr)",
           gap: "16px",
+          alignItems: "start",
         }}
       >
         <div>
@@ -528,53 +569,104 @@ export function MeetingDetailView({
                   <div
                     key={item.id}
                     style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      gap: "12px",
                       padding: "12px 0",
                       borderTop: `1px solid ${CARD_BORDER}`,
                     }}
                   >
-                    {isPrivileged ? (
-                      <input
-                        type="checkbox"
-                        checked={item.status === "completed"}
-                        onChange={() => void toggleActionItem(item)}
-                      />
-                    ) : null}
-                    <div style={{ flex: 1, minWidth: "160px" }}>
-                      <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
-                        {item.title}
-                      </p>
-                      <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
-                        {item.assigneeName ?? "Unassigned"}
-                        {item.dueDate ? ` · Due ${item.dueDate}` : ""}
-                      </p>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "flex-start",
+                        gap: "12px",
+                      }}
+                    >
+                      {isPrivileged ? (
+                        <input
+                          type="checkbox"
+                          checked={item.status === "completed"}
+                          onChange={() => void toggleActionItem(item)}
+                          style={{ marginTop: "4px" }}
+                        />
+                      ) : null}
+                      <div style={{ flex: 1, minWidth: "160px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            gap: "8px",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
+                            {item.title}
+                          </p>
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              color: priorityColor(item.priority),
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {item.priority}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              color: item.status === "completed" ? "#4ade80" : "#999999",
+                            }}
+                          >
+                            {item.status === "completed" ? "Done" : "Open"}
+                          </span>
+                        </div>
+                        {item.description ? (
+                          <p
+                            style={{
+                              margin: "0 0 6px",
+                              fontSize: "12px",
+                              color: "#999999",
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {item.description}
+                          </p>
+                        ) : null}
+                        <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#777777" }}>
+                          {item.assigneeName ?? "Unassigned"}
+                          {item.dueDate ? ` · Due ${item.dueDate}` : ""}
+                        </p>
+                        <p style={{ margin: 0, fontSize: "11px", color: "#666666" }}>
+                          Source: {meeting.title}
+                        </p>
+                      </div>
+                      {item.linkedTaskId ? (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#4ade80",
+                            border: "1px solid #22c55e",
+                            borderRadius: "4px",
+                            padding: "2px 8px",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Linked Task ✓
+                        </span>
+                      ) : isPrivileged ? (
+                        <button
+                          type="button"
+                          style={outlineButtonStyle}
+                          disabled={convertingId === item.id}
+                          onClick={() => void convertToTask(item)}
+                        >
+                          {convertingId === item.id ? "Converting…" : "Convert to Task"}
+                        </button>
+                      ) : null}
                     </div>
-                    {item.linkedTaskId ? (
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: "#4ade80",
-                          border: "1px solid #22c55e",
-                          borderRadius: "4px",
-                          padding: "2px 8px",
-                        }}
-                      >
-                        Linked Task ✓
-                      </span>
-                    ) : isPrivileged ? (
-                      <button
-                        type="button"
-                        style={outlineButtonStyle}
-                        disabled={convertingId === item.id}
-                        onClick={() => void convertToTask(item)}
-                      >
-                        {convertingId === item.id ? "Converting…" : "Convert to Task"}
-                      </button>
-                    ) : null}
                   </div>
                 ))}
               </div>
@@ -585,9 +677,24 @@ export function MeetingDetailView({
                   style={inputStyle}
                   value={newItemTitle}
                   onChange={(e) => setNewItemTitle(e.target.value)}
-                  placeholder="Action item title"
+                  placeholder="Follow-up title"
                 />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <textarea
+                  style={{ ...inputStyle, minHeight: "72px", resize: "vertical" }}
+                  value={newItemDescription}
+                  onChange={(e) => setNewItemDescription(e.target.value)}
+                  placeholder="Optional description"
+                />
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: "10px" }}>
+                  <select
+                    style={inputStyle}
+                    value={newItemPriority}
+                    onChange={(e) => setNewItemPriority(e.target.value as TaskPriority)}
+                  >
+                    <option value="high">High priority</option>
+                    <option value="medium">Medium priority</option>
+                    <option value="low">Low priority</option>
+                  </select>
                   <select
                     style={inputStyle}
                     value={newItemAssignee}
@@ -607,6 +714,9 @@ export function MeetingDetailView({
                     onChange={(e) => setNewItemDueDate(e.target.value)}
                   />
                 </div>
+                <p style={{ margin: 0, fontSize: "11px", color: "#666666" }}>
+                  Source meeting: {meeting.title}
+                </p>
                 <button
                   type="button"
                   style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}
@@ -630,19 +740,13 @@ export function MeetingDetailView({
               <DetailRow label="Date & time" value={formatMeetingDateTime(meeting.date)} />
               <DetailRow
                 label="Format"
-                value={
-                  metadata.format === "online"
-                    ? "Online"
-                    : metadata.format === "hybrid"
-                      ? "Hybrid"
-                      : "In-Person"
-                }
+                value={formatLabel}
               />
               <DetailRow label="Invitees" value={inviteeLabel} />
-              {meeting.meetingLink ? (
-                <DetailRow label="Meeting link" value={meeting.meetingLink} />
-              ) : null}
-              {meeting.location ? <DetailRow label="Location" value={meeting.location} /> : null}
+              <DetailRow
+                label="Open follow-ups"
+                value={String(meeting.openActionItemCount)}
+              />
             </dl>
             {metadata.preparation ? (
               <div style={{ marginTop: "12px" }}>
@@ -655,11 +759,49 @@ export function MeetingDetailView({
           </section>
 
           <section style={sectionCardStyle}>
+            <h2
+              style={{
+                margin: "0 0 12px",
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <Users size={16} aria-hidden />
+              Invitees / Attendees
+            </h2>
+            {invitedMembers.length === 0 ? (
+              <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>No invitees listed.</p>
+            ) : (
+              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {invitedMembers.map((member) => (
+                  <li
+                    key={member.userId}
+                    style={{
+                      padding: "8px 0",
+                      borderBottom: "1px solid #222222",
+                      fontSize: "13px",
+                      color: "#cccccc",
+                    }}
+                  >
+                    {formatNameWithRoleTitle(member.fullName ?? "Member", member.roleTitle)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section style={sectionCardStyle}>
             <h2 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
               Linked Work
             </h2>
             <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#cccccc" }}>
               {actionItems.length} action item{actionItems.length === 1 ? "" : "s"}
+              {" · "}
+              {meeting.openActionItemCount} open
             </p>
             <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
               {convertedCount} converted task{convertedCount === 1 ? "" : "s"}
@@ -684,20 +826,89 @@ export function MeetingDetailView({
             </section>
           ) : null}
 
-          {meeting.location && metadata.format !== "online" ? (
+          {meetingFormat !== "online" && meeting.location?.trim() ? (
             <section style={{ ...sectionCardStyle, background: CARD_BG }}>
-              <p style={{ margin: 0, fontSize: "13px", color: "#777777", display: "flex", gap: "8px" }}>
+              <h2
+                style={{
+                  margin: "0 0 10px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
                 <MapPin size={16} aria-hidden />
+                Location
+              </h2>
+              <p style={{ margin: 0, fontSize: "13px", color: "#cccccc", lineHeight: 1.45 }}>
                 {meeting.location}
               </p>
             </section>
-          ) : null}
-          {metadata.format !== "in_person" && meeting.meetingLink ? (
+          ) : meetingFormat !== "online" ? (
             <section style={{ ...sectionCardStyle, background: CARD_BG }}>
               <p style={{ margin: 0, fontSize: "13px", color: "#777777", display: "flex", gap: "8px" }}>
-                <Video size={16} aria-hidden />
-                Online meeting
+                <MapPin size={16} aria-hidden />
+                Location missing
               </p>
+            </section>
+          ) : null}
+          {meetingFormat !== "in_person" ? (
+            <section style={{ ...sectionCardStyle, background: CARD_BG }}>
+              <h2
+                style={{
+                  margin: "0 0 10px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <Video size={16} aria-hidden />
+                Meeting Link
+              </h2>
+              {meeting.meetingLink?.trim() ? (
+                <a
+                  href={meeting.meetingLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: "13px",
+                    color: "#E51937",
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  <Link2 size={14} aria-hidden />
+                  {meeting.meetingLink}
+                </a>
+              ) : (
+                <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>Meeting link missing</p>
+              )}
+              {showJoin && meeting.meetingLink?.trim() ? (
+                <a
+                  href={meeting.meetingLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    ...primaryButtonStyle,
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    marginTop: "12px",
+                  }}
+                >
+                  <ExternalLink size={14} aria-hidden />
+                  Join Meeting
+                </a>
+              ) : null}
             </section>
           ) : null}
         </div>
