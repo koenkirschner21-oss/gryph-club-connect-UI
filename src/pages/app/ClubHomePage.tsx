@@ -42,6 +42,7 @@ import {
 } from "../../lib/taskCompletion";
 import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import { addTaskComment } from "../../lib/taskComments";
+import { recordAnnouncementView } from "../../lib/postViews";
 import { supabase } from "../../lib/supabaseClient";
 import type {
   AccessLevel,
@@ -1268,6 +1269,11 @@ export default function ClubHomePage() {
   const { tasks, loading: tasksLoading, updateTask, deleteTask, createTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!selectedAnnouncement?.id || !user?.id) return;
+    void recordAnnouncementView(selectedAnnouncement.id, user.id);
+  }, [selectedAnnouncement?.id, user?.id]);
 
   const refetchClubData = useCallback(() => {
     if (!clubId) return;

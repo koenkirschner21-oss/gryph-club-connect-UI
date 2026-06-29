@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart2,
   Bookmark,
@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import { formatRelativeTime } from "../../../lib/formatRelativeTime";
 import { normalizeVisibility } from "../../../lib/contentVisibility";
+import {
+  fetchAnnouncementSeenList,
+  type AnnouncementSeenEntry,
+} from "../../../lib/postViews";
+import Spinner from "../../../components/ui/Spinner";
 import type { Post, Visibility } from "../../../types";
 
 const ACCENT_RED = "#E51937";
@@ -686,14 +691,49 @@ function menuItemButtonStyle(destructive = false): CSSProperties {
 }
 
 export function SeenListModal({
+  postId,
+  clubId,
   postTitle,
-  seenCount,
   onClose,
 }: {
+  postId: string;
+  clubId: string;
   postTitle: string;
-  seenCount: number;
   onClose: () => void;
 }) {
+  const [entries, setEntries] = useState<AnnouncementSeenEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSeenList() {
+      setLoading(true);
+      const rows = await fetchAnnouncementSeenList(postId, clubId);
+      if (!cancelled) {
+        setEntries(rows);
+        setLoading(false);
+      }
+    }
+
+    void loadSeenList();
+    return () => {
+      cancelled = true;
+    };
+  }, [postId, clubId]);
+
+  function formatViewedAt(iso: string): string {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "Unknown time";
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
   return (
     <div
       role="dialog"
@@ -716,8 +756,11 @@ export function SeenListModal({
           border: `1px solid ${CARD_BORDER}`,
           borderRadius: "12px",
           padding: "24px",
-          maxWidth: "400px",
+          maxWidth: "480px",
           width: "100%",
+          maxHeight: "min(70vh, 520px)",
+          display: "flex",
+          flexDirection: "column",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -725,11 +768,45 @@ export function SeenListModal({
           Seen List
         </h3>
         <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 16px" }}>{postTitle}</p>
-        <p style={{ fontSize: "14px", color: "#cccccc", margin: 0 }}>
-          {seenCount === 0
-            ? "No members have viewed this announcement yet."
-            : `${seenCount} member${seenCount === 1 ? "" : "s"} have viewed this announcement.`}
-        </p>
+
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Spinner label="Loading seen list…" />
+          </div>
+        ) : entries.length === 0 ? (
+          <p style={{ fontSize: "14px", color: "#cccccc", margin: 0 }}>
+            No members have viewed this announcement yet.
+          </p>
+        ) : (
+          <div
+            style={{
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            {entries.map((entry) => (
+              <div
+                key={`${entry.userId}-${entry.viewedAt}`}
+                style={{
+                  borderTop: `1px solid ${CARD_BORDER}`,
+                  paddingTop: "10px",
+                }}
+              >
+                <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
+                  {entry.name}
+                </p>
+                <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
+                  Viewed {formatViewedAt(entry.viewedAt)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={onClose}
@@ -743,6 +820,7 @@ export function SeenListModal({
             padding: "8px 16px",
             fontSize: "13px",
             cursor: "pointer",
+            flexShrink: 0,
           }}
         >
           Close

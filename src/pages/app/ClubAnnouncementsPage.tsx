@@ -12,6 +12,10 @@ import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import { filterByVisibility } from "../../lib/contentVisibility";
+import {
+  fetchPostViewCounts,
+  recordAnnouncementView,
+} from "../../lib/postViews";
 import type { MemberRole, Post, Visibility } from "../../types";
 import {
   AnnouncementCard,
@@ -527,6 +531,8 @@ export default function ClubAnnouncementsPage() {
           countMap[postId] = (countMap[postId] ?? 0) + 1;
         }
         setViewCountByPost(countMap);
+      } else {
+        console.error("Failed to load announcement views:", viewsRes.error.message);
       }
 
       const profileById: Record<string, { name?: string; avatarUrl?: string }> = {};
@@ -583,13 +589,22 @@ export default function ClubAnnouncementsPage() {
     };
   }, [clubId, posts, reloadReactionMeta]);
 
-  useEffect(() => {
-    if (!clubId || !user?.id || posts.length === 0) return;
-    const rows = posts.map((post) => ({ post_id: post.id, user_id: user.id }));
-    void supabase
-      .from("post_views")
-      .upsert(rows, { onConflict: "post_id,user_id", ignoreDuplicates: true });
-  }, [clubId, posts, user?.id]);
+  const recordedViewsRef = useRef<Set<string>>(new Set());
+
+  const markPostAsSeen = useCallback(
+    async (postId: string) => {
+      if (!user?.id || recordedViewsRef.current.has(postId)) return;
+      recordedViewsRef.current.add(postId);
+      const ok = await recordAnnouncementView(postId, user.id);
+      if (!ok) {
+        recordedViewsRef.current.delete(postId);
+        return;
+      }
+      const counts = await fetchPostViewCounts([postId]);
+      setViewCountByPost((prev) => ({ ...prev, ...counts }));
+    },
+    [user?.id],
+  );
 
   const isPrivileged = isPrivilegedRole(userRole);
   const isMemberRole = userRole === "member";
@@ -676,6 +691,16 @@ export default function ClubAnnouncementsPage() {
     reactionCountsByPost,
     viewCountByPost,
   ]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    for (const post of displayPosts) {
+      const needsExpand = (post.content?.length ?? 0) > 300;
+      if (!needsExpand) {
+        void markPostAsSeen(post.id);
+      }
+    }
+  }, [displayPosts, markPostAsSeen, user?.id]);
 
   function resetForm() {
     setTitle("");
@@ -1149,10 +1174,11 @@ export default function ClubAnnouncementsPage() {
         </div>
       )}
 
-      {seenListPostId && canViewEngagement ? (
+      {seenListPostId && canViewEngagement && clubId ? (
         <SeenListModal
+          postId={seenListPostId}
+          clubId={clubId}
           postTitle={posts.find((p) => p.id === seenListPostId)?.title ?? "Announcement"}
-          seenCount={viewCountByPost[seenListPostId] ?? 0}
           onClose={() => setSeenListPostId(null)}
         />
       ) : null}
@@ -1340,9 +1366,13 @@ export default function ClubAnnouncementsPage() {
         onToggleMenu={() =>
           setMenuOpenPostId((prev) => (prev === post.id ? null : post.id))
         }
-        onToggleExpand={() =>
-          setExpanded((prev) => ({ ...prev, [post.id]: !prev[post.id] }))
-        }
+        onToggleExpand={() => {
+          const willExpand = !isExpanded;
+          setExpanded((prev) => ({ ...prev, [post.id]: willExpand }));
+          if (willExpand) {
+            void markPostAsSeen(post.id);
+          }
+        }}
         onHeartToggle={() => void handleReactionToggle(post.id, "heart")}
         onBookmarkToggle={() => void handleReactionToggle(post.id, "bookmark")}
         onViewSeenList={() => setSeenListPostId(post.id)}
