@@ -34,8 +34,12 @@ import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
+import CompletedEventCard from "../../components/club/CompletedEventCard";
+import EventMemberFeedbackModal from "../../components/club/EventMemberFeedbackModal";
+import EventReviewModal from "../../components/club/EventReviewModal";
 import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
+import { summarizeFeedbackRows, type EventReviewStatus } from "../../lib/eventReview";
 import {
   filterRsvpQuestionsForLoggedInUser,
   formatGoingCount,
@@ -53,15 +57,15 @@ import EventPlanningTasksSection from "../../components/club/EventPlanningTasksS
 import { EventManageView } from "./events/EventManageView";
 import { useClubMembers } from "../../hooks/useClubMembers";
 
-type EventFilter = "all" | "public" | "my_rsvps";
+type EventFilter = "all" | "going_to" | "needs_response";
 
 const templateOutlineButtonClass =
   "rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-[#cccccc] transition-colors hover:border-[#555555] hover:text-white";
 
 const EVENT_FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "public", label: "Public" },
-  { value: "my_rsvps", label: "My RSVPs" },
+  { value: "going_to", label: "Going To" },
+  { value: "needs_response", label: "Needs Response" },
 ];
 
 function categoryBadgeStyle(): CSSProperties {
@@ -90,12 +94,12 @@ function matchesEventFilter(
   switch (filter) {
     case "all":
       return true;
-    case "public":
-      return isEventPublic(event);
-    case "my_rsvps": {
+    case "going_to": {
       const status = myRsvps[event.id];
       return status === "going" || status === "maybe";
     }
+    case "needs_response":
+      return !myRsvps[event.id];
     default:
       return true;
   }
@@ -845,7 +849,7 @@ function EventCalendarSidebar({
   stats: {
     upcoming: number;
     publicCount: number;
-    myRsvps: number;
+    goingTo: number;
     nextEventDate: string;
   };
   fullWidth?: boolean;
@@ -873,7 +877,7 @@ function EventCalendarSidebar({
   const statRows: Array<{ label: string; value: string | number }> = [
     { label: "Upcoming events", value: stats.upcoming },
     { label: "Public events", value: stats.publicCount },
-    { label: "My RSVPs", value: stats.myRsvps },
+    { label: "Going to", value: stats.goingTo },
     { label: "Next event", value: stats.nextEventDate },
   ];
 
@@ -2227,7 +2231,22 @@ export default function ClubEventsPage() {
   const [showAllRecurring, setShowAllRecurring] = useState<Record<string, boolean>>(
     {},
   );
-  const [showPastEvents, setShowPastEvents] = useState(false);
+  const [showPastEvents, setShowPastEvents] = useState(true);
+  const [reviewEvent, setReviewEvent] = useState<ClubEvent | null>(null);
+  const [feedbackEvent, setFeedbackEvent] = useState<ClubEvent | null>(null);
+  const [completedEventMeta, setCompletedEventMeta] = useState<
+    Record<
+      string,
+      {
+        reviewStatus: EventReviewStatus | null;
+        feedbackFormEnabled: boolean;
+        feedbackScore: number | null;
+      }
+    >
+  >({});
+  const [memberFeedbackEnabled, setMemberFeedbackEnabled] = useState<
+    Record<string, boolean>
+  >({});
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -3066,11 +3085,11 @@ export default function ClubEventsPage() {
   const eventFilterCounts = useMemo(
     () => ({
       all: upcomingEvents.length,
-      public: upcomingEvents.filter((e) => isEventPublic(e)).length,
-      my_rsvps: upcomingEvents.filter((e) => {
+      going_to: upcomingEvents.filter((e) => {
         const status = myRsvps[e.id];
         return status === "going" || status === "maybe";
       }).length,
+      needs_response: upcomingEvents.filter((e) => !myRsvps[e.id]).length,
     }),
     [upcomingEvents, myRsvps],
   );
@@ -3078,6 +3097,93 @@ export default function ClubEventsPage() {
   const pastEvents = visibleEvents
     .filter((e) => new Date(e.date) < now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const pastEventIds = useMemo(() => pastEvents.map((event) => event.id), [pastEvents]);
+
+  useEffect(() => {
+    if (!clubId || pastEventIds.length === 0) {
+      setCompletedEventMeta({});
+      setMemberFeedbackEnabled({});
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      if (canManageEvents) {
+        const [{ data: reviews, error: reviewError }, { data: feedback, error: feedbackError }] =
+          await Promise.all([
+            supabase
+              .from("event_reviews")
+              .select("event_id, review_status, feedback_form_enabled")
+              .in("event_id", pastEventIds),
+            supabase
+              .from("event_feedback_responses")
+              .select("event_id, overall_rating, engagement_rating, organization_rating")
+              .in("event_id", pastEventIds),
+          ]);
+
+        if (cancelled) return;
+
+        if (reviewError) {
+          console.error("Failed to load event reviews:", reviewError.message);
+        }
+        if (feedbackError) {
+          console.error("Failed to load event feedback:", feedbackError.message);
+        }
+
+        const feedbackByEvent = new Map<string, typeof feedback>();
+        for (const row of feedback ?? []) {
+          const eventId = row.event_id as string;
+          const bucket = feedbackByEvent.get(eventId) ?? [];
+          bucket.push(row);
+          feedbackByEvent.set(eventId, bucket);
+        }
+
+        const meta: typeof completedEventMeta = {};
+        for (const eventId of pastEventIds) {
+          const review = (reviews ?? []).find((row) => row.event_id === eventId);
+          const summary = summarizeFeedbackRows(
+            (feedbackByEvent.get(eventId) ?? []) as Array<{
+              overall_rating: number;
+              engagement_rating: number;
+              organization_rating: number;
+            }>,
+          );
+          meta[eventId] = {
+            reviewStatus: (review?.review_status as EventReviewStatus | undefined) ?? null,
+            feedbackFormEnabled: Boolean(review?.feedback_form_enabled),
+            feedbackScore: summary.averageScore,
+          };
+        }
+        setCompletedEventMeta(meta);
+        setMemberFeedbackEnabled({});
+        return;
+      }
+
+      const enabledEntries = await Promise.all(
+        pastEventIds.map(async (eventId) => {
+          const { data, error } = await supabase.rpc("event_feedback_form_enabled", {
+            p_event_id: eventId,
+          });
+          if (error) {
+            console.error("Failed to check feedback form:", error.message);
+            return [eventId, false] as const;
+          }
+          return [eventId, Boolean(data)] as const;
+        }),
+      );
+
+      if (cancelled) return;
+
+      setMemberFeedbackEnabled(Object.fromEntries(enabledEntries));
+      setCompletedEventMeta({});
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageEvents, clubId, pastEventIds]);
 
   const calendarEventDateKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -3100,8 +3206,8 @@ export default function ClubEventsPage() {
   const calendarSidebarStats = useMemo(
     () => ({
       upcoming: eventFilterCounts.all,
-      publicCount: eventFilterCounts.public,
-      myRsvps: eventFilterCounts.my_rsvps,
+      publicCount: upcomingEvents.filter((e) => isEventPublic(e)).length,
+      goingTo: eventFilterCounts.going_to,
       nextEventDate: formatNextEventDateLabel(upcomingEvents[0]?.date),
     }),
     [eventFilterCounts, upcomingEvents],
@@ -3392,16 +3498,30 @@ export default function ClubEventsPage() {
         })}
       </div>
 
-      <p
-        style={{
-          fontSize: "12px",
-          color: "#555555",
-          marginTop: 0,
-          marginBottom: "16px",
-        }}
-      >
-        Sorted by upcoming date
-      </p>
+      {eventFilter === "needs_response" ? (
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#777777",
+            marginTop: 0,
+            marginBottom: "16px",
+            lineHeight: 1.5,
+          }}
+        >
+          You haven&apos;t answered whether you&apos;re available for these upcoming events.
+        </p>
+      ) : (
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#555555",
+            marginTop: 0,
+            marginBottom: "16px",
+          }}
+        >
+          Sorted by upcoming date
+        </p>
+      )}
 
       {feedback ? (
         <div
@@ -3567,10 +3687,7 @@ export default function ClubEventsPage() {
         }}
       >
         <div style={{ flex: 1, minWidth: 0, width: "100%" }}>
-      <div style={upcomingSectionHeadingStyle}>
-        Upcoming · {filteredUpcomingEvents.length} event
-        {filteredUpcomingEvents.length !== 1 ? "s" : ""}
-      </div>
+      <div style={upcomingSectionHeadingStyle}>Upcoming</div>
       {filteredUpcomingEvents.length === 0 ? (
         <div style={{ textAlign: "center", padding: "48px 24px", marginBottom: "32px" }}>
           <Calendar
@@ -3711,7 +3828,7 @@ export default function ClubEventsPage() {
       )}
 
       {pastEvents.length > 0 ? (
-        <section style={{ opacity: 0.85 }}>
+        <section style={{ marginTop: "8px" }}>
           <button
             type="button"
             onClick={() => setShowPastEvents((value) => !value)}
@@ -3729,7 +3846,7 @@ export default function ClubEventsPage() {
               marginBottom: showPastEvents ? "12px" : 0,
             }}
           >
-            <span style={pastSectionHeadingStyle}>Past Events</span>
+            <span style={pastSectionHeadingStyle}>Completed Events</span>
             <span style={{ fontSize: "12px", color: "#444444" }}>
               ({pastEvents.length})
             </span>
@@ -3742,40 +3859,42 @@ export default function ClubEventsPage() {
             />
           </button>
           {showPastEvents ? (
-            <div className="space-y-3">
-              {pastEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  category={getEventCategory(event.id)}
-                  clubLogoUrl={clubBrand.logoUrl}
-                  clubAbbreviation={clubBrand.abbreviation}
-                  isRecurring={isEventRecurring(event.id)}
-                  isPrivileged={canManageEvents}
-                  rsvpAccess={getRsvpAccessForEvent(event)}
-                  past
-                  counts={counts[event.id] ?? { going: 0, maybe: 0, not_going: 0 }}
-                  copiedEventId={copiedEventId}
-                  planningTaskCount={planningTaskCountByEvent[event.id] ?? 0}
-                  onPlanningTasksClick={openPlanningTasks}
-                  onAddPlanningTask={openPlanningTaskQuickAdd}
-                  attendeePreview={attendees[event.id]}
-                  onRsvp={handleRsvp}
-                  onManage={openManageEvent}
-                  onStartEdit={startEdit}
-                  onDelete={handleDelete}
-                  onCopyRsvpLink={copyRsvpLink}
-                  onAddToCalendar={downloadEventIcs}
-                  showViewAttendees={false}
-                  onToggleAttendees={toggleAttendees}
-                  onOpenResponses={openResponsesModal}
-                  hasFormResponses={false}
-                />
-              ))}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                gap: "12px",
+              }}
+            >
+              {pastEvents.map((event) => {
+                const eventCounts = counts[event.id] ?? {
+                  going: 0,
+                  maybe: 0,
+                  not_going: 0,
+                };
+                const meta = completedEventMeta[event.id];
+                const feedbackEnabled = canManageEvents
+                  ? Boolean(meta?.feedbackFormEnabled)
+                  : Boolean(memberFeedbackEnabled[event.id]);
+
+                return (
+                  <CompletedEventCard
+                    key={event.id}
+                    event={event}
+                    attendanceCount={eventCounts.going}
+                    feedbackScore={meta?.feedbackScore ?? null}
+                    reviewStatus={meta?.reviewStatus ?? null}
+                    feedbackFormEnabled={feedbackEnabled}
+                    canManage={canManageEvents}
+                    onReview={() => setReviewEvent(event)}
+                    onFeedback={() => setFeedbackEvent(event)}
+                  />
+                );
+              })}
             </div>
           ) : (
             <p style={{ margin: 0, fontSize: "13px", color: "#444444" }}>
-              Past events are collapsed. Tap above to expand.
+              Completed events are collapsed. Tap above to expand.
             </p>
           )}
         </section>
@@ -4107,6 +4226,57 @@ export default function ClubEventsPage() {
               setDescription(template.description);
             }
           }}
+        />
+      ) : null}
+
+      {reviewEvent && clubId ? (
+        <EventReviewModal
+          event={reviewEvent}
+          clubId={clubId}
+          attendanceCount={counts[reviewEvent.id]?.going ?? 0}
+          feedbackScore={completedEventMeta[reviewEvent.id]?.feedbackScore ?? null}
+          feedbackCount={0}
+          onClose={() => setReviewEvent(null)}
+          onSaved={() => {
+            const eventId = reviewEvent.id;
+            void (async () => {
+              const [{ data: review }, { data: feedback }] = await Promise.all([
+                supabase
+                  .from("event_reviews")
+                  .select("event_id, review_status, feedback_form_enabled")
+                  .eq("event_id", eventId)
+                  .maybeSingle(),
+                supabase
+                  .from("event_feedback_responses")
+                  .select("event_id, overall_rating, engagement_rating, organization_rating")
+                  .eq("event_id", eventId),
+              ]);
+              const summary = summarizeFeedbackRows(
+                (feedback ?? []) as Array<{
+                  overall_rating: number;
+                  engagement_rating: number;
+                  organization_rating: number;
+                }>,
+              );
+              setCompletedEventMeta((prev) => ({
+                ...prev,
+                [eventId]: {
+                  reviewStatus:
+                    (review?.review_status as EventReviewStatus | undefined) ?? null,
+                  feedbackFormEnabled: Boolean(review?.feedback_form_enabled),
+                  feedbackScore: summary.averageScore,
+                },
+              }));
+            })();
+          }}
+        />
+      ) : null}
+
+      {feedbackEvent && clubId ? (
+        <EventMemberFeedbackModal
+          event={feedbackEvent}
+          clubId={clubId}
+          onClose={() => setFeedbackEvent(null)}
         />
       ) : null}
     </div>

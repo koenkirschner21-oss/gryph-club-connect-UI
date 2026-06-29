@@ -4,16 +4,15 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import { ArrowLeft, Calendar, Clock, ExternalLink, MapPin } from "lucide-react";
 import EventPlanningTasksSection from "../../../components/club/EventPlanningTasksSection";
 import VisibilityBadge from "../../../components/club/VisibilityBadge";
 import type { UseClubTasksReturn } from "../../../hooks/useClubTasks";
 import { supabase } from "../../../lib/supabaseClient";
+import { formatMemberDisplayRole } from "../../../lib/memberRoleTitle";
 import { eventCategoryLabel } from "../../../lib/eventCategories";
 import {
-  CARD_BG,
   CARD_BORDER,
   inputStyle,
   sectionCardStyle,
@@ -40,13 +39,6 @@ const RECURRENCE_LABELS: Record<RecurrenceFrequency, string> = {
   weekly: "Weekly",
   biweekly: "Every 2 Weeks",
   monthly: "Monthly",
-};
-
-const statTileStyle: CSSProperties = {
-  background: CARD_BG,
-  border: `1px solid ${CARD_BORDER}`,
-  borderRadius: "10px",
-  padding: "14px 16px",
 };
 
 function useDebouncedSave(
@@ -158,19 +150,53 @@ function RsvpStatusBar({
   );
 }
 
-function AttendeeRow({ attendee }: { attendee: EventRsvp }) {
+type AttendeeFilterTab = "all" | "going" | "maybe" | "not_going" | "no_response";
+
+const ATTENDEE_FILTER_TABS: { id: AttendeeFilterTab; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "going", label: "Going" },
+  { id: "maybe", label: "Maybe" },
+  { id: "not_going", label: "Not Going" },
+  { id: "no_response", label: "No Response" },
+];
+
+type AttendeeListItem =
+  | { kind: "rsvp"; attendee: EventRsvp; member?: ClubMember }
+  | { kind: "no_response"; member: ClubMember };
+
+function AttendeeRow({
+  item,
+}: {
+  item: AttendeeListItem;
+}) {
   const statusColors: Record<RsvpStatus, { bg: string; color: string; border: string }> = {
     going: { bg: "#1a1200", color: "#FFC429", border: "1px solid #FFC429" },
     maybe: { bg: "#1a1a1a", color: "#aaaaaa", border: "1px solid #555555" },
     not_going: { bg: "#1a0505", color: "#E51937", border: "1px solid #E51937" },
   };
-  const statusStyle = statusColors[attendee.status];
+
+  const name =
+    item.kind === "rsvp"
+      ? item.attendee.fullName ?? item.member?.fullName ?? "Unknown"
+      : item.member.fullName ?? "Member";
+  const avatarUrl =
+    item.kind === "rsvp" ? item.attendee.avatarUrl ?? item.member?.avatarUrl : item.member.avatarUrl;
+  const subtitle =
+    item.kind === "rsvp"
+      ? formatMemberDisplayRole(item.member?.role ?? "member", item.member?.roleTitle)
+      : formatMemberDisplayRole(item.member.role, item.member.roleTitle);
   const statusLabel =
-    attendee.status === "going"
-      ? "Going"
-      : attendee.status === "maybe"
-        ? "Maybe"
-        : "Not Going";
+    item.kind === "no_response"
+      ? "No Response"
+      : item.attendee.status === "going"
+        ? "Going"
+        : item.attendee.status === "maybe"
+          ? "Maybe"
+          : "Not Going";
+  const statusStyle =
+    item.kind === "no_response"
+      ? { bg: "#141414", color: "#777777", border: "1px solid #333333" }
+      : statusColors[item.attendee.status];
 
   return (
     <div
@@ -182,13 +208,13 @@ function AttendeeRow({ attendee }: { attendee: EventRsvp }) {
         borderTop: `1px solid ${CARD_BORDER}`,
       }}
     >
-      {attendee.avatarUrl ? (
+      {avatarUrl ? (
         <img
-          src={attendee.avatarUrl}
+          src={avatarUrl}
           alt=""
           style={{
-            width: "32px",
-            height: "32px",
+            width: "36px",
+            height: "36px",
             borderRadius: "50%",
             objectFit: "cover",
             flexShrink: 0,
@@ -197,12 +223,12 @@ function AttendeeRow({ attendee }: { attendee: EventRsvp }) {
       ) : (
         <div
           style={{
-            width: "32px",
-            height: "32px",
+            width: "36px",
+            height: "36px",
             borderRadius: "50%",
             background: "#1a0505",
             color: "#E51937",
-            fontSize: "12px",
+            fontSize: "13px",
             fontWeight: 700,
             display: "flex",
             alignItems: "center",
@@ -210,14 +236,14 @@ function AttendeeRow({ attendee }: { attendee: EventRsvp }) {
             flexShrink: 0,
           }}
         >
-          {(attendee.fullName ?? "U")[0].toUpperCase()}
+          {name[0]?.toUpperCase() ?? "?"}
         </div>
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p
           style={{
             fontSize: "13px",
-            fontWeight: 500,
+            fontWeight: 600,
             color: "#ffffff",
             margin: 0,
             overflow: "hidden",
@@ -225,20 +251,20 @@ function AttendeeRow({ attendee }: { attendee: EventRsvp }) {
             whiteSpace: "nowrap",
           }}
         >
-          {attendee.fullName ?? "Unknown"}
+          {name}
         </p>
-        {attendee.program ? (
+        {subtitle ? (
           <p
             style={{
               fontSize: "11px",
               color: "#555555",
-              margin: 0,
+              margin: "2px 0 0",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            {attendee.program}
+            {subtitle}
           </p>
         ) : null}
       </div>
@@ -246,9 +272,9 @@ function AttendeeRow({ attendee }: { attendee: EventRsvp }) {
         style={{
           flexShrink: 0,
           borderRadius: "20px",
-          padding: "2px 8px",
-          fontSize: "11px",
-          fontWeight: 500,
+          padding: "3px 10px",
+          fontSize: "10px",
+          fontWeight: 600,
           background: statusStyle.bg,
           color: statusStyle.color,
           border: statusStyle.border,
@@ -256,32 +282,6 @@ function AttendeeRow({ attendee }: { attendee: EventRsvp }) {
       >
         {statusLabel}
       </span>
-    </div>
-  );
-}
-
-function DetailRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: "14px" }}>
-      <p
-        style={{
-          margin: "0 0 4px",
-          fontSize: "11px",
-          fontWeight: 600,
-          color: "#555555",
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-        }}
-      >
-        {label}
-      </p>
-      <div style={{ fontSize: "14px", color: "#cccccc" }}>{children}</div>
     </div>
   );
 }
@@ -334,6 +334,7 @@ export function EventManageView({
   const rsvpPanelRef = useRef<HTMLElement>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [notesReady, setNotesReady] = useState(false);
+  const [attendeeFilter, setAttendeeFilter] = useState<AttendeeFilterTab>("all");
 
   const timeLabel = formatEventTime(event.time);
   const locationLabel = cleanEventLocation(event.location);
@@ -392,16 +393,75 @@ export function EventManageView({
 
   const notesSaved = useDebouncedSave(notesReady ? notesDraft : "", saveNotes);
 
-  const statTiles = useMemo(
-    () => [
-      { label: "Total RSVPs", value: totalRsvps, color: "#ffffff" },
-      { label: "Going", value: counts.going, color: "#E51937" },
-      { label: "Maybe", value: counts.maybe, color: "#FFC429" },
-      { label: "Not Going", value: counts.not_going, color: "#777777" },
-      { label: "Open Planning Tasks", value: openPlanningCount, color: "#ffffff" },
-    ],
-    [totalRsvps, counts, openPlanningCount],
-  );
+  const memberByUserId = useMemo(() => {
+    const map = new Map<string, ClubMember>();
+    for (const member of members) {
+      map.set(member.userId, member);
+    }
+    return map;
+  }, [members]);
+
+  const noResponseCount = useMemo(() => {
+    const responded = new Set((attendeeList ?? []).map((row) => row.userId));
+    return members.filter((member) => !responded.has(member.userId)).length;
+  }, [attendeeList, members]);
+
+  const attendeeRows = useMemo((): AttendeeListItem[] => {
+    const rsvpRows: AttendeeListItem[] = (attendeeList ?? []).map((attendee) => ({
+      kind: "rsvp" as const,
+      attendee,
+      member: memberByUserId.get(attendee.userId),
+    }));
+    const respondedIds = new Set((attendeeList ?? []).map((row) => row.userId));
+    const noResponseRows: AttendeeListItem[] = members
+      .filter((member) => !respondedIds.has(member.userId))
+      .map((member) => ({ kind: "no_response" as const, member }));
+
+    const statusOrder: Record<RsvpStatus, number> = {
+      going: 0,
+      maybe: 1,
+      not_going: 2,
+    };
+
+    const allRows = [...rsvpRows, ...noResponseRows].sort((left, right) => {
+      const leftOrder =
+        left.kind === "rsvp" ? statusOrder[left.attendee.status] : 3;
+      const rightOrder =
+        right.kind === "rsvp" ? statusOrder[right.attendee.status] : 3;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      const leftName =
+        left.kind === "rsvp"
+          ? left.attendee.fullName ?? ""
+          : left.member.fullName ?? "";
+      const rightName =
+        right.kind === "rsvp"
+          ? right.attendee.fullName ?? ""
+          : right.member.fullName ?? "";
+      return leftName.localeCompare(rightName);
+    });
+
+    switch (attendeeFilter) {
+      case "going":
+        return rsvpRows.filter(
+          (row): row is Extract<AttendeeListItem, { kind: "rsvp" }> =>
+            row.kind === "rsvp" && row.attendee.status === "going",
+        );
+      case "maybe":
+        return rsvpRows.filter(
+          (row): row is Extract<AttendeeListItem, { kind: "rsvp" }> =>
+            row.kind === "rsvp" && row.attendee.status === "maybe",
+        );
+      case "not_going":
+        return rsvpRows.filter(
+          (row): row is Extract<AttendeeListItem, { kind: "rsvp" }> =>
+            row.kind === "rsvp" && row.attendee.status === "not_going",
+        );
+      case "no_response":
+        return noResponseRows;
+      default:
+        return allRows;
+    }
+  }, [attendeeFilter, attendeeList, memberByUserId, members]);
 
   const recurrenceEndLabel = recurringMeta?.recurrenceEndDate
     ? new Date(recurringMeta.recurrenceEndDate).toLocaleDateString("en-US", {
@@ -411,18 +471,8 @@ export function EventManageView({
       })
     : null;
 
-  const sortedAttendees = useMemo(() => {
-    const list = attendeeList ?? [];
-    const order: Record<RsvpStatus, number> = {
-      going: 0,
-      maybe: 1,
-      not_going: 2,
-    };
-    return [...list].sort((a, b) => order[a.status] - order[b.status]);
-  }, [attendeeList]);
-
   return (
-    <div style={{ maxWidth: "1100px" }}>
+    <div style={{ width: "100%", maxWidth: "none" }}>
       <button
         type="button"
         onClick={onBack}
@@ -552,41 +602,13 @@ export function EventManageView({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)",
-          gap: "12px",
-          marginBottom: "24px",
-        }}
-      >
-        {statTiles.map((tile) => (
-          <div key={tile.label} style={statTileStyle}>
-            <p style={{ margin: "0 0 6px", fontSize: "11px", color: "#777777" }}>
-              {tile.label}
-            </p>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "22px",
-                fontWeight: 800,
-                color: tile.color,
-                lineHeight: 1.1,
-              }}
-            >
-              {tile.value}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.4fr) minmax(0, 0.9fr)",
-          gap: "20px",
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(320px, 380px)",
+          gap: "24px",
           alignItems: "start",
         }}
       >
         <div>
-          <section style={sectionCardStyle}>
+          <section style={{ ...sectionCardStyle, marginBottom: "16px" }}>
             <h2
               style={{
                 margin: "0 0 12px",
@@ -608,6 +630,34 @@ export function EventManageView({
             >
               {event.description?.trim() || "No description provided."}
             </p>
+            {isRecurring && recurringMeta ? (
+              <p style={{ margin: "12px 0 0", fontSize: "12px", color: "#555555" }}>
+                Recurring
+                {recurringMeta.frequency
+                  ? `: ${RECURRENCE_LABELS[recurringMeta.frequency]}`
+                  : ""}
+                {recurrenceEndLabel ? ` · until ${recurrenceEndLabel}` : ""}
+              </p>
+            ) : null}
+            {locationLabel && isUrl(locationLabel) ? (
+              <p style={{ margin: "8px 0 0", fontSize: "12px" }}>
+                <a
+                  href={locationLabel}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: "#E51937",
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  Open location link
+                  <ExternalLink size={13} aria-hidden />
+                </a>
+              </p>
+            ) : null}
           </section>
 
           {isPrivileged ? (
@@ -680,113 +730,98 @@ export function EventManageView({
           </section>
         </div>
 
-        <div>
-          <section style={sectionCardStyle}>
-            <h2
-              style={{
-                margin: "0 0 16px",
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#ffffff",
-              }}
-            >
-              Event Details
-            </h2>
-            <DetailRow label="Date">{formatEventDate(event.date)}</DetailRow>
-            <DetailRow label="Time">{timeLabel ?? "TBD"}</DetailRow>
-            <DetailRow label="Location">
-              {locationLabel ? (
-                isUrl(locationLabel) ? (
-                  <a
-                    href={locationLabel}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      color: "#E51937",
-                      textDecoration: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    {locationLabel}
-                    <ExternalLink size={13} aria-hidden />
-                  </a>
-                ) : (
-                  locationLabel
-                )
-              ) : (
-                "TBD"
-              )}
-            </DetailRow>
-            <DetailRow label="Visibility">
-              <VisibilityBadge visibility={(event.visibility ?? "public") as Visibility} />
-            </DetailRow>
-            {isRecurring && recurringMeta ? (
-              <DetailRow label="Recurring">
-                {recurringMeta.frequency
-                  ? RECURRENCE_LABELS[recurringMeta.frequency]
-                  : "Yes"}
-                {recurrenceEndLabel ? ` · until ${recurrenceEndLabel}` : ""}
-              </DetailRow>
-            ) : null}
-          </section>
+        <section
+          ref={rsvpPanelRef}
+          style={{
+            ...sectionCardStyle,
+            position: isMobile ? "static" : "sticky",
+            top: isMobile ? undefined : "16px",
+          }}
+        >
+          <h2
+            style={{
+              margin: "0 0 4px",
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#ffffff",
+            }}
+          >
+            Attendees
+          </h2>
+          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#555555" }}>
+            {totalRsvps} responded · {noResponseCount} no response
+            {openPlanningCount > 0 ? ` · ${openPlanningCount} open planning tasks` : ""}
+          </p>
 
-          <section ref={rsvpPanelRef} style={sectionCardStyle}>
-            <h2
-              style={{
-                margin: "0 0 16px",
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#ffffff",
-              }}
-            >
-              RSVP Breakdown
-            </h2>
-            <RsvpStatusBar
-              label="Going"
-              count={counts.going}
-              total={totalRsvps}
-              color="#E51937"
-            />
-            <RsvpStatusBar
-              label="Maybe"
-              count={counts.maybe}
-              total={totalRsvps}
-              color="#FFC429"
-            />
-            <RsvpStatusBar
-              label="Not Going"
-              count={counts.not_going}
-              total={totalRsvps}
-              color="#777777"
-            />
+          <RsvpStatusBar
+            label="Going"
+            count={counts.going}
+            total={Math.max(totalRsvps, 1)}
+            color="#E51937"
+          />
+          <RsvpStatusBar
+            label="Maybe"
+            count={counts.maybe}
+            total={Math.max(totalRsvps, 1)}
+            color="#FFC429"
+          />
+          <RsvpStatusBar
+            label="Not Going"
+            count={counts.not_going}
+            total={Math.max(totalRsvps, 1)}
+            color="#777777"
+          />
 
-            <div style={{ marginTop: "20px" }}>
-              <p
-                style={{
-                  margin: "0 0 8px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  color: "#777777",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                Attendees
-              </p>
-              {sortedAttendees.length === 0 ? (
-                <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>
-                  No RSVPs yet.
-                </p>
-              ) : (
-                sortedAttendees.map((attendee) => (
-                  <AttendeeRow key={attendee.id} attendee={attendee} />
-                ))
-              )}
-            </div>
-          </section>
-        </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px",
+              margin: "18px 0 12px",
+            }}
+          >
+            {ATTENDEE_FILTER_TABS.map((tab) => {
+              const active = attendeeFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setAttendeeFilter(tab.id)}
+                  style={{
+                    background: active ? "#E51937" : "transparent",
+                    color: active ? "#ffffff" : "#777777",
+                    border: active ? "1px solid #E51937" : "1px solid #333333",
+                    borderRadius: "20px",
+                    padding: "5px 12px",
+                    fontSize: "11px",
+                    fontWeight: active ? 600 : 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {attendeeRows.length === 0 ? (
+            <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>
+              No attendees in this view.
+            </p>
+          ) : (
+            attendeeRows.map((row) => (
+              <AttendeeRow
+                key={
+                  row.kind === "rsvp"
+                    ? row.attendee.id
+                    : `no-response-${row.member.userId}`
+                }
+                item={row}
+              />
+            ))
+          )}
+        </section>
       </div>
     </div>
   );
