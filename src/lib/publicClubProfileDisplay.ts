@@ -199,13 +199,13 @@ export function mapClubRowToPublicDisplayFields(
   });
 
   const socialLinks = mergePublicClubSocialLinks(
-    readSocialLinksRecord(row.social_links),
-    embeddedMeta?.social_links,
+    readSocialLinksRecord(embeddedMeta?.social_links),
     {
       website: pickUrl(row.website_url),
       instagram: pickUrl(row.instagram_url),
       linkedin: pickUrl(row.linkedin_url),
       twitter: pickUrl(row.twitter_url),
+      discord: pickUrl(row.discord_invite),
     },
   );
 

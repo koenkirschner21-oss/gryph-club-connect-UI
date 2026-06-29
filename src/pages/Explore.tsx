@@ -18,6 +18,7 @@ import {
   readClubMeetingLocationFromRow,
   readClubMeetingScheduleFromRow,
 } from "../lib/clubRowMapping";
+import { readSocialLinksFromClubRow } from "../lib/clubSocialLinks";
 import { supabase } from "../lib/supabaseClient";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import ExploreClubCard from "../components/ui/ExploreClubCard";
@@ -338,7 +339,7 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
     isVerified: (row.is_verified as boolean) ?? false,
     abbreviation: (row.abbreviation as string) ?? undefined,
     joinCode: (row.join_code as string) ?? undefined,
-    socialLinks: (row.social_links as Club["socialLinks"]) ?? undefined,
+    socialLinks: readSocialLinksFromClubRow(row),
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
     joinType: normalizeJoinType(row.join_type),

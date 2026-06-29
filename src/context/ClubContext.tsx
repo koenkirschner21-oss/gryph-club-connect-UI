@@ -22,6 +22,10 @@ import {
   readClubMeetingScheduleFromRow,
   sanitizeLongDescriptionForSave,
 } from "../lib/clubRowMapping";
+import {
+  applySocialLinksToClubPayload,
+  readSocialLinksFromClubRow,
+} from "../lib/clubSocialLinks";
 import { useAuthContext } from "./useAuthContext";
 import { ClubContext, type ClubContextValue } from "./clubContextValue";
 import type { Club, MemberRole, JoinAnswer } from "../types";
@@ -74,7 +78,7 @@ function mapRow(row: Record<string, unknown>): Club {
     isVerified: (row.is_verified as boolean) ?? false,
     abbreviation: (row.abbreviation as string) ?? undefined,
     joinCode: (row.join_code as string) ?? undefined,
-    socialLinks: (row.social_links as Club["socialLinks"]) ?? undefined,
+    socialLinks: readSocialLinksFromClubRow(row),
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
     joinType: ((row.join_type as string) ?? "open") as Club["joinType"],
@@ -465,10 +469,10 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         contact_email: fields.contactEmail,
         meeting_schedule: fields.meetingSchedule,
         meeting_location: fields.meetingLocation,
-        social_links: fields.socialLinks,
         created_by: user.id,
         is_public: true,
       };
+      applySocialLinksToClubPayload(row, fields.socialLinks);
 
       const { data, error } = await supabase
         .from("clubs")
@@ -530,7 +534,9 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.contactEmail !== undefined) row.contact_email = fields.contactEmail;
       if (fields.meetingSchedule !== undefined)
         row.meeting_schedule = fields.meetingSchedule;
-      if (fields.socialLinks !== undefined) row.social_links = fields.socialLinks;
+      if (fields.socialLinks !== undefined) {
+        applySocialLinksToClubPayload(row, fields.socialLinks);
+      }
       if (fields.claimStatus !== undefined) row.claim_status = fields.claimStatus;
       if (fields.setupCompleted !== undefined)
         row.setup_completed = fields.setupCompleted;

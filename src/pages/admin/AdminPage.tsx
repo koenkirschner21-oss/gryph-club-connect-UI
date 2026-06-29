@@ -18,6 +18,7 @@ import {
   notifyClubRequestRejected,
 } from "../../lib/notifications";
 import { ensurePresidentMembership } from "../../lib/clubPresidentMembership";
+import { applySocialLinksToClubPayload } from "../../lib/clubSocialLinks";
 import {
   clubReportReasonLabel,
   clubReportStatusBadgeStyle,
@@ -1280,14 +1281,7 @@ export default function AdminPage() {
         return;
       }
 
-      const socialLinks =
-        meta.social_links && Object.keys(meta.social_links).length > 0
-          ? meta.social_links
-          : null;
-
-      const { data: createdClub, error: createError } = await supabase
-        .from("clubs")
-        .insert({
+      const insertPayload: Record<string, unknown> = {
           name: request.name,
           slug,
           short_description: request.short_description,
@@ -1297,12 +1291,16 @@ export default function AdminPage() {
           contact_email: meta.contact_email || "",
           meeting_schedule: meta.meeting_schedule || "",
           meeting_location: meta.meeting_location || null,
-          social_links: socialLinks,
           abbreviation: deriveClubAbbreviation(request.name),
           is_public: true,
           claim_status: "claimed",
           created_by: request.submitted_by,
-        })
+        };
+      applySocialLinksToClubPayload(insertPayload, meta.social_links);
+
+      const { data: createdClub, error: createError } = await supabase
+        .from("clubs")
+        .insert(insertPayload)
         .select("id")
         .single();
 
@@ -1353,9 +1351,7 @@ export default function AdminPage() {
       meeting_schedule: meta.meeting_schedule || "",
       meeting_location: meta.meeting_location || null,
     };
-    if (meta.social_links && Object.keys(meta.social_links).length > 0) {
-      clubUpdate.social_links = meta.social_links;
-    }
+    applySocialLinksToClubPayload(clubUpdate, meta.social_links);
 
     const { error } = await supabase
       .from("clubs")
