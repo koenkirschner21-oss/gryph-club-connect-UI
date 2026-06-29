@@ -11,6 +11,7 @@ import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
 import { sortClubsByMemberActivity } from "../lib/clubUtils";
+import { clubCategoryFilterOptions } from "../lib/clubCategories";
 import {
   extractEmbeddedRequestMetadata,
   readClubContactEmailFromRow,
@@ -403,10 +404,12 @@ export default function Explore() {
   const error = user ? contextError : guestError;
 
   const categories = useMemo(() => {
-    const cats = new Set(
-      clubs.map((club) => club.category).filter((value) => value.length > 0),
-    );
-    return ["All", ...Array.from(cats).sort((a, b) => a.localeCompare(b))];
+    return [
+      "All",
+      ...clubCategoryFilterOptions(
+        clubs.map((club) => club.category).filter((value) => value.length > 0),
+      ),
+    ];
   }, [clubs]);
 
   const [search, setSearch] = useState("");

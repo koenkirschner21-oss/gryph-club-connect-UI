@@ -13,6 +13,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { getClubInitials } from "../../lib/clubUtils";
+import { clubCategoryFilterOptions } from "../../lib/clubCategories";
 import { supabase } from "../../lib/supabaseClient";
 import {
   notifyHiringApplicationSubmitted,
@@ -2466,15 +2467,15 @@ export default function HiringBoardPage() {
     void loadSavedRoles();
   }, [loadSavedRoles]);
 
-  const clubCategories = useMemo(() => {
-    const categories = new Set<string>();
-    positions.forEach((p) => {
-      if (p.clubCategory?.trim()) categories.add(p.clubCategory.trim());
-    });
-    return Array.from(categories).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" }),
-    );
-  }, [positions]);
+  const clubCategories = useMemo(
+    () =>
+      clubCategoryFilterOptions(
+        positions
+          .map((position) => position.clubCategory)
+          .filter((value): value is string => Boolean(value?.trim())),
+      ),
+    [positions],
+  );
 
   const showCommitmentFilter = useMemo(
     () => positions.some((position) => position.commitmentLevel !== "flexible"),

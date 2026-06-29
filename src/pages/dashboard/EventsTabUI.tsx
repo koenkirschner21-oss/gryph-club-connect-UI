@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { Calendar, Clock, Filter, MapPin, MoreVertical } from "lucide-react";
+import { Clock, MapPin, MoreVertical } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DashboardEvent } from "../../hooks/useDashboardEvents";
 import type { EventRsvp, RsvpStatus } from "../../types";
@@ -12,19 +12,6 @@ export type EventsByDateGroup = {
   date: string;
   events: DeduplicatedDashboardEvent[];
 };
-
-const HEADER_CONTROL_STYLE = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
-  background: "#1a1a1a",
-  border: "1px solid #2a2a2a",
-  borderRadius: "8px",
-  padding: "8px 14px",
-  color: "#cccccc",
-  fontSize: "13px",
-  cursor: "pointer",
-} as const;
 
 function parseEventDay(dateStr: string): Date | null {
   const trimmed = dateStr.trim();
@@ -77,6 +64,19 @@ export function formatEventsTimelineGroupLabel(dateStr: string): string {
       day: "numeric",
     })
     .toUpperCase();
+}
+
+export function formatEventsMonthHeader(dateStr: string): string {
+  const eventDay = parseEventDay(dateStr);
+  if (!eventDay) return dateStr;
+  return eventDay.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function eventsMonthKey(dateStr: string): string {
+  return dateStr.slice(0, 7);
 }
 
 function formatTimelineDateBox(dateStr: string): {
@@ -657,36 +657,14 @@ export function EventsTabHeader({
   clubCount: number;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: "20px",
-        gap: "16px",
-        flexWrap: "wrap",
-      }}
-    >
-      <div>
-        <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#ffffff" }}>
-          Events this week
-        </h2>
-        <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#777777" }}>
-          {eventCount} event{eventCount === 1 ? "" : "s"} · {clubCount} club
-          {clubCount === 1 ? "" : "s"}
-        </p>
-      </div>
-
-      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-        <button type="button" style={HEADER_CONTROL_STYLE}>
-          <Calendar size={16} aria-hidden />
-          Weekly view
-        </button>
-        <button type="button" style={HEADER_CONTROL_STYLE}>
-          <Filter size={16} aria-hidden />
-          Filter
-        </button>
-      </div>
+    <div style={{ marginBottom: "20px" }}>
+      <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#ffffff" }}>
+        Events this week
+      </h2>
+      <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#777777" }}>
+        {eventCount} event{eventCount === 1 ? "" : "s"} · {clubCount} club
+        {clubCount === 1 ? "" : "s"}
+      </p>
     </div>
   );
 }
@@ -706,20 +684,42 @@ export function EventsTabTimeline({
   onSetRsvp?: (eventId: string, status: RsvpStatus) => Promise<boolean>;
   onRemoveRsvp?: (eventId: string) => Promise<boolean>;
 }) {
+  const spansMultipleMonths = useMemo(() => {
+    const monthKeys = new Set(groups.map((group) => eventsMonthKey(group.date)));
+    return monthKeys.size > 1;
+  }, [groups]);
+
   return (
     <div>
       {groups.map((group, groupIndex) => {
         const isLast = groupIndex === groups.length - 1;
+        const previousMonth =
+          groupIndex > 0 ? eventsMonthKey(groups[groupIndex - 1].date) : null;
+        const currentMonth = eventsMonthKey(group.date);
+        const showMonthHeader =
+          spansMultipleMonths && currentMonth !== previousMonth;
 
         return (
-          <div
-            key={group.date}
-            style={{
-              display: "flex",
-              gap: "16px",
-              marginBottom: isLast ? 0 : "4px",
-            }}
-          >
+          <div key={group.date}>
+            {showMonthHeader ? (
+              <p
+                style={{
+                  margin: groupIndex === 0 ? "0 0 14px" : "20px 0 14px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#aaaaaa",
+                }}
+              >
+                {formatEventsMonthHeader(group.date)}
+              </p>
+            ) : null}
+            <div
+              style={{
+                display: "flex",
+                gap: "16px",
+                marginBottom: isLast ? 0 : "4px",
+              }}
+            >
             <div
               style={{
                 width: "70px",
@@ -779,6 +779,7 @@ export function EventsTabTimeline({
                 />
               ))}
             </div>
+          </div>
           </div>
         );
       })}

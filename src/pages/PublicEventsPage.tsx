@@ -413,7 +413,6 @@ function ClubAvatar({
   );
 }
 
-const EVENT_CARD_READ_MORE = " Read more";
 const EVENT_CARD_DESC_FONT_SIZE = 12;
 const EVENT_CARD_DESC_LINE_HEIGHT = 1.6;
 const EVENT_CARD_DESC_MAX_LINES = 2;
@@ -461,7 +460,7 @@ function computeEventCardDescriptionPreview(
       while (low <= high) {
         const mid = Math.floor((low + high) / 2);
         const slice = description.slice(0, mid).trimEnd();
-        const candidate = `${slice}…${EVENT_CARD_READ_MORE}`;
+        const candidate = `${slice}…`;
         if (fits(candidate)) {
           best = mid;
           low = mid + 1;
@@ -841,7 +840,6 @@ function PublicEventCard({
   const [signUpHovered, setSignUpHovered] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
   const [descriptionPreview, setDescriptionPreview] = useState<string | null>(null);
-  const [showReadMore, setShowReadMore] = useState(false);
   const { month, day } = formatMonthDay(event.date);
   const description = event.description?.trim();
 
@@ -849,7 +847,6 @@ function PublicEventCard({
     const card = cardRef.current;
     if (!card || !description) {
       setDescriptionPreview(null);
-      setShowReadMore(false);
       return;
     }
 
@@ -864,7 +861,6 @@ function PublicEventCard({
         fontFamily,
       );
       setDescriptionPreview(preview);
-      setShowReadMore(preview !== null);
     };
 
     updatePreview();
@@ -932,55 +928,56 @@ function PublicEventCard({
             {day}
           </span>
         </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-start",
-            gap: "6px",
-            minWidth: 0,
-            flex: 1,
-          }}
-        >
-          <ClubAvatar
-            clubName={event.clubName}
-            logoUrl={event.clubLogoUrl}
-            size={40}
-          />
-          <span
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2
             style={{
               fontSize: "16px",
               fontWeight: 700,
               color: "#ffffff",
-              lineHeight: 1.2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              minWidth: 0,
+              margin: 0,
+              lineHeight: 1.25,
             }}
           >
-            {event.clubName}
-          </span>
+            {event.title}
+          </h2>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              gap: "6px",
+              minWidth: 0,
+              marginTop: "8px",
+            }}
+          >
+            <ClubAvatar
+              clubName={event.clubName}
+              logoUrl={event.clubLogoUrl}
+              size={40}
+            />
+            <span
+              style={{
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "#aaaaaa",
+                lineHeight: 1.2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
+            >
+              {event.clubName}
+            </span>
+          </div>
         </div>
       </div>
-
-      <h2
-        style={{
-          fontSize: "16px",
-          fontWeight: 700,
-          color: "#ffffff",
-          marginTop: "10px",
-          marginBottom: 0,
-        }}
-      >
-        {event.title}
-      </h2>
 
       <p
         style={{
           fontSize: "12px",
           color: "#555555",
-          marginTop: "4px",
+          marginTop: "10px",
           marginBottom: 0,
         }}
       >
@@ -995,40 +992,13 @@ function PublicEventCard({
               color: "#777777",
               margin: 0,
               lineHeight: EVENT_CARD_DESC_LINE_HEIGHT,
-              ...(showReadMore
-                ? {}
-                : {
-                    overflow: "hidden",
-                    display: "-webkit-box",
-                    WebkitLineClamp: EVENT_CARD_DESC_MAX_LINES,
-                    WebkitBoxOrient: "vertical",
-                  }),
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: EVENT_CARD_DESC_MAX_LINES,
+              WebkitBoxOrient: "vertical",
             }}
           >
-            {showReadMore && descriptionPreview ? (
-              <>
-                {descriptionPreview}{" "}
-                <button
-                  type="button"
-                  onClick={() => onViewDetails(event)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    margin: 0,
-                    font: "inherit",
-                    fontWeight: 500,
-                    color: "#E51937",
-                    cursor: "pointer",
-                    display: "inline",
-                  }}
-                >
-                  Read more
-                </button>
-              </>
-            ) : (
-              description
-            )}
+            {descriptionPreview ?? description}
           </p>
         </div>
       ) : null}
@@ -1369,12 +1339,6 @@ export default function PublicEventsPage() {
     }
     navigate(`/signup?redirect=${encodeURIComponent(target)}`);
   }
-
-  function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  const createClubPath = user ? "/app/create-club" : "/signup?redirect=/app/create-club";
 
   const horizontalPad = isMobile ? "16px" : "48px";
 
@@ -1740,62 +1704,6 @@ export default function PublicEventsPage() {
                 ))}
               </div>
             )}
-            <div
-              style={{
-                marginTop: "32px",
-                paddingTop: "24px",
-                borderTop: "1px solid #1e1e1e",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "20px",
-                textAlign: "center",
-              }}
-            >
-              <button
-                type="button"
-                onClick={scrollToTop}
-                style={{
-                  background: "transparent",
-                  border: "1px solid #333333",
-                  color: "#cccccc",
-                  borderRadius: "6px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                Back to top
-              </button>
-              <div>
-                <p
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 600,
-                    color: "#ffffff",
-                    margin: "0 0 6px",
-                  }}
-                >
-                  Can&apos;t find your club?
-                </p>
-                <button
-                  type="button"
-                  onClick={() => navigate(createClubPath)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "#E51937",
-                    cursor: "pointer",
-                  }}
-                >
-                  Create your club here
-                </button>
-              </div>
-            </div>
           </>
         )}
       </div>
