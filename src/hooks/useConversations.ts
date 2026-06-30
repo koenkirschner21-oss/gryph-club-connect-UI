@@ -356,15 +356,17 @@ export function pickDefaultConversationId(
 ): string | null {
   if (conversations.length === 0) return null;
 
-  const sorted = sortConversationsByPriority(conversations);
-  if (sorted.length === 1) return sorted[0].id;
+  const byRecentActivity = (items: Conversation[]) =>
+    [...items].sort(
+      (a, b) => conversationActivityAt(b) - conversationActivityAt(a),
+    );
 
-  const general = sorted.find(
-    (convo) =>
-      convo.type === "group" &&
-      convo.name.trim().toLowerCase() === "general",
-  );
-  return general?.id ?? sorted[0].id;
+  const withUnread = conversations.filter((convo) => convo.unreadCount > 0);
+  if (withUnread.length > 0) {
+    return byRecentActivity(withUnread)[0].id;
+  }
+
+  return byRecentActivity(conversations)[0].id;
 }
 
 /** Find an existing 1:1 DM in this club (DB-backed; avoids duplicate threads). */
@@ -700,15 +702,19 @@ export function useConversations(
   }, [loadConversations, refreshKey]);
 
   useEffect(() => {
+    setActiveConversationId(null);
+    setConversations([]);
+    setLoading(Boolean(clubId && user?.id));
+  }, [clubId, user?.id]);
+
+  useEffect(() => {
     if (loading) return;
 
-    if (activeConversationId != null) {
-      if (conversations.some((convo) => convo.id === activeConversationId)) {
-        return;
-      }
-      // Keep an explicit selection while the list refreshes (e.g. after DM create).
-      return;
-    }
+    const hasValidSelection =
+      activeConversationId != null &&
+      conversations.some((convo) => convo.id === activeConversationId);
+
+    if (hasValidSelection) return;
 
     const defaultId = pickDefaultConversationId(conversations);
     if (defaultId) {
