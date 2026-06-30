@@ -1,16 +1,13 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { Clock, MapPin, MoreVertical } from "lucide-react";
+import { Check, Clock, MapPin, MoreVertical } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DashboardEvent } from "../../hooks/useDashboardEvents";
+import { resolveEventDetailPath, getPublicEventDetailPath } from "../../lib/eventNavigation";
 import type { EventRsvp, RsvpStatus } from "../../types";
-
-export type DeduplicatedDashboardEvent = DashboardEvent & {
-  moreDatesCount: number;
-};
 
 export type EventsByDateGroup = {
   date: string;
-  events: DeduplicatedDashboardEvent[];
+  events: DashboardEvent[];
 };
 
 function parseEventDay(dateStr: string): Date | null {
@@ -142,7 +139,15 @@ function resolveEventStatusDisplay(rsvpStatus?: RsvpStatus | string): EventStatu
   return "open";
 }
 
-function EventStatusButton({ display }: { display: EventStatusDisplay }) {
+function EventRsvpStatusButton({
+  display,
+  disabled,
+  onClick,
+}: {
+  display: EventStatusDisplay;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   const base = {
     flexShrink: 0,
     borderRadius: "6px",
@@ -150,26 +155,40 @@ function EventStatusButton({ display }: { display: EventStatusDisplay }) {
     fontSize: "12px",
     fontWeight: 600,
     whiteSpace: "nowrap" as const,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.7 : 1,
+    fontFamily: "inherit",
   };
 
   if (display === "going") {
     return (
-      <span
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
         style={{
           ...base,
           background: "#FFC429",
           color: "#0f0f0f",
           border: "none",
+          borderRadius: "20px",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
         }}
       >
         Going
-      </span>
+        <Check size={14} aria-hidden />
+      </button>
     );
   }
 
   if (display === "maybe") {
     return (
-      <span
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
         style={{
           ...base,
           background: "transparent",
@@ -178,13 +197,16 @@ function EventStatusButton({ display }: { display: EventStatusDisplay }) {
         }}
       >
         Maybe
-      </span>
+      </button>
     );
   }
 
   if (display === "not_going") {
     return (
-      <span
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
         style={{
           ...base,
           background: "transparent",
@@ -194,13 +216,16 @@ function EventStatusButton({ display }: { display: EventStatusDisplay }) {
         }}
       >
         Not Going
-      </span>
+      </button>
     );
   }
 
   if (display === "rsvp") {
     return (
-      <span
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
         style={{
           ...base,
           background: "transparent",
@@ -210,12 +235,15 @@ function EventStatusButton({ display }: { display: EventStatusDisplay }) {
         }}
       >
         RSVP
-      </span>
+      </button>
     );
   }
 
   return (
-    <span
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
       style={{
         ...base,
         background: "transparent",
@@ -225,7 +253,7 @@ function EventStatusButton({ display }: { display: EventStatusDisplay }) {
       }}
     >
       Open
-    </span>
+    </button>
   );
 }
 
@@ -507,20 +535,30 @@ function EventsTabEventRow({
   rsvpStatus,
   logoUrl,
   attendees,
+  isClubMember,
+  onRsvpClick,
   onSetRsvp,
   onRemoveRsvp,
+  rsvpBusy,
 }: {
-  event: DeduplicatedDashboardEvent;
+  event: DashboardEvent;
   rsvpStatus?: RsvpStatus | string;
   logoUrl?: string;
   attendees?: EventRsvp[];
+  isClubMember: boolean;
+  onRsvpClick?: (eventId: string, clubId: string, currentStatus?: RsvpStatus | string) => void;
   onSetRsvp?: (eventId: string, status: RsvpStatus) => Promise<boolean>;
   onRemoveRsvp?: (eventId: string) => Promise<boolean>;
+  rsvpBusy?: boolean;
 }) {
   const timeLabel = event.time ? formatEventTime12h(event.time) : null;
   const showLocation = hasEventLocation(event.location);
   const statusDisplay = resolveEventStatusDisplay(rsvpStatus);
   const attendeeList = attendees ?? [];
+  const detailPath = event.clubId
+    ? resolveEventDetailPath(event.id, event.clubId, isClubMember)
+    : getPublicEventDetailPath(event.id);
+  const hasRsvpResponse = Boolean(rsvpStatus);
 
   return (
     <div
@@ -536,7 +574,7 @@ function EventsTabEventRow({
       }}
     >
       <Link
-        to={`/events/${event.id}`}
+        to={detailPath}
         style={{
           display: "flex",
           alignItems: "center",
@@ -617,34 +655,26 @@ function EventsTabEventRow({
         <EventAttendeeAvatarStack attendees={attendeeList} />
       ) : null}
 
-      <EventStatusButton display={statusDisplay} />
+      {onRsvpClick ? (
+        <EventRsvpStatusButton
+          display={statusDisplay}
+          disabled={rsvpBusy}
+          onClick={() => {
+            if (event.clubId) {
+              onRsvpClick?.(event.id, event.clubId, rsvpStatus);
+            }
+          }}
+        />
+      ) : null}
 
-      {onSetRsvp && onRemoveRsvp ? (
+      {onSetRsvp && onRemoveRsvp && hasRsvpResponse ? (
         <EventRsvpMenu
           eventId={event.id}
           currentStatus={rsvpStatus}
           onSetRsvp={onSetRsvp}
           onRemoveRsvp={onRemoveRsvp}
         />
-      ) : (
-        <button
-          type="button"
-          aria-label="Event actions"
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#555555",
-            cursor: "pointer",
-            padding: "4px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <MoreVertical size={18} aria-hidden />
-        </button>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -674,15 +704,21 @@ export function EventsTabTimeline({
   myRsvps,
   clubLogos,
   eventAttendees,
+  isClubMember,
+  onRsvpClick,
   onSetRsvp,
   onRemoveRsvp,
+  rsvpBusyEventId,
 }: {
   groups: EventsByDateGroup[];
   myRsvps: Record<string, RsvpStatus | string>;
   clubLogos: Record<string, string>;
   eventAttendees?: Record<string, EventRsvp[]>;
+  isClubMember: (clubId: string) => boolean;
+  onRsvpClick?: (eventId: string, clubId: string, currentStatus?: RsvpStatus | string) => void;
   onSetRsvp?: (eventId: string, status: RsvpStatus) => Promise<boolean>;
   onRemoveRsvp?: (eventId: string) => Promise<boolean>;
+  rsvpBusyEventId?: string | null;
 }) {
   const spansMultipleMonths = useMemo(() => {
     const monthKeys = new Set(groups.map((group) => eventsMonthKey(group.date)));
@@ -774,8 +810,11 @@ export function EventsTabTimeline({
                   rsvpStatus={myRsvps[event.id]}
                   logoUrl={event.clubId ? clubLogos[event.clubId] : undefined}
                   attendees={eventAttendees?.[event.id]}
+                  isClubMember={event.clubId ? isClubMember(event.clubId) : false}
+                  onRsvpClick={onRsvpClick}
                   onSetRsvp={onSetRsvp}
                   onRemoveRsvp={onRemoveRsvp}
+                  rsvpBusy={rsvpBusyEventId === event.id}
                 />
               ))}
             </div>
@@ -787,7 +826,7 @@ export function EventsTabTimeline({
   );
 }
 
-export function useEventsTabSummary(events: DeduplicatedDashboardEvent[]) {
+export function useEventsTabSummary(events: DashboardEvent[]) {
   return useMemo(() => {
     const clubCount = new Set(events.map((event) => event.clubId)).size;
     return { eventCount: events.length, clubCount };

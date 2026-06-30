@@ -2473,12 +2473,12 @@ export default function ClubEventsPage() {
   useEffect(() => {
     const eventId = searchParams.get("manageEvent");
     if (!eventId || loading) return;
-    if (!canManageEvents) {
+    if (!isActiveMember) {
       const next = new URLSearchParams(searchParams);
       next.delete("manageEvent");
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams, canManageEvents, loading]);
+  }, [searchParams, setSearchParams, isActiveMember, loading]);
 
   useEffect(() => {
     const eventId = searchParams.get("viewRsvps");
@@ -3305,7 +3305,7 @@ export default function ClubEventsPage() {
 
   const manageEventId = searchParams.get("manageEvent");
   const manageEvent = manageEventId
-    ? visibleEvents.find((item) => item.id === manageEventId)
+    ? events.find((item) => item.id === manageEventId)
     : undefined;
   const planningTasksForManageEvent = useMemo(() => {
     if (!manageEventId) return [];
@@ -3322,7 +3322,7 @@ export default function ClubEventsPage() {
     );
   }
 
-  if (manageEventId && canManageEvents) {
+  if (manageEventId && isActiveMember) {
     if (!manageEvent) {
       return (
         <div

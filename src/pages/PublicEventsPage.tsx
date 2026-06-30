@@ -1222,7 +1222,7 @@ export default function PublicEventsPage() {
   }, [events]);
 
   const eventIds = useMemo(() => events.map((event) => event.id), [events]);
-  const { myRsvps } = useEventRsvps(eventIds);
+  const { myRsvps, setRsvp } = useEventRsvps(eventIds);
 
   const clubCategories = useMemo(
     () => clubCategoryFilterOptions(eventsWithStartTime.map((ev) => ev.clubCategory)),
@@ -1341,13 +1341,24 @@ export default function PublicEventsPage() {
     setPageView("home");
   }
 
-  function handleSignUp(eventId: string) {
+  async function handleSignUp(eventId: string) {
     const target = `/events/${eventId}/rsvp`;
-    if (user) {
+    const event = events.find((entry) => entry.id === eventId);
+
+    if (!user) {
+      navigate(`/signup?redirect=${encodeURIComponent(target)}`);
+      return;
+    }
+
+    if (event?.hasRsvp) {
       navigate(target);
       return;
     }
-    navigate(`/signup?redirect=${encodeURIComponent(target)}`);
+
+    const ok = await setRsvp(eventId, "going");
+    if (!ok) {
+      navigate(target);
+    }
   }
 
   const horizontalPad = isMobile ? "16px" : "48px";

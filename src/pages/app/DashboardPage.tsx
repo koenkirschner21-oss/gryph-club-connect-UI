@@ -31,6 +31,8 @@ import { useDashboardEvents, type DashboardEvent } from "../../hooks/useDashboar
 import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { useDashboardTasks } from "../../hooks/useDashboardTasks";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
+import { eventRequiresRsvpQuestionnaire } from "../../lib/eventRsvpActions";
+import { getEventRsvpPath, getPublicEventDetailPath, resolveEventDetailPath } from "../../lib/eventNavigation";
 import {
   registerUnreadCountRefresh,
   requestOpenNotificationsDropdown,
@@ -65,7 +67,6 @@ import {
   EventsTabHeader,
   EventsTabTimeline,
   useEventsTabSummary,
-  type DeduplicatedDashboardEvent,
 } from "../dashboard/EventsTabUI";
 import {
   MyClubsFilterBar,
@@ -347,7 +348,8 @@ export default function DashboardPage() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
-  const { clubs, joinedClubs, savedClubs, loading, getUserRole, isPending } = useClubContext();
+  const { clubs, joinedClubs, savedClubs, loading, getUserRole, isPending, isJoined } =
+    useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [onboardingIntent, setOnboardingIntent] = useState<OnboardingIntent | null>(null);
   const inbox = useInbox();
@@ -375,6 +377,7 @@ export default function DashboardPage() {
       sessionStorage.removeItem("dashboardTab");
     }
   }, []);
+  const [rsvpBusyEventId, setRsvpBusyEventId] = useState<string | null>(null);
   const [profile, setProfile] = useState<{
     fullName: string;
     program: string;
@@ -602,6 +605,36 @@ export default function DashboardPage() {
       return ok;
     },
     [refreshEvents, setRsvp],
+  );
+
+  const handleDashboardEventRsvpClick = useCallback(
+    async (
+      eventId: string,
+      _clubId: string,
+      currentStatus?: import("../../types").RsvpStatus | string,
+    ) => {
+      if (currentStatus) return;
+
+      const target = getEventRsvpPath(eventId);
+      if (!user) {
+        navigate(`/login?redirect=${encodeURIComponent(target)}`);
+        return;
+      }
+
+      setRsvpBusyEventId(eventId);
+      try {
+        const needsQuestionnaire = await eventRequiresRsvpQuestionnaire(eventId, true);
+        if (needsQuestionnaire) {
+          navigate(target);
+          return;
+        }
+
+        await handleDashboardSetRsvp(eventId, "going");
+      } finally {
+        setRsvpBusyEventId(null);
+      }
+    },
+    [handleDashboardSetRsvp, navigate, user],
   );
 
   const handleDashboardRemoveRsvp = useCallback(
@@ -889,8 +922,11 @@ export default function DashboardPage() {
           eventsLoading={eventsLoading}
           myRsvps={myRsvps}
           clubLogos={clubLogos}
+          isClubMember={isJoined}
+          onRsvpClick={handleDashboardEventRsvpClick}
           onSetRsvp={handleDashboardSetRsvp}
           onRemoveRsvp={handleDashboardRemoveRsvp}
+          rsvpBusyEventId={rsvpBusyEventId}
         />
       )}
       {activeTab === "tasks" && <TasksTab joinedClubs={joinedClubs} />}
@@ -1305,9 +1341,11 @@ function OverviewCompactTaskRow({
 function OverviewCompactEventRow({
   event,
   logoUrl,
+  isClubMember,
 }: {
   event: DashboardEvent;
   logoUrl?: string;
+  isClubMember: boolean;
 }) {
   const timeLabel = formatOverviewEventTime(event.time);
   const locationLabel = hasEventLocation(event.location) ? event.location.trim() : null;
@@ -1315,7 +1353,11 @@ function OverviewCompactEventRow({
 
   return (
     <Link
-      to={`/app/clubs/${event.clubId}/events`}
+      to={
+        event.clubId
+          ? resolveEventDetailPath(event.id, event.clubId, isClubMember)
+          : getPublicEventDetailPath(event.id)
+      }
       style={{ textDecoration: "none", display: "block" }}
     >
       <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
@@ -2429,6 +2471,7 @@ function OverviewTab({
               key={event.id}
               event={event}
               logoUrl={clubLogos[event.clubId ?? ""]}
+              isClubMember={event.clubId ? joinedClubIds.includes(event.clubId) : false}
             />
           ))}
         </div>
@@ -2569,32 +2612,8 @@ function OverviewTab({
 // ---------------------------------------------------------------------------
 // Events Tab (full-page list)
 // ---------------------------------------------------------------------------
-function deduplicateDashboardEvents(
-  events: DashboardEvent[],
-): DeduplicatedDashboardEvent[] {
+function groupDashboardEventsByDate(events: DashboardEvent[]) {
   const grouped = new Map<string, DashboardEvent[]>();
-
-  for (const event of events) {
-    const key = `${event.clubId}::${event.title.trim().toLowerCase()}`;
-    const existing = grouped.get(key) ?? [];
-    existing.push(event);
-    grouped.set(key, existing);
-  }
-
-  return Array.from(grouped.values())
-    .map((group) => {
-      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date));
-      const next = sorted[0];
-      return {
-        ...next,
-        moreDatesCount: sorted.length - 1,
-      };
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function groupDashboardEventsByDate(events: DeduplicatedDashboardEvent[]) {
-  const grouped = new Map<string, DeduplicatedDashboardEvent[]>();
 
   for (const event of events) {
     const existing = grouped.get(event.date) ?? [];
@@ -2612,25 +2631,31 @@ function EventsTab({
   eventsLoading,
   myRsvps,
   clubLogos,
+  isClubMember,
+  onRsvpClick,
   onSetRsvp,
   onRemoveRsvp,
+  rsvpBusyEventId,
 }: {
   upcomingEvents: DashboardEvent[];
   eventsLoading: boolean;
   myRsvps: Record<string, string>;
   clubLogos: Record<string, string>;
+  isClubMember: (clubId: string) => boolean;
+  onRsvpClick: (
+    eventId: string,
+    clubId: string,
+    currentStatus?: import("../../types").RsvpStatus | string,
+  ) => void;
   onSetRsvp: (eventId: string, status: import("../../types").RsvpStatus) => Promise<boolean>;
   onRemoveRsvp: (eventId: string) => Promise<boolean>;
+  rsvpBusyEventId: string | null;
 }) {
-  const displayEvents = useMemo(
-    () => deduplicateDashboardEvents(upcomingEvents),
+  const eventsByDate = useMemo(
+    () => groupDashboardEventsByDate(upcomingEvents),
     [upcomingEvents],
   );
-  const eventsByDate = useMemo(
-    () => groupDashboardEventsByDate(displayEvents),
-    [displayEvents],
-  );
-  const summary = useEventsTabSummary(displayEvents);
+  const summary = useEventsTabSummary(upcomingEvents);
 
   if (eventsLoading) {
     return (
@@ -2657,8 +2682,11 @@ function EventsTab({
         groups={eventsByDate}
         myRsvps={myRsvps}
         clubLogos={clubLogos}
+        isClubMember={isClubMember}
+        onRsvpClick={onRsvpClick}
         onSetRsvp={onSetRsvp}
         onRemoveRsvp={onRemoveRsvp}
+        rsvpBusyEventId={rsvpBusyEventId}
       />
     </div>
   );

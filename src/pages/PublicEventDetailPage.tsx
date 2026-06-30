@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
+import { useClubContext } from "../context/useClubContext";
 import { supabase } from "../lib/supabaseClient";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
 import PublicDetailBackButton from "../components/public/PublicDetailBackButton";
+import { normalizeVisibility } from "../lib/contentVisibility";
+import { eventRequiresRsvpQuestionnaire } from "../lib/eventRsvpActions";
+import { getEventRsvpPath, getWorkspaceEventDetailPath } from "../lib/eventNavigation";
+import type { RsvpStatus } from "../types";
 
 interface EventDetail {
   id: string;
@@ -17,6 +23,7 @@ interface EventDetail {
   clubName: string;
   clubSlug: string;
   clubLogoUrl: string | null;
+  visibility: string;
 }
 
 function formatEventDateTime(date: string, time: string): string {
@@ -36,13 +43,15 @@ function formatEventDateTime(date: string, time: string): string {
 export default function PublicEventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const { user } = useAuthContext();
+  const { isJoined } = useClubContext();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
   const [event, setEvent] = useState<EventDetail | null>(null);
-  const [hasRsvp, setHasRsvp] = useState(false);
+  const [myRsvpStatus, setMyRsvpStatus] = useState<RsvpStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [rsvpBusy, setRsvpBusy] = useState(false);
 
   useEffect(() => {
     if (!eventId) {
@@ -75,7 +84,6 @@ export default function PublicEventDetailPage() {
           )
         `)
         .eq("id", eventId)
-        .in("visibility", ["public"])
         .maybeSingle();
 
       if (cancelled) return;
@@ -91,6 +99,21 @@ export default function PublicEventDetailPage() {
       const club = (
         Array.isArray(clubRaw) ? clubRaw[0] ?? {} : clubRaw ?? {}
       ) as Record<string, unknown>;
+      const clubId = row.club_id as string;
+      const visibility = normalizeVisibility(row.visibility as string | null, "public");
+      const isClubMember = isJoined(clubId);
+
+      if (visibility !== "public" && !isClubMember) {
+        setNotFound(true);
+        setEvent(null);
+        setLoading(false);
+        return;
+      }
+
+      if (eventId && isClubMember) {
+        navigate(getWorkspaceEventDetailPath(clubId, eventId), { replace: true });
+        return;
+      }
 
       setEvent({
         id: row.id as string,
@@ -99,20 +122,29 @@ export default function PublicEventDetailPage() {
         date: (row.date as string) ?? "",
         time: (row.time as string) ?? "",
         location: (row.location as string) ?? "",
-        clubId: row.club_id as string,
+        clubId,
         clubName: (club.name as string) ?? "Club",
         clubSlug: (club.slug as string) ?? "",
         clubLogoUrl: (club.logo_url as string) ?? null,
+        visibility,
       });
 
-      const { data: questions } = await supabase
-        .from("event_form_questions")
-        .select("id")
-        .eq("event_id", eventId)
-        .limit(1);
+      if (user?.id) {
+        const { data: rsvpRow } = await supabase
+          .from("event_rsvps")
+          .select("status")
+          .eq("event_id", eventId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (!cancelled) {
+          setMyRsvpStatus((rsvpRow?.status as RsvpStatus | undefined) ?? null);
+        }
+      } else if (!cancelled) {
+        setMyRsvpStatus(null);
+      }
 
       if (!cancelled) {
-        setHasRsvp((questions?.length ?? 0) > 0);
         setLoading(false);
       }
     }
@@ -121,16 +153,44 @@ export default function PublicEventDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, isJoined, navigate, user?.id]);
 
-  function handleRsvp() {
+  async function handleRsvp() {
     if (!eventId) return;
-    const target = `/events/${eventId}/rsvp`;
+
+    const target = getEventRsvpPath(eventId);
     if (!user) {
       navigate(`/login?redirect=${encodeURIComponent(target)}`);
       return;
     }
-    navigate(target);
+
+    if (myRsvpStatus) {
+      navigate(target);
+      return;
+    }
+
+    setRsvpBusy(true);
+    try {
+      const needsQuestionnaire = await eventRequiresRsvpQuestionnaire(eventId, true);
+      if (needsQuestionnaire) {
+        navigate(target);
+        return;
+      }
+
+      const { error } = await supabase.from("event_rsvps").upsert(
+        { event_id: eventId, user_id: user.id, status: "going" },
+        { onConflict: "event_id,user_id" },
+      );
+
+      if (error) {
+        console.error("Failed to record RSVP:", error.message);
+        return;
+      }
+
+      setMyRsvpStatus("going");
+    } finally {
+      setRsvpBusy(false);
+    }
   }
 
   const pad = isMobile ? "16px" : "48px";
@@ -175,6 +235,14 @@ export default function PublicEventDetailPage() {
   const location = event.location?.trim();
   const locationLabel =
     location && location !== "TBD" ? location : "Location TBD";
+
+  const rsvpLabel = myRsvpStatus === "going"
+    ? "Going"
+    : myRsvpStatus === "maybe"
+      ? "Maybe"
+      : myRsvpStatus === "not_going"
+        ? "Not Going"
+        : "RSVP for this Event";
 
   return (
     <div style={{ background: "#0f0f0f", minHeight: "100vh", paddingBottom: 60 }}>
@@ -291,25 +359,29 @@ export default function PublicEventDetailPage() {
           </div>
         ) : null}
 
-        {hasRsvp ? (
-          <button
-            type="button"
-            onClick={handleRsvp}
-            style={{
-              marginTop: "32px",
-              background: "#E51937",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "8px",
-              padding: "12px 28px",
-              fontSize: "15px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            RSVP for this Event
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => void handleRsvp()}
+          disabled={rsvpBusy}
+          style={{
+            marginTop: "32px",
+            background: myRsvpStatus === "going" ? "#FFC429" : "#E51937",
+            color: myRsvpStatus === "going" ? "#0f0f0f" : "#ffffff",
+            border: "none",
+            borderRadius: myRsvpStatus === "going" ? "20px" : "8px",
+            padding: "12px 28px",
+            fontSize: "15px",
+            fontWeight: 600,
+            cursor: rsvpBusy ? "wait" : "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            opacity: rsvpBusy ? 0.7 : 1,
+          }}
+        >
+          {rsvpLabel}
+          {myRsvpStatus === "going" ? <Check size={16} aria-hidden /> : null}
+        </button>
       </div>
     </div>
   );
