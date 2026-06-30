@@ -3,13 +3,8 @@ import {
   Bookmark,
   ChevronLeft,
   ChevronRight,
-  Crown,
   Grid3x3,
-  MoreVertical,
   Search,
-  Star,
-  User,
-  Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Club, MemberRole } from "../../types";
@@ -37,7 +32,7 @@ const CONTROL_STYLE: CSSProperties = {
   fontSize: "13px",
 };
 
-export type ClubFilterOption = "all" | "managed" | "member" | "president" | "saved";
+export type ClubFilterOption = "all" | "saved";
 export type ClubSortOption = "recent" | "name" | "role" | "members";
 
 export type MyClubsTabClub = Club;
@@ -64,14 +59,6 @@ function roleSortValue(role: MemberRole | null): number {
   return 2;
 }
 
-function formatCategorySubtitle(club: Club): string | null {
-  const category = club.category?.trim();
-  const tags = (club.tags ?? []).map((tag) => tag.trim()).filter(Boolean);
-  const parts = category ? [category, ...tags.filter((tag) => tag !== category)] : tags;
-  if (parts.length === 0) return null;
-  return parts.join(" | ");
-}
-
 function isClubActive(club: Club): boolean {
   if (club.setupCompleted === false) return false;
   if (club.isPublished === false) return false;
@@ -90,20 +77,12 @@ function resolveClubStatusLabel(club: Club, isPendingMembership: boolean): strin
 export function filterMyClubs(
   clubs: MyClubsTabClub[],
   search: string,
-  filter: ClubFilterOption,
-  getUserRole: (clubId: string) => MemberRole | null,
+  _filter: ClubFilterOption,
+  _getUserRole: (clubId: string) => MemberRole | null,
 ): MyClubsTabClub[] {
   const query = search.trim().toLowerCase();
 
   return clubs.filter((club) => {
-    const role = getUserRole(club.id);
-
-    if (filter !== "all" && filter !== "saved") {
-      if (filter === "president" && role !== "owner") return false;
-      if (filter === "managed" && role !== "owner") return false;
-      if (filter === "member" && role !== "member") return false;
-    }
-
     if (query && !club.name.toLowerCase().includes(query)) return false;
     return true;
   });
@@ -169,7 +148,7 @@ export function MyClubsHeader() {
         My Clubs
       </h2>
       <p style={{ margin: 0, fontSize: "13px", color: "#777777", lineHeight: 1.5 }}>
-        Clubs you&apos;ve joined, manage, or saved for later.
+        Quick access to the clubs you belong to and manage.
       </p>
     </div>
   );
@@ -179,12 +158,16 @@ function MyClubsTabClubAvatar({
   name,
   abbreviation,
   logoUrl,
+  size = 44,
 }: {
   name: string;
   abbreviation?: string;
   logoUrl?: string;
+  size?: number;
 }) {
   const abbr = abbreviation?.trim() || deriveAbbreviation(name);
+  const fontSize = size >= 72 ? "22px" : "12px";
+  const radius = size >= 72 ? "14px" : "8px";
 
   if (logoUrl) {
     return (
@@ -192,9 +175,9 @@ function MyClubsTabClubAvatar({
         src={logoUrl}
         alt=""
         style={{
-          width: "44px",
-          height: "44px",
-          borderRadius: "8px",
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: radius,
           border: "1px solid #2a2a2a",
           objectFit: "cover",
           flexShrink: 0,
@@ -206,13 +189,13 @@ function MyClubsTabClubAvatar({
   return (
     <div
       style={{
-        width: "44px",
-        height: "44px",
-        borderRadius: "8px",
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: radius,
         border: "1px solid #2a2a2a",
         background: "#2a2a2a",
         color: "#888888",
-        fontSize: "12px",
+        fontSize,
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
@@ -231,9 +214,6 @@ const FILTER_OPTIONS: {
   icon: typeof Grid3x3;
 }[] = [
   { value: "all", label: "All Clubs", icon: Grid3x3 },
-  { value: "managed", label: "Managed by Me", icon: Crown },
-  { value: "member", label: "Member", icon: User },
-  { value: "president", label: "President", icon: Star },
   { value: "saved", label: "Saved", icon: Bookmark },
 ];
 
@@ -244,6 +224,7 @@ export function MyClubsFilterBar({
   onFilterChange,
   sort,
   onSortChange,
+  showSearch,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -251,6 +232,7 @@ export function MyClubsFilterBar({
   onFilterChange: (value: ClubFilterOption) => void;
   sort: ClubSortOption;
   onSortChange: (value: ClubSortOption) => void;
+  showSearch: boolean;
 }) {
   return (
     <div style={{ marginBottom: "16px" }}>
@@ -259,17 +241,57 @@ export function MyClubsFilterBar({
           display: "flex",
           gap: "12px",
           alignItems: "center",
+          justifyContent: "space-between",
           flexWrap: "wrap",
-          marginBottom: "12px",
+          marginBottom: showSearch ? "12px" : 0,
         }}
       >
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {FILTER_OPTIONS.map((option) => {
+            const Icon = option.icon;
+            const selected = filter === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onFilterChange(option.value)}
+                style={{
+                  ...CHIP_BASE,
+                  background: selected ? "#E51937" : "transparent",
+                  border: selected ? "1px solid #E51937" : "1px solid #2a2a2a",
+                  color: selected ? "#ffffff" : "#999999",
+                  fontSize: "13px",
+                  padding: "7px 14px",
+                }}
+              >
+                <Icon size={14} aria-hidden />
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <select
+          value={sort}
+          onChange={(event) => onSortChange(event.target.value as ClubSortOption)}
+          style={CONTROL_STYLE}
+          aria-label="Sort clubs"
+        >
+          <option value="recent">Recently Active</option>
+          <option value="name">Name A-Z</option>
+          <option value="role">Role</option>
+          <option value="members">Member Count</option>
+        </select>
+      </div>
+
+      {showSearch ? (
         <label
           style={{
             display: "flex",
             alignItems: "center",
             gap: "8px",
-            flex: 1,
-            minWidth: "240px",
+            width: "100%",
+            maxWidth: "420px",
             background: "#1a1a1a",
             border: "1px solid #2a2a2a",
             borderRadius: "8px",
@@ -292,52 +314,7 @@ export function MyClubsFilterBar({
             }}
           />
         </label>
-
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {FILTER_OPTIONS.map((option) => {
-            const Icon = option.icon;
-            const selected = filter === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onFilterChange(option.value)}
-                style={{
-                  ...CHIP_BASE,
-                  background: selected ? "#E51937" : "transparent",
-                  border: selected ? "1px solid #E51937" : "1px solid #2a2a2a",
-                  color: selected ? "#ffffff" : "#999999",
-                }}
-              >
-                <Icon size={14} aria-hidden />
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "8px",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          flexWrap: "wrap",
-        }}
-      >
-        <select
-          value={sort}
-          onChange={(event) => onSortChange(event.target.value as ClubSortOption)}
-          style={CONTROL_STYLE}
-          aria-label="Sort clubs"
-        >
-          <option value="recent">Recently Active</option>
-          <option value="name">Name A-Z</option>
-          <option value="role">Role</option>
-          <option value="members">Member Count</option>
-        </select>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -348,18 +325,18 @@ function MyClubsTabCard({
   roleDisplay,
   statusLabel,
   onOpenWorkspace,
-  isMobile,
 }: {
   club: MyClubsTabClub;
   logoUrl?: string;
   roleDisplay: ClubRoleDisplay;
   statusLabel: string | null;
   onOpenWorkspace: () => void;
-  isMobile: boolean;
 }) {
-  const categorySubtitle = formatCategorySubtitle(club);
-  const descriptionText =
-    club.shortDescription?.trim() || club.description?.trim() || null;
+  const category = club.category?.trim();
+  const metadataParts = [
+    `${club.memberCount} member${club.memberCount === 1 ? "" : "s"}`,
+    category || null,
+  ].filter(Boolean);
   const roleBorderColor = roleDisplay.borderColor ?? roleDisplay.color;
 
   return (
@@ -367,176 +344,112 @@ function MyClubsTabCard({
       style={{
         background: "#141414",
         border: "1px solid #2a2a2a",
-        borderRadius: "10px",
-        padding: "14px",
+        borderRadius: "12px",
+        padding: "20px 18px 16px",
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        minHeight: "280px",
+        minHeight: "260px",
         boxSizing: "border-box",
       }}
     >
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <MyClubsTabClubAvatar
+          name={club.name}
+          abbreviation={club.abbreviation}
+          logoUrl={logoUrl}
+          size={76}
+        />
+
+        <h3
           style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: "12px",
-            marginBottom: "10px",
+            margin: "14px 0 0",
+            fontSize: "20px",
+            fontWeight: 800,
+            color: "#ffffff",
+            lineHeight: 1.25,
+            width: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
           }}
         >
-          <MyClubsTabClubAvatar
-            name={club.name}
-            abbreviation={club.abbreviation}
-            logoUrl={logoUrl}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: "8px",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: "15px",
-                  fontWeight: 700,
-                  color: "#ffffff",
-                  lineHeight: 1.3,
-                }}
-              >
-                {club.name}
-              </p>
-              <button
-                type="button"
-                aria-label="Club options"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#777777",
-                  cursor: "pointer",
-                  padding: 0,
-                  display: "flex",
-                  flexShrink: 0,
-                }}
-              >
-                <MoreVertical size={16} aria-hidden />
-              </button>
-            </div>
+          {club.name}
+        </h3>
 
-            <div style={{ marginTop: "6px" }}>
-              <span
-                style={{
-                  display: "inline-block",
-                  borderRadius: "20px",
-                  padding: "2px 8px",
-                  fontSize: "10px",
-                  fontWeight: 600,
-                  color: roleDisplay.color,
-                  border: `1px solid ${roleBorderColor}`,
-                  background: "transparent",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {roleDisplay.label}
-              </span>
-            </div>
-
-            <p
-              style={{
-                margin: "6px 0 0",
-                fontSize: "12px",
-                color: categorySubtitle ? "#777777" : "transparent",
-                lineHeight: 1.35,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                minHeight: "16px",
-              }}
-              title={categorySubtitle ?? undefined}
-            >
-              {categorySubtitle ?? "\u00A0"}
-            </p>
-          </div>
+        <div style={{ marginTop: "10px" }}>
+          <span
+            style={{
+              display: "inline-block",
+              borderRadius: "20px",
+              padding: "3px 9px",
+              fontSize: "10px",
+              fontWeight: 600,
+              color: roleDisplay.color,
+              border: `1px solid ${roleBorderColor}`,
+              background: "transparent",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {roleDisplay.label}
+          </span>
         </div>
 
         <p
           style={{
-            margin: "0 0 10px",
-            fontSize: "12px",
-            color: descriptionText ? "#999999" : "#555555",
-            fontStyle: descriptionText ? "normal" : "italic",
-            lineHeight: 1.5,
-            minHeight: "36px",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
+            margin: "10px 0 0",
+            fontSize: "11px",
+            color: "#666666",
+            lineHeight: 1.4,
           }}
         >
-          {descriptionText ?? "No description added yet."}
+          {metadataParts.join(" · ")}
         </p>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "8px",
-            marginBottom: "12px",
-          }}
-        >
-          <span
+        {statusLabel ? (
+          <p
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "5px",
+              margin: "6px 0 0",
               fontSize: "11px",
-              color: "#777777",
+              color: "#888888",
+              fontWeight: 500,
             }}
           >
-            <Users size={13} aria-hidden />
-            {club.memberCount} Member{club.memberCount === 1 ? "" : "s"}
-          </span>
-          {statusLabel ? (
-            <span
-              style={{
-                fontSize: "11px",
-                color: "#888888",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {statusLabel}
-            </span>
-          ) : null}
-        </div>
+            {statusLabel}
+          </p>
+        ) : null}
       </div>
 
       <div
         style={{
           display: "flex",
-          flexDirection: isMobile ? "column" : "row",
-          alignItems: isMobile ? "stretch" : "center",
+          flexDirection: "column",
           gap: "8px",
-          marginTop: "auto",
-          paddingTop: "4px",
+          marginTop: "18px",
         }}
       >
         <button
           type="button"
           onClick={onOpenWorkspace}
           style={{
+            width: "100%",
             background: "#E51937",
             color: "#ffffff",
-            borderRadius: "6px",
-            padding: "5px 10px",
-            fontSize: "11px",
+            borderRadius: "8px",
+            padding: "11px 14px",
+            fontSize: "14px",
             fontWeight: 600,
-            flex: isMobile ? undefined : 1,
             textAlign: "center",
             cursor: "pointer",
             border: "none",
@@ -548,21 +461,13 @@ function MyClubsTabCard({
         <Link
           to={`/clubs/${club.slug}`}
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "1px solid #2a2a2a",
-            background: "transparent",
-            color: "#999999",
-            borderRadius: "6px",
-            padding: "7px 12px",
+            display: "block",
+            textAlign: "center",
+            color: "#777777",
             fontSize: "12px",
             fontWeight: 500,
-            flex: isMobile ? undefined : "0 0 auto",
-            textAlign: "center",
             textDecoration: "none",
-            boxSizing: "border-box",
-            whiteSpace: "nowrap",
+            padding: "4px 0",
           }}
         >
           View Profile
@@ -596,8 +501,8 @@ export function MyClubsGrid({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))",
-        gap: "12px",
+        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))",
+        gap: "16px",
         alignItems: "stretch",
       }}
     >
@@ -613,7 +518,6 @@ export function MyClubsGrid({
           })}
           statusLabel={resolveClubStatusLabel(club, isPendingMembership(club.id))}
           onOpenWorkspace={() => onOpenWorkspace(club.id)}
-          isMobile={isMobile}
         />
       ))}
     </div>

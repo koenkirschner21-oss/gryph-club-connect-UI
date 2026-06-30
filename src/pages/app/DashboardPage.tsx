@@ -2157,6 +2157,7 @@ function MyClubsTab({
         onFilterChange={setFilter}
         sort={sort}
         onSortChange={setSort}
+        showSearch={myClubs.length >= 8}
       />
 
       {sortedClubs.length === 0 ? (
