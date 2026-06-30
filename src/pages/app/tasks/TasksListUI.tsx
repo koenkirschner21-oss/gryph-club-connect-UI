@@ -21,6 +21,18 @@ const CARD_BORDER = "#2a2a2a";
 
 export const LIST_GRID_COLUMNS = "32px 1fr 160px 140px 120px 100px 80px 120px";
 
+const TASK_DESCRIPTION_PREVIEW_STYLE: CSSProperties = {
+  margin: "4px 0 0",
+  fontSize: "12px",
+  color: "#777777",
+  lineHeight: 1.4,
+  overflow: "hidden",
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+  wordBreak: "break-word",
+};
+
 const statCardStyle: CSSProperties = {
   background: CARD_BG,
   border: `1px solid ${CARD_BORDER}`,
@@ -724,7 +736,7 @@ export function TasksListTableRow({
         display: "grid",
         gridTemplateColumns: LIST_GRID_COLUMNS,
         gap: "8px",
-        alignItems: "center",
+        alignItems: "start",
         background: isHovered ? "#181818" : CARD_BG,
         border: `1px solid ${isHovered ? "#333333" : CARD_BORDER}`,
         borderRadius: "8px",
@@ -735,13 +747,21 @@ export function TasksListTableRow({
         transition: "border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease",
       }}
     >
-      <GripVertical size={16} color="#333333" aria-hidden style={{ flexShrink: 0 }} />
+      <GripVertical size={16} color="#333333" aria-hidden style={{ flexShrink: 0, marginTop: "2px" }} />
 
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
-        <div style={{ marginTop: "2px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "10px",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ marginTop: "2px", flexShrink: 0 }}>
           <StatusCircleIcon status={task.status} isUpdating={statusUpdating} />
         </div>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
           <p
             style={{
               margin: 0,
@@ -749,23 +769,15 @@ export function TasksListTableRow({
               fontWeight: 700,
               color: "#ffffff",
               textDecoration: isDone ? "line-through" : "none",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
             {task.title}
           </p>
           {task.description ? (
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontSize: "12px",
-                color: "#777777",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {task.description}
-            </p>
+            <p style={TASK_DESCRIPTION_PREVIEW_STYLE}>{task.description}</p>
           ) : null}
           {linkedLabel}
         </div>
@@ -778,7 +790,7 @@ export function TasksListTableRow({
         initials={assigneeInitials}
       />
 
-      <div>
+      <div style={{ minWidth: 0, paddingTop: "2px" }}>
         {task.dueDate ? (
           <>
             <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
@@ -795,21 +807,37 @@ export function TasksListTableRow({
         )}
       </div>
 
-      <div>
+      <div style={{ minWidth: 0, paddingTop: "2px" }}>
         <ListTypePill taskType={task.taskType ?? "general"} />
       </div>
 
-      <div>
+      <div style={{ minWidth: 0, paddingTop: "2px" }}>
         {!isDone ? <ListPriorityPill priority={task.priority} /> : <ListPriorityPill priority={task.priority} muted />}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "4px", color: "#555555" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          color: "#555555",
+          minWidth: 0,
+          paddingTop: "2px",
+        }}
+      >
         <MessageSquare size={14} aria-hidden />
         <span style={{ fontSize: "12px" }}>{commentCount}</span>
       </div>
 
       <div
-        style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          justifyContent: "flex-end",
+          minWidth: 0,
+          paddingTop: "2px",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {showStatusAction && listAction ? (
