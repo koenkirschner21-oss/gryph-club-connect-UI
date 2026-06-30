@@ -15,6 +15,7 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
+import ProfileAvatarCircle from "../../components/ui/ProfileAvatarCircle";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import CandidateReviewPanel, {
   type CandidateReviewApplication,
@@ -2371,6 +2372,8 @@ export default function ClubRecruitingPage() {
                         const menuOpen = openApplicantMenuId === app.id;
                         const profileLine = applicantProfileLine(app.profile);
 
+                        const applicantName = app.profile?.full_name ?? "Member";
+
                         return (
                           <div
                             key={app.id}
@@ -2387,6 +2390,12 @@ export default function ClubRecruitingPage() {
                               marginBottom: "10px",
                             }}
                           >
+                            <ProfileAvatarCircle
+                              name={applicantName}
+                              avatarUrl={app.profile?.avatar_url}
+                              email={app.profile?.email}
+                              size={40}
+                            />
                             <div style={{ flex: 1, minWidth: "160px" }}>
                               <p
                                 style={{
@@ -2399,7 +2408,7 @@ export default function ClubRecruitingPage() {
                                   whiteSpace: "nowrap",
                                 }}
                               >
-                                {app.profile?.full_name ?? "Member"}
+                                {applicantName}
                               </p>
                               {profileLine ? (
                                 <p
