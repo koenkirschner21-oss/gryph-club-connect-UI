@@ -85,6 +85,9 @@ import {
   WeekAchievementCard,
   WeekCalendarStrip,
   WeekClubLogo,
+  MonthCalendarGrid,
+  MonthWeekToggle,
+  type CalendarViewMode,
 } from "../dashboard/ThisWeekTabUI";
 import {
   resolveOnboardingIntent,
@@ -94,7 +97,7 @@ import {
 // ---------------------------------------------------------------------------
 // Tab types
 // ---------------------------------------------------------------------------
-type DashboardTab = "overview" | "events" | "tasks" | "week" | "clubs" | "inbox";
+type DashboardTab = "overview" | "events" | "tasks" | "month" | "clubs" | "inbox";
 
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
@@ -842,9 +845,9 @@ export default function DashboardPage() {
           badge={unreadNotificationCount > 0 ? unreadNotificationCount : undefined}
           onClick={() => setActiveTab("overview")}
         />
-        <ThisWeekTabButton
-          active={activeTab === "week"}
-          onClick={() => setActiveTab("week")}
+        <ThisMonthTabButton
+          active={activeTab === "month"}
+          onClick={() => setActiveTab("month")}
         />
         <TabButton
           label="Inbox"
@@ -897,8 +900,8 @@ export default function DashboardPage() {
           }}
         />
       )}
-      {activeTab === "week" && (
-        <ThisWeekTab
+      {activeTab === "month" && (
+        <ThisMonthTab
           joinedClubIds={joinedClubs}
           clubLogos={clubLogos}
           displayName={displayName}
@@ -978,7 +981,7 @@ function TabButton({
   );
 }
 
-function ThisWeekTabButton({
+function ThisMonthTabButton({
   active,
   onClick,
 }: {
@@ -1012,7 +1015,7 @@ function ThisWeekTabButton({
       }}
     >
       <Calendar size={13} strokeWidth={2} aria-hidden />
-      This Week
+      This Month
     </button>
   );
 }
@@ -1540,6 +1543,55 @@ function addDaysIso(isoDate: string, days: number): string {
 
 const CALENDAR_WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
+function minIso(a: string, b: string): string {
+  return a < b ? a : b;
+}
+
+function maxIso(a: string, b: string): string {
+  return a > b ? a : b;
+}
+
+function calendarMonthDays(reference: Date): Array<{
+  dateKey: string;
+  dayNum: number;
+  inCurrentMonth: boolean;
+}> {
+  const year = reference.getFullYear();
+  const month = reference.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const lastOfMonth = new Date(year, month + 1, 0);
+
+  const startDay = firstOfMonth.getDay();
+  const mondayOffset = startDay === 0 ? -6 : 1 - startDay;
+  const gridStart = new Date(year, month, 1 + mondayOffset);
+
+  const endDay = lastOfMonth.getDay();
+  const sundayOffset = endDay === 0 ? 0 : 7 - endDay;
+  const gridEnd = new Date(year, month, lastOfMonth.getDate() + sundayOffset);
+
+  const days: Array<{
+    dateKey: string;
+    dayNum: number;
+    inCurrentMonth: boolean;
+  }> = [];
+  const cursor = new Date(gridStart);
+  while (cursor <= gridEnd) {
+    days.push({
+      dateKey: localIsoDate(cursor),
+      dayNum: cursor.getDate(),
+      inCurrentMonth: cursor.getMonth() === month,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+function monthBounds(reference: Date): { start: string; end: string } {
+  const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
+  const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+  return { start: localIsoDate(start), end: localIsoDate(end) };
+}
+
 function calendarWeekDays(reference = new Date()): Array<{
   dateKey: string;
   label: string;
@@ -1687,7 +1739,7 @@ function WeekTaskCard({
   );
 }
 
-function ThisWeekTab({
+function ThisMonthTab({
   joinedClubIds,
   clubLogos,
   displayName,
@@ -1702,11 +1754,31 @@ function ThisWeekTab({
   const [items, setItems] = useState<WeekPlannerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const [calendarView, setCalendarView] = useState<CalendarViewMode>("month");
+  const [monthOffset, setMonthOffset] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthlyCompleted, setMonthlyCompleted] = useState(0);
   const [monthlyTotal, setMonthlyTotal] = useState(0);
-  const weekItemsRef = useRef<HTMLDivElement>(null);
+  const plannerItemsRef = useRef<HTMLDivElement>(null);
   const todayKey = todayIsoDate();
+
+  const monthReference = useMemo(() => {
+    const ref = new Date();
+    ref.setDate(1);
+    ref.setMonth(ref.getMonth() + monthOffset);
+    return ref;
+  }, [monthOffset]);
+
+  const monthDays = useMemo(
+    () => calendarMonthDays(monthReference),
+    [monthReference],
+  );
+  const monthRange = useMemo(() => monthBounds(monthReference), [monthReference]);
+  const monthLabel = monthReference.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
   const weekReference = useMemo(() => {
     const ref = new Date();
     ref.setDate(ref.getDate() + weekOffset * 7);
@@ -1715,6 +1787,15 @@ function ThisWeekTab({
   const weekDays = useMemo(() => calendarWeekDays(weekReference), [weekReference]);
   const weekStart = weekDays[0]?.dateKey ?? todayKey;
   const weekEnd = weekDays[6]?.dateKey ?? addDaysIso(todayKey, 6);
+
+  const fetchStart = useMemo(
+    () => minIso(monthRange.start, weekStart),
+    [monthRange.start, weekStart],
+  );
+  const fetchEnd = useMemo(
+    () => maxIso(monthRange.end, weekEnd),
+    [monthRange.end, weekEnd],
+  );
 
   useEffect(() => {
     if (joinedClubIds.length === 0) {
@@ -1728,13 +1809,8 @@ function ThisWeekTab({
     }
 
     let cancelled = false;
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    const monthStartIso = localIsoDate(monthStart);
-    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-    const monthEndIso = localIsoDate(monthEnd);
 
-    async function loadWeek() {
+    async function loadPlanner() {
       setLoading(true);
 
       const [tasksRes, eventsRes, monthTasksRes] = await Promise.all([
@@ -1754,8 +1830,8 @@ function ThisWeekTab({
           `,
           )
           .in("club_id", joinedClubIds)
-          .gte("due_date", weekStart)
-          .lte("due_date", weekEnd)
+          .gte("due_date", fetchStart)
+          .lte("due_date", fetchEnd)
           .neq("status", "done")
           .neq("status", "cancelled")
           .order("due_date", { ascending: true }),
@@ -1774,8 +1850,8 @@ function ThisWeekTab({
           `,
           )
           .in("club_id", joinedClubIds)
-          .gte("date", weekStart)
-          .lte("date", weekEnd)
+          .gte("date", fetchStart)
+          .lte("date", fetchEnd)
           .order("date", { ascending: true })
           .order("time", { ascending: true }),
         supabase
@@ -1783,8 +1859,8 @@ function ThisWeekTab({
           .select("id, status")
           .in("club_id", joinedClubIds)
           .neq("status", "cancelled")
-          .gte("due_date", monthStartIso)
-          .lte("due_date", monthEndIso),
+          .gte("due_date", monthRange.start)
+          .lte("due_date", monthRange.end),
       ]);
 
       if (cancelled) return;
@@ -1851,12 +1927,12 @@ function ThisWeekTab({
       setLoading(false);
     }
 
-    void loadWeek();
+    void loadPlanner();
 
     return () => {
       cancelled = true;
     };
-  }, [joinedClubIds, weekStart, weekEnd]);
+  }, [joinedClubIds, fetchStart, fetchEnd, monthRange.start, monthRange.end]);
 
   const dayMeta = useMemo(() => {
     const map = new Map<
@@ -1877,40 +1953,79 @@ function ThisWeekTab({
     return map;
   }, [items]);
 
-  const weekTasks = useMemo(() => {
-    const tasks = items.filter((i): i is WeekTaskItem => i.kind === "task");
-    const filtered = selectedDayKey
-      ? tasks.filter((t) => t.dateKey === selectedDayKey)
-      : tasks;
-    return [...filtered].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-  }, [items, selectedDayKey]);
+  const filteredTasks = useMemo(() => {
+    let tasks = items.filter((i): i is WeekTaskItem => i.kind === "task");
+    if (selectedDayKey) {
+      tasks = tasks.filter((t) => t.dateKey === selectedDayKey);
+    } else if (calendarView === "week") {
+      tasks = tasks.filter((t) => t.dateKey >= weekStart && t.dateKey <= weekEnd);
+    } else {
+      tasks = tasks.filter(
+        (t) => t.dateKey >= monthRange.start && t.dateKey <= monthRange.end,
+      );
+    }
+    return [...tasks].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  }, [items, selectedDayKey, calendarView, weekStart, weekEnd, monthRange]);
 
-  const weekEvents = useMemo(() => {
-    const events = items.filter((i): i is WeekEventItem => i.kind === "event");
-    const filtered = selectedDayKey
-      ? events.filter((e) => e.dateKey === selectedDayKey)
-      : events;
-    return [...filtered].sort((a, b) => {
+  const filteredEvents = useMemo(() => {
+    let events = items.filter((i): i is WeekEventItem => i.kind === "event");
+    if (selectedDayKey) {
+      events = events.filter((e) => e.dateKey === selectedDayKey);
+    } else if (calendarView === "week") {
+      events = events.filter((e) => e.dateKey >= weekStart && e.dateKey <= weekEnd);
+    } else {
+      events = events.filter(
+        (e) => e.dateKey >= monthRange.start && e.dateKey <= monthRange.end,
+      );
+    }
+    return [...events].sort((a, b) => {
       const byDate = a.dateKey.localeCompare(b.dateKey);
       if (byDate !== 0) return byDate;
       return (a.time ?? "").localeCompare(b.time ?? "");
     });
-  }, [items, selectedDayKey]);
+  }, [items, selectedDayKey, calendarView, weekStart, weekEnd, monthRange]);
 
-  const previewTasks = weekTasks.slice(0, 3);
-  const previewEvents = weekEvents.slice(0, 3);
+  const previewTasks = filteredTasks.slice(0, 3);
+  const previewEvents = filteredEvents.slice(0, 3);
+
+  const tasksEmptyMessage = selectedDayKey
+    ? "No tasks due on this day."
+    : calendarView === "week"
+      ? "No tasks due this week."
+      : "No tasks due this month.";
+
+  const eventsEmptyMessage = selectedDayKey
+    ? "No events on this day."
+    : calendarView === "week"
+      ? "No events this week."
+      : "No events this month.";
 
   function handleDayClick(dateKey: string) {
     setSelectedDayKey((prev) => (prev === dateKey ? null : dateKey));
     requestAnimationFrame(() => {
-      weekItemsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      plannerItemsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  }
+
+  function handleCalendarViewChange(mode: CalendarViewMode) {
+    setCalendarView(mode);
+    setSelectedDayKey(null);
+  }
+
+  function handlePrevMonth() {
+    setMonthOffset((prev) => prev - 1);
+    setSelectedDayKey(null);
+  }
+
+  function handleNextMonth() {
+    setMonthOffset((prev) => prev + 1);
+    setSelectedDayKey(null);
   }
 
   if (loading) {
     return (
       <div className="flex justify-center py-16">
-        <Spinner label="Loading your week…" />
+        <Spinner label="Loading your month…" />
       </div>
     );
   }
@@ -1926,22 +2041,43 @@ function ThisWeekTab({
             color: "#ffffff",
           }}
         >
-          This Week
+          This Month
         </h2>
         <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#777777" }}>
-          Your tasks, events, and activity from this week.
+          Your tasks, events, meetings, and club activity for the month.
         </p>
       </div>
 
-      <WeekCalendarStrip
-        weekDays={weekDays}
-        todayKey={todayKey}
-        selectedDayKey={selectedDayKey}
-        dayMeta={dayMeta}
-        onPrevWeek={() => setWeekOffset((prev) => prev - 1)}
-        onNextWeek={() => setWeekOffset((prev) => prev + 1)}
-        onDayClick={handleDayClick}
-      />
+      <MonthWeekToggle value={calendarView} onChange={handleCalendarViewChange} />
+
+      {calendarView === "month" ? (
+        <MonthCalendarGrid
+          monthLabel={monthLabel}
+          monthDays={monthDays}
+          todayKey={todayKey}
+          selectedDayKey={selectedDayKey}
+          dayMeta={dayMeta}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+          onDayClick={handleDayClick}
+        />
+      ) : (
+        <WeekCalendarStrip
+          weekDays={weekDays}
+          todayKey={todayKey}
+          selectedDayKey={selectedDayKey}
+          dayMeta={dayMeta}
+          onPrevWeek={() => {
+            setWeekOffset((prev) => prev - 1);
+            setSelectedDayKey(null);
+          }}
+          onNextWeek={() => {
+            setWeekOffset((prev) => prev + 1);
+            setSelectedDayKey(null);
+          }}
+          onDayClick={handleDayClick}
+        />
+      )}
 
       <WeekAchievementCard
         displayName={displayName}
@@ -1949,7 +2085,7 @@ function ThisWeekTab({
         totalCount={monthlyTotal}
       />
 
-      <div ref={weekItemsRef}>
+      <div ref={plannerItemsRef}>
         <h3
           style={{
             fontSize: "13px",
@@ -1958,10 +2094,10 @@ function ThisWeekTab({
             margin: "0 0 10px",
           }}
         >
-          Tasks This Week
+          Tasks This Month
         </h3>
-        {weekTasks.length === 0 ? (
-          <TasksWeekEmptyState onViewAllTasks={onViewAllTasks} />
+        {filteredTasks.length === 0 ? (
+          <TasksWeekEmptyState onViewAllTasks={onViewAllTasks} message={tasksEmptyMessage} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
             {previewTasks.map((task) => (
@@ -1971,7 +2107,7 @@ function ThisWeekTab({
                 logoUrl={clubLogos[task.clubId]}
               />
             ))}
-            {weekTasks.length > 3 ? (
+            {filteredTasks.length > 3 ? (
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button type="button" onClick={onViewAllTasks} style={viewAllLinkStyle}>
                   View All →
@@ -1989,11 +2125,11 @@ function ThisWeekTab({
             margin: "0 0 10px",
           }}
         >
-          Events This Week
+          Events This Month
         </h3>
-        {weekEvents.length === 0 ? (
+        {filteredEvents.length === 0 ? (
           <p style={{ color: "#444444", fontSize: "13px", margin: 0 }}>
-            No events this week
+            {eventsEmptyMessage}
           </p>
         ) : (
           <div>

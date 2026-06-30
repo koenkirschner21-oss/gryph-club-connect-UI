@@ -7,11 +7,292 @@ import { normalizeVisibility } from "../../lib/contentVisibility";
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
 
+export type PlannerDayMeta = {
+  hasEvents: boolean;
+  hasTasks: boolean;
+  itemCount: number;
+};
+
 export type WeekCalendarDay = {
   dateKey: string;
   label: string;
   dayNum: number;
 };
+
+export type MonthCalendarDay = {
+  dateKey: string;
+  dayNum: number;
+  inCurrentMonth: boolean;
+};
+
+export type CalendarViewMode = "month" | "week";
+
+const CALENDAR_WEEKDAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+export function MonthWeekToggle({
+  value,
+  onChange,
+}: {
+  value: CalendarViewMode;
+  onChange: (mode: CalendarViewMode) => void;
+}) {
+  const pillBase: CSSProperties = {
+    padding: "6px 14px",
+    fontSize: "13px",
+    fontWeight: 500,
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    transition: "background 0.15s ease, color 0.15s ease",
+  };
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        background: "#1a1a1a",
+        border: "1px solid #2a2a2a",
+        borderRadius: "8px",
+        padding: "3px",
+        marginBottom: "16px",
+      }}
+    >
+      {(["month", "week"] as const).map((mode) => {
+        const active = value === mode;
+        return (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onChange(mode)}
+            style={{
+              ...pillBase,
+              background: active ? "rgba(255, 196, 41, 0.15)" : "transparent",
+              color: active ? GOLD : "#777777",
+            }}
+          >
+            {mode === "month" ? "Month" : "Week"}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function MonthCalendarGrid({
+  monthLabel,
+  monthDays,
+  todayKey,
+  selectedDayKey,
+  dayMeta,
+  onPrevMonth,
+  onNextMonth,
+  onDayClick,
+}: {
+  monthLabel: string;
+  monthDays: MonthCalendarDay[];
+  todayKey: string;
+  selectedDayKey: string | null;
+  dayMeta: Map<string, PlannerDayMeta>;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  onDayClick: (dateKey: string) => void;
+}) {
+  const [prevHovered, setPrevHovered] = useState(false);
+  const [nextHovered, setNextHovered] = useState(false);
+  const [hoveredDay, setHoveredDay] = useState<string | null>(null);
+
+  const arrowStyle = (hovered: boolean): CSSProperties => ({
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    borderRadius: "8px",
+    padding: "8px 12px",
+    color: hovered ? "#ffffff" : "#777777",
+    cursor: "pointer",
+    fontSize: "16px",
+    lineHeight: 1,
+    flexShrink: 0,
+    transition: "color 0.15s ease",
+  });
+
+  return (
+    <div style={{ marginBottom: "24px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "12px",
+          gap: "8px",
+        }}
+      >
+        <button
+          type="button"
+          aria-label="Previous month"
+          onClick={onPrevMonth}
+          onMouseEnter={() => setPrevHovered(true)}
+          onMouseLeave={() => setPrevHovered(false)}
+          style={arrowStyle(prevHovered)}
+        >
+          ‹
+        </button>
+        <span
+          style={{
+            fontSize: "15px",
+            fontWeight: 700,
+            color: "#ffffff",
+            textAlign: "center",
+            flex: 1,
+          }}
+        >
+          {monthLabel}
+        </span>
+        <button
+          type="button"
+          aria-label="Next month"
+          onClick={onNextMonth}
+          onMouseEnter={() => setNextHovered(true)}
+          onMouseLeave={() => setNextHovered(false)}
+          style={arrowStyle(nextHovered)}
+        >
+          ›
+        </button>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+          gap: "4px",
+          marginBottom: "4px",
+        }}
+      >
+        {CALENDAR_WEEKDAY_HEADERS.map((label) => (
+          <div
+            key={label}
+            style={{
+              fontSize: "10px",
+              fontWeight: 600,
+              color: "#555555",
+              textAlign: "center",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              padding: "4px 0",
+            }}
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+          gap: "4px",
+        }}
+      >
+        {monthDays.map((day) => {
+          const meta = dayMeta.get(day.dateKey);
+          const isToday = day.dateKey === todayKey;
+          const isSelected = selectedDayKey === day.dateKey;
+          const isHovered = hoveredDay === day.dateKey;
+          const hasTaskDot = meta?.hasTasks;
+          const hasEventDot = meta?.hasEvents;
+
+          let background = isHovered ? "#1a1a1a" : "transparent";
+          let border = "2px solid transparent";
+
+          if (isToday) {
+            background = "rgba(229, 25, 55, 0.08)";
+            border = `2px solid ${ACCENT_RED}`;
+          }
+          if (isSelected) {
+            background = "rgba(229, 25, 55, 0.12)";
+            border = `2px solid ${ACCENT_RED}`;
+          }
+
+          return (
+            <button
+              key={day.dateKey}
+              type="button"
+              onClick={() => onDayClick(day.dateKey)}
+              onMouseEnter={() => setHoveredDay(day.dateKey)}
+              onMouseLeave={() => setHoveredDay(null)}
+              style={{
+                padding: "8px 2px 6px",
+                width: "100%",
+                textAlign: "center",
+                cursor: "pointer",
+                background,
+                border,
+                borderRadius: "8px",
+                minWidth: 0,
+                minHeight: "52px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "14px",
+                  fontWeight: isToday ? 700 : 500,
+                  color: day.inCurrentMonth ? "#ffffff" : "#444444",
+                  lineHeight: 1.2,
+                }}
+              >
+                {day.dayNum}
+              </div>
+              {isToday ? (
+                <div
+                  style={{
+                    fontSize: "8px",
+                    fontWeight: 700,
+                    color: ACCENT_RED,
+                    letterSpacing: "0.04em",
+                    marginTop: "1px",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  Today
+                </div>
+              ) : null}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: "3px",
+                  minHeight: "8px",
+                  marginTop: "4px",
+                }}
+              >
+                {hasTaskDot ? (
+                  <span
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      background: GOLD,
+                      borderRadius: "50%",
+                    }}
+                    aria-hidden
+                  />
+                ) : null}
+                {hasEventDot ? (
+                  <span
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      background: ACCENT_RED,
+                      borderRadius: "50%",
+                    }}
+                    aria-hidden
+                  />
+                ) : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function WeekCalendarStrip({
   weekDays,
@@ -25,7 +306,7 @@ export function WeekCalendarStrip({
   weekDays: WeekCalendarDay[];
   todayKey: string;
   selectedDayKey: string | null;
-  dayMeta: Map<string, { hasEvents: boolean; hasTasks: boolean; itemCount: number }>;
+  dayMeta: Map<string, PlannerDayMeta>;
   onPrevWeek: () => void;
   onNextWeek: () => void;
   onDayClick: (dateKey: string) => void;
@@ -191,8 +472,10 @@ export function WeekCalendarStrip({
 
 export function TasksWeekEmptyState({
   onViewAllTasks,
+  message = "No tasks due this week.",
 }: {
   onViewAllTasks?: () => void;
+  message?: string;
 }) {
   const sparkles = [
     { top: "8px", left: "12px", fontSize: "10px" },
@@ -250,7 +533,7 @@ export function TasksWeekEmptyState({
       <p style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700, color: "#ffffff" }}>
         You&apos;re all caught up!
       </p>
-      <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>No tasks due this week.</p>
+      <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>{message}</p>
       {onViewAllTasks ? (
         <button
           type="button"
