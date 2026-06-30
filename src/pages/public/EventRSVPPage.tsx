@@ -636,7 +636,7 @@ export default function EventRSVPPage() {
           padding: "40px 20px",
         }}
       >
-        <PublicDetailBackButton />
+        <PublicDetailBackButton fallbackTo="/events" label="Back to Events" />
         <header style={{ textAlign: "center", marginBottom: "28px" }}>
           <p
             style={{

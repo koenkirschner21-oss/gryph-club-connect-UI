@@ -5,8 +5,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowLeft } from "lucide-react";
 import EventPlanningTasksSection from "../../../components/club/EventPlanningTasksSection";
+import PublicDetailBackButton from "../../../components/public/PublicDetailBackButton";
 import {
   EventDetailBadges,
   EventDetailClubHeader,
@@ -623,25 +623,11 @@ export function EventManageView({
 
   return (
     <div style={{ width: "100%", maxWidth: "none" }}>
-      <button
-        type="button"
-        onClick={onBack}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          background: "transparent",
-          border: "none",
-          color: "#777777",
-          cursor: "pointer",
-          fontSize: "13px",
-          marginBottom: "20px",
-          padding: 0,
-        }}
-      >
-        <ArrowLeft size={16} aria-hidden />
-        Back to Events
-      </button>
+      <PublicDetailBackButton
+        label="Back to Events"
+        onBack={onBack}
+        style={{ marginBottom: "20px" }}
+      />
 
       <EventDetailClubHeader
         clubName={clubName}

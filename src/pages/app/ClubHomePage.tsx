@@ -43,6 +43,7 @@ import {
 import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import { addTaskComment } from "../../lib/taskComments";
 import { recordAnnouncementView } from "../../lib/postViews";
+import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import { supabase } from "../../lib/supabaseClient";
 import type {
   AccessLevel,
@@ -585,6 +586,7 @@ function DashboardItemModal({
       onClick={onClose}
     >
       <div style={detailModalPanel} onClick={(e) => e.stopPropagation()}>
+        <PublicDetailBackButton label="Back" onBack={onClose} style={{ marginBottom: "12px" }} />
         <button
           type="button"
           aria-label="Close"

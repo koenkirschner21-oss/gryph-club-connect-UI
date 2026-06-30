@@ -4,6 +4,7 @@ import { MessageCircle } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import Spinner from "../../components/ui/Spinner";
+import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 
 interface MemberProfile {
   fullName: string;
@@ -191,20 +192,24 @@ export default function MemberProfilePage() {
           maxWidth: "600px",
           margin: "0 auto",
           padding: "32px 20px",
-          textAlign: "center",
         }}
       >
+        <PublicDetailBackButton
+          fallbackTo={dmClubId ? `/app/clubs/${dmClubId}/members` : "/app"}
+          label={dmClubId ? "Back to Members" : "Back to Dashboard"}
+        />
         <h1
           style={{
             fontWeight: 700,
             fontSize: "22px",
             color: "#ffffff",
-            margin: "0 0 8px",
+            margin: "24px 0 8px",
+            textAlign: "center",
           }}
         >
           Profile not found
         </h1>
-        <p style={{ fontSize: "14px", color: "#555555", margin: 0 }}>
+        <p style={{ fontSize: "14px", color: "#555555", margin: 0, textAlign: "center" }}>
           This member profile could not be loaded.
         </p>
       </div>
@@ -220,6 +225,10 @@ export default function MemberProfilePage() {
         padding: "32px 20px",
       }}
     >
+      <PublicDetailBackButton
+        fallbackTo={dmClubId ? `/app/clubs/${dmClubId}/members` : "/app"}
+        label={dmClubId ? "Back to Members" : "Back to Dashboard"}
+      />
       <div
         style={{
           background: "#1a1a1a",

@@ -8,10 +8,11 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Bookmark, Search, X } from "lucide-react";
+import { Bookmark, Search } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
+import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import { getClubInitials } from "../../lib/clubUtils";
 import { clubCategoryFilterOptions } from "../../lib/clubCategories";
 import { supabase } from "../../lib/supabaseClient";
@@ -1465,29 +1466,13 @@ function HiringListingDetailOverlay({
           border: "1px solid #2a2a2a",
         }}
       >
-        <button
-          type="button"
-          aria-label="Close details"
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            zIndex: 10,
-            background: "rgba(0,0,0,0.65)",
-            border: "none",
-            borderRadius: "50%",
-            width: "36px",
-            height: "36px",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#cccccc",
-          }}
-        >
-          <X size={20} aria-hidden />
-        </button>
+        <div style={{ padding: "16px 16px 0" }}>
+          <PublicDetailBackButton
+            label="Back to listings"
+            onBack={onClose}
+            style={{ marginBottom: 0 }}
+          />
+        </div>
         <HiringDetailPanel
           position={position}
           user={user}
@@ -1538,21 +1523,10 @@ function HiringDetailMobileModal({
         boxSizing: "border-box",
       }}
     >
-      <button
-        type="button"
-        onClick={onClose}
-        style={{
-          background: "none",
-          border: "none",
-          padding: 0,
-          marginBottom: "20px",
-          fontSize: "13px",
-          color: "#E51937",
-          cursor: "pointer",
-        }}
-      >
-        ← Back to listings
-      </button>
+      <PublicDetailBackButton
+        label="Back to listings"
+        onBack={onClose}
+      />
       <HiringDetailContent
         position={position}
         user={user}

@@ -1052,6 +1052,7 @@ export default function ClubPublicProfilePage() {
             : "linear-gradient(135deg, #1a0505 0%, #0f0f0f 100%)",
         }}
       >
+        <PublicDetailBackButton overlay fallbackTo="/explore" label="Back to Explore" />
         {club.bannerUrl || club.imageUrl ? (
           <img
             src={club.bannerUrl || club.imageUrl}
@@ -1071,9 +1072,6 @@ export default function ClubPublicProfilePage() {
         className="mx-auto max-w-7xl sm:px-6 lg:px-8"
         style={{ paddingBottom: "64px", paddingLeft: isMobile ? 16 : undefined, paddingRight: isMobile ? 16 : undefined }}
       >
-        <div style={{ paddingTop: "16px" }}>
-          <PublicDetailBackButton />
-        </div>
         <div
           style={{
             display: "flex",

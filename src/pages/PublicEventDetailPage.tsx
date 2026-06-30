@@ -239,7 +239,7 @@ export default function PublicEventDetailPage() {
   if (notFound || !event) {
     return (
       <div style={{ background: "#0f0f0f", minHeight: "100vh", padding: pad }}>
-        <PublicDetailBackButton />
+        <PublicDetailBackButton fallbackTo="/events" label="Back to Events" />
         <h1
           style={{
             color: "#ffffff",
@@ -276,7 +276,7 @@ export default function PublicEventDetailPage() {
   return (
     <div style={{ background: "#0f0f0f", minHeight: "100vh", paddingBottom: 60 }}>
       <div style={{ padding: `${isMobile ? 24 : 40}px ${pad} 48px` }}>
-        <PublicDetailBackButton />
+        <PublicDetailBackButton fallbackTo="/events" label="Back to Events" />
 
         <div style={{ marginTop: "28px" }}>
           <EventDetailPageShell maxWidth="960px">

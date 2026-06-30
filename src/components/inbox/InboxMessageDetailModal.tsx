@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { InboxMessageDetailView } from "./InboxMessageCard";
+import PublicDetailBackButton from "../public/PublicDetailBackButton";
 
 export default function InboxMessageDetailModal({
   message,
@@ -61,6 +62,11 @@ export default function InboxMessageDetailModal({
           padding: "20px",
         }}
       >
+        <PublicDetailBackButton
+          label="Back to Inbox"
+          onBack={onClose}
+          style={{ marginBottom: "12px" }}
+        />
         <div
           style={{
             display: "flex",

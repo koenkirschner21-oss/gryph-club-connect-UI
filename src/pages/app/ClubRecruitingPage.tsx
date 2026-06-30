@@ -16,6 +16,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 import ProfileAvatarCircle from "../../components/ui/ProfileAvatarCircle";
+import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import CandidateReviewPanel, {
   type CandidateReviewApplication,
@@ -237,6 +238,11 @@ function MemberRoleDetailModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        <PublicDetailBackButton
+          label="Back to roles"
+          onBack={onClose}
+          style={{ marginBottom: "12px" }}
+        />
         <div
           style={{
             display: "flex",
@@ -261,21 +267,6 @@ function MemberRoleDetailModal({
               {position.title}
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#777777",
-              cursor: "pointer",
-              fontSize: "20px",
-              lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
         </div>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
@@ -640,6 +631,11 @@ function ApplicationReviewModal({
         }}
         onClick={(event) => event.stopPropagation()}
       >
+        <PublicDetailBackButton
+          label="Back to applicants"
+          onBack={onClose}
+          style={{ marginBottom: "12px" }}
+        />
         <div
           style={{
             display: "flex",
@@ -672,22 +668,6 @@ function ApplicationReviewModal({
               {subStatusLabel(application.subStatus)}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close application review"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "#777777",
-              cursor: "pointer",
-              fontSize: "22px",
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-          >
-            ×
-          </button>
         </div>
 
         <CandidateReviewPanel
