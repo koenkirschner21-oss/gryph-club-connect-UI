@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Calendar,
   Check,
@@ -46,6 +46,7 @@ interface PublicEventRow {
   time: string;
   location: string;
   clubId: string;
+  clubSlug: string;
   clubName: string;
   clubCategory: string;
   clubLogoUrl: string | null;
@@ -1061,6 +1062,8 @@ function EventCardsGrid({
 
 export default function PublicEventsPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const clubSlugFilter = searchParams.get("club")?.trim() ?? "";
   const { user } = useAuthContext();
   const isMobile = useIsMobile();
 
@@ -1182,6 +1185,7 @@ export default function PublicEventsPage() {
           time: (record.time as string) ?? "",
           location: (record.location as string) ?? "",
           clubId: record.club_id as string,
+          clubSlug: (club.slug as string) ?? "",
           clubName: (club.name as string) ?? "Club",
           clubCategory: ((club.category as string) ?? "").trim(),
           clubLogoUrl: (club.logo_url as string) ?? null,
@@ -1230,7 +1234,8 @@ export default function PublicEventsPage() {
     pageView !== "home" ||
     timeFilter === "custom" ||
     clubCategoryFilter !== "all" ||
-    eventCategoryFilter !== "all";
+    eventCategoryFilter !== "all" ||
+    clubSlugFilter !== "";
 
   const filtered = useMemo(() => {
     const today = startOfDay(new Date());
@@ -1241,6 +1246,10 @@ export default function PublicEventsPage() {
     return eventsWithStartTime.filter((ev) => {
       const eventDate = new Date(ev.start_time);
       if (Number.isNaN(eventDate.getTime())) return false;
+
+      if (clubSlugFilter && ev.clubSlug !== clubSlugFilter) {
+        return false;
+      }
 
       if (timeFilter === "week") {
         if (eventDate < today || eventDate > weekEnd) return false;
@@ -1281,6 +1290,7 @@ export default function PublicEventsPage() {
     customDateTo,
     clubCategoryFilter,
     eventCategoryFilter,
+    clubSlugFilter,
   ]);
 
   const groupedEvents = useMemo(() => {

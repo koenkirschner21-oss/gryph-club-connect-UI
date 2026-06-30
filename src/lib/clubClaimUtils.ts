@@ -30,3 +30,11 @@ const INELIGIBLE_CLAIM_ROLES = new Set<ClaimRoleOption>([
 export function canSubmitClubClaim(role: ClaimRoleOption): boolean {
   return !INELIGIBLE_CLAIM_ROLES.has(role);
 }
+
+/** True only when the club is imported/unclaimed and has no active owners yet. */
+export function isClubClaimable(
+  claimStatus: ClaimStatus,
+  activeOwnerCount: number,
+): boolean {
+  return claimStatus === "unclaimed" && activeOwnerCount === 0;
+}

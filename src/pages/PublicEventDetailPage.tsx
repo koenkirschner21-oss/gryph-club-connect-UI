@@ -4,6 +4,7 @@ import { useAuthContext } from "../context/useAuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
+import PublicDetailBackButton from "../components/public/PublicDetailBackButton";
 
 interface EventDetail {
   id: string;
@@ -153,12 +154,7 @@ export default function PublicEventDetailPage() {
   if (notFound || !event) {
     return (
       <div style={{ background: "#0f0f0f", minHeight: "100vh", padding: pad }}>
-        <Link
-          to="/events"
-          style={{ color: "#E51937", fontSize: "14px", textDecoration: "none" }}
-        >
-          ← Back to Events
-        </Link>
+        <PublicDetailBackButton />
         <h1
           style={{
             color: "#ffffff",
@@ -183,16 +179,7 @@ export default function PublicEventDetailPage() {
   return (
     <div style={{ background: "#0f0f0f", minHeight: "100vh", paddingBottom: 60 }}>
       <div style={{ padding: `${isMobile ? 24 : 40}px ${pad} 0` }}>
-        <Link
-          to="/events"
-          style={{
-            color: "#777777",
-            fontSize: "14px",
-            textDecoration: "none",
-          }}
-        >
-          ← Back to Events
-        </Link>
+        <PublicDetailBackButton />
 
         <div
           style={{

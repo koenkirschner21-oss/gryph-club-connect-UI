@@ -12,7 +12,7 @@ import {
 import JoinRequestForm from "../components/club/JoinRequestForm";
 import ReportClubModal from "../components/club/ReportClubModal";
 import { normalizeVisibility } from "../lib/contentVisibility";
-import { normalizeClaimStatus } from "../lib/clubClaimUtils";
+import { normalizeClaimStatus, isClubClaimable } from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
@@ -28,7 +28,6 @@ import {
   PUBLIC_PROFILE_EMPTY_ABOUT,
   PUBLIC_PROFILE_EMPTY_ANNOUNCEMENTS,
   PUBLIC_PROFILE_EMPTY_EVENTS,
-  PUBLIC_PROFILE_EMPTY_RESOURCES,
   resolvePublicClubDisplayFromClub,
   type PublicClubSocialLinks,
 } from "../lib/publicClubProfileDisplay";
@@ -43,6 +42,7 @@ import type {
 } from "../types";
 import Button from "../components/ui/Button";
 import Spinner from "../components/ui/Spinner";
+import PublicDetailBackButton from "../components/public/PublicDetailBackButton";
 import { modalOverlayStyle } from "./app/HiringBoardPage";
 
 interface PublicClubProfile {
@@ -74,19 +74,15 @@ interface PublicAnnouncementPreview {
   createdAt: string;
 }
 
-interface PublicResourcePreview {
-  id: string;
-  name: string;
-  description?: string;
-  fileUrl: string;
-}
-
 type JoinApplicationStatus = "pending" | "approved" | "rejected" | null;
 
 interface ClubOwnerContact {
   fullName: string;
   email: string;
   avatarUrl?: string;
+  title?: string;
+  program?: string;
+  yearOfStudy?: string;
 }
 
 const ABOUT_PREVIEW_LENGTH = 300;
@@ -560,7 +556,6 @@ export default function ClubPublicProfilePage() {
   const [openPositionsCount, setOpenPositionsCount] = useState(0);
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [announcements, setAnnouncements] = useState<PublicAnnouncementPreview[]>([]);
-  const [resources, setResources] = useState<PublicResourcePreview[]>([]);
   const [owners, setOwners] = useState<ClubOwnerContact[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
 
@@ -579,6 +574,7 @@ export default function ClubPublicProfilePage() {
   const [showReportMenu, setShowReportMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportConfirmation, setReportConfirmation] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ClubOwnerContact | null>(null);
   const trackedPageViewClubId = useRef<string | null>(null);
 
   const clubId = profile?.id ?? contextClub?.id;
@@ -731,7 +727,7 @@ export default function ClubPublicProfilePage() {
       setProfile(loaded);
       setApplicationStatus(userApplicationStatus);
 
-      const [{ count: members }, { count: positions }, eventsRes, ownersRes, announcementsRes, resourcesRes] =
+      const [{ count: members }, { count: positions }, eventsRes, ownersRes, announcementsRes] =
         await Promise.all([
         supabase
           .from("club_members")
@@ -753,10 +749,13 @@ export default function ClubPublicProfilePage() {
           .from("club_members")
           .select(`
             user_id,
+            title,
             member_profile:profiles!club_members_user_profile_fkey (
               full_name,
               email,
-              avatar_url
+              avatar_url,
+              program,
+              year_of_study
             )
           `)
           .eq("club_id", loaded.id)
@@ -765,13 +764,6 @@ export default function ClubPublicProfilePage() {
         supabase
           .from("posts")
           .select("id, title, content, created_at, visibility")
-          .eq("club_id", loaded.id)
-          .eq("visibility", "public")
-          .order("created_at", { ascending: false })
-          .limit(3),
-        supabase
-          .from("club_documents")
-          .select("id, name, description, file_url, visibility")
           .eq("club_id", loaded.id)
           .eq("visibility", "public")
           .order("created_at", { ascending: false })
@@ -793,10 +785,17 @@ export default function ClubPublicProfilePage() {
         const fullName = (profile?.full_name as string) ?? "Unknown";
         if (!email) continue;
         const avatarUrl = profile?.avatar_url as string | undefined;
+        const title = (row.title as string | null)?.trim() || undefined;
+        const program = (profile?.program as string | null)?.trim() || undefined;
+        const yearOfStudy =
+          (profile?.year_of_study as string | null)?.trim() || undefined;
         loadedOwners.push({
           fullName,
           email,
           ...(avatarUrl ? { avatarUrl } : {}),
+          ...(title ? { title } : {}),
+          ...(program ? { program } : {}),
+          ...(yearOfStudy ? { yearOfStudy } : {}),
         });
       }
       setOwners(loadedOwners);
@@ -820,17 +819,6 @@ export default function ClubPublicProfilePage() {
             ? formatPublicProfileField(row.content)
             : "",
           createdAt: (row.created_at as string) ?? "",
-        })),
-      );
-
-      setResources(
-        (resourcesRes.data ?? []).map((row) => ({
-          id: row.id as string,
-          name: formatPublicProfileField(row.name) || "Resource",
-          description: isDisplayablePlainText(row.description as string | null)
-            ? formatPublicProfileField(row.description)
-            : undefined,
-          fileUrl: formatPublicProfileField(row.file_url),
         })),
       );
 
@@ -999,6 +987,7 @@ export default function ClubPublicProfilePage() {
   const membershipType = club.membershipType ?? "open";
   const claimStatus = club.claimStatus ?? "unclaimed";
   const claimPending = claimStatus === "claim_pending";
+  const claimable = isClubClaimable(claimStatus, owners.length);
   const joinQuestions = club.joinQuestions ?? [];
   const joinBadgeStyle = membershipBadgeStyle(membershipType);
   const joinBadgeLabel = membershipBadgeLabel(membershipType);
@@ -1082,6 +1071,9 @@ export default function ClubPublicProfilePage() {
         className="mx-auto max-w-7xl sm:px-6 lg:px-8"
         style={{ paddingBottom: "64px", paddingLeft: isMobile ? 16 : undefined, paddingRight: isMobile ? 16 : undefined }}
       >
+        <div style={{ paddingTop: "16px" }}>
+          <PublicDetailBackButton />
+        </div>
         <div
           style={{
             display: "flex",
@@ -1216,7 +1208,7 @@ export default function ClubPublicProfilePage() {
                     {joining ? "Leaving…" : "Leave Club"}
                   </button>
                 </>
-              ) : claimStatus === "unclaimed" ? (
+              ) : claimable ? (
                 <>
                   <button
                     type="button"
@@ -1360,7 +1352,7 @@ export default function ClubPublicProfilePage() {
           >
             A claim request is pending review for this club.
           </p>
-        ) : claimStatus === "unclaimed" && !joined ? (
+        ) : claimable && !joined ? (
           <p
             style={{
               fontSize: "13px",
@@ -1501,6 +1493,7 @@ export default function ClubPublicProfilePage() {
               events={events}
               joined={joined}
               clubId={club.id}
+              clubSlug={club.slug}
               clubName={club.name}
               clubLogoUrl={club.logoUrl}
               clubAbbreviation={contextClub?.abbreviation}
@@ -1508,8 +1501,6 @@ export default function ClubPublicProfilePage() {
             />
 
             <AnnouncementsSection announcements={announcements} />
-
-            <ResourcesSection resources={resources} />
           </div>
 
           <aside style={{ width: isMobile ? "100%" : "280px", flexShrink: 0 }}>
@@ -1542,6 +1533,7 @@ export default function ClubPublicProfilePage() {
                 club={club}
                 openPositionsCount={openPositionsCount}
                 onHiringClick={handleHiringClick}
+                onContactClick={setSelectedContact}
               />
             </div>
           </aside>
@@ -1569,6 +1561,13 @@ export default function ClubPublicProfilePage() {
               void handleJoinOrLeave();
             }
           }}
+        />
+      ) : null}
+
+      {selectedContact ? (
+        <ContactProfileModal
+          owner={selectedContact}
+          onClose={() => setSelectedContact(null)}
         />
       ) : null}
 
@@ -1603,6 +1602,7 @@ function EventsSection({
   events,
   joined,
   clubId,
+  clubSlug,
   clubName,
   clubLogoUrl,
   clubAbbreviation,
@@ -1611,13 +1611,16 @@ function EventsSection({
   events: ClubEvent[];
   joined: boolean;
   clubId: string;
+  clubSlug: string;
   clubName: string;
   clubLogoUrl?: string;
   clubAbbreviation?: string;
   onEventClick: (event: ClubEvent) => void;
 }) {
-  const eventsUrl = `/app/clubs/${clubId}/events`;
-  const visibleEvents = events.slice(0, 4);
+  const eventsUrl = joined
+    ? `/app/clubs/${clubId}/events`
+    : `/events?club=${encodeURIComponent(clubSlug)}`;
+  const visibleEvents = events.slice(0, 3);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const cardStyle = (eventId: string): CSSProperties => ({
@@ -1702,9 +1705,27 @@ function EventsSection({
                   </p>
                 ) : null}
               </div>
+              <Link
+                to={`/events/${event.id}/rsvp`}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                style={{
+                  flexShrink: 0,
+                  background: "#E51937",
+                  color: "#ffffff",
+                  borderRadius: "8px",
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                RSVP
+              </Link>
             </div>
           ))}
-          {joined && events.length > 4 ? (
+          {events.length > 3 ? (
             <div style={{ textAlign: "right", marginTop: "4px" }}>
               <Link
                 to={eventsUrl}
@@ -1715,7 +1736,7 @@ function EventsSection({
                   textDecoration: "none",
                 }}
               >
-                View All Events
+                View all events
               </Link>
             </div>
           ) : null}
@@ -1735,7 +1756,12 @@ function AnnouncementsSection({
   announcements: PublicAnnouncementPreview[];
 }) {
   return (
-    <div style={profileSectionShellStyle()}>
+    <div
+      style={{
+        ...profileSectionShellStyle(),
+        borderLeft: "3px solid #E51937",
+      }}
+    >
       <h2 style={profileSectionHeadingStyle()}>Announcements</h2>
       {announcements.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1780,37 +1806,102 @@ function AnnouncementsSection({
   );
 }
 
-function ResourcesSection({
-  resources,
+function ContactProfileModal({
+  owner,
+  onClose,
 }: {
-  resources: PublicResourcePreview[];
+  owner: ClubOwnerContact;
+  onClose: () => void;
 }) {
+  const initials = owner.fullName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0))
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "?";
+  const programLine = [owner.program, owner.yearOfStudy].filter(Boolean).join(" · ");
+
   return (
-    <div style={profileSectionShellStyle()}>
-      <h2 style={profileSectionHeadingStyle()}>Resources</h2>
-      {resources.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {resources.map((resource) => (
-            <a
-              key={resource.id}
-              href={resource.fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+    <div
+      style={profileModalOverlayStyle}
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        style={{ ...profileModalPanelStyle, maxWidth: "400px" }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contact-profile-modal-title"
+      >
+        <ModalCloseButton onClose={onClose} />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+          {owner.avatarUrl ? (
+            <img
+              src={owner.avatarUrl}
+              alt=""
               style={{
-                display: "block",
-                color: "#E51937",
-                fontSize: "14px",
-                fontWeight: 600,
-                textDecoration: "none",
+                width: "72px",
+                height: "72px",
+                borderRadius: "50%",
+                objectFit: "cover",
+                marginBottom: "16px",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "72px",
+                height: "72px",
+                borderRadius: "50%",
+                background: "#2a2a2a",
+                fontSize: "24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#cccccc",
+                marginBottom: "16px",
               }}
             >
-              {resource.name}
-            </a>
-          ))}
+              {initials}
+            </div>
+          )}
+          <h2
+            id="contact-profile-modal-title"
+            style={{
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "#ffffff",
+              margin: "0 0 6px",
+            }}
+          >
+            {owner.fullName}
+          </h2>
+          {owner.title ? (
+            <p style={{ fontSize: "14px", color: "#cccccc", margin: "0 0 8px" }}>
+              {owner.title}
+            </p>
+          ) : null}
+          {programLine ? (
+            <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 16px" }}>
+              {programLine}
+            </p>
+          ) : null}
+          <a
+            href={`mailto:${owner.email}`}
+            style={{
+              fontSize: "14px",
+              color: "#E51937",
+              textDecoration: "none",
+              fontWeight: 500,
+            }}
+          >
+            {owner.email}
+          </a>
         </div>
-      ) : (
-        <p style={profileEmptyStateStyle()}>{PUBLIC_PROFILE_EMPTY_RESOURCES}</p>
-      )}
+      </div>
     </div>
   );
 }
@@ -2174,8 +2265,14 @@ function EventDetailModal({
   );
 }
 
-function ContactOwnerRow({ owner }: { owner: ClubOwnerContact }) {
-  const [emailHovered, setEmailHovered] = useState(false);
+function ContactOwnerRow({
+  owner,
+  onClick,
+}: {
+  owner: ClubOwnerContact;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
   const initials = owner.fullName
     .trim()
     .split(/\s+/)
@@ -2186,12 +2283,24 @@ function ContactOwnerRow({ owner }: { owner: ClubOwnerContact }) {
     .toUpperCase() || "?";
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
         alignItems: "center",
         gap: "10px",
         marginBottom: "10px",
+        width: "100%",
+        background: hovered ? "#222222" : "transparent",
+        border: "none",
+        borderRadius: "8px",
+        padding: "6px",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "background 0.15s ease",
       }}
     >
       {owner.avatarUrl ? (
@@ -2235,21 +2344,17 @@ function ContactOwnerRow({ owner }: { owner: ClubOwnerContact }) {
         >
           {owner.fullName}
         </p>
-        <a
-          href={`mailto:${owner.email}`}
-          onMouseEnter={() => setEmailHovered(true)}
-          onMouseLeave={() => setEmailHovered(false)}
+        <p
           style={{
             fontSize: "12px",
-            color: emailHovered ? "#E51937" : "#747676",
-            textDecoration: "none",
-            transition: "color 0.15s ease",
+            color: "#747676",
+            margin: 0,
           }}
         >
           {owner.email}
-        </a>
+        </p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -2260,6 +2365,7 @@ function SidebarDetails({
   club,
   openPositionsCount,
   onHiringClick,
+  onContactClick,
 }: {
   memberCount: number;
   owners: ClubOwnerContact[];
@@ -2267,6 +2373,7 @@ function SidebarDetails({
   club: PublicClubProfile;
   openPositionsCount: number;
   onHiringClick: () => void;
+  onContactClick: (owner: ClubOwnerContact) => void;
 }) {
   return (
     <>
@@ -2299,7 +2406,11 @@ function SidebarDetails({
             Contact
           </p>
           {owners.map((owner) => (
-            <ContactOwnerRow key={owner.email} owner={owner} />
+            <ContactOwnerRow
+              key={owner.email}
+              owner={owner}
+              onClick={() => onContactClick(owner)}
+            />
           ))}
         </div>
       ) : club.contactEmail ? (

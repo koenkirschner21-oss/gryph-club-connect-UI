@@ -10,6 +10,7 @@ import {
 } from "../../lib/eventRsvpUtils";
 import { normalizeVisibility } from "../../lib/contentVisibility";
 import { supabase } from "../../lib/supabaseClient";
+import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import type { MembershipType, Visibility } from "../../types";
 
 type QuestionType = "text" | "multiple_choice" | "yes_no";
@@ -635,6 +636,7 @@ export default function EventRSVPPage() {
           padding: "40px 20px",
         }}
       >
+        <PublicDetailBackButton />
         <header style={{ textAlign: "center", marginBottom: "28px" }}>
           <p
             style={{

@@ -1,11 +1,12 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { useClubContext } from "../context/useClubContext";
 import { supabase } from "../lib/supabaseClient";
 import {
   CLAIM_ROLE_OPTIONS,
   canSubmitClubClaim,
+  isClubClaimable,
   normalizeClaimStatus,
   type ClaimRoleOption,
 } from "../lib/clubClaimUtils";
@@ -14,6 +15,7 @@ import {
   resolveStudentDisplayName,
 } from "../lib/notifications";
 import Spinner from "../components/ui/Spinner";
+import PublicDetailBackButton from "../components/public/PublicDetailBackButton";
 import { darkInputStyle } from "./app/HiringBoardPage";
 
 const PAGE_BG = "#0f0f0f";
@@ -60,7 +62,6 @@ interface ClaimClubRow {
 
 export default function ClubClaimPage() {
   const { slug } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
   const { toggleSaveClub, isSaved } = useClubContext();
 
@@ -75,6 +76,7 @@ export default function ClubClaimPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [activeOwnerCount, setActiveOwnerCount] = useState(0);
 
   useEffect(() => {
     if (!slug) {
@@ -85,28 +87,45 @@ export default function ClubClaimPage() {
 
     let cancelled = false;
 
-    void supabase
-      .from("clubs")
-      .select("id, name, slug, join_code, claim_status")
-      .eq("slug", slug)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error || !data) {
-          setNotFound(true);
-          setClub(null);
-        } else {
-          setClub({
-            id: data.id as string,
-            name: (data.name as string) ?? "",
-            slug: (data.slug as string) ?? slug,
-            joinCode: (data.join_code as string) ?? undefined,
-            claimStatus: normalizeClaimStatus(data.claim_status),
-          });
-          setNotFound(false);
-        }
+    async function loadClub() {
+      const { data, error } = await supabase
+        .from("clubs")
+        .select("id, name, slug, join_code, claim_status")
+        .eq("slug", slug)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error || !data) {
+        setNotFound(true);
+        setClub(null);
+        setActiveOwnerCount(0);
         setPageLoading(false);
+        return;
+      }
+
+      const { count: ownerCount } = await supabase
+        .from("club_members")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", data.id as string)
+        .eq("role", "owner")
+        .eq("status", "active");
+
+      if (cancelled) return;
+
+      setClub({
+        id: data.id as string,
+        name: (data.name as string) ?? "",
+        slug: (data.slug as string) ?? slug,
+        joinCode: (data.join_code as string) ?? undefined,
+        claimStatus: normalizeClaimStatus(data.claim_status),
       });
+      setActiveOwnerCount(ownerCount ?? 0);
+      setNotFound(false);
+      setPageLoading(false);
+    }
+
+    void loadClub();
 
     return () => {
       cancelled = true;
@@ -231,6 +250,43 @@ export default function ClubClaimPage() {
   }
 
   const loginRedirect = `/login?redirect=${encodeURIComponent(`/clubs/${club.slug}/claim`)}`;
+  const claimable = isClubClaimable(club.claimStatus, activeOwnerCount);
+
+  if (!claimable) {
+    return (
+      <div
+        style={{
+          background: PAGE_BG,
+          minHeight: "calc(100vh - 64px)",
+          padding: "32px 16px",
+        }}
+      >
+        <div style={{ maxWidth: "640px", margin: "0 auto" }}>
+          <PublicDetailBackButton fallbackTo={`/clubs/${club.slug}`} />
+          <h1
+            style={{
+              fontSize: "28px",
+              fontWeight: 800,
+              color: "#ffffff",
+              margin: "0 0 8px",
+            }}
+          >
+            {club.name}
+          </h1>
+          <p style={{ fontSize: "14px", color: "#777777", margin: "0 0 24px" }}>
+            This club has already been claimed and is managed by its executive team.
+          </p>
+          <Link
+            to={`/clubs/${club.slug}`}
+            className="inline-block rounded-lg px-5 py-2 text-sm font-semibold text-white"
+            style={{ background: ACCENT_RED, textDecoration: "none" }}
+          >
+            View Club Profile
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -241,21 +297,7 @@ export default function ClubClaimPage() {
       }}
     >
       <div style={{ maxWidth: "640px", margin: "0 auto" }}>
-        <button
-          type="button"
-          onClick={() => navigate(`/clubs/${club.slug}`)}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#777777",
-            fontSize: "13px",
-            cursor: "pointer",
-            padding: 0,
-            marginBottom: "20px",
-          }}
-        >
-          ← Back to {club.name}
-        </button>
+        <PublicDetailBackButton fallbackTo={`/clubs/${club.slug}`} />
 
         <h1
           style={{
