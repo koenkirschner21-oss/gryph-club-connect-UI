@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, type CSSProperties } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import {
   normalizeJoinType,
@@ -21,6 +21,7 @@ import {
 } from "../lib/clubRowMapping";
 import { readSocialLinksFromClubRow } from "../lib/clubSocialLinks";
 import { supabase } from "../lib/supabaseClient";
+import { resolveOnboardingIntent } from "../lib/onboardingIntent";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import ExploreClubCard from "../components/ui/ExploreClubCard";
 import Spinner from "../components/ui/Spinner";
@@ -51,11 +52,13 @@ function ExploreSearchBar({
   onChange,
   placeholder,
   fullWidth,
+  inputRef,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   fullWidth?: boolean;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   return (
     <div className="relative w-full" style={fullWidth ? undefined : { maxWidth: "720px", width: "100%" }}>
@@ -75,6 +78,7 @@ function ExploreSearchBar({
         />
       </svg>
       <input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -246,38 +250,6 @@ function CategoryFilterDropdown({
   );
 }
 
-const PREFERRED_QUICK_CHIP_LABELS = [
-  "Academic",
-  "Social",
-  "Cultural",
-  "Sports",
-  "Professional",
-  "Arts",
-] as const;
-
-const QUICK_CHIP_CATEGORY_ALIASES: Record<string, string[]> = {
-  Academic: ["Academic", "Science"],
-  Social: ["Social", "Community"],
-  Cultural: ["Cultural", "Culture"],
-  Sports: ["Sports"],
-  Professional: ["Professional", "Business"],
-  Arts: ["Arts", "Art"],
-};
-
-function resolveQuickCategoryChips(
-  categories: string[],
-): { label: string; value: string }[] {
-  const nonAll = categories.filter((category) => category !== "All");
-
-  return PREFERRED_QUICK_CHIP_LABELS.flatMap((label) => {
-    const aliases = QUICK_CHIP_CATEGORY_ALIASES[label] ?? [label];
-    const match = nonAll.find((category) =>
-      aliases.some((alias) => category.toLowerCase() === alias.toLowerCase()),
-    );
-    return match ? [{ label, value: match }] : [];
-  });
-}
-
 function HorizontalClubRow({
   clubs,
   joinedByClubId,
@@ -357,12 +329,37 @@ export default function Explore() {
   const isMobile = useIsMobile();
   const [searchParams] = useSearchParams();
   const claimMode = searchParams.get("claim") === "true";
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined } =
     useClubContext();
   const { user } = useAuthContext();
   const [guestClubs, setGuestClubs] = useState<Club[]>([]);
   const [guestLoading, setGuestLoading] = useState(true);
   const [guestError, setGuestError] = useState<string | null>(null);
+  const [manageIntent, setManageIntent] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setManageIntent(false);
+      return;
+    }
+
+    let cancelled = false;
+    void resolveOnboardingIntent(user.id).then((intent) => {
+      if (!cancelled) setManageIntent(intent === "manage");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const isClaimFocusedExplore = claimMode || manageIntent;
+
+  const focusClubSearch = useCallback(() => {
+    searchInputRef.current?.focus();
+    document.getElementById("all-clubs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     if (user) return;
@@ -477,23 +474,35 @@ export default function Explore() {
   const categoryCount = Math.max(categories.length - 1, 0);
   const clubCountLabel =
     clubs.length >= 260 ? "260+" : clubs.length > 0 ? String(clubs.length) : "0";
-  const quickCategoryChips = useMemo(
-    () => resolveQuickCategoryChips(categories),
-    [categories],
-  );
 
   const emptyStateMessage = useMemo(() => {
+    if (isClaimFocusedExplore && (search || activeCategory !== "All")) {
+      return {
+        title: "No matching clubs found",
+        description: "Can't find your club? Create a new club profile.",
+        showCreateClub: true,
+      };
+    }
     if (search || activeCategory !== "All") {
       return {
         title: "No clubs found",
         description: "Try searching a different keyword or clearing your filters.",
+        showCreateClub: false,
+      };
+    }
+    if (isClaimFocusedExplore) {
+      return {
+        title: "No clubs available to search yet",
+        description: "Can't find your club? Create a new club profile.",
+        showCreateClub: true,
       };
     }
     return {
       title: "No clubs available",
       description: "There are no clubs to display right now.",
+      showCreateClub: false,
     };
-  }, [search, activeCategory]);
+  }, [search, activeCategory, isClaimFocusedExplore]);
 
   return (
     <div style={{ backgroundColor: PAGE_BG, minHeight: "100%" }}>
@@ -514,7 +523,15 @@ export default function Explore() {
               margin: 0,
             }}
           >
-            Find Your <span style={{ color: ACCENT_RED }}>Club</span>
+            {isClaimFocusedExplore ? (
+              <>
+                Find or Claim <span style={{ color: ACCENT_RED }}>Your Club</span>
+              </>
+            ) : (
+              <>
+                Find Your <span style={{ color: ACCENT_RED }}>Club</span>
+              </>
+            )}
           </h1>
           <p
             style={{
@@ -523,10 +540,58 @@ export default function Explore() {
               marginTop: "8px",
               marginBottom: 0,
               lineHeight: 1.45,
+              maxWidth: isClaimFocusedExplore ? "640px" : undefined,
             }}
           >
-            Browse {clubCountLabel} student organizations at the University of Guelph
+            {isClaimFocusedExplore
+              ? "Search for your club below. If you are a President or executive, you can claim an existing club profile or create a new one."
+              : `Browse ${clubCountLabel} student organizations at the University of Guelph`}
           </p>
+
+          {isClaimFocusedExplore ? (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "10px",
+                marginTop: "16px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={focusClubSearch}
+                style={{
+                  background: ACCENT_RED,
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Search Existing Clubs
+              </button>
+              <Link
+                to={user ? "/app/create-club" : "/signup?redirect=/app/create-club"}
+                style={{
+                  background: "transparent",
+                  color: "#ffffff",
+                  border: "1px solid #333333",
+                  borderRadius: "8px",
+                  padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                }}
+              >
+                Create a New Club
+              </Link>
+            </div>
+          ) : null}
 
           <div
             style={{
@@ -538,7 +603,12 @@ export default function Explore() {
             <ExploreSearchBar
               value={search}
               onChange={setSearch}
-              placeholder="Search clubs by name, interest, category, or keyword..."
+              inputRef={searchInputRef}
+              placeholder={
+                isClaimFocusedExplore
+                  ? "Search existing clubs by name or keyword..."
+                  : "Search clubs by name, interest, category, or keyword..."
+              }
               fullWidth
             />
 
@@ -566,42 +636,6 @@ export default function Explore() {
                 {clubCountLabel} clubs · {categoryCount} categories
               </p>
             </div>
-
-            {quickCategoryChips.length > 0 ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "8px",
-                  marginTop: "10px",
-                }}
-              >
-                {quickCategoryChips.map((chip) => {
-                  const active = activeCategory === chip.value;
-                  return (
-                    <button
-                      key={chip.label}
-                      type="button"
-                      onClick={() =>
-                        setActiveCategory(active ? "All" : chip.value)
-                      }
-                      style={{
-                        background: active ? "rgba(229, 25, 55, 0.12)" : "#1a1a1a",
-                        border: active ? `1px solid ${ACCENT_RED}` : "1px solid #2a2a2a",
-                        color: active ? ACCENT_RED : "#777777",
-                        borderRadius: "20px",
-                        padding: "5px 12px",
-                        fontSize: "12px",
-                        fontWeight: active ? 600 : 400,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {chip.label}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
           </div>
         </div>
       </section>
@@ -610,42 +644,8 @@ export default function Explore() {
         className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
         style={{ backgroundColor: PAGE_BG, paddingTop: 0 }}
       >
-        {claimMode ? (
-          <div
-            style={{
-              marginBottom: "24px",
-              background: "#141414",
-              border: "1px solid #E51937",
-              borderRadius: "10px",
-              padding: "16px 20px",
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                fontSize: "14px",
-                fontWeight: 600,
-                color: "#ffffff",
-              }}
-            >
-              Claim a club profile
-            </p>
-            <p
-              style={{
-                margin: "6px 0 0",
-                fontSize: "13px",
-                color: "#777777",
-                lineHeight: 1.5,
-              }}
-            >
-              Clubs highlighted in red are available to claim. Open a club and tap
-              &quot;Claim This Club&quot; if you are a president or executive.
-            </p>
-          </div>
-        ) : null}
-
-        {/* Discovery rows */}
-        {!loading && !hasActiveFilters ? (
+        {/* Discovery rows — hidden in claim-focused manage path */}
+        {!isClaimFocusedExplore && !loading && !hasActiveFilters ? (
           <>
             {mostActiveClubs.length > 0 ? (
               <section className="mb-6" style={{ backgroundColor: PAGE_BG }}>
@@ -736,7 +736,7 @@ export default function Explore() {
               <div className="mb-8 flex items-start justify-between gap-4">
                 <div>
                   <h2 style={sectionHeadingStyle}>
-                    {claimMode ? "Clubs to Explore" : "All Clubs"}
+                    {isClaimFocusedExplore ? "Search Results" : claimMode ? "Clubs to Explore" : "All Clubs"}
                   </h2>
                   <p style={sectionSubheadingStyle}>
                     Showing{" "}
@@ -775,7 +775,8 @@ export default function Explore() {
                     key={club.id}
                     club={club}
                     joined={isClubJoined(club.id)}
-                    highlightUnclaimed={claimMode}
+                    highlightUnclaimed={isClaimFocusedExplore}
+                    claimFocused={isClaimFocusedExplore}
                   />
                 ))}
               </div>
@@ -824,6 +825,24 @@ export default function Explore() {
               <p style={{ marginTop: "8px", fontSize: "14px", color: MUTED }}>
                 {emptyStateMessage.description}
               </p>
+              {emptyStateMessage.showCreateClub ? (
+                <Link
+                  to={user ? "/app/create-club" : "/signup?redirect=/app/create-club"}
+                  style={{
+                    display: "inline-block",
+                    marginTop: "20px",
+                    background: ACCENT_RED,
+                    color: "#ffffff",
+                    borderRadius: "8px",
+                    padding: "10px 20px",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  Create a New Club
+                </Link>
+              ) : null}
               {hasActiveFilters ? (
                 <button
                   type="button"
