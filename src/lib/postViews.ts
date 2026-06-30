@@ -1,5 +1,4 @@
 import { supabase } from "./supabaseClient";
-import { formatNameWithRoleTitle } from "./memberRoleTitle";
 import type { MemberRole } from "../types";
 
 export interface AnnouncementSeenEntry {
@@ -10,28 +9,115 @@ export interface AnnouncementSeenEntry {
   viewedAt: string;
 }
 
-/** Record that the current user has read an announcement (upserts viewed_at). */
+/** Record that the current user has read an announcement (insert, then update on duplicate). */
 export async function recordAnnouncementView(
   postId: string,
   userId: string,
 ): Promise<boolean> {
-  const { error } = await supabase.from("post_views").upsert(
-    {
-      post_id: postId,
-      user_id: userId,
-      viewed_at: new Date().toISOString(),
-    },
-    { onConflict: "post_id,user_id" },
-  );
+  const viewedAt = new Date().toISOString();
+  const payload = { post_id: postId, user_id: userId, viewed_at: viewedAt };
 
-  if (error) {
-    console.error("Failed to record announcement view:", error.message);
+  const { error: insertError } = await supabase.from("post_views").insert(payload);
+
+  if (!insertError) return true;
+
+  if (insertError.code !== "23505") {
+    console.error(
+      "Failed to record announcement view:",
+      insertError.message,
+      insertError.code,
+    );
+    return false;
+  }
+
+  const { error: updateError } = await supabase
+    .from("post_views")
+    .update({ viewed_at: viewedAt })
+    .eq("post_id", postId)
+    .eq("user_id", userId);
+
+  if (updateError) {
+    console.error(
+      "Failed to update announcement view:",
+      updateError.message,
+      updateError.code,
+    );
     return false;
   }
 
   return true;
 }
 
+function normalizeMemberRole(role: string | null | undefined): MemberRole {
+  if (role === "owner") return "owner";
+  if (role === "executive" || role === "exec") return "executive";
+  return "member";
+}
+
+function memberRoleLabel(role?: MemberRole): string | undefined {
+  if (role === "owner") return "President";
+  if (role === "executive") return "Executive";
+  if (role === "member") return "Member";
+  return undefined;
+}
+
+async function fetchActiveMemberIdsForClub(clubId: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("club_members")
+    .select("user_id")
+    .eq("club_id", clubId)
+    .eq("status", "active");
+
+  if (error) {
+    console.error("Failed to load active club members for views:", error.message);
+    return new Set();
+  }
+
+  return new Set((data ?? []).map((row) => row.user_id as string));
+}
+
+function countScopedViewsByPost(
+  rows: Array<{ post_id: string; user_id: string }>,
+  postIds: string[],
+  activeMemberIds: Set<string>,
+): Record<string, number> {
+  const countMap: Record<string, number> = {};
+  for (const postId of postIds) countMap[postId] = 0;
+  for (const row of rows) {
+    const postId = row.post_id as string;
+    const userId = row.user_id as string;
+    if (!activeMemberIds.has(userId)) continue;
+    if (countMap[postId] === undefined) continue;
+    countMap[postId] += 1;
+  }
+  return countMap;
+}
+
+/** View counts scoped to active members of a club (matches seen-list rows). */
+export async function fetchPostViewCountsForClub(
+  postIds: string[],
+  clubId: string,
+): Promise<Record<string, number>> {
+  if (postIds.length === 0) return {};
+
+  const [viewsRes, activeMemberIds] = await Promise.all([
+    supabase.from("post_views").select("post_id, user_id").in("post_id", postIds),
+    fetchActiveMemberIdsForClub(clubId),
+  ]);
+
+  if (viewsRes.error) {
+    console.error("Failed to load announcement view counts:", viewsRes.error.message);
+    return {};
+  }
+
+  return countScopedViewsByPost(
+    (viewsRes.data ?? []) as Array<{ post_id: string; user_id: string }>,
+    postIds,
+    activeMemberIds,
+  );
+}
+
+/** @deprecated Prefer fetchPostViewCountsForClub when a clubId is available. */
 export async function fetchPostViewCounts(
   postIds: string[],
 ): Promise<Record<string, number>> {
@@ -54,12 +140,6 @@ export async function fetchPostViewCounts(
     countMap[postId] = (countMap[postId] ?? 0) + 1;
   }
   return countMap;
-}
-
-function normalizeMemberRole(role: string | null | undefined): MemberRole {
-  if (role === "owner") return "owner";
-  if (role === "executive" || role === "exec") return "executive";
-  return "member";
 }
 
 /** Seen list for one announcement — active club members who recorded a view. */
@@ -121,11 +201,10 @@ export async function fetchAnnouncementSeenList(
     .map((row) => {
       const userId = row.user_id as string;
       const member = memberById.get(userId);
-      const plainName = nameById.get(userId) ?? "Member";
       return {
         userId,
-        name: formatNameWithRoleTitle(plainName, member?.roleTitle),
-        roleTitle: member?.roleTitle,
+        name: nameById.get(userId) ?? "Member",
+        roleTitle: member?.roleTitle ?? memberRoleLabel(member?.role),
         role: member?.role,
         viewedAt: (row.viewed_at as string) ?? "",
       };

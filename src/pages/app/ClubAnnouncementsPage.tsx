@@ -13,7 +13,7 @@ import VisibilitySelector from "../../components/club/VisibilitySelector";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import { filterByVisibility } from "../../lib/contentVisibility";
 import {
-  fetchPostViewCounts,
+  fetchPostViewCountsForClub,
   recordAnnouncementView,
 } from "../../lib/postViews";
 import type { MemberRole, Post, Visibility } from "../../types";
@@ -420,8 +420,8 @@ export default function ClubAnnouncementsPage() {
           myMap[postId][reaction] = true;
         }
       }
-      setReactionCountsByPost(countsMap);
-      setMyReactionsByPost(myMap);
+      setReactionCountsByPost((prev) => ({ ...prev, ...countsMap }));
+      setMyReactionsByPost((prev) => ({ ...prev, ...myMap }));
     },
     [user?.id],
   );
@@ -481,10 +481,9 @@ export default function ClubAnnouncementsPage() {
     const authorIds = Array.from(new Set(posts.map((post) => post.authorId)));
 
     async function loadMeta() {
-      const [pinnedRes, reactionsRes, viewsRes, profilesRes, rolesRes] = await Promise.all([
+      const [pinnedRes, reactionsRes, profilesRes, rolesRes] = await Promise.all([
         supabase.from("posts").select("id, is_pinned").in("id", postIds),
         supabase.from("post_reactions").select("post_id, user_id, reaction").in("post_id", postIds),
-        supabase.from("post_views").select("post_id, user_id").in("post_id", postIds),
         supabase.from("profiles").select("id, full_name, avatar_url").in("id", authorIds),
         supabase
           .from("club_members")
@@ -523,16 +522,9 @@ export default function ClubAnnouncementsPage() {
         setMyReactionsByPost(myMap);
       }
 
-      if (!viewsRes.error) {
-        const countMap: Record<string, number> = {};
-        for (const postId of postIds) countMap[postId] = 0;
-        for (const row of viewsRes.data ?? []) {
-          const postId = row.post_id as string;
-          countMap[postId] = (countMap[postId] ?? 0) + 1;
-        }
+      if (clubId) {
+        const countMap = await fetchPostViewCountsForClub(postIds, clubId);
         setViewCountByPost(countMap);
-      } else {
-        console.error("Failed to load announcement views:", viewsRes.error.message);
       }
 
       const profileById: Record<string, { name?: string; avatarUrl?: string }> = {};
@@ -591,19 +583,25 @@ export default function ClubAnnouncementsPage() {
 
   const recordedViewsRef = useRef<Set<string>>(new Set());
 
+  useEffect(() => {
+    recordedViewsRef.current.clear();
+  }, [user?.id]);
+
   const markPostAsSeen = useCallback(
     async (postId: string) => {
-      if (!user?.id || recordedViewsRef.current.has(postId)) return;
-      recordedViewsRef.current.add(postId);
+      if (!user?.id || !clubId) return;
+      const recordKey = `${user.id}:${postId}`;
+      if (recordedViewsRef.current.has(recordKey)) return;
+      recordedViewsRef.current.add(recordKey);
       const ok = await recordAnnouncementView(postId, user.id);
       if (!ok) {
-        recordedViewsRef.current.delete(postId);
+        recordedViewsRef.current.delete(recordKey);
         return;
       }
-      const counts = await fetchPostViewCounts([postId]);
+      const counts = await fetchPostViewCountsForClub([postId], clubId);
       setViewCountByPost((prev) => ({ ...prev, ...counts }));
     },
-    [user?.id],
+    [user?.id, clubId],
   );
 
   const isPrivileged = isPrivilegedRole(userRole);
@@ -1375,7 +1373,14 @@ export default function ClubAnnouncementsPage() {
         }}
         onHeartToggle={() => void handleReactionToggle(post.id, "heart")}
         onBookmarkToggle={() => void handleReactionToggle(post.id, "bookmark")}
-        onViewSeenList={() => setSeenListPostId(post.id)}
+        onViewSeenList={() => {
+          setSeenListPostId(post.id);
+          if (clubId) {
+            void fetchPostViewCountsForClub([post.id], clubId).then((counts) => {
+              setViewCountByPost((prev) => ({ ...prev, ...counts }));
+            });
+          }
+        }}
         onPin={() => {
           setMenuOpenPostId(null);
           void handleTogglePin(post.id);

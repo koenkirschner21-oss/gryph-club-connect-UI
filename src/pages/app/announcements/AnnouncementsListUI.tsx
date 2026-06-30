@@ -799,6 +799,11 @@ export function SeenListModal({
                 <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
                   {entry.name}
                 </p>
+                {entry.roleTitle ? (
+                  <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#999999" }}>
+                    {entry.roleTitle}
+                  </p>
+                ) : null}
                 <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
                   Viewed {formatViewedAt(entry.viewedAt)}
                 </p>
