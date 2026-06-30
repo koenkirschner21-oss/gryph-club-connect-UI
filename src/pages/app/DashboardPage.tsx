@@ -85,6 +85,10 @@ import {
   WeekCalendarStrip,
   WeekClubLogo,
 } from "../dashboard/ThisWeekTabUI";
+import {
+  resolveOnboardingIntent,
+  type OnboardingIntent,
+} from "../../lib/onboardingIntent";
 
 // ---------------------------------------------------------------------------
 // Tab types
@@ -114,39 +118,171 @@ const newUserGuideCardStyle: CSSProperties = {
   transition: "border-color 0.15s ease, transform 0.15s ease",
 };
 
-function NewUserDashboardGuide() {
+const newUserGuideCardSecondaryStyle: CSSProperties = {
+  ...newUserGuideCardStyle,
+  background: "#121212",
+  border: "1px solid #1e1e1e",
+};
+
+type GuideCard = {
+  to: string;
+  title: string;
+  description: string;
+  icon: ReactNode;
+  secondary?: boolean;
+};
+
+const DISCOVER_GUIDE_CARDS: GuideCard[] = [
+  {
+    to: "/explore",
+    title: "Explore clubs",
+    description: "Browse campus clubs by category and find communities to join.",
+    icon: <Compass size={22} color="#E51937" aria-hidden />,
+  },
+  {
+    to: "/events",
+    title: "Browse events",
+    description: "See what's happening on campus and RSVP to public events.",
+    icon: <Calendar size={22} color="#FFC429" aria-hidden />,
+  },
+  {
+    to: "/hiring",
+    title: "Browse hiring roles",
+    description: "Find executive and volunteer openings posted by clubs.",
+    icon: <Briefcase size={22} color="#E51937" aria-hidden />,
+  },
+  {
+    to: "/app/settings",
+    title: "Complete your profile",
+    description: "Add a photo, program, and preferences so clubs recognize you.",
+    icon: <UserCircle size={22} color="#747676" aria-hidden />,
+  },
+];
+
+const MANAGE_GUIDE_CARDS: GuideCard[] = [
+  {
+    to: "/explore?claim=true",
+    title: "Claim a club",
+    description: "Take ownership of an existing unclaimed club listing on campus.",
+    icon: <Users size={22} color="#E51937" aria-hidden />,
+  },
+  {
+    to: "/app/create-club",
+    title: "Create a club",
+    description: "Submit a request to add a new club to Gryph ClubConnect.",
+    icon: <Megaphone size={22} color="#FFC429" aria-hidden />,
+  },
+  {
+    to: "/app/join-club",
+    title: "Join with code",
+    description: "Enter an invite code from your club's admin to join their workspace.",
+    icon: <CheckSquare size={22} color="#E51937" aria-hidden />,
+  },
+  {
+    to: "/explore",
+    title: "Explore clubs",
+    description: "Browse what's already on campus while you get set up.",
+    icon: <Compass size={22} color="#747676" aria-hidden />,
+    secondary: true,
+  },
+];
+
+function emptyDashboardSubtitle(intent: OnboardingIntent | null): string {
+  if (intent === "manage") {
+    return "You haven't joined or created a club yet. Start by claiming an existing club, creating a new club, or joining with a code.";
+  }
+  if (intent === "discover") {
+    return "Explore clubs, events, and hiring roles to find your place on campus.";
+  }
+  if (intent === "both") {
+    return "Get involved as a member and set up a club you want to lead — pick a starting point below.";
+  }
+  return "Get started by exploring campus clubs and events.";
+}
+
+function NewUserGuideSection({
+  title,
+  cards,
+  isMobileGuide,
+}: {
+  title?: string;
+  cards: GuideCard[];
+  isMobileGuide: boolean;
+}) {
+  return (
+    <div style={{ marginBottom: title ? "24px" : 0 }}>
+      {title ? (
+        <h3
+          style={{
+            fontSize: "13px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "#777777",
+            margin: "0 0 12px",
+          }}
+        >
+          {title}
+        </h3>
+      ) : null}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isMobileGuide ? "1fr" : "1fr 1fr",
+          gap: "14px",
+        }}
+      >
+        {cards.map((card) => (
+          <Link
+            key={`${title ?? "default"}-${card.to}-${card.title}`}
+            to={card.to}
+            style={card.secondary ? newUserGuideCardSecondaryStyle : newUserGuideCardStyle}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.borderColor = "#333333";
+              event.currentTarget.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.borderColor = card.secondary ? "#1e1e1e" : "#242424";
+              event.currentTarget.style.transform = "none";
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {card.icon}
+              <span
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  color: card.secondary ? "#cccccc" : "#ffffff",
+                }}
+              >
+                {card.title}
+              </span>
+              <ChevronRight
+                size={16}
+                color="#555555"
+                style={{ marginLeft: "auto" }}
+                aria-hidden
+              />
+            </div>
+            <p
+              style={{
+                fontSize: "13px",
+                color: card.secondary ? "#666666" : "#777777",
+                margin: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              {card.description}
+            </p>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NewUserDashboardGuide({ intent }: { intent: OnboardingIntent | null }) {
   const isMobileGuide = useIsMobile();
-  const cards: {
-    to: string;
-    title: string;
-    description: string;
-    icon: ReactNode;
-  }[] = [
-    {
-      to: "/explore",
-      title: "Explore clubs",
-      description: "Browse campus clubs by category and find communities to join.",
-      icon: <Compass size={22} color="#E51937" aria-hidden />,
-    },
-    {
-      to: "/events",
-      title: "Browse events",
-      description: "See what's happening on campus and RSVP to public events.",
-      icon: <Calendar size={22} color="#FFC429" aria-hidden />,
-    },
-    {
-      to: "/hiring",
-      title: "Browse hiring roles",
-      description: "Find executive and volunteer openings posted by clubs.",
-      icon: <Briefcase size={22} color="#E51937" aria-hidden />,
-    },
-    {
-      to: "/app/settings",
-      title: "Complete your profile",
-      description: "Add a photo, program, and preferences so clubs recognize you.",
-      icon: <UserCircle size={22} color="#747676" aria-hidden />,
-    },
-  ];
 
   return (
     <div
@@ -177,60 +313,29 @@ function NewUserDashboardGuide() {
           lineHeight: 1.5,
         }}
       >
-        You haven&apos;t joined any clubs yet. Here are a few good places to start.
+        {emptyDashboardSubtitle(intent)}
       </p>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobileGuide ? "1fr" : "1fr 1fr",
-          gap: "14px",
-        }}
-      >
-        {cards.map((card) => (
-          <Link
-            key={card.to}
-            to={card.to}
-            style={newUserGuideCardStyle}
-            onMouseEnter={(event) => {
-              event.currentTarget.style.borderColor = "#333333";
-              event.currentTarget.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.borderColor = "#242424";
-              event.currentTarget.style.transform = "none";
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {card.icon}
-              <span
-                style={{
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  color: "#ffffff",
-                }}
-              >
-                {card.title}
-              </span>
-              <ChevronRight
-                size={16}
-                color="#555555"
-                style={{ marginLeft: "auto" }}
-                aria-hidden
-              />
-            </div>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#777777",
-                margin: 0,
-                lineHeight: 1.5,
-              }}
-            >
-              {card.description}
-            </p>
-          </Link>
-        ))}
-      </div>
+
+      {intent === "manage" ? (
+        <NewUserGuideSection cards={MANAGE_GUIDE_CARDS} isMobileGuide={isMobileGuide} />
+      ) : intent === "discover" ? (
+        <NewUserGuideSection cards={DISCOVER_GUIDE_CARDS} isMobileGuide={isMobileGuide} />
+      ) : intent === "both" ? (
+        <>
+          <NewUserGuideSection
+            title="Get involved"
+            cards={DISCOVER_GUIDE_CARDS}
+            isMobileGuide={isMobileGuide}
+          />
+          <NewUserGuideSection
+            title="Run a club"
+            cards={MANAGE_GUIDE_CARDS}
+            isMobileGuide={isMobileGuide}
+          />
+        </>
+      ) : (
+        <NewUserGuideSection cards={DISCOVER_GUIDE_CARDS} isMobileGuide={isMobileGuide} />
+      )}
     </div>
   );
 }
@@ -244,7 +349,24 @@ export default function DashboardPage() {
   const { user, loading: authLoading } = useAuthContext();
   const { clubs, joinedClubs, savedClubs, loading, getUserRole, isPending } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [onboardingIntent, setOnboardingIntent] = useState<OnboardingIntent | null>(null);
   const inbox = useInbox();
+
+  useEffect(() => {
+    if (!user?.id) {
+      setOnboardingIntent(null);
+      return;
+    }
+
+    let cancelled = false;
+    void resolveOnboardingIntent(user.id).then((intent) => {
+      if (!cancelled) setOnboardingIntent(intent);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     const pendingTab = sessionStorage.getItem("dashboardTab");
@@ -541,7 +663,7 @@ export default function DashboardPage() {
             }}
           >
             {joinedClubs.length === 0
-              ? "Get started by exploring campus clubs and events."
+              ? emptyDashboardSubtitle(onboardingIntent)
               : "Here's what's happening across your clubs this week."}
           </p>
         </div>
@@ -562,7 +684,7 @@ export default function DashboardPage() {
       </div>
 
       {joinedClubs.length === 0 ? (
-        <NewUserDashboardGuide />
+        <NewUserDashboardGuide intent={onboardingIntent} />
       ) : (
         <>
       {/* ── Stat Cards (always visible) ── */}

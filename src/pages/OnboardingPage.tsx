@@ -11,11 +11,12 @@ import { getProfileInitials } from "../lib/profileInitials";
 import { supabase } from "../lib/supabaseClient";
 import { uploadImage } from "../lib/uploadImage";
 import Spinner from "../components/ui/Spinner";
+import {
+  cacheOnboardingIntent,
+  type OnboardingIntent,
+} from "../lib/onboardingIntent";
 
-type OnboardingIntent = "discover" | "manage" | "both";
 type Step = 1 | 2;
-
-const ONBOARDING_INTENT_KEY = "gryph_onboarding_intent";
 
 const YEAR_OPTIONS = [
   "1st year",
@@ -42,7 +43,7 @@ const INTENT_OPTIONS: {
     value: "manage",
     title: "Manage a club",
     description:
-      "Claim, set up, and manage a club profile as a President or executive",
+      "Claim an existing club, request a new one, or set up and manage your club profile as a president or executive.",
     cta: "Manage My Club",
   },
   {
@@ -86,14 +87,31 @@ const labelStyle: CSSProperties = {
 function intentCardStyle(selected: boolean): CSSProperties {
   return {
     position: "relative",
-    background: "#141414",
-    border: selected ? "1px solid #E51937" : "1px solid #2a2a2a",
+    background: selected ? "rgba(229, 25, 55, 0.1)" : "#141414",
+    border: selected ? "2px solid #E51937" : "1px solid #2a2a2a",
+    boxShadow: selected ? "0 0 0 1px rgba(229, 25, 55, 0.2)" : "none",
     borderRadius: "12px",
     padding: "24px",
     cursor: "pointer",
     textAlign: "left",
     width: "100%",
     boxSizing: "border-box",
+    transition: "border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
+  };
+}
+
+function intentCtaStyle(selected: boolean): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "13px",
+    fontWeight: 700,
+    color: selected ? "#ffffff" : "#aaaaaa",
+    background: selected ? "#E51937" : "#1a1a1a",
+    border: selected ? "none" : "1px solid #2a2a2a",
+    borderRadius: "6px",
+    padding: "7px 14px",
   };
 }
 
@@ -200,7 +218,7 @@ export default function OnboardingPage() {
     setError(null);
 
     try {
-      localStorage.setItem(ONBOARDING_INTENT_KEY, intent);
+      cacheOnboardingIntent(intent);
 
       const { error: updateError } = await supabase
         .from("profiles")
@@ -210,6 +228,7 @@ export default function OnboardingPage() {
           year_of_study: yearOfStudy || null,
           avatar_url: avatarUrl.trim() || null,
           onboarding_completed: true,
+          onboarding_intent: intent,
         })
         .eq("id", user.id);
 
@@ -292,28 +311,36 @@ export default function OnboardingPage() {
                   <button
                     key={option.value}
                     type="button"
+                    aria-pressed={selected}
                     onClick={() => setIntent(option.value)}
                     style={intentCardStyle(selected)}
                   >
                     {selected ? (
-                      <Check
-                        size={18}
-                        color="#E51937"
+                      <span
                         style={{
                           position: "absolute",
                           top: "16px",
                           right: "16px",
+                          width: "24px",
+                          height: "24px",
+                          borderRadius: "50%",
+                          background: "#E51937",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
                         aria-hidden
-                      />
+                      >
+                        <Check size={14} color="#ffffff" />
+                      </span>
                     ) : null}
                     <p
                       style={{
                         fontSize: "16px",
                         fontWeight: 700,
-                        color: "#ffffff",
+                        color: selected ? "#ffffff" : "#dddddd",
                         margin: "0 0 8px",
-                        paddingRight: "28px",
+                        paddingRight: "32px",
                       }}
                     >
                       {option.title}
@@ -321,22 +348,14 @@ export default function OnboardingPage() {
                     <p
                       style={{
                         fontSize: "13px",
-                        color: "#777777",
-                        margin: "0 0 12px",
+                        color: selected ? "#cccccc" : "#777777",
+                        margin: "0 0 14px",
                         lineHeight: 1.5,
                       }}
                     >
                       {option.description}
                     </p>
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        color: selected ? "#E51937" : "#555555",
-                      }}
-                    >
-                      {option.cta}
-                    </span>
+                    <span style={intentCtaStyle(selected)}>{option.cta}</span>
                   </button>
                 );
               })}
