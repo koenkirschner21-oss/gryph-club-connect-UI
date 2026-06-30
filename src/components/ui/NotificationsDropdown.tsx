@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MessageSquare } from "lucide-react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -54,9 +54,13 @@ function resolveNotificationLink(notification: Notification): string | null {
 
   switch (notification.type) {
     case "new_club_request":
-      return "/app/admin?tab=requests";
+      return notification.referenceId
+        ? `/app/admin?tab=requests&request=${notification.referenceId}`
+        : "/app/admin?tab=requests";
     case "new_claim_request":
-      return "/app/admin?tab=claims";
+      return notification.referenceId
+        ? `/app/admin?tab=claims&claim=${notification.referenceId}`
+        : "/app/admin?tab=claims";
     case "club_request_submitted":
     case "claim_submitted":
       return "/app";
@@ -66,6 +70,9 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "club_request_approved":
     case "claim_approved":
       return notification.clubId ? `/app/clubs/${notification.clubId}` : "/app";
+    case "club_request_more_info":
+    case "claim_more_info":
+      return "/app";
     default:
       break;
   }
@@ -73,6 +80,8 @@ function resolveNotificationLink(notification: Notification): string | null {
   if (!notification.clubId) return null;
 
   const base = `/app/clubs/${notification.clubId}`;
+  const ref = notification.referenceId;
+
   switch (notification.type as string) {
     case "new_event":
     case "event":
@@ -83,12 +92,102 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "task":
       return `${base}/tasks`;
     case "new_join_request":
+    case "join_approved":
+    case "join_rejected":
+    case "join_request_submitted":
+    case "member_joined":
       return `${base}/members`;
     case "direct_message":
-      return `${base}/chat`;
+    case "mention":
+      return ref ? `${base}/chat?conversation=${ref}` : `${base}/chat`;
     default:
       return base;
   }
+}
+
+type NotificationGroupId =
+  | "messages"
+  | "membership"
+  | "events"
+  | "work"
+  | "announcements"
+  | "claims"
+  | "other";
+
+const GROUP_ORDER: NotificationGroupId[] = [
+  "messages",
+  "membership",
+  "events",
+  "work",
+  "announcements",
+  "claims",
+  "other",
+];
+
+const GROUP_LABELS: Record<NotificationGroupId, string> = {
+  messages: "Messages",
+  membership: "Membership",
+  events: "Events",
+  work: "Tasks",
+  announcements: "Announcements",
+  claims: "Claims & requests",
+  other: "Updates",
+};
+
+function notificationGroupId(type: string): NotificationGroupId {
+  switch (type) {
+    case "direct_message":
+    case "mention":
+      return "messages";
+    case "new_join_request":
+    case "join_approved":
+    case "join_rejected":
+    case "join_request_submitted":
+    case "member_joined":
+      return "membership";
+    case "new_event":
+    case "event":
+      return "events";
+    case "task_assigned":
+    case "task":
+      return "work";
+    case "announcement":
+      return "announcements";
+    case "new_claim_request":
+    case "claim_submitted":
+    case "claim_approved":
+    case "claim_rejected":
+    case "claim_more_info":
+    case "new_club_request":
+    case "club_request_submitted":
+    case "club_request_approved":
+    case "club_request_rejected":
+    case "club_request_more_info":
+      return "claims";
+    default:
+      return "other";
+  }
+}
+
+function groupNotifications(items: Notification[]) {
+  const buckets = new Map<NotificationGroupId, Notification[]>();
+  for (const item of items) {
+    const key = notificationGroupId(item.type);
+    const list = buckets.get(key) ?? [];
+    list.push(item);
+    buckets.set(key, list);
+  }
+  return GROUP_ORDER.filter((id) => (buckets.get(id)?.length ?? 0) > 0).map(
+    (id) => ({
+      id,
+      label: GROUP_LABELS[id],
+      items: buckets.get(id)!,
+    }),
+  );
+}
+
+function openDashboardInbox() {
+  sessionStorage.setItem("dashboardTab", "inbox");
 }
 
 function notificationIconColor(type: string): string {
@@ -136,7 +235,7 @@ function notificationIconColor(type: string): string {
 }
 
 function NotificationTypeIcon({ type }: { type: NotificationType | string }) {
-  if (type === "direct_message") {
+  if (type === "direct_message" || type === "mention") {
     return (
       <MessageSquare
         size={16}
@@ -201,6 +300,11 @@ export default function NotificationsDropdown() {
     setNotifications(mapped);
     syncUnreadCount(mapped);
   }, [syncUnreadCount, userId]);
+
+  const groupedNotifications = useMemo(
+    () => groupNotifications(notifications),
+    [notifications],
+  );
 
   const markAllAsRead = useCallback(async () => {
     if (!userId) return;
@@ -275,11 +379,6 @@ export default function NotificationsDropdown() {
       window.clearInterval(pollId);
     };
   }, [fetchNotifications, userId]);
-
-  useEffect(() => {
-    if (!open) return;
-    markAllAsRead();
-  }, [open, markAllAsRead]);
 
   useEffect(() => {
     return registerOpenNotificationsDropdown(() => setOpen(true));
@@ -486,176 +585,267 @@ export default function NotificationsDropdown() {
             right: 0,
             top: "100%",
             marginTop: 8,
-            width: 320,
+            width: 360,
             background: "#1a1a1a",
             border: "1px solid #242424",
-            borderRadius: 10,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            borderRadius: 12,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
             zIndex: 120,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           <div
             style={{
-              padding: "14px 16px",
-              borderBottom: "1px solid #222",
+              padding: "16px 18px",
+              borderBottom: "1px solid #2a2a2a",
               background: "linear-gradient(180deg, #1e1a12 0%, #1a1a1a 100%)",
             }}
           >
             <div
               style={{
-                fontWeight: 600,
-                fontSize: 14,
-                color: "#FFC429",
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "12px",
               }}
             >
-              Alerts
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 15,
+                    color: "#FFC429",
+                  }}
+                >
+                  Alerts
+                </div>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    fontSize: 12,
+                    color: "#666666",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Quick activity updates — open Inbox for full messages
+                </p>
+              </div>
+              {unreadCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => void markAllAsRead()}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #333333",
+                    borderRadius: "6px",
+                    color: "#aaaaaa",
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    padding: "5px 8px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  Mark all read
+                </button>
+              ) : null}
             </div>
-            <p
-              style={{
-                margin: "4px 0 0",
-                fontSize: 11,
-                color: "#555555",
-                lineHeight: 1.4,
-              }}
-            >
-              Quick club activity — full messages live in Dashboard Inbox
-            </p>
           </div>
 
-          <div style={{ maxHeight: 360, overflowY: "auto" }}>
+          <div
+            className="notification-dropdown-scroll"
+            style={{
+              maxHeight: 420,
+              overflowY: "auto",
+              padding: "8px 0",
+            }}
+          >
             {notifications.length === 0 ? (
               <p
                 style={{
                   color: "#555555",
                   textAlign: "center",
-                  padding: 24,
+                  padding: "32px 20px",
                   margin: 0,
                   fontSize: 13,
+                  lineHeight: 1.5,
                 }}
               >
                 No notifications yet
               </p>
             ) : (
-              notifications.map((notification) => {
-                const { title, body } = parseNotificationDisplay(
-                  notification.type,
-                  notification.message,
-                );
-                return (
-                  <button
-                    key={notification.id}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void handleNotificationClick(notification)}
+              groupedNotifications.map((group) => (
+                <div key={group.id} style={{ marginBottom: "4px" }}>
+                  <p
                     style={{
-                      display: "flex",
-                      width: "100%",
-                      gap: 10,
-                      padding: "12px 16px",
-                      borderBottom: "1px solid #1e1e1e",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      background: notification.read ? "transparent" : "#1a1a1a",
-                      border: "none",
-                      borderLeft: notification.read
-                        ? "none"
-                        : "3px solid #E51937",
-                      borderBottomWidth: 1,
-                      borderBottomStyle: "solid",
-                      borderBottomColor: "#1e1e1e",
+                      margin: "8px 18px 6px",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      color: "#555555",
                     }}
                   >
-                    <NotificationTypeIcon type={notification.type} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div
+                    {group.label}
+                  </p>
+                  {group.items.map((notification) => {
+                    const { title, body } = parseNotificationDisplay(
+                      notification.type,
+                      notification.message,
+                    );
+                    const isUnread = !notification.read;
+                    return (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void handleNotificationClick(notification)}
                         style={{
                           display: "flex",
-                          alignItems: "flex-start",
-                          justifyContent: "space-between",
-                          gap: "8px",
+                          width: "100%",
+                          gap: 12,
+                          padding: "12px 18px",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          background: isUnread ? "#1f1f1f" : "transparent",
+                          border: "none",
+                          borderLeft: isUnread
+                            ? "3px solid #E51937"
+                            : "3px solid transparent",
                         }}
                       >
-                        <p
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "#ffffff",
-                            margin: 0,
-                            lineHeight: 1.4,
-                            flex: 1,
-                            minWidth: 0,
-                          }}
-                        >
-                          {title}
-                        </p>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "#444444",
-                            flexShrink: 0,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {formatRelativeTime(notification.createdAt)}
-                        </span>
-                      </div>
-                      {body ? (
-                        <p
-                          style={{
-                            fontSize: 12,
-                            color: "#777777",
-                            margin: "4px 0 0",
-                            lineHeight: 1.4,
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {body}
-                        </p>
-                      ) : null}
-                      {notification.clubName ? (
-                        <p
-                          style={{
-                            fontSize: 11,
-                            color: "#555555",
-                            margin: "4px 0 0",
-                          }}
-                        >
-                          {notification.clubName}
-                        </p>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })
+                        <NotificationTypeIcon type={notification.type} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              justifyContent: "space-between",
+                              gap: "10px",
+                            }}
+                          >
+                            <p
+                              style={{
+                                fontSize: 13,
+                                fontWeight: isUnread ? 700 : 500,
+                                color: isUnread ? "#ffffff" : "#999999",
+                                margin: 0,
+                                lineHeight: 1.45,
+                                flex: 1,
+                                minWidth: 0,
+                              }}
+                            >
+                              {title}
+                            </p>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "#555555",
+                                flexShrink: 0,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {formatRelativeTime(notification.createdAt)}
+                            </span>
+                          </div>
+                          {body ? (
+                            <p
+                              style={{
+                                fontSize: 12,
+                                color: isUnread ? "#888888" : "#666666",
+                                margin: "6px 0 0",
+                                lineHeight: 1.45,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                              }}
+                            >
+                              {body}
+                            </p>
+                          ) : null}
+                          {notification.clubName ? (
+                            <p
+                              style={{
+                                fontSize: 11,
+                                color: "#555555",
+                                margin: "6px 0 0",
+                              }}
+                            >
+                              {notification.clubName}
+                            </p>
+                          ) : null}
+                        </div>
+                        {isUnread ? (
+                          <span
+                            aria-hidden
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              background: "#E51937",
+                              flexShrink: 0,
+                              marginTop: 6,
+                            }}
+                          />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
             )}
           </div>
 
           <div
             style={{
-              borderTop: "1px solid #222",
-              padding: "10px 16px",
+              borderTop: "1px solid #2a2a2a",
+              padding: "12px 18px",
               background: "#141414",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
             }}
           >
             <Link
               to="/app"
               onClick={() => {
-                sessionStorage.setItem("dashboardTab", "inbox");
+                openDashboardInbox();
                 setOpen(false);
               }}
               style={{
                 display: "block",
+                textAlign: "center",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#ffffff",
+                textDecoration: "none",
+                background: "#E51937",
+                borderRadius: "8px",
+                padding: "10px 14px",
+              }}
+            >
+              Open Inbox
+            </Link>
+            <Link
+              to="/app"
+              onClick={() => {
+                openDashboardInbox();
+                setOpen(false);
+              }}
+              style={{
+                display: "block",
+                textAlign: "center",
                 fontSize: "12px",
                 fontWeight: 500,
-                color: "#E51937",
+                color: "#777777",
                 textDecoration: "none",
               }}
             >
-              Open Dashboard Inbox →
+              View all in Dashboard →
             </Link>
           </div>
         </div>

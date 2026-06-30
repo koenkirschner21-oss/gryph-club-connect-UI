@@ -966,6 +966,7 @@ function MessageBubble({
   isOwn,
   isGroupChat,
   onReply,
+  onEdit,
   reaction,
   onToggleReaction,
 }: {
@@ -973,13 +974,31 @@ function MessageBubble({
   isOwn: boolean;
   isGroupChat: boolean;
   onReply?: (msg: DirectMessage) => void;
+  onEdit?: (messageId: string, content: string) => Promise<boolean>;
   reaction?: MessageReactionSummary;
   onToggleReaction?: (messageId: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(msg.content ?? "");
+  const [savingEdit, setSavingEdit] = useState(false);
   const profilePath = msg.senderId ? `/app/profile/${msg.senderId}` : null;
   const liked = reaction?.liked ?? false;
   const reactionCount = reaction?.count ?? 0;
+  const canEdit = isOwn && Boolean(msg.content?.trim()) && Boolean(onEdit);
+
+  async function handleSaveEdit() {
+    if (!onEdit || savingEdit) return;
+    const trimmed = editDraft.trim();
+    if (!trimmed || trimmed === (msg.content ?? "").trim()) {
+      setEditing(false);
+      return;
+    }
+    setSavingEdit(true);
+    const ok = await onEdit(msg.id, trimmed);
+    setSavingEdit(false);
+    if (ok) setEditing(false);
+  }
 
   return (
     <div
@@ -1055,8 +1074,69 @@ function MessageBubble({
                 content={msg.replyToContent}
               />
             ) : null}
-            {msg.content}
-            <MessageAttachment msg={msg} />
+            {editing ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <textarea
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  rows={3}
+                  style={{
+                    width: "100%",
+                    background: isOwn ? "#b81430" : "#141414",
+                    color: "#ffffff",
+                    border: "1px solid #333333",
+                    borderRadius: "8px",
+                    padding: "8px 10px",
+                    fontSize: "14px",
+                    lineHeight: 1.5,
+                    resize: "vertical",
+                  }}
+                />
+                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(false);
+                      setEditDraft(msg.content ?? "");
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid #444444",
+                      color: "#cccccc",
+                      borderRadius: "6px",
+                      padding: "4px 10px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingEdit || !editDraft.trim()}
+                    onClick={() => void handleSaveEdit()}
+                    style={{
+                      background: "#ffffff",
+                      border: "none",
+                      color: "#E51937",
+                      borderRadius: "6px",
+                      padding: "4px 10px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: savingEdit ? "wait" : "pointer",
+                      opacity: savingEdit || !editDraft.trim() ? 0.7 : 1,
+                    }}
+                  >
+                    {savingEdit ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {msg.content}
+                <MessageAttachment msg={msg} />
+              </>
+            )}
           </div>
           <div
             style={{
@@ -1122,6 +1202,26 @@ function MessageBubble({
                 <Reply size={14} aria-hidden />
               </button>
             ) : null}
+            {canEdit && !editing ? (
+              <button
+                type="button"
+                aria-label="Edit message"
+                onClick={() => {
+                  setEditDraft(msg.content ?? "");
+                  setEditing(true);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  padding: "2px",
+                  display: "flex",
+                }}
+              >
+                <Pencil size={14} aria-hidden />
+              </button>
+            ) : null}
           </div>
         </div>
         <span
@@ -1133,6 +1233,9 @@ function MessageBubble({
           }}
         >
           {formatMessageTime(msg.createdAt)}
+          {msg.editedAt ? (
+            <span style={{ marginLeft: "6px", color: "#555555" }}>edited</span>
+          ) : null}
         </span>
       </div>
     </div>
@@ -1163,6 +1266,7 @@ export default function ClubChatPage() {
     createDirectMessage,
     createGroupChat,
     sendMessage,
+    editMessage,
     createPoll,
     voteOnPoll,
     uploadAttachment,
@@ -1523,6 +1627,23 @@ export default function ClubChatPage() {
     loading,
     user?.id,
     createDirectMessage,
+    selectConversation,
+    setSearchParams,
+  ]);
+
+  useEffect(() => {
+    const conversationId = searchParams.get("conversation");
+    if (!conversationId || loading) return;
+    if (!conversations.some((convo) => convo.id === conversationId)) return;
+
+    selectConversation(conversationId);
+    const next = new URLSearchParams(searchParams);
+    next.delete("conversation");
+    setSearchParams(next, { replace: true });
+  }, [
+    conversations,
+    loading,
+    searchParams,
     selectConversation,
     setSearchParams,
   ]);
@@ -2413,6 +2534,7 @@ export default function ClubChatPage() {
                             ? startReply
                             : undefined
                         }
+                        onEdit={editMessage}
                         reaction={messageReactions[item.message.id]}
                         onToggleReaction={(id) => void toggleMessageReaction(id)}
                       />

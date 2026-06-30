@@ -56,6 +56,7 @@ export interface DirectMessage {
   attachmentType?: string | null;
   readBy: string[];
   createdAt: string;
+  editedAt?: string | null;
   senderName?: string;
   senderAvatar?: string;
   replyToId?: string | null;
@@ -216,6 +217,7 @@ function mapMessageRow(row: Record<string, unknown>): DirectMessage {
     attachmentType: (row.attachment_type as string | null) ?? null,
     readBy: (row.read_by as string[]) ?? [],
     createdAt: (row.created_at as string) ?? "",
+    editedAt: (row.edited_at as string | null) ?? null,
     replyToId: (row.reply_to_id as string | null) ?? null,
     replyToContent: (row.reply_to_content as string | null) ?? null,
     replyToSender: (row.reply_to_sender as string | null) ?? null,
@@ -455,6 +457,7 @@ export interface UseConversationsReturn {
       senderName: string;
     } | null,
   ) => Promise<boolean>;
+  editMessage: (messageId: string, content: string) => Promise<boolean>;
   createPoll: (
     conversationId: string,
     question: string,
@@ -737,6 +740,30 @@ export function useConversations(
     };
   }, [loadConversations, user?.id]);
 
+  useEffect(() => {
+    if (!clubId || !user?.id) return;
+
+    const channel = supabase
+      .channel(`conversations-refresh:${clubId}:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversations",
+          filter: `club_id=eq.${clubId}`,
+        },
+        () => {
+          void loadConversations();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [clubId, loadConversations, user?.id]);
+
   const loadPolls = useCallback(async (conversationId: string) => {
     setPollsLoading(true);
     const { data, error } = await supabase
@@ -784,24 +811,14 @@ export function useConversations(
     async (conversationId: string) => {
       if (!user?.id) return;
 
-      const { data: unread } = await supabase
-        .from("direct_messages")
-        .select("id, read_by")
-        .eq("conversation_id", conversationId)
-        .neq("sender_id", user.id);
+      const { error } = await supabase.rpc("mark_conversation_read", {
+        p_conversation_id: conversationId,
+      });
 
-      if (!unread?.length) return;
-
-      await Promise.all(
-        unread
-          .filter((m) => !(m.read_by ?? []).includes(user.id))
-          .map((m) =>
-            supabase
-              .from("direct_messages")
-              .update({ read_by: [...(m.read_by ?? []), user.id] })
-              .eq("id", m.id),
-          ),
-      );
+      if (error) {
+        console.error("Failed to mark conversation as read:", error.message);
+        return;
+      }
 
       setConversations((prev) =>
         sortConversationsByPriority(
@@ -857,13 +874,33 @@ export function useConversations(
             const [enriched] = await attachMessageSenders([mapped]);
             setMessages((prev) => mergeConfirmedMessage(prev, enriched));
             if (user?.id && enriched.senderId !== user.id) {
-              await supabase
-                .from("direct_messages")
-                .update({ read_by: [...enriched.readBy, user.id] })
-                .eq("id", enriched.id);
+              await supabase.rpc("mark_direct_message_read", {
+                p_message_id: enriched.id,
+              });
             }
           }
-          loadConversations();
+          void loadConversations();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "direct_messages",
+          filter: `conversation_id=eq.${activeConversationId}`,
+        },
+        async (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          if (!row?.id) return;
+          const mapped = mapMessageRow(row);
+          const [enriched] = await attachMessageSenders([mapped]);
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === enriched.id ? enriched : message,
+            ),
+          );
+          void loadConversations();
         },
       )
       .subscribe();
@@ -1383,6 +1420,42 @@ export function useConversations(
     [polls, user?.id],
   );
 
+  const editMessage = useCallback(
+    async (messageId: string, content: string): Promise<boolean> => {
+      if (!user?.id) return false;
+
+      const trimmed = content.trim();
+      if (!trimmed) return false;
+
+      const { data, error } = await supabase
+        .from("direct_messages")
+        .update({
+          content: trimmed,
+          edited_at: new Date().toISOString(),
+        })
+        .eq("id", messageId)
+        .eq("sender_id", user.id)
+        .select("*")
+        .single();
+
+      if (error || !data) {
+        console.error("Failed to edit message:", error?.message);
+        return false;
+      }
+
+      const mapped = mapMessageRow(data as Record<string, unknown>);
+      const [enriched] = await attachMessageSenders([mapped]);
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId ? enriched : message,
+        ),
+      );
+      await loadConversations();
+      return true;
+    },
+    [loadConversations, user?.id],
+  );
+
   return {
     conversations,
     messages,
@@ -1400,6 +1473,7 @@ export function useConversations(
     createDirectMessage,
     createGroupChat,
     sendMessage,
+    editMessage,
     createPoll,
     voteOnPoll,
     uploadAttachment,

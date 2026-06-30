@@ -272,6 +272,24 @@ textarea::placeholder {
 .step-line { flex: 1; height: 1px; background: var(--border); }
 .step-line.complete { background: var(--green); }
 
+.notification-dropdown-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #333333 transparent;
+}
+
+.notification-dropdown-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notification-dropdown-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notification-dropdown-scroll::-webkit-scrollbar-thumb {
+  background: #333333;
+  border-radius: 999px;
+}
+
 .toast {
   position: fixed;
   bottom: 24px;

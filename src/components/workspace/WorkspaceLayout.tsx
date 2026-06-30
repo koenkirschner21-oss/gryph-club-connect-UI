@@ -290,10 +290,6 @@ export default function WorkspaceLayout() {
     if (!resolvedClubId || !workspaceBasePath) return;
 
     const path = location.pathname;
-    if (path.startsWith(`${workspaceBasePath}/chat`)) {
-      setChatUnread(0);
-      return;
-    }
     if (path.startsWith(`${workspaceBasePath}/tasks`)) {
       localStorage.setItem(tasksVisitedKey(resolvedClubId), String(Date.now()));
       setTasksUnread(0);
@@ -311,10 +307,6 @@ export default function WorkspaceLayout() {
   const handleBadgeNavClick = useCallback(
     (badgeKey?: "chat" | "tasks" | "announcements") => {
       if (!resolvedClubId || !badgeKey) return;
-      if (badgeKey === "chat") {
-        setChatUnread(0);
-        return;
-      }
       if (badgeKey === "tasks") {
         localStorage.setItem(tasksVisitedKey(resolvedClubId), String(Date.now()));
         setTasksUnread(0);
@@ -388,6 +380,18 @@ export default function WorkspaceLayout() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "direct_messages" },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversations",
+          filter: `club_id=eq.${resolvedClubId}`,
+        },
         () => {
           void loadBadgeCounts();
         },
