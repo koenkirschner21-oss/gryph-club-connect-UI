@@ -26,3 +26,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local audit/discovery tooling — not part of the app, do not commit
+scripts/discovery_crawl_pages.txt
+scripts/discovery_page_matrix.mjs
+scripts/discovery_role_api.mjs
+scripts/discovery_executive_accounts.sql
+scripts/tmp_club_members_policies.sql
