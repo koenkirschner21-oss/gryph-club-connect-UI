@@ -662,6 +662,108 @@ export function buildAnnouncementSectionInsight(
   };
 }
 
+export function countEventsThisMonth(events: EventRow[]): number {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+  return events.filter((event) => {
+    const parsed = new Date(event.date);
+    return !Number.isNaN(parsed.getTime()) && parsed >= monthStart && parsed <= monthEnd;
+  }).length;
+}
+
+export interface AnalyticsOverviewSnapshot {
+  totalMembers: number;
+  eventsThisMonth: number;
+  taskCompletionRate: number;
+  openHiringRoles: number;
+  overdueTasks: number;
+  newMembersThisMonth: number;
+}
+
+export function buildAnalyticsOverviewInsight(
+  snapshot: AnalyticsOverviewSnapshot,
+  sections: {
+    member: SectionInsight;
+    event: SectionInsight;
+    task: SectionInsight;
+    hiring: SectionInsight;
+    announcement: SectionInsight;
+    profile: SectionInsight;
+  },
+): SectionInsight {
+  const {
+    totalMembers,
+    eventsThisMonth,
+    taskCompletionRate,
+    openHiringRoles,
+    overdueTasks,
+    newMembersThisMonth,
+  } = snapshot;
+
+  if (totalMembers === 0) {
+    return {
+      sentiment: "warning",
+      text: "No active members yet — invite your exec team and share your join code to kickstart club health tracking.",
+    };
+  }
+
+  const sectionInsights = [
+    sections.task,
+    sections.member,
+    sections.event,
+    sections.hiring,
+    sections.announcement,
+    sections.profile,
+  ];
+  const warning = sectionInsights.find((insight) => insight.sentiment === "warning");
+  const positiveCount = sectionInsights.filter(
+    (insight) => insight.sentiment === "positive",
+  ).length;
+
+  const headline = `${totalMembers} member${totalMembers === 1 ? "" : "s"}, ${eventsThisMonth} event${eventsThisMonth === 1 ? "" : "s"} this month, ${taskCompletionRate}% task completion, ${openHiringRoles} open hiring role${openHiringRoles === 1 ? "" : "s"}.`;
+
+  if (warning) {
+    const focusPrefix =
+      overdueTasks > 0
+        ? `Address ${overdueTasks} overdue task${overdueTasks === 1 ? "" : "s"} first. `
+        : newMembersThisMonth === 0
+          ? "Recruitment has stalled this month. "
+          : "";
+    return {
+      sentiment: "warning",
+      text: `${headline} ${focusPrefix}Recommended focus: ${warning.text}`,
+    };
+  }
+
+  if (positiveCount >= 3) {
+    return {
+      sentiment: "positive",
+      text: `${headline} Momentum looks healthy across membership, events, and operations — keep publishing events and closing the loop on tasks.`,
+    };
+  }
+
+  if (taskCompletionRate >= 70 && newMembersThisMonth > 0) {
+    return {
+      sentiment: "positive",
+      text: `${headline} Solid growth and execution this period. Double down on events members RSVP to and keep hiring pipelines moving.`,
+    };
+  }
+
+  return {
+    sentiment: "neutral",
+    text: `${headline} Review each section below for detailed trends and area-specific recommendations.`,
+  };
+}
+
 export function sectionInsightStyle(sentiment: SectionInsight["sentiment"]) {
   return {
     borderLeft: `3px solid ${insightSentimentColor(sentiment)}`,

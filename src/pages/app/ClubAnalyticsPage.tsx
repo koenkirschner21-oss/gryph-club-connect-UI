@@ -11,6 +11,7 @@ import {
   Eye,
   Globe,
   Info,
+  LayoutDashboard,
   Megaphone,
   Users,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import {
   buildAnnouncementSectionInsight,
   buildAnnouncementSeenBreakdown,
   buildAnnouncementViewsOverTime,
+  buildAnalyticsOverviewInsight,
   buildEventAttendanceTrend,
   buildEventCategoryBreakdown,
   buildEventSectionInsight,
@@ -52,6 +54,7 @@ import {
   buildTasksByAssignee,
   buildTopAttendedEvents,
   computeOverallSeenRate,
+  countEventsThisMonth,
   countNewMembersThisMonth,
   countOverdueTasks,
   isExecutiveMember,
@@ -1140,6 +1143,43 @@ export default function ClubAnalyticsPage() {
     (member) => new Date(member.created_at) <= yearAgo,
   ).length;
   const memberTrend = computeYearOverYearTrend(totalMembers, membersYearAgo);
+  const eventsThisMonth = countEventsThisMonth(scopedEvents);
+
+  const overviewInsight = useMemo(
+    () =>
+      buildAnalyticsOverviewInsight(
+        {
+          totalMembers,
+          eventsThisMonth,
+          taskCompletionRate,
+          openHiringRoles: openHiringListingsCount,
+          overdueTasks,
+          newMembersThisMonth: newThisMonth,
+        },
+        {
+          member: memberInsight,
+          event: eventInsight,
+          task: taskInsight,
+          hiring: hiringInsight,
+          announcement: announcementInsight,
+          profile: profileInsight,
+        },
+      ),
+    [
+      totalMembers,
+      eventsThisMonth,
+      taskCompletionRate,
+      openHiringListingsCount,
+      overdueTasks,
+      newThisMonth,
+      memberInsight,
+      eventInsight,
+      taskInsight,
+      hiringInsight,
+      announcementInsight,
+      profileInsight,
+    ],
+  );
 
   const clubBasePath = clubId ? `/app/clubs/${clubId}` : "/app";
 
@@ -1256,6 +1296,94 @@ export default function ClubAnalyticsPage() {
           {error}
         </div>
       ) : null}
+
+      <AnalyticsSection title="Overview" icon={<LayoutDashboard size={20} aria-hidden />}>
+        <StatCardsRow isMobile={isMobile}>
+          <StatCard
+            label="Total Members"
+            value={totalMembers}
+            topColor={ACCENT_RED}
+            icon={<Users size={22} aria-hidden />}
+            iconBg="rgba(229, 25, 55, 0.15)"
+            iconColor={ACCENT_RED}
+            trend={memberTrend}
+          />
+          <StatCard
+            label="Events This Month"
+            value={eventsThisMonth}
+            topColor={ACCENT_GOLD}
+            valueColor={eventsThisMonth > 0 ? ACCENT_GOLD : "#ffffff"}
+            icon={<Calendar size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+          <StatCard
+            label="Task Completion"
+            value={`${taskCompletionRate}%`}
+            topColor={taskCompletionRate >= 60 ? ACCENT_GOLD : "#777777"}
+            valueColor={taskCompletionRate >= 60 ? ACCENT_GOLD : "#ffffff"}
+            icon={<CheckSquare size={22} aria-hidden />}
+            iconBg="rgba(255, 196, 41, 0.15)"
+            iconColor={ACCENT_GOLD}
+          />
+          <StatCard
+            label="Open Hiring Roles"
+            value={openHiringListingsCount}
+            topColor="#6b7cff"
+            icon={<Briefcase size={22} aria-hidden />}
+            iconBg="rgba(107, 124, 255, 0.15)"
+            iconColor="#6b7cff"
+          />
+        </StatCardsRow>
+        <div style={{ marginBottom: "16px" }}>
+          <SectionInsightBox insight={overviewInsight} />
+        </div>
+        <ChartsGrid isMobile={isMobile}>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Member Growth (6 mo)" />
+            <div style={{ width: "100%", minWidth: 0, height: "160px" }}>
+              {totalMembers === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={newMembersByMonth}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip content={<MemberGrowthTooltip />} />
+                    <Bar dataKey="count" name="New members" fill={ACCENT_RED} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div style={chartCardStyle}>
+            <ChartCardHeader title="Event Attendance (6 mo)" />
+            <div style={{ width: "100%", minWidth: 0, height: "160px" }}>
+              {totalEvents === 0 ? (
+                <AnalyticsBuildingMessage />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={eventAttendanceTrend}>
+                    <CartesianGrid stroke={GRID} vertical={false} />
+                    <XAxis dataKey="label" {...chartAxisProps} />
+                    <YAxis allowDecimals={false} {...chartAxisProps} axisLine={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Line
+                      type="monotone"
+                      dataKey="going"
+                      name="Going"
+                      stroke={ACCENT_GOLD}
+                      strokeWidth={2}
+                      dot={{ fill: ACCENT_GOLD, r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </ChartsGrid>
+      </AnalyticsSection>
 
       <AnalyticsSection title="Members" icon={<Users size={20} aria-hidden />}>
         <StatCardsRow isMobile={isMobile}>
