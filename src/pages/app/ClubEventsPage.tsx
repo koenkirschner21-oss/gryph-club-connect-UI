@@ -55,6 +55,7 @@ import {
 } from "../../lib/eventCategories";
 import EventPlanningTasksSection from "../../components/club/EventPlanningTasksSection";
 import { EventManageView } from "./events/EventManageView";
+import { getPublicEventDetailPath } from "../../lib/eventNavigation";
 import { useClubMembers } from "../../hooks/useClubMembers";
 
 type EventFilter = "all" | "going_to" | "needs_response";
@@ -3390,6 +3391,14 @@ export default function ClubEventsPage() {
           attendeeList={attendees[manageEvent.id]}
           planningTasks={planningTasksForManageEvent}
           members={members}
+          clubName={club?.name ?? "Club"}
+          clubLogoUrl={clubBrand.logoUrl}
+          clubAbbreviation={clubBrand.abbreviation}
+          clubSlug={club?.slug}
+          myRsvpStatus={myRsvps[manageEvent.id]}
+          rsvpAccess={getRsvpAccessForEvent(manageEvent)}
+          publicEventPath={getPublicEventDetailPath(manageEvent.id)}
+          onRsvp={handleRsvp}
           createTask={createTask}
           updateTask={updateTask}
           deleteTask={deleteTask}

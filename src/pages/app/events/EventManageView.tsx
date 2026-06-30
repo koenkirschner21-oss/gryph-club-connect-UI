@@ -5,13 +5,25 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowLeft, Calendar, Clock, ExternalLink, MapPin } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import EventPlanningTasksSection from "../../../components/club/EventPlanningTasksSection";
-import VisibilityBadge from "../../../components/club/VisibilityBadge";
+import {
+  EventDetailBadges,
+  EventDetailClubHeader,
+  EventDetailDescription,
+  EventDetailMeta,
+  EventDetailMyRsvp,
+  EventDetailPrimaryAction,
+  EventDetailPublicLink,
+  EventDetailRsvpSummary,
+  EventDetailTitle,
+  EventDetailTwoColumn,
+} from "../../../components/events/EventDetailLayout";
 import type { UseClubTasksReturn } from "../../../hooks/useClubTasks";
 import { supabase } from "../../../lib/supabaseClient";
 import { formatMemberDisplayRole } from "../../../lib/memberRoleTitle";
 import { eventCategoryLabel } from "../../../lib/eventCategories";
+import type { RsvpAccessResult } from "../../../lib/eventRsvpUtils";
 import {
   CARD_BORDER,
   inputStyle,
@@ -68,33 +80,10 @@ function useDebouncedSave(
   return saved;
 }
 
-function formatEventTime(value: string): string | null {
-  const raw = value.trim();
-  if (!raw || raw.toUpperCase() === "TBD") return null;
-  const parsed = new Date(`1970-01-01T${raw}`);
-  if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
 function cleanEventLocation(value: string): string | null {
   const raw = value.trim();
   if (!raw || raw.toUpperCase() === "TBD") return null;
   return raw;
-}
-
-function formatEventDate(date: string): string {
-  const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return date;
-  return parsed.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function isUrl(value: string): boolean {
@@ -297,6 +286,14 @@ export function EventManageView({
   attendeeList,
   planningTasks,
   members,
+  clubName,
+  clubLogoUrl,
+  clubAbbreviation,
+  clubSlug,
+  myRsvpStatus,
+  rsvpAccess,
+  publicEventPath,
+  onRsvp,
   createTask,
   updateTask,
   deleteTask,
@@ -319,6 +316,14 @@ export function EventManageView({
   attendeeList?: EventRsvp[];
   planningTasks: Task[];
   members: ClubMember[];
+  clubName: string;
+  clubLogoUrl?: string;
+  clubAbbreviation?: string;
+  clubSlug?: string;
+  myRsvpStatus?: RsvpStatus;
+  rsvpAccess: RsvpAccessResult;
+  publicEventPath?: string;
+  onRsvp?: (eventId: string, status: RsvpStatus) => void;
   createTask: UseClubTasksReturn["createTask"];
   updateTask: UseClubTasksReturn["updateTask"];
   deleteTask: UseClubTasksReturn["deleteTask"];
@@ -336,7 +341,6 @@ export function EventManageView({
   const [notesReady, setNotesReady] = useState(false);
   const [attendeeFilter, setAttendeeFilter] = useState<AttendeeFilterTab>("all");
 
-  const timeLabel = formatEventTime(event.time);
   const locationLabel = cleanEventLocation(event.location);
   const categoryLabel = eventCategoryLabel(category);
   const totalRsvps = counts.going + counts.maybe + counts.not_going;
@@ -470,6 +474,152 @@ export function EventManageView({
         year: "numeric",
       })
     : null;
+  const recurrenceDetail =
+    recurringMeta?.frequency && RECURRENCE_LABELS[recurringMeta.frequency]
+      ? `${RECURRENCE_LABELS[recurringMeta.frequency]}${recurrenceEndLabel ? ` until ${recurrenceEndLabel}` : ""}`
+      : recurrenceEndLabel
+        ? `until ${recurrenceEndLabel}`
+        : undefined;
+
+  const showPublicLink =
+    publicEventPath &&
+    (event.visibility === "public" || !event.visibility);
+
+  const primaryAction = (() => {
+    if (isPrivileged) {
+      return (
+        <EventDetailPrimaryAction
+          label="Manage Event"
+          onClick={() => onEdit(event)}
+        />
+      );
+    }
+    if (rsvpAccess.showRsvpButton && onRsvp) {
+      if (myRsvpStatus === "going") {
+        return (
+          <EventDetailPrimaryAction
+            label="Going"
+            variant="going"
+            showCheck
+            onClick={() => onRsvp(event.id, "going")}
+          />
+        );
+      }
+      if (myRsvpStatus === "maybe") {
+        return (
+          <EventDetailPrimaryAction
+            label="Maybe"
+            variant="secondary"
+            onClick={() => onRsvp(event.id, "maybe")}
+          />
+        );
+      }
+      if (myRsvpStatus === "not_going") {
+        return (
+          <EventDetailPrimaryAction
+            label="Not Going"
+            variant="secondary"
+            onClick={() => onRsvp(event.id, "not_going")}
+          />
+        );
+      }
+      return (
+        <EventDetailPrimaryAction
+          label="RSVP"
+          onClick={() => onRsvp(event.id, "going")}
+        />
+      );
+    }
+    return null;
+  })();
+
+  const attendeePanel = isPrivileged ? (
+    <section ref={rsvpPanelRef} style={sectionCardStyle}>
+      <h2
+        style={{
+          margin: "0 0 4px",
+          fontSize: "16px",
+          fontWeight: 700,
+          color: "#ffffff",
+        }}
+      >
+        Attendees
+      </h2>
+      <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#555555" }}>
+        {totalRsvps} responded · {noResponseCount} no response
+        {openPlanningCount > 0 ? ` · ${openPlanningCount} open planning tasks` : ""}
+      </p>
+
+      <RsvpStatusBar
+        label="Going"
+        count={counts.going}
+        total={Math.max(totalRsvps, 1)}
+        color="#E51937"
+      />
+      <RsvpStatusBar
+        label="Maybe"
+        count={counts.maybe}
+        total={Math.max(totalRsvps, 1)}
+        color="#FFC429"
+      />
+      <RsvpStatusBar
+        label="Not Going"
+        count={counts.not_going}
+        total={Math.max(totalRsvps, 1)}
+        color="#777777"
+      />
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "6px",
+          margin: "18px 0 12px",
+        }}
+      >
+        {ATTENDEE_FILTER_TABS.map((tab) => {
+          const active = attendeeFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setAttendeeFilter(tab.id)}
+              style={{
+                background: active ? "#E51937" : "transparent",
+                color: active ? "#ffffff" : "#777777",
+                border: active ? "1px solid #E51937" : "1px solid #333333",
+                borderRadius: "20px",
+                padding: "5px 12px",
+                fontSize: "11px",
+                fontWeight: active ? 600 : 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {attendeeRows.length === 0 ? (
+        <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>
+          No attendees in this view.
+        </p>
+      ) : (
+        attendeeRows.map((row) => (
+          <AttendeeRow
+            key={
+              row.kind === "rsvp"
+                ? row.attendee.id
+                : `no-response-${row.member.userId}`
+            }
+            item={row}
+          />
+        ))
+      )}
+    </section>
+  ) : null;
 
   return (
     <div style={{ width: "100%", maxWidth: "none" }}>
@@ -493,336 +643,130 @@ export function EventManageView({
         Back to Events
       </button>
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <div style={{ flex: 1, minWidth: "240px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              flexWrap: "wrap",
-              marginBottom: "8px",
-            }}
-          >
-            {categoryLabel ? (
-              <span
-                style={{
-                  background: "#1a1a1a",
-                  border: `1px solid ${CARD_BORDER}`,
-                  color: "#777777",
-                  borderRadius: "20px",
-                  padding: "3px 10px",
-                  fontSize: "11px",
-                  fontWeight: 500,
-                }}
-              >
-                {categoryLabel}
-              </span>
-            ) : null}
-            <VisibilityBadge visibility={(event.visibility ?? "public") as Visibility} />
-            {isRecurring ? (
-              <span style={{ fontSize: "11px", color: "#777777" }}>Recurring</span>
-            ) : null}
-          </div>
-          <h1
-            style={{
-              margin: "0 0 8px",
-              fontSize: isMobile ? "22px" : "26px",
-              fontWeight: 800,
-              color: "#ffffff",
-            }}
-          >
-            {event.title}
-          </h1>
-          <p
-            style={{
-              margin: 0,
-              fontSize: "14px",
-              color: "#999999",
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-              <Calendar size={14} color="#555555" aria-hidden />
-              {formatEventDate(event.date)}
-            </span>
-            {timeLabel ? (
-              <>
-                <span style={{ color: "#444444" }}>·</span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  <Clock size={14} color="#555555" aria-hidden />
-                  {timeLabel}
-                </span>
-              </>
-            ) : null}
-            {locationLabel ? (
-              <>
-                <span style={{ color: "#444444" }}>·</span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  <MapPin size={14} color="#555555" aria-hidden />
-                  {locationLabel}
-                </span>
-              </>
-            ) : null}
-          </p>
-        </div>
-        {isPrivileged ? (
-          <button
-            type="button"
-            onClick={() => onEdit(event)}
-            style={{
-              background: "#E51937",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "6px",
-              padding: "8px 16px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
-          >
-            Edit Event
-          </button>
-        ) : null}
-      </div>
+      <EventDetailClubHeader
+        clubName={clubName}
+        logoUrl={clubLogoUrl}
+        abbreviation={clubAbbreviation}
+        clubSlug={clubSlug}
+      />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(320px, 380px)",
-          gap: "24px",
-          alignItems: "start",
-        }}
-      >
-        <div>
-          <section style={{ ...sectionCardStyle, marginBottom: "16px" }}>
-            <h2
-              style={{
-                margin: "0 0 12px",
-                fontSize: "15px",
-                fontWeight: 600,
-                color: "#ffffff",
-              }}
-            >
-              Description
-            </h2>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "14px",
-                color: event.description?.trim() ? "#cccccc" : "#555555",
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.6,
-              }}
-            >
-              {event.description?.trim() || "No description provided."}
-            </p>
-            {isRecurring && recurringMeta ? (
-              <p style={{ margin: "12px 0 0", fontSize: "12px", color: "#555555" }}>
-                Recurring
-                {recurringMeta.frequency
-                  ? `: ${RECURRENCE_LABELS[recurringMeta.frequency]}`
-                  : ""}
-                {recurrenceEndLabel ? ` · until ${recurrenceEndLabel}` : ""}
-              </p>
-            ) : null}
+      <EventDetailBadges
+        visibility={(event.visibility ?? "public") as Visibility}
+        categoryLabel={categoryLabel}
+        isRecurring={isRecurring}
+        recurrenceDetail={recurrenceDetail}
+      />
+
+      <EventDetailTitle title={event.title} size="medium" />
+
+      <EventDetailMeta date={event.date} time={event.time} location={event.location} />
+
+      <EventDetailTwoColumn
+        isMobile={isMobile}
+        main={
+          <>
+            <EventDetailDescription description={event.description ?? ""} />
             {locationLabel && isUrl(locationLabel) ? (
-              <p style={{ margin: "8px 0 0", fontSize: "12px" }}>
+              <p style={{ margin: "0 0 16px", fontSize: "13px" }}>
                 <a
                   href={locationLabel}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{
-                    color: "#E51937",
-                    textDecoration: "none",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
-                  }}
+                  style={{ color: "#E51937", textDecoration: "none" }}
                 >
                   Open location link
-                  <ExternalLink size={13} aria-hidden />
                 </a>
               </p>
             ) : null}
-          </section>
 
-          {isPrivileged ? (
-            <div style={{ marginBottom: "16px" }}>
-              <EventPlanningTasksSection
-                clubId={event.clubId ?? ""}
-                eventId={event.id}
-                eventTitle={event.title}
-                planningTasks={planningTasks}
-                members={members}
-                createTask={createTask}
-                updateTask={updateTask}
-                deleteTask={deleteTask}
-                onFeedback={onFeedback}
-                initialQuickAddOpen={initialPlanningQuickAdd}
-                onQuickAddOpened={onPlanningQuickAddOpened}
-              />
-            </div>
-          ) : null}
-
-          <section style={sectionCardStyle}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "12px",
-              }}
-            >
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  color: "#ffffff",
-                }}
-              >
-                Notes / Recap
-              </h2>
-              {isPrivileged ? (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: notesSaved ? "#4ade80" : "#777777",
-                  }}
-                >
-                  {notesSaved ? "Saved" : "Saving…"}
-                </span>
-              ) : null}
-            </div>
             {isPrivileged ? (
-              <textarea
-                style={{ ...inputStyle, minHeight: "140px", resize: "vertical" }}
-                value={notesDraft}
-                onChange={(e) => setNotesDraft(e.target.value)}
-                placeholder="Post-event notes, recap, follow-ups…"
-              />
-            ) : (
-              <p
+              <div style={{ marginBottom: "16px" }}>
+                <EventPlanningTasksSection
+                  clubId={event.clubId ?? ""}
+                  eventId={event.id}
+                  eventTitle={event.title}
+                  planningTasks={planningTasks}
+                  members={members}
+                  createTask={createTask}
+                  updateTask={updateTask}
+                  deleteTask={deleteTask}
+                  onFeedback={onFeedback}
+                  initialQuickAddOpen={initialPlanningQuickAdd}
+                  onQuickAddOpened={onPlanningQuickAddOpened}
+                />
+              </div>
+            ) : null}
+
+            <section style={sectionCardStyle}>
+              <div
                 style={{
-                  margin: 0,
-                  fontSize: "14px",
-                  color: "#cccccc",
-                  whiteSpace: "pre-wrap",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "12px",
                 }}
               >
-                {notesDraft.trim() || "No notes yet."}
-              </p>
-            )}
-          </section>
-        </div>
-
-        <section
-          ref={rsvpPanelRef}
-          style={{
-            ...sectionCardStyle,
-            position: isMobile ? "static" : "sticky",
-            top: isMobile ? undefined : "16px",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 4px",
-              fontSize: "16px",
-              fontWeight: 700,
-              color: "#ffffff",
-            }}
-          >
-            Attendees
-          </h2>
-          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#555555" }}>
-            {totalRsvps} responded · {noResponseCount} no response
-            {openPlanningCount > 0 ? ` · ${openPlanningCount} open planning tasks` : ""}
-          </p>
-
-          <RsvpStatusBar
-            label="Going"
-            count={counts.going}
-            total={Math.max(totalRsvps, 1)}
-            color="#E51937"
-          />
-          <RsvpStatusBar
-            label="Maybe"
-            count={counts.maybe}
-            total={Math.max(totalRsvps, 1)}
-            color="#FFC429"
-          />
-          <RsvpStatusBar
-            label="Not Going"
-            count={counts.not_going}
-            total={Math.max(totalRsvps, 1)}
-            color="#777777"
-          />
-
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "6px",
-              margin: "18px 0 12px",
-            }}
-          >
-            {ATTENDEE_FILTER_TABS.map((tab) => {
-              const active = attendeeFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setAttendeeFilter(tab.id)}
+                <h2
                   style={{
-                    background: active ? "#E51937" : "transparent",
-                    color: active ? "#ffffff" : "#777777",
-                    border: active ? "1px solid #E51937" : "1px solid #333333",
-                    borderRadius: "20px",
-                    padding: "5px 12px",
-                    fontSize: "11px",
-                    fontWeight: active ? 600 : 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
+                    margin: 0,
+                    fontSize: "15px",
+                    fontWeight: 600,
+                    color: "#ffffff",
                   }}
                 >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+                  Notes / Recap
+                </h2>
+                {isPrivileged ? (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: notesSaved ? "#4ade80" : "#777777",
+                    }}
+                  >
+                    {notesSaved ? "Saved" : "Saving…"}
+                  </span>
+                ) : null}
+              </div>
+              {isPrivileged ? (
+                <textarea
+                  style={{ ...inputStyle, minHeight: "140px", resize: "vertical" }}
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                  placeholder="Post-event notes, recap, follow-ups…"
+                />
+              ) : (
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "14px",
+                    color: "#cccccc",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {notesDraft.trim() || "No notes yet."}
+                </p>
+              )}
+            </section>
 
-          {attendeeRows.length === 0 ? (
-            <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>
-              No attendees in this view.
-            </p>
-          ) : (
-            attendeeRows.map((row) => (
-              <AttendeeRow
-                key={
-                  row.kind === "rsvp"
-                    ? row.attendee.id
-                    : `no-response-${row.member.userId}`
-                }
-                item={row}
-              />
-            ))
-          )}
-        </section>
-      </div>
+            {attendeePanel}
+          </>
+        }
+        sidebar={
+          <>
+            <EventDetailMyRsvp status={myRsvpStatus} />
+            <EventDetailRsvpSummary counts={counts} />
+            <div>
+              {primaryAction}
+              {rsvpAccess.blockedMessage ? (
+                <p style={{ margin: "10px 0 0", fontSize: "13px", color: "#777777" }}>
+                  {rsvpAccess.blockedMessage}
+                </p>
+              ) : null}
+              {showPublicLink ? <EventDetailPublicLink href={publicEventPath!} /> : null}
+            </div>
+          </>
+        }
+      />
     </div>
   );
 }

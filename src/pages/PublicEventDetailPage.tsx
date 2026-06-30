@@ -1,16 +1,29 @@
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { useClubContext } from "../context/useClubContext";
 import { supabase } from "../lib/supabaseClient";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
 import PublicDetailBackButton from "../components/public/PublicDetailBackButton";
+import {
+  EventDetailBadges,
+  EventDetailClubHeader,
+  EventDetailDescription,
+  EventDetailMeta,
+  EventDetailMyRsvp,
+  EventDetailPageShell,
+  EventDetailPrimaryAction,
+  EventDetailRsvpSummary,
+  EventDetailTitle,
+  EventDetailTwoColumn,
+  type EventRsvpCounts,
+} from "../components/events/EventDetailLayout";
 import { normalizeVisibility } from "../lib/contentVisibility";
+import { eventCategoryLabel } from "../lib/eventCategories";
 import { eventRequiresRsvpQuestionnaire } from "../lib/eventRsvpActions";
 import { getEventRsvpPath, getWorkspaceEventDetailPath } from "../lib/eventNavigation";
-import type { RsvpStatus } from "../types";
+import type { RsvpStatus, Visibility } from "../types";
 
 interface EventDetail {
   id: string;
@@ -23,22 +36,12 @@ interface EventDetail {
   clubName: string;
   clubSlug: string;
   clubLogoUrl: string | null;
-  visibility: string;
+  clubAbbreviation?: string;
+  visibility: Visibility;
+  category: string;
 }
 
-function formatEventDateTime(date: string, time: string): string {
-  const parsed = new Date(`${date}T12:00:00`);
-  const datePart = Number.isNaN(parsed.getTime())
-    ? date
-    : parsed.toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-  const timePart = time && time !== "TBD" ? time : null;
-  return timePart ? `${datePart} at ${timePart}` : datePart;
-}
+const EMPTY_COUNTS: EventRsvpCounts = { going: 0, maybe: 0, not_going: 0 };
 
 export default function PublicEventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
@@ -49,6 +52,7 @@ export default function PublicEventDetailPage() {
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [myRsvpStatus, setMyRsvpStatus] = useState<RsvpStatus | null>(null);
+  const [rsvpCounts, setRsvpCounts] = useState<EventRsvpCounts>(EMPTY_COUNTS);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [rsvpBusy, setRsvpBusy] = useState(false);
@@ -77,10 +81,12 @@ export default function PublicEventDetailPage() {
           time,
           location,
           visibility,
+          category,
           clubs:club_id (
             name,
             logo_url,
-            slug
+            slug,
+            abbreviation
           )
         `)
         .eq("id", eventId)
@@ -115,6 +121,22 @@ export default function PublicEventDetailPage() {
         return;
       }
 
+      const { data: rsvpRows } = await supabase
+        .from("event_rsvps")
+        .select("status")
+        .eq("event_id", eventId);
+
+      if (cancelled) return;
+
+      const counts = { ...EMPTY_COUNTS };
+      for (const rsvpRow of rsvpRows ?? []) {
+        const status = rsvpRow.status as keyof EventRsvpCounts;
+        if (status in counts) {
+          counts[status] += 1;
+        }
+      }
+      setRsvpCounts(counts);
+
       setEvent({
         id: row.id as string,
         title: (row.title as string) ?? "",
@@ -126,7 +148,9 @@ export default function PublicEventDetailPage() {
         clubName: (club.name as string) ?? "Club",
         clubSlug: (club.slug as string) ?? "",
         clubLogoUrl: (club.logo_url as string) ?? null,
+        clubAbbreviation: (club.abbreviation as string) ?? undefined,
         visibility,
+        category: (row.category as string) ?? "general",
       });
 
       if (user?.id) {
@@ -188,6 +212,7 @@ export default function PublicEventDetailPage() {
       }
 
       setMyRsvpStatus("going");
+      setRsvpCounts((prev) => ({ ...prev, going: prev.going + 1 }));
     } finally {
       setRsvpBusy(false);
     }
@@ -232,156 +257,68 @@ export default function PublicEventDetailPage() {
     );
   }
 
-  const location = event.location?.trim();
-  const locationLabel =
-    location && location !== "TBD" ? location : "Location TBD";
+  const primaryLabel =
+    myRsvpStatus === "going"
+      ? "Going"
+      : myRsvpStatus === "maybe"
+        ? "Maybe"
+        : myRsvpStatus === "not_going"
+          ? "Not Going"
+          : "RSVP for this Event";
 
-  const rsvpLabel = myRsvpStatus === "going"
-    ? "Going"
-    : myRsvpStatus === "maybe"
-      ? "Maybe"
-      : myRsvpStatus === "not_going"
-        ? "Not Going"
-        : "RSVP for this Event";
+  const primaryVariant =
+    myRsvpStatus === "going"
+      ? "going"
+      : myRsvpStatus
+        ? "secondary"
+        : "primary";
 
   return (
     <div style={{ background: "#0f0f0f", minHeight: "100vh", paddingBottom: 60 }}>
-      <div style={{ padding: `${isMobile ? 24 : 40}px ${pad} 0` }}>
+      <div style={{ padding: `${isMobile ? 24 : 40}px ${pad} 48px` }}>
         <PublicDetailBackButton />
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            marginTop: "28px",
-          }}
-        >
-          {event.clubLogoUrl ? (
-            <img
-              src={event.clubLogoUrl}
-              alt=""
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: "50%",
-                objectFit: "cover",
-              }}
+        <div style={{ marginTop: "28px" }}>
+          <EventDetailPageShell maxWidth="960px">
+            <EventDetailClubHeader
+              clubName={event.clubName}
+              logoUrl={event.clubLogoUrl ?? undefined}
+              abbreviation={event.clubAbbreviation}
+              clubSlug={event.clubSlug}
             />
-          ) : (
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: "50%",
-                background: "#242424",
-                color: "#777",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-              }}
-            >
-              {event.clubName.charAt(0)}
-            </div>
-          )}
-          {event.clubSlug ? (
-            <Link
-              to={`/clubs/${event.clubSlug}`}
-              style={{
-                fontSize: "14px",
-                color: "#E51937",
-                textDecoration: "none",
-                fontWeight: 600,
-              }}
-            >
-              {event.clubName}
-            </Link>
-          ) : (
-            <span style={{ fontSize: "14px", color: "#777777" }}>
-              {event.clubName}
-            </span>
-          )}
+
+            <EventDetailBadges
+              visibility={event.visibility}
+              categoryLabel={eventCategoryLabel(event.category)}
+            />
+
+            <EventDetailTitle title={event.title} />
+
+            <EventDetailMeta
+              date={event.date}
+              time={event.time}
+              location={event.location}
+            />
+
+            <EventDetailTwoColumn
+              isMobile={isMobile}
+              main={<EventDetailDescription description={event.description} />}
+              sidebar={
+                <>
+                  <EventDetailMyRsvp status={myRsvpStatus} />
+                  <EventDetailRsvpSummary counts={rsvpCounts} />
+                  <EventDetailPrimaryAction
+                    label={primaryLabel}
+                    variant={primaryVariant}
+                    showCheck={myRsvpStatus === "going"}
+                    disabled={rsvpBusy}
+                    onClick={() => void handleRsvp()}
+                  />
+                </>
+              }
+            />
+          </EventDetailPageShell>
         </div>
-
-        <h1
-          style={{
-            fontSize: isMobile ? "28px" : "36px",
-            fontWeight: 800,
-            color: "#ffffff",
-            margin: "16px 0 12px",
-            lineHeight: 1.2,
-          }}
-        >
-          {event.title}
-        </h1>
-
-        <p style={{ fontSize: "15px", color: "#555555", margin: "0 0 8px" }}>
-          {formatEventDateTime(event.date, event.time)}
-        </p>
-        <p style={{ fontSize: "15px", color: "#555555", margin: 0 }}>
-          {locationLabel}
-        </p>
-
-        {event.description?.trim() ? (
-          <div
-            style={{
-              marginTop: "32px",
-              padding: "24px",
-              background: "#1a1a1a",
-              border: "1px solid #242424",
-              borderRadius: "12px",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: "13px",
-                fontWeight: 600,
-                color: "#777777",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                margin: "0 0 12px",
-              }}
-            >
-              About this event
-            </h2>
-            <p
-              style={{
-                fontSize: "15px",
-                color: "#cccccc",
-                lineHeight: 1.6,
-                margin: 0,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {event.description}
-            </p>
-          </div>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => void handleRsvp()}
-          disabled={rsvpBusy}
-          style={{
-            marginTop: "32px",
-            background: myRsvpStatus === "going" ? "#FFC429" : "#E51937",
-            color: myRsvpStatus === "going" ? "#0f0f0f" : "#ffffff",
-            border: "none",
-            borderRadius: myRsvpStatus === "going" ? "20px" : "8px",
-            padding: "12px 28px",
-            fontSize: "15px",
-            fontWeight: 600,
-            cursor: rsvpBusy ? "wait" : "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "6px",
-            opacity: rsvpBusy ? 0.7 : 1,
-          }}
-        >
-          {rsvpLabel}
-          {myRsvpStatus === "going" ? <Check size={16} aria-hidden /> : null}
-        </button>
       </div>
     </div>
   );
