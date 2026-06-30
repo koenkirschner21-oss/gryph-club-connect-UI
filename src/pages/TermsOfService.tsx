@@ -1,14 +1,21 @@
 import { Link } from "react-router-dom";
 
-const pageStyle = { background: "#0f0f0f", minHeight: "100vh" } as const;
+const pageStyle = {
+  background: "#0f0f0f",
+  minHeight: "100vh",
+  padding: "40px 16px",
+  boxSizing: "border-box",
+} as const;
 const cardStyle = {
   background: "#1a1a1a",
   border: "1px solid #242424",
   borderRadius: 12,
   borderTop: "3px solid #E51937",
-  padding: 40,
-  maxWidth: 800,
-  margin: "40px auto",
+  padding: "32px 28px",
+  width: "100%",
+  maxWidth: 720,
+  margin: "0 auto",
+  boxSizing: "border-box",
 } as const;
 const titleStyle = { fontWeight: 700, fontSize: 28, color: "#ffffff", margin: 0 } as const;
 const updatedStyle = { fontSize: 13, color: "#555555", marginTop: 8, marginBottom: 32 } as const;
@@ -43,7 +50,7 @@ function Section({ title, body }: { title: string; body: string }) {
 export default function TermsOfService() {
   return (
     <div style={pageStyle}>
-      <div style={{ ...cardStyle, marginLeft: 16, marginRight: 16 }}>
+      <article style={cardStyle}>
         <Link to="/" style={backLinkStyle}>
           ← Back to Home
         </Link>
@@ -97,7 +104,7 @@ export default function TermsOfService() {
           </a>
           .
         </p>
-      </div>
+      </article>
     </div>
   );
 }
