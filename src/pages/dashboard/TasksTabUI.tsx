@@ -613,7 +613,7 @@ export function DashboardTaskScopeToggle({
 }) {
   const options: { id: DashboardTaskScope; label: string }[] = [
     { id: "assigned_to_me", label: "Assigned to Me" },
-    { id: "delegated", label: "Delegated" },
+    { id: "delegated", label: "Tasks I Assigned" },
   ];
 
   return (
@@ -844,6 +844,8 @@ function TaskTabClubLogo({
       .join("")
       .slice(0, 3)
       .toUpperCase();
+  const fontSize = size >= 40 ? "12px" : size >= 32 ? "11px" : "10px";
+  const radius = size >= 40 ? "8px" : size >= 32 ? "8px" : "6px";
 
   if (logoUrl) {
     return (
@@ -853,7 +855,8 @@ function TaskTabClubLogo({
         style={{
           width: `${size}px`,
           height: `${size}px`,
-          borderRadius: "50%",
+          borderRadius: radius,
+          border: "1px solid #2a2a2a",
           objectFit: "cover",
           flexShrink: 0,
         }}
@@ -866,10 +869,11 @@ function TaskTabClubLogo({
       style={{
         width: `${size}px`,
         height: `${size}px`,
-        borderRadius: "50%",
+        borderRadius: radius,
+        border: "1px solid #2a2a2a",
         background: "#2a2a2a",
         color: "#888888",
-        fontSize: "11px",
+        fontSize,
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
@@ -882,8 +886,15 @@ function TaskTabClubLogo({
   );
 }
 
-export function TasksTabTaskRow({ task }: { task: TasksTabTask }) {
+export function TasksTabTaskRow({
+  task,
+  logoUrl,
+}: {
+  task: TasksTabTask;
+  logoUrl?: string;
+}) {
   const daysLeft = daysUntilDue(task.dueDate);
+  const resolvedLogoUrl = logoUrl ?? task.clubLogoUrl;
 
   return (
     <Link
@@ -902,6 +913,12 @@ export function TasksTabTaskRow({ task }: { task: TasksTabTask }) {
           marginBottom: "6px",
         }}
       >
+        <TaskTabClubLogo
+          name={task.clubName}
+          abbreviation={task.clubAbbreviation}
+          logoUrl={resolvedLogoUrl}
+          size={36}
+        />
         <TaskStatusIcon status={task.status} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
@@ -941,12 +958,14 @@ export function TasksTabTaskRow({ task }: { task: TasksTabTask }) {
 export function TaskClubGroupSection({
   group,
   logoUrl,
+  clubLogos,
   expanded,
   onToggle,
   emptyMessage = "No tasks for this club",
 }: {
   group: TaskClubGroup;
   logoUrl?: string;
+  clubLogos?: Record<string, string>;
   expanded: boolean;
   onToggle: () => void;
   emptyMessage?: string;
@@ -1018,7 +1037,11 @@ export function TaskClubGroupSection({
         ) : (
           <div>
             {group.tasks.map((task) => (
-              <TasksTabTaskRow key={task.id} task={task} />
+              <TasksTabTaskRow
+                key={task.id}
+                task={task}
+                logoUrl={task.clubLogoUrl ?? clubLogos?.[task.clubId] ?? logoUrl}
+              />
             ))}
           </div>
         )
@@ -1297,12 +1320,14 @@ export function TaskListGroupSection({
   group,
   groupBy,
   logoUrl,
+  clubLogos,
   expanded,
   onToggle,
 }: {
   group: TaskListGroup;
   groupBy: TaskGroupByOption;
   logoUrl?: string;
+  clubLogos?: Record<string, string>;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -1311,6 +1336,7 @@ export function TaskListGroupSection({
       <TaskClubGroupSection
         group={group.clubMeta}
         logoUrl={logoUrl}
+        clubLogos={clubLogos}
         expanded={expanded}
         onToggle={onToggle}
         emptyMessage={group.emptyMessage}
@@ -1357,7 +1383,11 @@ export function TaskListGroupSection({
         ) : (
           <div>
             {group.tasks.map((task) => (
-              <TasksTabTaskRow key={task.id} task={task} />
+              <TasksTabTaskRow
+                key={task.id}
+                task={task}
+                logoUrl={task.clubLogoUrl ?? clubLogos?.[task.clubId]}
+              />
             ))}
           </div>
         )

@@ -2883,7 +2883,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
   if (tasks.length === 0) {
     const emptyMessage =
       taskScope === "delegated"
-        ? "No tasks delegated to others."
+        ? "No tasks you've assigned to others."
         : "No tasks assigned to you.";
 
     return (
@@ -2932,6 +2932,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
               ? group.tasks[0]?.clubLogoUrl ?? clubLogos[group.clubMeta.clubId]
               : undefined
           }
+          clubLogos={clubLogos}
           expanded={expandedGroups[group.id] ?? true}
           onToggle={() =>
             setExpandedGroups((prev) => ({
