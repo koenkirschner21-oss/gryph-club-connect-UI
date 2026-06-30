@@ -142,9 +142,6 @@ export default function InboxTab({
     setCategoryFilter(target);
   }
 
-  const selectedCategoryLabel =
-    CATEGORY_OPTIONS.find((option) => option.id === categoryFilter)?.label ?? "All Categories";
-
   return (
     <div>
       <div
@@ -189,43 +186,32 @@ export default function InboxTab({
       <div
         style={{
           display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "8px",
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "flex-start" : "center",
+          justifyContent: isMobile ? "flex-start" : "space-between",
+          gap: isMobile ? "12px" : "24px",
           marginBottom: "20px",
         }}
       >
-        {STATUS_FILTERS.map((chip) => {
-          const selected = statusFilter === chip.id;
-          return (
-            <button
-              key={chip.id}
-              type="button"
-              onClick={() => setStatusFilter(chip.id)}
-              style={{
-                background: selected ? "#E51937" : "#111111",
-                border: `1px solid ${selected ? "#E51937" : "#2a2a2a"}`,
-                borderRadius: "999px",
-                color: selected ? "#ffffff" : "#999999",
-                cursor: "pointer",
-                fontSize: "12px",
-                padding: "6px 12px",
-              }}
-            >
-              {chip.label}
-            </button>
-          );
-        })}
-
         <label
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
-            marginLeft: "4px",
+            flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: "12px", color: "#777777" }}>Category:</span>
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#555555",
+            }}
+          >
+            Category
+          </span>
           <select
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value as InboxCategoryFilter)}
@@ -234,7 +220,7 @@ export default function InboxTab({
               background: "#111111",
               border: "1px solid #2a2a2a",
               borderRadius: "8px",
-              color: "#cccccc",
+              color: "#999999",
               cursor: "pointer",
               fontSize: "12px",
               padding: "6px 10px",
@@ -248,9 +234,38 @@ export default function InboxTab({
           </select>
         </label>
 
-        {categoryFilter !== "all" ? (
-          <span style={{ fontSize: "11px", color: "#555555" }}>{selectedCategoryLabel}</span>
-        ) : null}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "8px",
+            width: isMobile ? "100%" : undefined,
+          }}
+        >
+          {STATUS_FILTERS.map((chip) => {
+            const selected = statusFilter === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setStatusFilter(chip.id)}
+                style={{
+                  background: selected ? "#E51937" : "#1a1a1a",
+                  border: `1px solid ${selected ? "#E51937" : "#333333"}`,
+                  borderRadius: "999px",
+                  color: selected ? "#ffffff" : "#cccccc",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: selected ? 600 : 500,
+                  padding: "7px 14px",
+                }}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
