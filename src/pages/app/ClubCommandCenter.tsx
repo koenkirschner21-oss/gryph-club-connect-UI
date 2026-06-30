@@ -44,6 +44,21 @@ const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
+const NEUTRAL_TOP_BORDER = "#3a3a3a";
+
+type SemanticAccent = "urgent" | "note" | "neutral";
+
+function accentTopBorder(accent: SemanticAccent): string {
+  if (accent === "urgent") return ACCENT_RED;
+  if (accent === "note") return GOLD;
+  return NEUTRAL_TOP_BORDER;
+}
+
+function accentOutlinedButtonStyle(accent: SemanticAccent): CSSProperties {
+  if (accent === "urgent") return urgentOutlinedButtonStyle;
+  if (accent === "note") return GOLD_OUTLINED_BUTTON_STYLE;
+  return outlineButtonStyle;
+}
 
 const urgentOutlinedButtonStyle: CSSProperties = {
   background: "transparent",
@@ -76,6 +91,17 @@ const actionButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const noteActionButtonStyle: CSSProperties = {
+  background: "transparent",
+  color: GOLD,
+  border: `1px solid ${GOLD}`,
+  borderRadius: "6px",
+  padding: "6px 12px",
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
 const outlineButtonStyle: CSSProperties = {
   background: "transparent",
   color: "#cccccc",
@@ -88,7 +114,7 @@ const outlineButtonStyle: CSSProperties = {
 };
 
 const textLinkStyle: CSSProperties = {
-  color: ACCENT_RED,
+  color: "#999999",
   fontSize: "13px",
   fontWeight: 500,
   textDecoration: "none",
@@ -180,13 +206,13 @@ function EventDateBadge({ dateStr }: { dateStr: string }) {
         width: "48px",
         height: "52px",
         borderRadius: "8px",
-        background: ACCENT_RED,
+        background: GOLD,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
-        color: "#ffffff",
+        color: "#1a1200",
         lineHeight: 1.1,
       }}
     >
@@ -372,19 +398,21 @@ function UrgentCountCard({
   actionLabel,
   onAction,
   sublabel,
+  accent = "neutral",
 }: {
   title: string;
   value: string;
   actionLabel: string;
   onAction: () => void;
   sublabel?: string;
+  accent?: SemanticAccent;
 }) {
   return (
     <div
       style={{
         background: CARD_BG,
         border: `1px solid ${CARD_BORDER}`,
-        borderTop: "2px solid #E51937",
+        borderTop: `2px solid ${accentTopBorder(accent)}`,
         borderRadius: "8px",
         padding: "16px",
         minWidth: 0,
@@ -432,7 +460,11 @@ function UrgentCountCard({
       ) : (
         <div style={{ flex: 1 }} />
       )}
-      <button type="button" onClick={onAction} style={{ ...urgentOutlinedButtonStyle, marginTop: "auto" }}>
+      <button
+        type="button"
+        onClick={onAction}
+        style={{ ...accentOutlinedButtonStyle(accent), marginTop: "auto" }}
+      >
         {actionLabel}
       </button>
     </div>
@@ -456,7 +488,7 @@ function NextMeetingUrgentCard({
       style={{
         background: CARD_BG,
         border: `1px solid ${CARD_BORDER}`,
-        borderTop: "2px solid #E51937",
+        borderTop: `2px solid ${GOLD}`,
         borderRadius: "8px",
         padding: "16px",
         minWidth: 0,
@@ -505,7 +537,11 @@ function NextMeetingUrgentCard({
       ) : (
         <div style={{ flex: 1 }} />
       )}
-      <button type="button" onClick={onAction} style={{ ...urgentOutlinedButtonStyle, marginTop: "auto" }}>
+      <button
+        type="button"
+        onClick={onAction}
+        style={{ ...GOLD_OUTLINED_BUTTON_STYLE, marginTop: "auto" }}
+      >
         View Events
       </button>
     </div>
@@ -524,13 +560,14 @@ function RequestsApplicationsUrgentCard({
   onReviewApplications: () => void;
 }) {
   const total = joinCount + applicationCount;
+  const cardAccent: SemanticAccent = total > 0 ? "urgent" : "neutral";
 
   return (
     <div
       style={{
         background: CARD_BG,
         border: `1px solid ${CARD_BORDER}`,
-        borderTop: "2px solid #E51937",
+        borderTop: `2px solid ${accentTopBorder(cardAccent)}`,
         borderRadius: "8px",
         padding: "16px",
         minWidth: 0,
@@ -576,10 +613,18 @@ function RequestsApplicationsUrgentCard({
         {applicationCount === 1 ? "" : "s"}
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "auto" }}>
-        <button type="button" onClick={onReviewRequests} style={urgentOutlinedButtonStyle}>
+        <button
+          type="button"
+          onClick={onReviewRequests}
+          style={accentOutlinedButtonStyle(joinCount > 0 ? "urgent" : "neutral")}
+        >
           Review Requests
         </button>
-        <button type="button" onClick={onReviewApplications} style={urgentOutlinedButtonStyle}>
+        <button
+          type="button"
+          onClick={onReviewApplications}
+          style={accentOutlinedButtonStyle(applicationCount > 0 ? "urgent" : "neutral")}
+        >
           Review Applications
         </button>
       </div>
@@ -614,18 +659,53 @@ function ThisWeekPanel({
   );
 }
 
+function needsAttentionButtonStyle(itemId: string): CSSProperties {
+  if (
+    itemId === "join-requests" ||
+    itemId === "applications" ||
+    itemId === "overdue-tasks"
+  ) {
+    return urgentOutlinedButtonStyle;
+  }
+  if (itemId.startsWith("low-rsvp")) {
+    return GOLD_OUTLINED_BUTTON_STYLE;
+  }
+  return outlineButtonStyle;
+}
+
+function suggestedActionTone(actionId: string): SemanticAccent {
+  if (actionId === "review-join" || actionId === "review-applications") {
+    return "urgent";
+  }
+  return "note";
+}
+
+function suggestionIconColor(tone: SemanticAccent): string {
+  if (tone === "urgent") return ACCENT_RED;
+  if (tone === "note") return GOLD;
+  return "#777777";
+}
+
+function suggestionButtonStyle(tone: SemanticAccent): CSSProperties {
+  if (tone === "urgent") return actionButtonStyle;
+  if (tone === "note") return noteActionButtonStyle;
+  return outlineButtonStyle;
+}
+
 function SuggestionCard({
   icon,
   title,
   reason,
   actionLabel,
   onAction,
+  tone = "note",
 }: {
   icon: ReactNode;
   title: string;
   reason: string;
   actionLabel: string;
   onAction: () => void;
+  tone?: SemanticAccent;
 }) {
   return (
     <div
@@ -638,7 +718,7 @@ function SuggestionCard({
       }}
     >
       <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "10px" }}>
-        <div style={{ color: ACCENT_RED, flexShrink: 0, marginTop: "2px" }}>{icon}</div>
+        <div style={{ color: suggestionIconColor(tone), flexShrink: 0, marginTop: "2px" }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
             {title}
@@ -652,7 +732,7 @@ function SuggestionCard({
         type="button"
         onClick={onAction}
         style={{
-          ...actionButtonStyle,
+          ...suggestionButtonStyle(tone),
           width: "100%",
           padding: "8px 14px",
         }}
@@ -1516,12 +1596,14 @@ export default function ClubCommandCenter({
               value={String(eventsThisMonthCount)}
               actionLabel="View Events"
               onAction={() => navigate(eventsPath)}
+              accent="note"
             />
             <UrgentCountCard
               title="Incomplete Club Tasks"
               value={String(openTasks.length)}
               actionLabel="View Tasks"
               onAction={() => navigate(tasksPath)}
+              accent={overdueTasks.length > 0 ? "urgent" : "neutral"}
             />
             <RequestsApplicationsUrgentCard
               joinCount={pendingJoinCount}
@@ -1685,7 +1767,7 @@ export default function ClubCommandCenter({
                     {item.onAction && item.actionLabel ? (
                       <button
                         type="button"
-                        style={{ ...outlineButtonStyle, flexShrink: 0 }}
+                        style={{ ...needsAttentionButtonStyle(item.id), flexShrink: 0 }}
                         onClick={item.onAction}
                       >
                         {item.actionLabel}
@@ -1824,7 +1906,7 @@ export default function ClubCommandCenter({
                           </button>
                           <button
                             type="button"
-                            style={urgentOutlinedButtonStyle}
+                            style={GOLD_OUTLINED_BUTTON_STYLE}
                             onClick={() => navigate(`${eventsPath}?viewRsvps=${event.id}`)}
                           >
                             View RSVPs
@@ -1929,7 +2011,7 @@ export default function ClubCommandCenter({
                   </button>
                   <button
                     type="button"
-                    style={actionButtonStyle}
+                    style={noteActionButtonStyle}
                     onClick={() => navigate(`${recruitingPath}?openCreate=true`)}
                   >
                     Create Role
@@ -2040,6 +2122,7 @@ export default function ClubCommandCenter({
                   reason={action.reason}
                   actionLabel={action.actionLabel}
                   onAction={action.onAction}
+                  tone={suggestedActionTone(action.id)}
                 />
               ))}
             </div>
