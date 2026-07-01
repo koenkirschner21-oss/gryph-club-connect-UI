@@ -1052,7 +1052,7 @@ export default function ClubPublicProfilePage() {
             : "linear-gradient(135deg, #1a0505 0%, #0f0f0f 100%)",
         }}
       >
-        <PublicDetailBackButton overlay fallbackTo="/explore" label="Back to Explore" />
+        <PublicDetailBackButton overlay fallbackTo="/explore" label="Back" />
         {club.bannerUrl || club.imageUrl ? (
           <img
             src={club.bannerUrl || club.imageUrl}
