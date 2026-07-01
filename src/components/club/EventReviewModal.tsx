@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import {
@@ -8,9 +8,9 @@ import {
 } from "../../lib/eventReview";
 import type { ClubEvent } from "../../types";
 
-const inputStyle = {
+const inputStyle: CSSProperties = {
   width: "100%",
-  boxSizing: "border-box" as const,
+  boxSizing: "border-box",
   background: "#0f0f0f",
   border: "1px solid #2a2a2a",
   borderRadius: "8px",
@@ -19,6 +19,68 @@ const inputStyle = {
   color: "#ffffff",
   fontFamily: "inherit",
 };
+
+function StatPill({ label, value }: { label: string; value: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        background: "#111111",
+        border: "1px solid #2a2a2a",
+        borderRadius: "999px",
+        padding: "6px 12px",
+        fontSize: "12px",
+        color: "#cccccc",
+      }}
+    >
+      <span style={{ color: "#666666" }}>{label}</span>
+      <span style={{ fontWeight: 600, color: "#ffffff" }}>{value}</span>
+    </span>
+  );
+}
+
+function ReviewSection({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      style={{
+        background: "#111111",
+        border: "1px solid #2a2a2a",
+        borderRadius: "10px",
+        padding: "16px",
+        marginBottom: "14px",
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 4px",
+          fontSize: "13px",
+          fontWeight: 700,
+          color: "#ffffff",
+        }}
+      >
+        {title}
+      </h3>
+      {subtitle ? (
+        <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#666666", lineHeight: 1.45 }}>
+          {subtitle}
+        </p>
+      ) : (
+        <div style={{ marginBottom: "12px" }} />
+      )}
+      {children}
+    </section>
+  );
+}
 
 function Field({
   label,
@@ -34,7 +96,7 @@ function Field({
   placeholder?: string;
 }) {
   return (
-    <label style={{ display: "block", marginBottom: "14px" }}>
+    <label style={{ display: "block", marginBottom: "12px" }}>
       <span
         style={{
           display: "block",
@@ -181,6 +243,14 @@ export default function EventReviewModal({
     year: "numeric",
   });
 
+  const statusLabel = reviewStatus === "complete" ? "Complete" : "Draft";
+  const feedbackLabel =
+    feedbackScore != null
+      ? `${feedbackScore}/5${feedbackCount > 0 ? ` (${feedbackCount})` : ""}`
+      : feedbackCount > 0
+        ? `${feedbackCount} responses`
+        : "—";
+
   return (
     <div
       role="dialog"
@@ -206,155 +276,226 @@ export default function EventReviewModal({
           borderRadius: "14px",
           width: "min(760px, 100%)",
           maxHeight: "90vh",
-          overflowY: "auto",
-          padding: "24px",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           position: "relative",
         }}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
+        <div
           style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            background: "none",
-            border: "none",
-            color: "#555555",
-            cursor: "pointer",
+            position: "sticky",
+            top: 0,
+            zIndex: 2,
+            background: "#141414",
+            borderBottom: "1px solid #2a2a2a",
+            padding: "20px 24px 16px",
           }}
         >
-          <X size={20} />
-        </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              position: "absolute",
+              top: "16px",
+              right: "16px",
+              background: "none",
+              border: "none",
+              color: "#555555",
+              cursor: "pointer",
+            }}
+          >
+            <X size={20} />
+          </button>
 
-        <p style={{ margin: "0 0 4px", fontSize: "11px", color: "#555555" }}>
-          Post-event review · exec only
-        </p>
-        <h2
-          id="event-review-title"
-          style={{ margin: "0 0 4px", fontSize: "20px", fontWeight: 800, color: "#ffffff" }}
-        >
-          {event.title}
-        </h2>
-        <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#777777" }}>{formattedDate}</p>
+          <p style={{ margin: "0 0 6px", fontSize: "11px", color: "#555555" }}>
+            Post-event review · Exec only
+          </p>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "12px",
+              paddingRight: "28px",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <h2
+                id="event-review-title"
+                style={{ margin: "0 0 4px", fontSize: "20px", fontWeight: 800, color: "#ffffff" }}
+              >
+                {event.title}
+              </h2>
+              <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>{formattedDate}</p>
+            </div>
+            <span
+              style={{
+                background: reviewStatus === "complete" ? "#1a2a1a" : "#1a1a1a",
+                border: `1px solid ${reviewStatus === "complete" ? "#2a4a2a" : "#333333"}`,
+                color: reviewStatus === "complete" ? "#4ade80" : "#aaaaaa",
+                borderRadius: "999px",
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                flexShrink: 0,
+              }}
+            >
+              {statusLabel}
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              marginTop: "14px",
+            }}
+          >
+            <StatPill label="Attendance" value={String(attendanceCount)} />
+            <StatPill label="Feedback" value={feedbackLabel} />
+            <StatPill label="Status" value={statusLabel} />
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px 8px" }}>
+          {loading ? (
+            <p style={{ color: "#555555", fontSize: "13px" }}>Loading review…</p>
+          ) : (
+            <>
+              <ReviewSection title="Event Recap">
+                <Field
+                  label="What went well"
+                  value={wentWell}
+                  onChange={setWentWell}
+                  placeholder="Highlights, wins, strong turnout moments…"
+                />
+                <Field
+                  label="What needs improvement"
+                  value={needsImprovement}
+                  onChange={setNeedsImprovement}
+                  placeholder="Process gaps, timing issues, communication…"
+                />
+                <Field
+                  label="Issues"
+                  value={issues}
+                  onChange={setIssues}
+                  placeholder="Problems that came up during or after the event…"
+                />
+              </ReviewSection>
+
+              <ReviewSection title="Results">
+                <Field
+                  label="Attendance / RSVP results"
+                  value={attendanceSummary}
+                  onChange={setAttendanceSummary}
+                  rows={3}
+                />
+              </ReviewSection>
+
+              <ReviewSection
+                title="Internal Notes"
+                subtitle="Visible to executives only — not shared with members."
+              >
+                <Field
+                  label="Internal notes"
+                  value={internalNotes}
+                  onChange={setInternalNotes}
+                  placeholder="Notes for the exec team only…"
+                />
+              </ReviewSection>
+
+              <ReviewSection title="Follow-Up">
+                <Field
+                  label="Follow-up tasks / action items"
+                  value={followUpTasks}
+                  onChange={setFollowUpTasks}
+                  placeholder="Action items for next time…"
+                />
+              </ReviewSection>
+
+              <ReviewSection title="Member Feedback">
+                <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#aaaaaa", lineHeight: 1.5 }}>
+                  Enable a feedback form for members after this event. Responses will be summarized
+                  without showing names.
+                </p>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "10px",
+                    fontSize: "13px",
+                    color: "#cccccc",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={feedbackFormEnabled}
+                    onChange={(event) => setFeedbackFormEnabled(event.target.checked)}
+                    style={{ marginTop: "3px" }}
+                  />
+                  <span>Enable anonymous member feedback form</span>
+                </label>
+              </ReviewSection>
+            </>
+          )}
+        </div>
 
         <div
           style={{
+            position: "sticky",
+            bottom: 0,
+            zIndex: 2,
+            background: "#141414",
+            borderTop: "1px solid #2a2a2a",
+            padding: "14px 24px",
             display: "flex",
             flexWrap: "wrap",
-            gap: "12px",
-            marginBottom: "18px",
-            fontSize: "12px",
-            color: "#aaaaaa",
+            justifyContent: "flex-end",
+            gap: "8px",
           }}
         >
-          <span>Attendance: {attendanceCount}</span>
-          <span>
-            Feedback: {feedbackScore != null ? `${feedbackScore}/5` : "—"}
-            {feedbackCount > 0 ? ` (${feedbackCount} responses)` : ""}
-          </span>
-          <span>Status: {reviewStatus === "complete" ? "Complete" : "Draft"}</span>
+          <button
+            type="button"
+            disabled={saving || loading}
+            onClick={() => void handleSave("draft")}
+            style={{
+              background: "transparent",
+              border: "1px solid #333333",
+              borderRadius: "6px",
+              padding: "10px 16px",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "#cccccc",
+              cursor: saving || loading ? "not-allowed" : "pointer",
+            }}
+          >
+            Save Draft
+          </button>
+          <button
+            type="button"
+            disabled={saving || loading}
+            onClick={() => void handleSave("complete")}
+            style={{
+              background: "#FFC429",
+              border: "1px solid #FFC429",
+              borderRadius: "6px",
+              padding: "10px 16px",
+              fontSize: "13px",
+              fontWeight: 700,
+              color: "#0f0f0f",
+              cursor: saving || loading ? "not-allowed" : "pointer",
+            }}
+          >
+            Mark Review Complete
+          </button>
         </div>
-
-        {loading ? (
-          <p style={{ color: "#555555", fontSize: "13px" }}>Loading review…</p>
-        ) : (
-          <>
-            <Field
-              label="What went well"
-              value={wentWell}
-              onChange={setWentWell}
-              placeholder="Highlights, wins, strong turnout moments…"
-            />
-            <Field
-              label="What needs improvement"
-              value={needsImprovement}
-              onChange={setNeedsImprovement}
-              placeholder="Process gaps, timing issues, communication…"
-            />
-            <Field
-              label="Issues"
-              value={issues}
-              onChange={setIssues}
-              placeholder="Problems that came up during or after the event…"
-            />
-            <Field
-              label="Attendance / RSVP results"
-              value={attendanceSummary}
-              onChange={setAttendanceSummary}
-              rows={2}
-            />
-            <Field
-              label="Internal notes"
-              value={internalNotes}
-              onChange={setInternalNotes}
-              placeholder="Notes for the exec team only…"
-            />
-            <Field
-              label="Follow-up tasks"
-              value={followUpTasks}
-              onChange={setFollowUpTasks}
-              placeholder="Action items for next time…"
-            />
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                marginBottom: "18px",
-                fontSize: "13px",
-                color: "#cccccc",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={feedbackFormEnabled}
-                onChange={(event) => setFeedbackFormEnabled(event.target.checked)}
-              />
-              Enable anonymous member feedback form
-            </label>
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void handleSave("draft")}
-                style={{
-                  background: "transparent",
-                  border: "1px solid #333333",
-                  borderRadius: "6px",
-                  padding: "8px 14px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  color: "#cccccc",
-                  cursor: "pointer",
-                }}
-              >
-                Save draft
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void handleSave("complete")}
-                style={{
-                  background: "#FFC429",
-                  border: "1px solid #FFC429",
-                  borderRadius: "6px",
-                  padding: "8px 14px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "#0f0f0f",
-                  cursor: "pointer",
-                }}
-              >
-                Mark review complete
-              </button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

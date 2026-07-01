@@ -3945,37 +3945,16 @@ export default function ClubEventsPage() {
             <h2
               style={{
                 fontWeight: 700,
-                fontSize: "16px",
+                fontSize: "18px",
                 color: "#ffffff",
-                margin: "0 0 4px",
+                margin: "0 0 8px",
               }}
             >
-              {rsvpModalEvent.title}
+              Sign up for {rsvpModalEvent.title}
             </h2>
-            <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 20px" }}>
-              RSVP to this event
+            <p style={{ fontSize: "14px", color: "#777777", margin: "0 0 20px", lineHeight: 1.5 }}>
+              Answer a few quick questions before confirming your spot.
             </p>
-
-                      <button
-                        type="button"
-              disabled={rsvpSubmitting}
-              onClick={() => void submitRsvpWithForm()}
-              style={{
-                width: "100%",
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "6px",
-                padding: "12px 24px",
-                fontSize: "14px",
-                fontWeight: 600,
-                cursor: rsvpSubmitting ? "not-allowed" : "pointer",
-                opacity: rsvpSubmitting ? 0.7 : 1,
-                marginBottom: "20px",
-              }}
-            >
-              {rsvpSubmitting ? "Submitting…" : "Confirm RSVP"}
-                      </button>
 
             {filterRsvpQuestionsForLoggedInUser(
               eventQuestionsMap[rsvpModalEvent.id] ?? [],
@@ -4048,9 +4027,9 @@ export default function ClubEventsPage() {
             <div
               style={{
                 display: "flex",
-                justifyContent: "flex-end",
+                justifyContent: "space-between",
                 gap: "10px",
-                marginTop: "8px",
+                marginTop: "20px",
               }}
             >
                     <button
@@ -4058,17 +4037,37 @@ export default function ClubEventsPage() {
                 disabled={rsvpSubmitting}
                 onClick={() => setRsvpModalEvent(null)}
                 style={{
+                  flex: 1,
                   background: "transparent",
                   border: "1px solid #333333",
                   color: "#888888",
                   borderRadius: "6px",
-                  padding: "10px 24px",
-                  fontSize: "13px",
+                  padding: "12px 16px",
+                  fontSize: "14px",
                   cursor: "pointer",
                 }}
               >
                 Cancel
                     </button>
+              <button
+                type="button"
+                disabled={rsvpSubmitting}
+                onClick={() => void submitRsvpWithForm()}
+                style={{
+                  flex: 1,
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "12px 16px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  cursor: rsvpSubmitting ? "not-allowed" : "pointer",
+                  opacity: rsvpSubmitting ? 0.7 : 1,
+                }}
+              >
+                {rsvpSubmitting ? "Submitting…" : "Confirm Sign Up"}
+              </button>
             </div>
           </div>
         </div>

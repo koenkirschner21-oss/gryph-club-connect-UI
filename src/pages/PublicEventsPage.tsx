@@ -30,6 +30,7 @@ import {
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
 import { clubCategoryFilterOptions } from "../lib/clubCategories";
+import { eventRequiresRsvpQuestionnaire } from "../lib/eventRsvpActions";
 import type { RsvpStatus } from "../types";
 
 type TimeFilter = "week" | "month" | "all" | "custom";
@@ -542,27 +543,10 @@ function PublicEventSignUpButton({
           background: "transparent",
           border: "1px solid #FFC429",
           color: "#FFC429",
+          borderRadius: "20px",
         }}
       >
-        Maybe
-      </button>
-    );
-  }
-
-  if (status === "not_going") {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        style={{
-          ...baseStyle,
-          background: "transparent",
-          border: "1px solid #555555",
-          color: "#555555",
-          fontWeight: 500,
-        }}
-      >
-        Not Going
+        Registered
       </button>
     );
   }
@@ -803,7 +787,10 @@ function EventDetailModal({
                     : "#ffffff",
               border:
                 myRsvpStatus === "maybe" ? "1px solid #FFC429" : "none",
-              borderRadius: myRsvpStatus === "going" ? "999px" : "8px",
+              borderRadius:
+                myRsvpStatus === "going" || myRsvpStatus === "maybe"
+                  ? "999px"
+                  : "8px",
               padding: "14px",
               fontSize: "15px",
               fontWeight: 600,
@@ -811,14 +798,12 @@ function EventDetailModal({
             }}
           >
             {!user
-              ? "Sign In to RSVP"
+              ? "Sign In to Sign Up"
               : myRsvpStatus === "going"
                 ? "Going ✓"
                 : myRsvpStatus === "maybe"
-                  ? "RSVP: Maybe"
-                  : myRsvpStatus === "not_going"
-                    ? "Update RSVP"
-                    : "Sign Up for this Event"}
+                  ? "Registered"
+                  : "Sign Up"}
           </button>
         </div>
       </div>
@@ -1343,14 +1328,19 @@ export default function PublicEventsPage() {
 
   async function handleSignUp(eventId: string) {
     const target = `/events/${eventId}/rsvp`;
-    const event = events.find((entry) => entry.id === eventId);
 
     if (!user) {
       navigate(`/signup?redirect=${encodeURIComponent(target)}`);
       return;
     }
 
-    if (event?.hasRsvp) {
+    if (myRsvps[eventId]) {
+      navigate(target);
+      return;
+    }
+
+    const needsQuestionnaire = await eventRequiresRsvpQuestionnaire(eventId, true);
+    if (needsQuestionnaire) {
       navigate(target);
       return;
     }

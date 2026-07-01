@@ -227,6 +227,8 @@ export default function EventRSVPPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showPostRsvpCta, setShowPostRsvpCta] = useState(false);
+  const [changingResponse, setChangingResponse] = useState(false);
+  const [cancellingSignup, setCancellingSignup] = useState(false);
 
   const customQuestions = useMemo(() => {
     if (user?.id) {
@@ -436,7 +438,7 @@ export default function EventRSVPPage() {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (existing) {
+      if (existing && !changingResponse) {
         setSubmitting(false);
         setAlreadyRegistered(true);
         return;
@@ -449,30 +451,35 @@ export default function EventRSVPPage() {
         return;
       }
 
-      const { error: rsvpError } = await supabase.from("event_rsvps").insert({
-        event_id: eventId,
-        user_id: user.id,
-        status: "going",
-      });
-
-      setSubmitting(false);
-      if (rsvpError) {
-        setErrors({
-          form: rsvpError.message || "Could not submit RSVP. Please try again.",
+      if (!existing) {
+        const { error: rsvpError } = await supabase.from("event_rsvps").insert({
+          event_id: eventId,
+          user_id: user.id,
+          status: "going",
         });
-        return;
+
+        if (rsvpError) {
+          setSubmitting(false);
+          setErrors({
+            form: rsvpError.message || "Could not submit signup. Please try again.",
+          });
+          return;
+        }
+
+        const dateLabel = formatEventDateTime(event.date, event.time);
+        await supabase.from("notifications").insert({
+          user_id: user.id,
+          type: "club_update",
+          message: `[Event Registration Confirmed] You're registered for ${event.title} on ${dateLabel}. Location: ${event.location?.trim() || "TBD"}`,
+          club_id: event.clubId,
+          reference_id: event.id,
+        });
       }
 
-      const dateLabel = formatEventDateTime(event.date, event.time);
-      await supabase.from("notifications").insert({
-        user_id: user.id,
-        type: "club_update",
-        message: `[Event Registration Confirmed] You're registered for ${event.title} on ${dateLabel}. Location: ${event.location?.trim() || "TBD"}`,
-        club_id: event.clubId,
-        reference_id: event.id,
-      });
-
+      setSubmitting(false);
       setSubmitted(true);
+      setChangingResponse(false);
+      setAlreadyRegistered(true);
       if (!isActiveMember && !isJoined(event.clubId)) {
         setShowPostRsvpCta(true);
       }
@@ -501,17 +508,189 @@ export default function EventRSVPPage() {
 
     setSubmitting(false);
     if (error) {
-      setErrors({ form: error.message || "Could not submit RSVP. Please try again." });
+      setErrors({ form: error.message || "Could not submit signup. Please try again." });
       return;
     }
 
     setSubmitted(true);
+  }
+  async function handleCancelSignup() {
+    if (!user?.id || !eventId || cancellingSignup) return;
+
+    setCancellingSignup(true);
+    const { error } = await supabase
+      .from("event_rsvps")
+      .delete()
+      .eq("event_id", eventId)
+      .eq("user_id", user.id);
+
+    setCancellingSignup(false);
+    if (error) {
+      setErrors({ form: "Could not cancel signup. Please try again." });
+      return;
+    }
+
+    setSubmitted(false);
+    setAlreadyRegistered(false);
+    setChangingResponse(false);
+    setShowPostRsvpCta(false);
   }
 
   const clubJoined = event
     ? isJoined(event.clubId) || isActiveMember
     : false;
   const clubJoinPending = event ? isPending(event.clubId) : false;
+
+  function renderSignupConfirmation() {
+    if (!event) return null;
+
+    return (
+      <div style={{ padding: "8px 0" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
+          <CheckIcon />
+        </div>
+        <p
+          style={{
+            fontWeight: 700,
+            fontSize: "18px",
+            color: "#ffffff",
+            margin: "0 0 20px",
+            textAlign: "center",
+          }}
+        >
+          You&apos;re signed up for this event.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <button
+            type="button"
+            disabled={cancellingSignup}
+            onClick={() => void handleCancelSignup()}
+            style={{
+              width: "100%",
+              background: "transparent",
+              color: "#cccccc",
+              border: "1px solid #333333",
+              borderRadius: "6px",
+              padding: "11px 20px",
+              fontSize: "14px",
+              fontWeight: 500,
+              cursor: cancellingSignup ? "wait" : "pointer",
+            }}
+          >
+            {cancellingSignup ? "Cancelling…" : "Cancel Signup"}
+          </button>
+          {customQuestions.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSubmitted(false);
+                setChangingResponse(true);
+              }}
+              style={{
+                width: "100%",
+                background: "transparent",
+                color: "#ffffff",
+                border: "1px solid #333333",
+                borderRadius: "6px",
+                padding: "11px 20px",
+                fontSize: "14px",
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Change Response
+            </button>
+          ) : null}
+          {clubJoined ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/app/clubs/${event.clubId}`)}
+              style={{
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "11px 20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Open Club Workspace
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (clubSlug) {
+                  navigate(`/clubs/${clubSlug}`);
+                  return;
+                }
+                navigate("/explore");
+              }}
+              style={{
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "11px 20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              View Club Profile
+            </button>
+          )}
+        </div>
+        {showPostRsvpCta && !clubJoined && !clubJoinPending ? (
+          <div style={{ marginTop: "20px", textAlign: "center" }}>
+            <p style={{ fontSize: "14px", color: "#cccccc", margin: "0 0 12px" }}>
+              Want to stay connected with {clubName}?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {renderMembershipPrimaryAction()}
+              <button
+                type="button"
+                onClick={() => toggleSaveClub(event.clubId)}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  color: "#ffffff",
+                  border: "1px solid #333333",
+                  borderRadius: "6px",
+                  padding: "11px 20px",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                {isSaved(event.clubId) ? "Club Saved ✓" : "Save Club"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPostRsvpCta(false)}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  color: "#777777",
+                  border: "none",
+                  padding: "8px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                Not Now
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   function renderMembershipPrimaryAction(disabled = false) {
     if (!event) return null;
@@ -726,100 +905,13 @@ export default function EventRSVPPage() {
             padding: "24px",
           }}
         >
-          {alreadyRegistered ? (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <p
-                style={{
-                  fontWeight: 700,
-                  fontSize: "20px",
-                  color: "#FFC429",
-                  margin: 0,
-                }}
-              >
-                You&apos;re already registered for this event ✓
-              </p>
-              {clubJoined || clubJoinPending ? (
-                <div style={{ marginTop: "20px" }}>
-                  {renderMembershipPrimaryAction()}
-                </div>
-              ) : null}
-            </div>
-          ) : submitted ? (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
-                <CheckIcon />
-              </div>
-              <p
-                style={{
-                  fontWeight: 700,
-                  fontSize: "20px",
-                  color: "#ffffff",
-                  margin: "0 0 8px",
-                }}
-              >
-                You&apos;re registered!
-              </p>
-              <p style={{ fontSize: "14px", color: "#747676", margin: 0 }}>
-                We&apos;ll see you at {event.title}
-              </p>
-              {showPostRsvpCta ? (
-                <div style={{ marginTop: "24px", textAlign: "left" }}>
-                  <p
-                    style={{
-                      fontSize: "14px",
-                      color: "#cccccc",
-                      margin: "0 0 16px",
-                      textAlign: "center",
-                    }}
-                  >
-                    Want to stay connected with {clubName}?
-                  </p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    {renderMembershipPrimaryAction()}
-                    {!clubJoined && !clubJoinPending ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleSaveClub(event.clubId)}
-                        style={{
-                          width: "100%",
-                          background: "transparent",
-                          color: "#ffffff",
-                          border: "1px solid #333333",
-                          borderRadius: "6px",
-                          padding: "11px 20px",
-                          fontSize: "14px",
-                          fontWeight: 500,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {isSaved(event.clubId) ? "Club Saved ✓" : "Save Club"}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setShowPostRsvpCta(false)}
-                      style={{
-                        width: "100%",
-                        background: "transparent",
-                        color: "#777777",
-                        border: "none",
-                        padding: "8px",
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      Not Now
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+          {submitted || (alreadyRegistered && !changingResponse) ? (
+            renderSignupConfirmation()
           ) : !rsvpAccess.canRsvp ? (
             <div style={{ textAlign: "center", padding: "16px 0" }}>
               <p style={{ fontSize: "15px", color: "#cccccc", margin: 0 }}>
                 {rsvpAccess.blockedMessage ??
-                  "You do not have access to RSVP for this event."}
+                  "You do not have access to sign up for this event."}
               </p>
             </div>
           ) : (
@@ -827,13 +919,23 @@ export default function EventRSVPPage() {
               <h2
                 style={{
                   fontWeight: 700,
-                  fontSize: "16px",
+                  fontSize: "18px",
                   color: "#ffffff",
-                  margin: "0 0 20px",
+                  margin: "0 0 8px",
                 }}
               >
-                RSVP for this Event
+                Sign up for {event.title}
               </h2>
+              <p
+                style={{
+                  fontSize: "14px",
+                  color: "#777777",
+                  margin: "0 0 20px",
+                  lineHeight: 1.5,
+                }}
+              >
+                Answer a few quick questions before confirming your spot.
+              </p>
 
               <form onSubmit={(e) => void handleSubmit(e)}>
                 {!user?.id ? (
@@ -876,28 +978,6 @@ export default function EventRSVPPage() {
                       ) : null}
                     </div>
                   </>
-                ) : null}
-
-                {user?.id ? (
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    style={{
-                      width: "100%",
-                      background: "#E51937",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "12px",
-                      fontWeight: 600,
-                      fontSize: "15px",
-                      marginBottom: customQuestions.length > 0 ? "20px" : "0",
-                      cursor: submitting ? "not-allowed" : "pointer",
-                      opacity: submitting ? 0.7 : 1,
-                    }}
-                  >
-                    {submitting ? "Submitting…" : "Confirm RSVP"}
-                  </button>
                 ) : null}
 
                 {customQuestions.map((q) => (
@@ -979,27 +1059,50 @@ export default function EventRSVPPage() {
                   </p>
                 ) : null}
 
-                {!user?.id ? (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    marginTop: "20px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    style={{
+                      flex: 1,
+                      background: "transparent",
+                      border: "1px solid #333333",
+                      color: "#888888",
+                      borderRadius: "6px",
+                      padding: "12px 16px",
+                      fontSize: "14px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
                   <button
                     type="submit"
                     disabled={submitting}
                     style={{
-                      width: "100%",
+                      flex: 1,
                       background: "#E51937",
                       color: "#ffffff",
                       border: "none",
                       borderRadius: "6px",
-                      padding: "12px",
+                      padding: "12px 16px",
                       fontWeight: 600,
-                      fontSize: "15px",
-                      marginTop: "20px",
+                      fontSize: "14px",
                       cursor: submitting ? "not-allowed" : "pointer",
                       opacity: submitting ? 0.7 : 1,
                     }}
                   >
-                    {submitting ? "Submitting…" : "Confirm RSVP"}
+                    {submitting ? "Submitting…" : "Confirm Sign Up"}
                   </button>
-                ) : null}
+                </div>
 
                 <p
                   style={{
