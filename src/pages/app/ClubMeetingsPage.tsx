@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Calendar, ChevronDown, Plus } from "lucide-react";
+import { Calendar, Plus } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
@@ -48,7 +48,7 @@ export default function ClubMeetingsPage() {
   const [clubActionItems, setClubActionItems] = useState<MeetingActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<PageTab>("upcoming");
-  const [showPast, setShowPast] = useState(false);
+  const [pastNeedsRecapOnly, setPastNeedsRecapOnly] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<ClubMeeting | null>(null);
   const [createInitial, setCreateInitial] = useState(emptyCreateForm());
   const [cancelModal, setCancelModal] = useState<{
@@ -276,6 +276,18 @@ export default function ClubMeetingsPage() {
       .slice(0, 3);
   }, [upcomingMeetings]);
 
+  const displayedPastMeetings = useMemo(() => {
+    if (!pastNeedsRecapOnly) return pastMeetings;
+    return pastMeetings.filter((meeting) => meetingNeedsRecap(meeting));
+  }, [pastMeetings, pastNeedsRecapOnly]);
+
+  const activeStatCard = useMemo((): "upcoming" | "follow_ups" | "needs_recap" | null => {
+    if (activeTab === "upcoming") return "upcoming";
+    if (activeTab === "follow_ups") return "follow_ups";
+    if (activeTab === "past" && pastNeedsRecapOnly) return "needs_recap";
+    return null;
+  }, [activeTab, pastNeedsRecapOnly]);
+
   const openCreate = (type?: MeetingType) => {
     const params = new URLSearchParams();
     if (type) params.set("type", type);
@@ -437,23 +449,42 @@ export default function ClubMeetingsPage() {
           dueThisWeekCount={dueThisWeekCount}
           needsRecapCount={needsRecapCount}
           isMobile={isMobile}
+          activeCard={activeStatCard}
+          onUpcomingClick={() => {
+            setPastNeedsRecapOnly(false);
+            setActiveTab("upcoming");
+          }}
+          onFollowUpsClick={() => {
+            setPastNeedsRecapOnly(false);
+            setActiveTab("follow_ups");
+          }}
+          onNeedsRecapClick={() => {
+            setPastNeedsRecapOnly(true);
+            setActiveTab("past");
+          }}
         />
       ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "24px" }}>
-        <TabButton active={activeTab === "upcoming"} onClick={() => setActiveTab("upcoming")}>
+        <TabButton active={activeTab === "upcoming"} onClick={() => {
+          setPastNeedsRecapOnly(false);
+          setActiveTab("upcoming");
+        }}>
           Upcoming
         </TabButton>
         <TabButton
           active={activeTab === "past"}
           onClick={() => {
+            setPastNeedsRecapOnly(false);
             setActiveTab("past");
-            setShowPast(false);
           }}
         >
           Past
         </TabButton>
-        <TabButton active={activeTab === "follow_ups"} onClick={() => setActiveTab("follow_ups")}>
+        <TabButton active={activeTab === "follow_ups"} onClick={() => {
+          setPastNeedsRecapOnly(false);
+          setActiveTab("follow_ups");
+        }}>
           Follow-Ups
         </TabButton>
       </div>
@@ -466,56 +497,31 @@ export default function ClubMeetingsPage() {
         <FollowUpsSection clubId={clubId} items={openFollowUps} />
       ) : activeTab === "past" ? (
         <section>
-          <button
-            type="button"
-            onClick={() => setShowPast((value) => !value)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              background: "transparent",
-              border: "none",
-              color: "#777777",
-              cursor: "pointer",
-              fontSize: "13px",
-              fontWeight: 600,
-              padding: 0,
-              marginBottom: showPast ? "16px" : 0,
-            }}
-          >
-            {showPast ? "Hide past meetings" : "Show past meetings"}
-            <ChevronDown
-              size={16}
-              style={{
-                transform: showPast ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 0.15s ease",
-              }}
-            />
-          </button>
-          {showPast ? (
-            pastMeetings.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-                No past meetings yet.
-              </p>
-            ) : (
-              <div>
-                {pastMeetings.map((meeting) => (
-                  <CompactMeetingRow
-                    key={meeting.id}
-                    meeting={meeting}
-                    clubId={clubId}
-                    isPrivileged={isPrivileged}
-                    isPast
-                    onEdit={openEdit}
-                    onCancel={requestCancelMeeting}
-                  />
-                ))}
-              </div>
-            )
-          ) : (
-            <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-              Past meetings are collapsed. Tap above to expand.
+          {pastNeedsRecapOnly ? (
+            <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#999999" }}>
+              Showing past meetings that still need a recap or review.
             </p>
+          ) : null}
+          {displayedPastMeetings.length === 0 ? (
+            <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
+              {pastNeedsRecapOnly
+                ? "No past meetings need a recap right now."
+                : "No past meetings yet."}
+            </p>
+          ) : (
+            <div>
+              {displayedPastMeetings.map((meeting) => (
+                <CompactMeetingRow
+                  key={meeting.id}
+                  meeting={meeting}
+                  clubId={clubId}
+                  isPrivileged={isPrivileged}
+                  isPast
+                  onEdit={openEdit}
+                  onCancel={requestCancelMeeting}
+                />
+              ))}
+            </div>
           )}
         </section>
       ) : !hasAnyMeetings ? (
@@ -536,8 +542,8 @@ export default function ClubMeetingsPage() {
           onCancel={requestCancelMeeting}
           onViewAllActions={() => setActiveTab("follow_ups")}
           onViewAllRecap={() => {
+            setPastNeedsRecapOnly(true);
             setActiveTab("past");
-            setShowPast(true);
           }}
           onViewAllPrep={() => setActiveTab("upcoming")}
         />

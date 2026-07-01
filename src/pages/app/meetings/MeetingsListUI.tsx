@@ -277,6 +277,10 @@ export function MeetingsStatCards({
   dueThisWeekCount,
   needsRecapCount,
   isMobile = false,
+  activeCard = null,
+  onUpcomingClick,
+  onFollowUpsClick,
+  onNeedsRecapClick,
 }: {
   upcomingCount: number;
   nextMeeting: ClubMeeting | null;
@@ -284,6 +288,10 @@ export function MeetingsStatCards({
   dueThisWeekCount: number;
   needsRecapCount: number;
   isMobile?: boolean;
+  activeCard?: "upcoming" | "follow_ups" | "needs_recap" | null;
+  onUpcomingClick?: () => void;
+  onFollowUpsClick?: () => void;
+  onNeedsRecapClick?: () => void;
 }) {
   return (
     <div
@@ -300,18 +308,24 @@ export function MeetingsStatCards({
         label="Upcoming Meetings"
         value={String(upcomingCount)}
         subtext={formatNextMeetingSubtext(nextMeeting)}
+        onClick={onUpcomingClick}
+        isActive={activeCard === "upcoming"}
       />
       <StatCard
         icon={<CheckSquare size={20} color={GOLD} aria-hidden />}
         label="Open Follow-Ups"
         value={String(openFollowUpCount)}
         subtext={`${dueThisWeekCount} due this week`}
+        onClick={onFollowUpsClick}
+        isActive={activeCard === "follow_ups"}
       />
       <StatCard
         icon={<FileText size={20} color="#777777" aria-hidden />}
         label="Needs Recap/Review"
         value={String(needsRecapCount)}
         subtext="Past meetings missing notes"
+        onClick={onNeedsRecapClick}
+        isActive={activeCard === "needs_recap"}
       />
     </div>
   );
@@ -322,14 +336,36 @@ function StatCard({
   label,
   value,
   subtext,
+  onClick,
+  isActive = false,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
   subtext: string;
+  onClick?: () => void;
+  isActive?: boolean;
 }) {
-  return (
-    <div style={statCardStyle}>
+  const [hovered, setHovered] = useState(false);
+  const interactive = Boolean(onClick);
+  const style: CSSProperties = {
+    ...statCardStyle,
+    width: "100%",
+    textAlign: "left",
+    fontFamily: "inherit",
+    cursor: interactive ? "pointer" : "default",
+    border: isActive
+      ? `1px solid ${GOLD}`
+      : hovered && interactive
+        ? "1px solid #444444"
+        : `1px solid ${CARD_BORDER}`,
+    background: isActive ? "#1a1810" : hovered && interactive ? "#181818" : CARD_BG,
+    boxShadow: isActive ? "0 0 0 1px rgba(255, 196, 41, 0.15)" : undefined,
+    transition: "border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
+  };
+
+  const content = (
+    <>
       <div
         style={{
           width: "40px",
@@ -351,8 +387,25 @@ function StatCard({
         </p>
         <p style={{ margin: 0, fontSize: "12px", color: "#555555" }}>{subtext}</p>
       </div>
-    </div>
+    </>
   );
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={style}
+        aria-pressed={isActive}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div style={style}>{content}</div>;
 }
 
 function MeetingListCard({
@@ -387,6 +440,7 @@ function MeetingListCard({
   const linkLocationStatus = formatLinkLocationStatus(meeting, format);
   const prepStatus = meetingPrepStatus(meeting);
   const showJoin = canJoinMeeting(meeting, format);
+  const meetingDetailPath = `/app/clubs/${clubId}/meetings/${meeting.id}`;
 
   const metaParts: string[] = [inviteeLabel];
   if (agendaCount > 0) {
@@ -402,14 +456,13 @@ function MeetingListCard({
   return (
     <div
       style={{
-        background: featured ? "#161616" : CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderLeft: featured ? `3px solid ${GOLD}` : `1px solid ${CARD_BORDER}`,
+        background: isPast ? "#121212" : featured ? "#161616" : CARD_BG,
+        border: `1px solid ${isPast ? "#252525" : CARD_BORDER}`,
+        borderLeft: featured ? `3px solid ${GOLD}` : `1px solid ${isPast ? "#252525" : CARD_BORDER}`,
         borderRadius: "10px",
         padding: "16px 18px",
         marginBottom: featured ? "16px" : "10px",
         width: "100%",
-        opacity: isPast ? 0.75 : 1,
       }}
     >
       {featured ? (
@@ -481,11 +534,15 @@ function MeetingListCard({
             ) : null}
           </div>
 
-          <p style={{ margin: "0 0 4px", fontSize: "13px", color: "#999999" }}>{timeLabel}</p>
-          <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#777777" }}>
+          <p style={{ margin: "0 0 4px", fontSize: "13px", color: isPast ? "#b8b8b8" : "#999999" }}>
+            {timeLabel}
+          </p>
+          <p style={{ margin: "0 0 4px", fontSize: "12px", color: isPast ? "#9a9a9a" : "#777777" }}>
             {formatLabel} · {linkLocationStatus}
           </p>
-          <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>{metaParts.join(" · ")}</p>
+          <p style={{ margin: 0, fontSize: "12px", color: isPast ? "#8a8a8a" : "#666666" }}>
+            {metaParts.join(" · ")}
+          </p>
         </div>
       </div>
 
@@ -503,40 +560,59 @@ function MeetingListCard({
         <button
           type="button"
           style={primaryButtonStyle}
-          onClick={() => navigate(`/app/clubs/${clubId}/meetings/${meeting.id}`)}
+          onClick={() => navigate(meetingDetailPath)}
         >
           Open Agenda
         </button>
-        {isPrivileged ? (
-          <button type="button" style={outlinedButtonStyle()} onClick={() => onEdit(meeting)}>
-            Manage Meeting
-          </button>
+        {isPast ? (
+          <>
+            <button
+              type="button"
+              style={outlinedButtonStyle()}
+              onClick={() => navigate(meetingDetailPath)}
+            >
+              View Recap/Notes
+            </button>
+            {isPrivileged ? (
+              <button type="button" style={outlinedButtonStyle()} onClick={() => onEdit(meeting)}>
+                Manage Meeting
+              </button>
+            ) : null}
+          </>
         ) : (
-          <button
-            type="button"
-            style={outlinedButtonStyle()}
-            onClick={() => navigate(`/app/clubs/${clubId}/meetings/${meeting.id}`)}
-          >
-            View Meeting
-          </button>
+          <>
+            {isPrivileged ? (
+              <button type="button" style={outlinedButtonStyle()} onClick={() => onEdit(meeting)}>
+                Manage Meeting
+              </button>
+            ) : (
+              <button
+                type="button"
+                style={outlinedButtonStyle()}
+                onClick={() => navigate(meetingDetailPath)}
+              >
+                View Meeting
+              </button>
+            )}
+            {showJoin && meeting.meetingLink ? (
+              <a
+                href={meeting.meetingLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  ...outlinedButtonStyle(),
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <ExternalLink size={14} aria-hidden />
+                Join Meeting
+              </a>
+            ) : null}
+          </>
         )}
-        {showJoin && meeting.meetingLink ? (
-          <a
-            href={meeting.meetingLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              ...outlinedButtonStyle(),
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            <ExternalLink size={14} aria-hidden />
-            Join Meeting
-          </a>
-        ) : null}
       </div>
     </div>
   );
