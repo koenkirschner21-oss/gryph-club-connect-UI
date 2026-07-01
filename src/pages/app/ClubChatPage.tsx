@@ -961,6 +961,42 @@ function MessageAttachment({ msg }: { msg: DirectMessage }) {
 
 type MessageReactionSummary = { count: number; liked: boolean };
 
+const messageHoverActionBarStyle = (
+  isOwn: boolean,
+  visible: boolean,
+): CSSProperties => ({
+  position: "absolute",
+  top: "50%",
+  transform: "translateY(-50%)",
+  ...(isOwn
+    ? { right: "calc(100% + 8px)" }
+    : { left: "calc(100% + 8px)" }),
+  display: "flex",
+  alignItems: "center",
+  gap: "2px",
+  padding: "4px 6px",
+  background: "#1a1a1a",
+  border: "1px solid #2a2a2a",
+  borderRadius: "8px",
+  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+  opacity: visible ? 1 : 0,
+  pointerEvents: visible ? "auto" : "none",
+  transition: "opacity 0.15s ease",
+  zIndex: 2,
+});
+
+const messageHoverActionButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "#aaaaaa",
+  cursor: "pointer",
+  padding: "4px",
+  display: "flex",
+  alignItems: "center",
+  gap: "3px",
+  borderRadius: "4px",
+};
+
 function MessageBubble({
   msg,
   isOwn,
@@ -1051,10 +1087,80 @@ function MessageBubble({
           </Link>
         ) : null}
         <div
-          style={{ position: "relative" }}
+          style={{
+            position: "relative",
+            ...(isOwn
+              ? { paddingLeft: "56px", marginLeft: "-56px" }
+              : { paddingRight: "56px", marginRight: "-56px" }),
+          }}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
         >
+          <div style={messageHoverActionBarStyle(isOwn, hovered && !editing)}>
+            {onToggleReaction ? (
+              <button
+                type="button"
+                aria-label={liked ? "Remove like" : "Like message"}
+                onClick={() => onToggleReaction(msg.id)}
+                style={{
+                  ...messageHoverActionButtonStyle,
+                  color: liked ? "#FFC429" : "#aaaaaa",
+                }}
+                onMouseEnter={(e) => {
+                  if (!liked) e.currentTarget.style.color = "#ffffff";
+                }}
+                onMouseLeave={(e) => {
+                  if (!liked) e.currentTarget.style.color = "#aaaaaa";
+                }}
+              >
+                <ThumbsUp
+                  size={14}
+                  aria-hidden
+                  fill={liked ? "#FFC429" : "none"}
+                />
+                {reactionCount > 0 ? (
+                  <span style={{ fontSize: "11px", color: "#FFC429" }}>
+                    {reactionCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+            {isGroupChat && onReply ? (
+              <button
+                type="button"
+                aria-label="Reply"
+                onClick={() => onReply(msg)}
+                style={messageHoverActionButtonStyle}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#ffffff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#aaaaaa";
+                }}
+              >
+                <Reply size={14} aria-hidden />
+              </button>
+            ) : null}
+            {canEdit && !editing ? (
+              <button
+                type="button"
+                aria-label="Edit message"
+                onClick={() => {
+                  setEditDraft(msg.content ?? "");
+                  setEditing(true);
+                }}
+                style={messageHoverActionButtonStyle}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#ffffff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "#aaaaaa";
+                }}
+              >
+                <Pencil size={14} aria-hidden />
+              </button>
+            ) : null}
+          </div>
           <div
             style={{
               background: isOwn ? "#E51937" : "#1e1e1e",
@@ -1137,91 +1243,6 @@ function MessageBubble({
                 <MessageAttachment msg={msg} />
               </>
             )}
-          </div>
-          <div
-            style={{
-              position: "absolute",
-              top: "4px",
-              right: isOwn ? "auto" : "4px",
-              left: isOwn ? "4px" : "auto",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              opacity: hovered ? 1 : 0,
-              transition: "opacity 0.15s ease",
-            }}
-          >
-            {onToggleReaction ? (
-              <button
-                type="button"
-                aria-label={liked ? "Remove like" : "Like message"}
-                onClick={() => onToggleReaction(msg.id)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: liked ? "#FFC429" : "#555555",
-                  cursor: "pointer",
-                  padding: "2px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "3px",
-                }}
-                onMouseEnter={(e) => {
-                  if (!liked) e.currentTarget.style.color = "#ffffff";
-                }}
-                onMouseLeave={(e) => {
-                  if (!liked) e.currentTarget.style.color = "#555555";
-                }}
-              >
-                <ThumbsUp
-                  size={14}
-                  aria-hidden
-                  fill={liked ? "#FFC429" : "none"}
-                />
-                {reactionCount > 0 ? (
-                  <span style={{ fontSize: "11px", color: "#FFC429" }}>
-                    {reactionCount}
-                  </span>
-                ) : null}
-              </button>
-            ) : null}
-            {isGroupChat && onReply ? (
-              <button
-                type="button"
-                aria-label="Reply"
-                onClick={() => onReply(msg)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#ffffff",
-                  cursor: "pointer",
-                  padding: "2px",
-                  display: "flex",
-                }}
-              >
-                <Reply size={14} aria-hidden />
-              </button>
-            ) : null}
-            {canEdit && !editing ? (
-              <button
-                type="button"
-                aria-label="Edit message"
-                onClick={() => {
-                  setEditDraft(msg.content ?? "");
-                  setEditing(true);
-                }}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#ffffff",
-                  cursor: "pointer",
-                  padding: "2px",
-                  display: "flex",
-                }}
-              >
-                <Pencil size={14} aria-hidden />
-              </button>
-            ) : null}
           </div>
         </div>
         <span
