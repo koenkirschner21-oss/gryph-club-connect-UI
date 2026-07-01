@@ -359,13 +359,28 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
 
   const deleteTask = useCallback(
     async (taskId: string): Promise<boolean> => {
-      const { error: err } = await supabase
+      const { error: unlinkError } = await supabase
+        .from("meeting_action_items")
+        .update({ linked_task_id: null })
+        .eq("linked_task_id", taskId);
+
+      if (unlinkError) {
+        console.warn("Could not unlink meeting action items before task delete:", unlinkError.message);
+      }
+
+      const { data, error: err } = await supabase
         .from("tasks")
         .delete()
-        .eq("id", taskId);
+        .eq("id", taskId)
+        .select("id");
 
       if (err) {
         console.error("Failed to delete task:", err.message);
+        return false;
+      }
+
+      if (!data?.length) {
+        console.error("Failed to delete task: no row deleted (permission or not found).");
         return false;
       }
 

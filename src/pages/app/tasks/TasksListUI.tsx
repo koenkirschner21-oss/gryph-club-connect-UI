@@ -21,18 +21,6 @@ const CARD_BORDER = "#2a2a2a";
 
 export const LIST_GRID_COLUMNS = "32px 1fr 160px 140px 120px 100px 80px 120px";
 
-const TASK_DESCRIPTION_PREVIEW_STYLE: CSSProperties = {
-  margin: "4px 0 0",
-  fontSize: "12px",
-  color: "#777777",
-  lineHeight: 1.4,
-  overflow: "hidden",
-  display: "-webkit-box",
-  WebkitLineClamp: 2,
-  WebkitBoxOrient: "vertical",
-  wordBreak: "break-word",
-};
-
 const statCardStyle: CSSProperties = {
   background: CARD_BG,
   border: `1px solid ${CARD_BORDER}`,
@@ -776,9 +764,6 @@ export function TasksListTableRow({
           >
             {task.title}
           </p>
-          {task.description ? (
-            <p style={TASK_DESCRIPTION_PREVIEW_STYLE}>{task.description}</p>
-          ) : null}
           {linkedLabel}
         </div>
       </div>
