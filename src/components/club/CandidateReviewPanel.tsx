@@ -111,6 +111,43 @@ const primaryActionStyle: CSSProperties = {
   color: "#ffffff",
 };
 
+const sectionHeadingStyle: CSSProperties = {
+  margin: "0 0 12px",
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#777777",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+};
+
+const secondaryActionStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #333333",
+  borderRadius: "6px",
+  color: "#999999",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 600,
+  padding: "8px 10px",
+};
+
+const acceptDecisionStyle: CSSProperties = {
+  ...primaryActionStyle,
+  fontSize: "13px",
+  fontWeight: 700,
+  padding: "10px 18px",
+};
+
+const rejectDecisionStyle: CSSProperties = {
+  ...actionButtonStyle,
+  fontSize: "13px",
+  fontWeight: 700,
+  padding: "10px 18px",
+  color: "#E51937",
+  background: "#1a0a0a",
+  border: "2px solid #E51937",
+};
+
 async function fetchExecutiveUserIds(clubId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from("club_members")
@@ -323,72 +360,85 @@ export default function CandidateReviewPanel({
 
   return (
     <>
-      {application.profile?.email ? (
-        <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 16px" }}>
-          {application.profile.email}
-        </p>
-      ) : null}
+      <section style={{ marginBottom: "28px" }}>
+        <h3 style={sectionHeadingStyle}>Application Responses</h3>
 
-      <p
-        style={{
-          margin: "0 0 12px",
-          fontSize: "12px",
-          fontWeight: 700,
-          color: "#777777",
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-        }}
-      >
-        Application Responses
-      </p>
-
-      {application.answers.length === 0 ? (
-        <p style={{ fontSize: "13px", color: "#cccccc", margin: "0 0 12px" }}>—</p>
-      ) : (
-        application.answers.map((ans) => (
-          <div key={ans.question_id} style={{ marginBottom: "12px" }}>
-            <p
-              style={{
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#ffffff",
-                margin: "0 0 4px",
-              }}
-            >
-              {isHiringFileQuestionId(ans.question_id)
-                ? hiringFileQuestionLabel(ans.question_id)
-                : answerLabel(ans.question_id)}
-            </p>
-            {isHiringFileQuestionId(ans.question_id) ? (
-              <button
-                type="button"
-                onClick={() =>
-                  void downloadHiringApplicationFile(
-                    ans.answer,
-                    ans.file_name ?? hiringFileQuestionLabel(ans.question_id),
-                  )
-                }
+        {application.answers.length === 0 ? (
+          <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>—</p>
+        ) : (
+          <div
+            style={{
+              border: "1px solid #2a2a2a",
+              borderRadius: "10px",
+              overflow: "hidden",
+              background: "#111111",
+            }}
+          >
+            {application.answers.map((ans, index) => (
+              <div
+                key={ans.question_id}
                 style={{
-                  background: "#111111",
-                  border: "1px solid #2a2a2a",
-                  borderRadius: "6px",
-                  color: "#E51937",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  padding: "8px 12px",
+                  padding: "14px 16px",
+                  borderBottom:
+                    index < application.answers.length - 1
+                      ? "1px solid #222222"
+                      : "none",
                 }}
               >
-                Download {ans.file_name ?? "file"}
-              </button>
-            ) : (
-              <p style={{ fontSize: "13px", color: "#cccccc", margin: 0 }}>
-                {ans.answer}
-              </p>
-            )}
+                <p
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#888888",
+                    margin: "0 0 6px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {isHiringFileQuestionId(ans.question_id)
+                    ? hiringFileQuestionLabel(ans.question_id)
+                    : answerLabel(ans.question_id)}
+                </p>
+                {isHiringFileQuestionId(ans.question_id) ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void downloadHiringApplicationFile(
+                        ans.answer,
+                        ans.file_name ?? hiringFileQuestionLabel(ans.question_id),
+                      )
+                    }
+                    style={{
+                      background: "#141414",
+                      border: "1px solid #2a2a2a",
+                      borderRadius: "6px",
+                      color: "#E51937",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      padding: "8px 12px",
+                    }}
+                  >
+                    Download {ans.file_name ?? "file"}
+                  </button>
+                ) : (
+                  <p
+                    style={{
+                      fontSize: "14px",
+                      color: "#dddddd",
+                      margin: 0,
+                      lineHeight: 1.5,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {ans.answer}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
-        ))
-      )}
+        )}
+      </section>
 
       <InternalNotesSection
         notes={notes}
@@ -401,54 +451,62 @@ export default function CandidateReviewPanel({
       />
 
       {showActionBar ? (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "8px",
-            marginTop: "16px",
-            paddingTop: "16px",
-            borderTop: "1px solid #2a2a2a",
-          }}
-        >
-          <button type="button" style={actionButtonStyle} onClick={() => void markReviewed()}>
-            Mark Reviewed
-          </button>
-          <button
-            type="button"
-            style={actionButtonStyle}
-            onClick={() => noteInputRef.current?.focus()}
+        <div style={{ marginTop: "24px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            <button
+              type="button"
+              style={secondaryActionStyle}
+              onClick={() => void markReviewed()}
+            >
+              Mark Reviewed
+            </button>
+            <button
+              type="button"
+              style={secondaryActionStyle}
+              onClick={() => noteInputRef.current?.focus()}
+            >
+              Add Internal Note
+            </button>
+            <button
+              type="button"
+              style={secondaryActionStyle}
+              onClick={() => setActiveModal("schedule")}
+            >
+              Schedule Interview
+            </button>
+            <button
+              type="button"
+              style={secondaryActionStyle}
+              onClick={() => setActiveModal("send_update")}
+            >
+              Send Update
+            </button>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "10px",
+              marginTop: "16px",
+              paddingTop: "16px",
+              borderTop: "1px solid #2a2a2a",
+            }}
           >
-            Add Internal Note
-          </button>
-          <button
-            type="button"
-            style={actionButtonStyle}
-            onClick={() => setActiveModal("schedule")}
-          >
-            Schedule Interview
-          </button>
-          <button
-            type="button"
-            style={actionButtonStyle}
-            onClick={() => setActiveModal("send_update")}
-          >
-            Send Update
-          </button>
-          <button
-            type="button"
-            style={primaryActionStyle}
-            onClick={() => setActiveModal("accept")}
-          >
-            Accept Candidate
-          </button>
-          <button
-            type="button"
-            style={{ ...actionButtonStyle, color: "#E51937", borderColor: "#E51937" }}
-            onClick={() => setActiveModal("reject")}
-          >
-            Reject Candidate
-          </button>
+            <button
+              type="button"
+              style={acceptDecisionStyle}
+              onClick={() => setActiveModal("accept")}
+            >
+              Accept Candidate
+            </button>
+            <button
+              type="button"
+              style={rejectDecisionStyle}
+              onClick={() => setActiveModal("reject")}
+            >
+              Reject Candidate
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -697,9 +755,10 @@ function InternalNotesSection({
   return (
     <div
       style={{
-        marginTop: "16px",
-        paddingTop: "16px",
-        borderTop: "1px solid #2a2a2a",
+        padding: "16px",
+        background: "#111111",
+        border: "1px solid #2a2a2a",
+        borderRadius: "10px",
       }}
     >
       <p
@@ -712,7 +771,7 @@ function InternalNotesSection({
           letterSpacing: "0.04em",
         }}
       >
-        Internal Notes — Visible only to executives
+        Internal Notes — visible to executives only.
       </p>
 
       {loading ? (

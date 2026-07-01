@@ -638,35 +638,65 @@ function ApplicationReviewModal({
         />
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: "12px",
-            marginBottom: "16px",
+            background: "#111111",
+            border: "1px solid #2a2a2a",
+            borderRadius: "10px",
+            padding: "18px 20px",
+            marginBottom: "24px",
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <h2
-              style={{
-                margin: "0 0 6px",
-                fontSize: "20px",
-                fontWeight: 700,
-                color: "#ffffff",
-              }}
-            >
-              {applicantName}
-            </h2>
-            {profileLine ? (
-              <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#777777" }}>
-                {profileLine}
-              </p>
-            ) : null}
-            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#555555" }}>
-              Applied {formatAppliedDate(application.createdAt)}
-            </p>
-            <span style={subStatusPillStyle(application.subStatus)}>
-              {subStatusLabel(application.subStatus)}
-            </span>
+          <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+            <ProfileAvatarCircle
+              name={applicantName}
+              avatarUrl={application.profile?.avatar_url}
+              email={application.profile?.email}
+              size={56}
+              borderColor="#333333"
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2
+                style={{
+                  margin: "0 0 4px",
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  lineHeight: 1.25,
+                }}
+              >
+                {applicantName}
+              </h2>
+              {profileLine ? (
+                <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#aaaaaa" }}>
+                  {profileLine}
+                </p>
+              ) : null}
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: "8px 14px",
+                  marginBottom: "8px",
+                }}
+              >
+                <span style={{ fontSize: "12px", color: "#666666" }}>
+                  Applied {formatAppliedDate(application.createdAt)}
+                </span>
+                <span style={subStatusPillStyle(application.subStatus)}>
+                  {subStatusLabel(application.subStatus)}
+                </span>
+              </div>
+              {application.profile?.email ? (
+                <p style={{ margin: "0 0 4px", fontSize: "13px", color: "#888888" }}>
+                  {application.profile.email}
+                </p>
+              ) : null}
+              {positionTitle ? (
+                <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
+                  <span style={{ color: "#666666" }}>Role:</span> {positionTitle}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
 
