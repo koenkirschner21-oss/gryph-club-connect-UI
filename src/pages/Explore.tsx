@@ -633,15 +633,7 @@ export default function Explore() {
               margin: 0,
             }}
           >
-            {isClaimFocusedExplore ? (
-              <>
-                Find or Claim <span style={{ color: ACCENT_RED }}>Your Club</span>
-              </>
-            ) : (
-              <>
-                Find Your <span style={{ color: ACCENT_RED }}>Club</span>
-              </>
-            )}
+            Explore Clubs at <span style={{ color: ACCENT_RED }}>Guelph</span>
           </h1>
           <p
             style={{
@@ -650,58 +642,62 @@ export default function Explore() {
               marginTop: "8px",
               marginBottom: 0,
               lineHeight: 1.45,
-              maxWidth: isClaimFocusedExplore ? "640px" : undefined,
+              maxWidth: "640px",
             }}
           >
-            {isClaimFocusedExplore
-              ? "Search for your club below. If you are a President or executive, you can claim an existing club profile or create a new one."
-              : `Browse ${clubCountLabel} student organizations at the University of Guelph`}
+            Find clubs to join, follow updates, and show interest — or claim a club profile if
+            you&apos;re an executive.
           </p>
 
-          {isClaimFocusedExplore ? (
-            <div
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: "10px",
+              marginTop: "16px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={focusClubSearch}
               style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "10px",
-                marginTop: "16px",
+                background: ACCENT_RED,
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "10px 20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
               }}
             >
-              <button
-                type="button"
-                onClick={focusClubSearch}
-                style={{
-                  background: ACCENT_RED,
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "10px 20px",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Search Existing Clubs
-              </button>
-              <Link
-                to={user ? "/app/create-club" : "/signup?redirect=/app/create-club"}
-                style={{
-                  background: "transparent",
-                  color: "#ffffff",
-                  border: "1px solid #333333",
-                  borderRadius: "8px",
-                  padding: "10px 20px",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-              >
-                Create a New Club
-              </Link>
-            </div>
-          ) : null}
+              Browse Clubs
+            </button>
+            <Link
+              to={
+                isClaimFocusedExplore
+                  ? user
+                    ? "/app/create-club"
+                    : "/signup?redirect=/app/create-club"
+                  : "/explore?claim=true"
+              }
+              style={{
+                background: "transparent",
+                color: "#888888",
+                border: "1px solid #333333",
+                borderRadius: "8px",
+                padding: "8px 14px",
+                fontSize: "12px",
+                fontWeight: 500,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              Claim or Create a Club
+            </Link>
+          </div>
 
           <div
             style={{
@@ -714,11 +710,7 @@ export default function Explore() {
               value={search}
               onChange={setSearch}
               inputRef={searchInputRef}
-              placeholder={
-                isClaimFocusedExplore
-                  ? "Search existing clubs by name or keyword..."
-                  : "Search clubs by name, interest, category, or keyword..."
-              }
+              placeholder="Search clubs by name, interest, category, or keyword..."
               fullWidth
             />
 
@@ -849,7 +841,7 @@ export default function Explore() {
               <div className="mb-8 flex items-start justify-between gap-4">
                 <div>
                   <h2 style={sectionHeadingStyle}>
-                    {isClaimFocusedExplore ? "Search Results" : claimMode ? "Clubs to Explore" : "All Clubs"}
+                    {search !== "" ? "Search Results" : "Clubs to Explore"}
                   </h2>
                   <p style={sectionSubheadingStyle}>
                     Showing{" "}
