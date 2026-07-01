@@ -78,6 +78,7 @@ export interface Club {
   meetingScheduleConfirmed?: boolean;
   claimStatus?: ClaimStatus;
   setupCompleted?: boolean;
+  university?: string;
   isPublished?: boolean;
   joinQuestions?: JoinQuestion[];
   allowJoinFileUpload?: boolean;

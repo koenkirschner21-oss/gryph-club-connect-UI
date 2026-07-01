@@ -5,39 +5,33 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Briefcase,
   Calendar,
   CheckSquare,
   ClipboardList,
-  Image,
   Megaphone,
   UserPlus,
   Users,
 } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
-import CreateMenuDropdown from "../../components/club/CreateMenuDropdown";
-import NeedsReviewSection from "../../components/dashboard/NeedsReviewSection";
 import { isTaskAwaitingReviewFromUser } from "../../lib/taskCompletion";
+import { getClubInitials } from "../../lib/clubUtils";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import {
-  buildClubSettingsSectionPath,
-  clubHasSocialLinks,
   computeClubProfileCompletionPercent,
   getClubProfileMissingLabels,
   resolveClubSetupSettingsPath,
 } from "../../lib/clubProfileCompletion";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
-import { formatTaskDate } from "../../lib/taskDueUrgency";
 import {
   deduplicateMonthlyEventsByTitle,
   deduplicateUpcomingEventsByTitle,
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
-import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { supabase } from "../../lib/supabaseClient";
-import type { Club, ClubEvent, Post, RsvpCounts, Task, TaskStatus } from "../../types";
+import type { Club, ClubEvent, Post, RsvpCounts, Task } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 
 const ACCENT_RED = "#E51937";
@@ -45,20 +39,6 @@ const GOLD = "#FFC429";
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
 const NEUTRAL_TOP_BORDER = "#3a3a3a";
-
-type SemanticAccent = "urgent" | "note" | "neutral";
-
-function accentTopBorder(accent: SemanticAccent): string {
-  if (accent === "urgent") return ACCENT_RED;
-  if (accent === "note") return GOLD;
-  return NEUTRAL_TOP_BORDER;
-}
-
-function accentOutlinedButtonStyle(accent: SemanticAccent): CSSProperties {
-  if (accent === "urgent") return urgentOutlinedButtonStyle;
-  if (accent === "note") return GOLD_OUTLINED_BUTTON_STYLE;
-  return outlineButtonStyle;
-}
 
 const urgentOutlinedButtonStyle: CSSProperties = {
   background: "transparent",
@@ -76,19 +56,6 @@ const sectionHeading: CSSProperties = {
   fontSize: "16px",
   color: "#ffffff",
   margin: "0 0 16px",
-};
-
-const THIS_WEEK_CARD_BG = "#161616";
-
-const actionButtonStyle: CSSProperties = {
-  background: ACCENT_RED,
-  color: "#ffffff",
-  border: "none",
-  borderRadius: "6px",
-  padding: "6px 12px",
-  fontSize: "12px",
-  fontWeight: 600,
-  cursor: "pointer",
 };
 
 const noteActionButtonStyle: CSSProperties = {
@@ -186,52 +153,9 @@ function eventDateBadgeParts(dateStr: string): { month: string; day: string } {
   };
 }
 
-function formatEventDetailLine(
-  dateStr: string,
-  timeStr?: string,
-  location?: string,
-): string {
-  const dateLabel = formatEventDateLine(dateStr, timeStr);
-  const locationLabel =
-    location && !isHiddenLocation(location) ? location.trim() : null;
-  return locationLabel ? `${dateLabel} · ${locationLabel}` : dateLabel;
-}
-
-function EventDateBadge({ dateStr }: { dateStr: string }) {
-  const { month, day } = eventDateBadgeParts(dateStr);
-
-  return (
-    <div
-      style={{
-        width: "48px",
-        height: "52px",
-        borderRadius: "8px",
-        background: GOLD,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        color: "#1a1200",
-        lineHeight: 1.1,
-      }}
-    >
-      <span style={{ fontSize: "10px", fontWeight: 600 }}>{month}</span>
-      <span style={{ fontSize: "18px", fontWeight: 700 }}>{day}</span>
-    </div>
-  );
-}
-
 function startOfDay(date: Date): Date {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function endOfWeek(date: Date): Date {
-  const next = startOfDay(date);
-  next.setDate(next.getDate() + 7);
-  next.setHours(23, 59, 59, 999);
   return next;
 }
 
@@ -244,50 +168,6 @@ function parseTaskDueDate(dateStr: string | undefined): Date | null {
   return Number.isNaN(due.getTime()) ? null : due;
 }
 
-function taskStatusLabel(status: TaskStatus): string {
-  if (status === "cancelled") return "Cancelled";
-  if (status === "in_progress") return "In Progress";
-  if (status === "done") return "Done";
-  return "To Do";
-}
-
-function taskStatusPillStyle(status: TaskStatus): CSSProperties {
-  if (status === "in_progress") {
-    return {
-      background: "rgba(255, 196, 41, 0.12)",
-      color: "#FFC429",
-      border: "1px solid rgba(255, 196, 41, 0.35)",
-      borderRadius: "999px",
-      padding: "2px 8px",
-      fontSize: "10px",
-      fontWeight: 600,
-      whiteSpace: "nowrap",
-    };
-  }
-  if (status === "done") {
-    return {
-      background: "rgba(74, 222, 128, 0.12)",
-      color: "#4ade80",
-      border: "1px solid rgba(74, 222, 128, 0.35)",
-      borderRadius: "999px",
-      padding: "2px 8px",
-      fontSize: "10px",
-      fontWeight: 600,
-      whiteSpace: "nowrap",
-    };
-  }
-  return {
-    background: "#1a1a1a",
-    color: "#777777",
-    border: "1px solid #333333",
-    borderRadius: "999px",
-    padding: "2px 8px",
-    fontSize: "10px",
-    fontWeight: 600,
-    whiteSpace: "nowrap",
-  };
-}
-
 type ActivityKind = "join" | "rsvp" | "announcement" | "task" | "application";
 
 type ActivityFeedItem = {
@@ -298,22 +178,20 @@ type ActivityFeedItem = {
   icon: ReactNode;
 };
 
-type SuggestedAction = {
-  id: string;
-  priority: number;
-  icon: ReactNode;
-  title: string;
-  reason: string;
-  actionLabel: string;
-  onAction: () => void;
-};
-
 interface HiringSnapshot {
   openRolesCount: number;
   pendingApplicationsCount: number;
   rolesWithZeroApplicants: number;
+  topOpenRole: { id: string; title: string } | null;
   loading: boolean;
 }
+
+type PendingActionItem = {
+  id: string;
+  label: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
 
 const GOLD_OUTLINED_BUTTON_STYLE: CSSProperties = {
   ...urgentOutlinedButtonStyle,
@@ -321,340 +199,302 @@ const GOLD_OUTLINED_BUTTON_STYLE: CSSProperties = {
   border: `1px solid ${GOLD}`,
 };
 
-function ProfileCompletionUrgentCard({
-  percent,
-  missingLabels,
-  onAction,
-}: {
-  percent: number;
-  missingLabels: string[];
-  onAction: () => void;
-}) {
+function CompactEventDateBadge({ dateStr }: { dateStr: string }) {
+  const { month, day } = eventDateBadgeParts(dateStr);
+
   return (
     <div
       style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderTop: `2px solid ${GOLD}`,
-        borderRadius: "8px",
-        padding: "16px",
-        minWidth: 0,
-        height: "100%",
-        boxSizing: "border-box",
+        width: "40px",
+        height: "44px",
+        borderRadius: "6px",
+        background: GOLD,
         display: "flex",
         flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        color: "#1a1200",
+        lineHeight: 1.1,
       }}
     >
-      <p
-        style={{
-          fontSize: "28px",
-          fontWeight: 800,
-          color: "#ffffff",
-          margin: "0 0 6px",
-          lineHeight: 1,
-        }}
-      >
-        {percent}%
-      </p>
-      <p
-        style={{
-          fontSize: "11px",
-          fontWeight: 600,
-          color: "#777777",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          margin: "0 0 8px",
-        }}
-      >
-        Profile Completion
-      </p>
-      {missingLabels.length > 0 ? (
-        <p
-          style={{
-            margin: "0 0 12px",
-            fontSize: "12px",
-            color: "#999999",
-            lineHeight: 1.45,
-            flex: 1,
-          }}
-        >
-          Missing: {missingLabels.join(", ")}
-        </p>
-      ) : (
-        <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#999999", flex: 1 }}>
-          All setup items complete.
-        </p>
-      )}
-      <button type="button" onClick={onAction} style={GOLD_OUTLINED_BUTTON_STYLE}>
-        Complete Setup
-      </button>
+      <span style={{ fontSize: "9px", fontWeight: 600 }}>{month}</span>
+      <span style={{ fontSize: "15px", fontWeight: 700 }}>{day}</span>
     </div>
   );
 }
 
-function UrgentCountCard({
-  title,
+function CommandCenterStatCard({
+  label,
   value,
-  actionLabel,
-  onAction,
   sublabel,
-  accent = "neutral",
+  icon,
+  accentColor,
+  iconColor,
+  onClick,
 }: {
-  title: string;
-  value: string;
-  actionLabel: string;
-  onAction: () => void;
-  sublabel?: string;
-  accent?: SemanticAccent;
+  label: string;
+  value: number;
+  sublabel: string;
+  icon: ReactNode;
+  accentColor: string;
+  iconColor?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div
-      style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderTop: `2px solid ${accentTopBorder(accent)}`,
-        borderRadius: "8px",
-        padding: "16px",
-        minWidth: 0,
-        height: "100%",
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+  const [hovered, setHovered] = useState(false);
+  const resolvedIconColor = iconColor ?? accentColor;
+  const borderColor = hovered ? "#2a2a2a" : "transparent";
+  const style: CSSProperties = {
+    background: "#1a1a1a",
+    borderRadius: "8px",
+    padding: "12px 16px",
+    position: "relative",
+    width: "100%",
+    textAlign: "left",
+    borderTop: `1px solid ${borderColor}`,
+    borderRight: `1px solid ${borderColor}`,
+    borderBottom: `1px solid ${borderColor}`,
+    borderLeft: `3px solid ${accentColor}`,
+    cursor: onClick ? "pointer" : "default",
+    transition: "border-color 0.15s ease",
+  };
+
+  const content = (
+    <>
+      <span
+        className="[&_svg]:h-[18px] [&_svg]:w-[18px]"
+        style={{
+          position: "absolute",
+          top: "12px",
+          right: "12px",
+          color: resolvedIconColor,
+          fontSize: "18px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {icon}
+      </span>
       <p
         style={{
-          fontSize: "28px",
-          fontWeight: 800,
-          color: "#ffffff",
+          fontSize: "12px",
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+          color: "#747676",
           margin: "0 0 6px",
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          fontSize: "2rem",
+          fontWeight: 700,
+          color: "#ffffff",
           lineHeight: 1,
+          margin: "0 0 3px",
         }}
       >
         {value}
       </p>
-      <p
-        style={{
-          fontSize: "11px",
-          fontWeight: 600,
-          color: "#777777",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          margin: "0 0 12px",
-        }}
-      >
-        {title}
-      </p>
-      {sublabel ? (
-        <p
-          style={{
-            margin: "0 0 12px",
-            fontSize: "12px",
-            color: "#999999",
-            lineHeight: 1.45,
-            flex: 1,
-          }}
-        >
-          {sublabel}
-        </p>
-      ) : (
-        <div style={{ flex: 1 }} />
-      )}
+      <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>{sublabel}</p>
+    </>
+  );
+
+  if (onClick) {
+    return (
       <button
         type="button"
-        onClick={onAction}
-        style={{ ...accentOutlinedButtonStyle(accent), marginTop: "auto" }}
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={style}
       >
-        {actionLabel}
+        {content}
       </button>
-    </div>
+    );
+  }
+
+  return <div style={style}>{content}</div>;
+}
+
+function ClubIdentityHeader({ club }: { club: Club }) {
+  const university = club.university?.trim() || "University of Guelph";
+
+  return (
+    <header
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+        paddingBottom: "20px",
+        borderBottom: `1px solid ${CARD_BORDER}`,
+      }}
+    >
+      {club.logoUrl?.trim() ? (
+        <img
+          src={club.logoUrl}
+          alt=""
+          style={{
+            width: "56px",
+            height: "56px",
+            borderRadius: "10px",
+            objectFit: "cover",
+            flexShrink: 0,
+            border: `1px solid ${CARD_BORDER}`,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: "56px",
+            height: "56px",
+            borderRadius: "10px",
+            background: "#1a1a1a",
+            border: `1px solid ${CARD_BORDER}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            fontSize: "18px",
+            fontWeight: 700,
+            color: GOLD,
+          }}
+        >
+          {getClubInitials(club)}
+        </div>
+      )}
+      <div style={{ minWidth: 0 }}>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "22px",
+            fontWeight: 700,
+            color: "#ffffff",
+            lineHeight: 1.2,
+          }}
+        >
+          {club.name}
+        </h1>
+        <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#777777" }}>{university}</p>
+      </div>
+    </header>
   );
 }
 
-function NextMeetingUrgentCard({
-  display,
-  onAction,
-}: {
-  display: {
-    scheduled: boolean;
-    dateLine: string;
-    weekdayTimeLine: string;
-    locationLine: string;
-  };
-  onAction: () => void;
-}) {
-  return (
-    <div
-      style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderTop: `2px solid ${GOLD}`,
-        borderRadius: "8px",
-        padding: "16px",
-        minWidth: 0,
-        height: "100%",
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <p
-        style={{
-          fontSize: display.scheduled ? "22px" : "16px",
-          fontWeight: 800,
-          color: display.scheduled ? "#ffffff" : "#777777",
-          fontStyle: display.scheduled ? undefined : "italic",
-          margin: "0 0 6px",
-          lineHeight: 1.15,
-        }}
-      >
-        {display.dateLine}
-      </p>
-      <p
-        style={{
-          fontSize: "11px",
-          fontWeight: 600,
-          color: "#777777",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          margin: "0 0 8px",
-        }}
-      >
-        Next Meeting
-      </p>
-      {display.weekdayTimeLine || display.locationLine ? (
-        <p
-          style={{
-            margin: "0 0 12px",
-            fontSize: "12px",
-            color: "#999999",
-            lineHeight: 1.45,
-            flex: 1,
-          }}
-        >
-          {[display.weekdayTimeLine, display.locationLine].filter(Boolean).join(" · ")}
-        </p>
-      ) : (
-        <div style={{ flex: 1 }} />
-      )}
-      <button
-        type="button"
-        onClick={onAction}
-        style={{ ...GOLD_OUTLINED_BUTTON_STYLE, marginTop: "auto" }}
-      >
-        View Events
-      </button>
-    </div>
-  );
+function parseListingDeadline(deadline: string | null | undefined): Date | null {
+  if (!deadline?.trim()) return null;
+  const trimmed = deadline.trim();
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+    ? new Date(`${trimmed}T23:59:59`)
+    : new Date(trimmed);
+  return Number.isNaN(due.getTime()) ? null : due;
 }
 
-function RequestsApplicationsUrgentCard({
-  joinCount,
-  applicationCount,
-  onReviewRequests,
-  onReviewApplications,
+function HiringDonutChart({
+  openRolesCount,
+  rolesWithZeroApplicants,
 }: {
-  joinCount: number;
-  applicationCount: number;
-  onReviewRequests: () => void;
-  onReviewApplications: () => void;
+  openRolesCount: number;
+  rolesWithZeroApplicants: number;
 }) {
-  const total = joinCount + applicationCount;
-  const cardAccent: SemanticAccent = total > 0 ? "urgent" : "neutral";
+  const size = 120;
+  const stroke = 14;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const rolesWithApplicants = Math.max(openRolesCount - rolesWithZeroApplicants, 0);
+  const total = Math.max(openRolesCount, 1);
+  const withApplicantsLength = (rolesWithApplicants / total) * circumference;
+  const zeroApplicantsLength = (rolesWithZeroApplicants / total) * circumference;
 
   return (
-    <div
-      style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderTop: `2px solid ${accentTopBorder(cardAccent)}`,
-        borderRadius: "8px",
-        padding: "16px",
-        minWidth: 0,
-        height: "100%",
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <p
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#2a2a2a"
+          strokeWidth={stroke}
+        />
+        {openRolesCount > 0 ? (
+          <>
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={GOLD}
+              strokeWidth={stroke}
+              strokeDasharray={`${withApplicantsLength} ${circumference}`}
+              strokeDashoffset={0}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+            {rolesWithZeroApplicants > 0 ? (
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke="#555555"
+                strokeWidth={stroke}
+                strokeDasharray={`${zeroApplicantsLength} ${circumference}`}
+                strokeDashoffset={-withApplicantsLength}
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </svg>
+      <div
         style={{
-          fontSize: "28px",
-          fontWeight: 800,
-          color: "#ffffff",
-          margin: "0 0 6px",
-          lineHeight: 1,
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          pointerEvents: "none",
         }}
       >
-        {total}
-      </p>
-      <p
-        style={{
-          fontSize: "11px",
-          fontWeight: 600,
-          color: "#777777",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          margin: "0 0 8px",
-        }}
-      >
-        Requests &amp; Applications
-      </p>
-      <p
-        style={{
-          margin: "0 0 12px",
-          fontSize: "12px",
-          color: "#999999",
-          lineHeight: 1.45,
-          flex: 1,
-        }}
-      >
-        {joinCount} join request{joinCount === 1 ? "" : "s"} · {applicationCount} application
-        {applicationCount === 1 ? "" : "s"}
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "auto" }}>
-        <button
-          type="button"
-          onClick={onReviewRequests}
-          style={accentOutlinedButtonStyle(joinCount > 0 ? "urgent" : "neutral")}
+        <span style={{ fontSize: "22px", fontWeight: 800, color: "#ffffff", lineHeight: 1 }}>
+          {openRolesCount}
+        </span>
+        <span
+          style={{
+            fontSize: "9px",
+            fontWeight: 600,
+            color: "#777777",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            marginTop: "2px",
+          }}
         >
-          Review Requests
-        </button>
-        <button
-          type="button"
-          onClick={onReviewApplications}
-          style={accentOutlinedButtonStyle(applicationCount > 0 ? "urgent" : "neutral")}
-        >
-          Review Applications
-        </button>
+          Open Role
+        </span>
       </div>
     </div>
   );
 }
 
-function ThisWeekPanel({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function HiringMetricLine({ label, value }: { label: string; value: number }) {
   return (
-    <div
-      style={{
-        background: THIS_WEEK_CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderRadius: "10px",
-        padding: "16px",
-        minHeight: "180px",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
-        {title}
+    <div style={{ minWidth: 0 }}>
+      <p
+        style={{
+          margin: "0 0 2px",
+          fontSize: "11px",
+          color: "#555555",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {label}
       </p>
-      <div style={{ flex: 1 }}>{children}</div>
+      <p style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "#ffffff" }}>{value}</p>
     </div>
   );
 }
@@ -663,7 +503,8 @@ function needsAttentionButtonStyle(itemId: string): CSSProperties {
   if (
     itemId === "join-requests" ||
     itemId === "applications" ||
-    itemId === "overdue-tasks"
+    itemId === "overdue-tasks" ||
+    itemId.startsWith("review-")
   ) {
     return urgentOutlinedButtonStyle;
   }
@@ -673,73 +514,141 @@ function needsAttentionButtonStyle(itemId: string): CSSProperties {
   return outlineButtonStyle;
 }
 
-function suggestedActionTone(actionId: string): SemanticAccent {
-  if (actionId === "review-join" || actionId === "review-applications") {
-    return "urgent";
-  }
-  return "note";
-}
-
-function suggestionIconColor(tone: SemanticAccent): string {
-  if (tone === "urgent") return ACCENT_RED;
-  if (tone === "note") return GOLD;
-  return "#777777";
-}
-
-function suggestionButtonStyle(tone: SemanticAccent): CSSProperties {
-  if (tone === "urgent") return actionButtonStyle;
-  if (tone === "note") return noteActionButtonStyle;
-  return outlineButtonStyle;
-}
-
-function SuggestionCard({
-  icon,
-  title,
-  reason,
-  actionLabel,
-  onAction,
-  tone = "note",
+function PendingActionsSection({
+  items,
+  loading,
 }: {
-  icon: ReactNode;
-  title: string;
-  reason: string;
-  actionLabel: string;
-  onAction: () => void;
-  tone?: SemanticAccent;
+  items: PendingActionItem[];
+  loading: boolean;
 }) {
   return (
-    <div
+    <section
       style={{
         background: CARD_BG,
         border: `1px solid ${CARD_BORDER}`,
         borderRadius: "10px",
-        padding: "14px",
-        marginBottom: "10px",
+        padding: "16px",
       }}
     >
-      <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "10px" }}>
-        <div style={{ color: suggestionIconColor(tone), flexShrink: 0, marginTop: "2px" }}>{icon}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
-            {title}
-          </p>
-          <p style={{ margin: 0, fontSize: "12px", color: "#777777", lineHeight: 1.45 }}>
-            {reason}
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onAction}
+      <h2
         style={{
-          ...suggestionButtonStyle(tone),
-          width: "100%",
-          padding: "8px 14px",
+          ...sectionHeading,
+          marginBottom: "12px",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
         }}
       >
-        {actionLabel}
-      </button>
-    </div>
+        <span>Pending Actions</span>
+        <span style={{ color: "#777777", fontWeight: 500 }}>· {items.length}</span>
+      </h2>
+      {loading ? (
+        <div className="flex justify-center py-4">
+          <Spinner label="Loading pending actions…" />
+        </div>
+      ) : items.length === 0 ? (
+        <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>
+          Nothing needs attention right now.
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {items.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "12px",
+                borderTop: `1px solid ${CARD_BORDER}`,
+                paddingTop: "8px",
+              }}
+            >
+              <p style={{ margin: 0, fontSize: "13px", color: "#cccccc", lineHeight: 1.45, flex: 1 }}>
+                {item.label}
+              </p>
+              {item.onAction && item.actionLabel ? (
+                <button
+                  type="button"
+                  style={{ ...needsAttentionButtonStyle(item.id), flexShrink: 0 }}
+                  onClick={item.onAction}
+                >
+                  {item.actionLabel}
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RemindersQuickActionsCard({
+  reminderEvent,
+  onUseReminderTemplate,
+  onNewAnnouncement,
+  onAddEvent,
+  onInviteMembers,
+  onViewReports,
+}: {
+  reminderEvent: { title: string; dateLine: string } | null;
+  onUseReminderTemplate: () => void;
+  onNewAnnouncement: () => void;
+  onAddEvent: () => void;
+  onInviteMembers: () => void;
+  onViewReports: () => void;
+}) {
+  return (
+    <section
+      style={{
+        background: CARD_BG,
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: "10px",
+        padding: "16px",
+      }}
+    >
+      <h2 style={{ ...sectionHeading, marginBottom: "12px" }}>Reminders &amp; Quick Actions</h2>
+      {reminderEvent ? (
+        <div
+          style={{
+            background: "rgba(255, 196, 41, 0.08)",
+            border: `1px solid rgba(255, 196, 41, 0.25)`,
+            borderRadius: "8px",
+            padding: "12px 14px",
+            marginBottom: "12px",
+          }}
+        >
+          <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#cccccc", lineHeight: 1.45 }}>
+            <strong style={{ color: GOLD }}>{reminderEvent.title}</strong> is coming up on{" "}
+            {reminderEvent.dateLine}.
+          </p>
+          <button type="button" style={noteActionButtonStyle} onClick={onUseReminderTemplate}>
+            Use Reminder Template
+          </button>
+        </div>
+      ) : null}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: "8px",
+        }}
+      >
+        <button type="button" style={outlineButtonStyle} onClick={onNewAnnouncement}>
+          New Announcement
+        </button>
+        <button type="button" style={outlineButtonStyle} onClick={onAddEvent}>
+          Add Event
+        </button>
+        <button type="button" style={outlineButtonStyle} onClick={onInviteMembers}>
+          Invite Members
+        </button>
+        <button type="button" style={outlineButtonStyle} onClick={onViewReports}>
+          View Reports
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -764,7 +673,6 @@ export default function ClubCommandCenter({
   tasks,
   tasksLoading,
   posts,
-  postsLoading,
   upcomingOccurrences,
   eventsLoading,
   eventRsvpCounts,
@@ -780,6 +688,7 @@ export default function ClubCommandCenter({
     openRolesCount: 0,
     pendingApplicationsCount: 0,
     rolesWithZeroApplicants: 0,
+    topOpenRole: null,
     loading: true,
   });
   const [activityItems, setActivityItems] = useState<ActivityFeedItem[]>([]);
@@ -792,7 +701,7 @@ export default function ClubCommandCenter({
   const membersPath = `${basePath}/members`;
   const recruitingPath = `${basePath}/recruiting`;
   const settingsPath = `${basePath}/settings`;
-  const publicProfilePath = `/clubs/${club.slug}`;
+  const analyticsPath = `${basePath}/analytics`;
   const setupSettingsPath = resolveClubSetupSettingsPath(settingsPath, club);
 
   const openSetupSettings = () => navigate(setupSettingsPath);
@@ -805,7 +714,7 @@ export default function ClubCommandCenter({
 
       const { data: listings, error: listingsError } = await supabase
         .from("hiring_listings")
-        .select("id")
+        .select("id, title, deadline")
         .eq("club_id", clubId)
         .eq("is_open", true);
 
@@ -817,14 +726,21 @@ export default function ClubCommandCenter({
           openRolesCount: 0,
           pendingApplicationsCount: 0,
           rolesWithZeroApplicants: 0,
+          topOpenRole: null,
           loading: false,
         });
         return;
       }
 
-      const listingIds = (listings ?? []).map((row) => row.id as string);
+      const openListings = (listings ?? []).map((row) => ({
+        id: row.id as string,
+        title: (row.title as string) ?? "Open role",
+        deadline: (row.deadline as string | null) ?? null,
+      }));
+      const listingIds = openListings.map((row) => row.id);
       let pendingApplicationsCount = 0;
       let rolesWithZeroApplicants = listingIds.length;
+      let topOpenRole: { id: string; title: string } | null = null;
 
       if (listingIds.length > 0) {
         const { data: applications, error: applicationsError } = await supabase
@@ -848,6 +764,28 @@ export default function ClubCommandCenter({
           rolesWithZeroApplicants = listingIds.filter(
             (listingId) => (countsByListing.get(listingId) ?? 0) === 0,
           ).length;
+
+          const rankedListings = [...openListings].sort((left, right) => {
+            const leftCount = countsByListing.get(left.id) ?? 0;
+            const rightCount = countsByListing.get(right.id) ?? 0;
+            if (rightCount !== leftCount) return rightCount - leftCount;
+
+            const leftDeadline = parseListingDeadline(left.deadline);
+            const rightDeadline = parseListingDeadline(right.deadline);
+            if (leftDeadline && rightDeadline) {
+              return leftDeadline.getTime() - rightDeadline.getTime();
+            }
+            if (leftDeadline) return -1;
+            if (rightDeadline) return 1;
+            return 0;
+          });
+
+          if (rankedListings[0]) {
+            topOpenRole = {
+              id: rankedListings[0].id,
+              title: rankedListings[0].title,
+            };
+          }
         }
       }
 
@@ -855,6 +793,7 @@ export default function ClubCommandCenter({
         openRolesCount: listingIds.length,
         pendingApplicationsCount,
         rolesWithZeroApplicants,
+        topOpenRole,
         loading: false,
       });
     }
@@ -1031,34 +970,10 @@ export default function ClubCommandCenter({
   }, [clubId, posts, tasks]);
 
   const today = useMemo(() => startOfDay(new Date()), []);
-  const weekEnd = useMemo(() => endOfWeek(new Date()), []);
 
   const openTasks = useMemo(
     () => tasks.filter((task) => task.status !== "done" && task.status !== "cancelled"),
     [tasks],
-  );
-
-  const tasksDueThisWeek = useMemo(
-    () =>
-      openTasks.filter((task) => {
-        const due = parseTaskDueDate(task.dueDate);
-        if (!due) return false;
-        return due.getTime() >= today.getTime() && due.getTime() <= weekEnd.getTime();
-      }),
-    [openTasks, today, weekEnd],
-  );
-
-  const eventsThisWeek = useMemo(() => {
-    const startYmd = today.toISOString().slice(0, 10);
-    const endYmd = weekEnd.toISOString().slice(0, 10);
-    return upcomingOccurrences.filter(
-      (event) => event.occurrenceDate >= startYmd && event.occurrenceDate <= endYmd,
-    );
-  }, [upcomingOccurrences, today, weekEnd]);
-
-  const eventsThisWeekDisplay = useMemo(
-    () => deduplicateMonthlyEventsByTitle(eventsThisWeek, eventRecurring),
-    [eventsThisWeek, eventRecurring],
   );
 
   const eventsThisMonthCount = useMemo(() => {
@@ -1087,64 +1002,6 @@ export default function ClubCommandCenter({
     return deduplicateUpcomingEventsByTitle(sorted, 3);
   }, [upcomingOccurrences]);
 
-  const nextMeetingDisplay = useMemo(() => {
-    const scheduleText = club.meetingSchedule?.trim() ?? "";
-    const recurringOccurrences = upcomingOccurrences.filter((event) => {
-      const meta = eventRecurring[event.id];
-      return meta?.isRecurring && meta.frequency;
-    });
-    const weeklyFirst = recurringOccurrences.find((event) => {
-      const meta = eventRecurring[event.id];
-      return meta?.frequency === "weekly";
-    });
-    const nextRecurring = weeklyFirst ?? recurringOccurrences[0];
-
-    if (nextRecurring) {
-      const d = new Date(`${nextRecurring.occurrenceDate}T12:00:00`);
-      const value = d.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      });
-      const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
-      const timeLabel =
-        nextRecurring.time &&
-        nextRecurring.time.trim() !== "" &&
-        nextRecurring.time.toUpperCase() !== "TBD"
-          ? formatEventTime12h(nextRecurring.time)
-          : "";
-      const locationLabel =
-        nextRecurring.location && !isHiddenLocation(nextRecurring.location)
-          ? nextRecurring.location.trim()
-          : "";
-      const weekdayTimeLine = [weekday, timeLabel].filter(Boolean).join(" · ");
-      return {
-        scheduled: true,
-        dateLine: value,
-        weekdayTimeLine,
-        locationLine: locationLabel,
-      };
-    }
-
-    if (scheduleText) {
-      return {
-        scheduled: true,
-        dateLine: scheduleText,
-        weekdayTimeLine: "",
-        locationLine:
-          club.location && !isHiddenLocation(club.location)
-            ? club.location.trim()
-            : "",
-      };
-    }
-
-    return {
-      scheduled: false,
-      dateLine: "No meetings scheduled",
-      weekdayTimeLine: "",
-      locationLine: "",
-    };
-  }, [club, upcomingOccurrences, eventRecurring]);
-
   const profileCompletion = useMemo(
     () => computeClubProfileCompletionPercent(club, posts.length > 0, upcomingOccurrences.length > 0),
     [club, posts.length, upcomingOccurrences.length],
@@ -1157,7 +1014,7 @@ export default function ClubCommandCenter({
 
   const pendingJoinCount = pendingMembers.length;
   const pendingApplicationCount = hiringSnapshot.pendingApplicationsCount;
-  const setupComplete = profileCompletion >= 100;
+  const pendingRequestsTotal = pendingJoinCount + pendingApplicationCount;
 
   const needsReviewTasks = useMemo(() => {
     if (!user?.id) return [];
@@ -1173,13 +1030,8 @@ export default function ClubCommandCenter({
     [openTasks, today],
   );
 
-  const needsAttentionItems = useMemo(() => {
-    const items: {
-      id: string;
-      label: string;
-      actionLabel?: string;
-      onAction?: () => void;
-    }[] = [];
+  const pendingActionsItems = useMemo(() => {
+    const items: PendingActionItem[] = [];
 
     if (pendingJoinCount > 0) {
       items.push({
@@ -1220,6 +1072,15 @@ export default function ClubCommandCenter({
       });
     }
 
+    for (const task of needsReviewTasks) {
+      items.push({
+        id: `review-${task.id}`,
+        label: `Task awaiting review: ${task.title}`,
+        actionLabel: "Review Task",
+        onAction: () => onOpenTask(task),
+      });
+    }
+
     for (const event of previewUpcomingEvents) {
       const going = eventRsvpCounts[event.id]?.going ?? 0;
       const eventDate = startOfDay(new Date(`${event.occurrenceDate}T12:00:00`));
@@ -1236,13 +1097,14 @@ export default function ClubCommandCenter({
       }
     }
 
-    return items.slice(0, 6);
+    return items.slice(0, 8);
   }, [
     pendingJoinCount,
     pendingApplicationCount,
     profileCompletion,
     profileMissingLabels,
     overdueTasks.length,
+    needsReviewTasks,
     previewUpcomingEvents,
     eventRsvpCounts,
     today,
@@ -1252,124 +1114,10 @@ export default function ClubCommandCenter({
     tasksPath,
     eventsPath,
     openSetupSettings,
+    onOpenTask,
   ]);
 
-  const suggestedActions = useMemo(() => {
-    const actions: SuggestedAction[] = [];
-    const profileActionIds = new Set([
-      "logo",
-      "banner",
-      "contact-email",
-      "social-links",
-      "short-description",
-      "meeting-schedule",
-      "complete-profile",
-    ]);
-
-    if (profileCompletion < 100) {
-      if (!club.logoUrl?.trim()) {
-        actions.push({
-          id: "logo",
-          priority: 1,
-          icon: <Image size={20} aria-hidden />,
-          title: "Add a club logo",
-          reason: "Clubs with logos look more credible on Explore and public profiles.",
-          actionLabel: "Complete Setup",
-          onAction: () =>
-            navigate(buildClubSettingsSectionPath(clubId, "branding")),
-        });
-      }
-
-      if (!club.bannerUrl?.trim()) {
-        actions.push({
-          id: "banner",
-          priority: 2,
-          icon: <Image size={20} aria-hidden />,
-          title: "Add a banner image",
-          reason: "A banner helps your public profile stand out to prospective members.",
-          actionLabel: "Complete Setup",
-          onAction: () =>
-            navigate(buildClubSettingsSectionPath(clubId, "branding")),
-        });
-      }
-
-      if (!club.contactEmail?.trim()) {
-        actions.push({
-          id: "contact-email",
-          priority: 3,
-          icon: <Megaphone size={20} aria-hidden />,
-          title: "Add contact email",
-          reason: "Prospective members need a way to reach your club leadership.",
-          actionLabel: "Complete Setup",
-          onAction: () =>
-            navigate(buildClubSettingsSectionPath(clubId, "profile")),
-        });
-      }
-
-      if (!club.shortDescription?.trim()) {
-        actions.push({
-          id: "short-description",
-          priority: 4,
-          icon: <Megaphone size={20} aria-hidden />,
-          title: "Add a short description",
-          reason: "Help students understand what your club is about on your public profile.",
-          actionLabel: "Complete Setup",
-          onAction: () =>
-            navigate(buildClubSettingsSectionPath(clubId, "profile")),
-        });
-      }
-
-      if (!club.meetingSchedule?.trim()) {
-        actions.push({
-          id: "meeting-schedule",
-          priority: 5,
-          icon: <Calendar size={20} aria-hidden />,
-          title: "Add meeting schedule",
-          reason: "Let members know when and how often your club meets.",
-          actionLabel: "Complete Setup",
-          onAction: () =>
-            navigate(buildClubSettingsSectionPath(clubId, "profile")),
-        });
-      }
-
-      if (!clubHasSocialLinks(club.socialLinks)) {
-        actions.push({
-          id: "social-links",
-          priority: 6,
-          icon: <Users size={20} aria-hidden />,
-          title: "Add social links",
-          reason: "Link your Instagram, website, or other channels on your public profile.",
-          actionLabel: "Complete Setup",
-          onAction: () =>
-            navigate(buildClubSettingsSectionPath(clubId, "social")),
-        });
-      }
-    }
-
-    if (pendingJoinCount > 0) {
-      actions.push({
-        id: "review-join",
-        priority: 10,
-        icon: <Users size={20} aria-hidden />,
-        title: "Review join requests",
-        reason: `${pendingJoinCount} student${pendingJoinCount === 1 ? "" : "s"} waiting for approval.`,
-        actionLabel: "Review Requests",
-        onAction: () => navigate(`${membersPath}?tab=pending`),
-      });
-    }
-
-    if (pendingApplicationCount > 0) {
-      actions.push({
-        id: "review-applications",
-        priority: 11,
-        icon: <ClipboardList size={20} aria-hidden />,
-        title: "Review applications",
-        reason: `${pendingApplicationCount} hiring application${pendingApplicationCount === 1 ? "" : "s"} need review.`,
-        actionLabel: "Review Applications",
-        onAction: () => navigate(`${recruitingPath}?tab=applications`),
-      });
-    }
-
+  const upcomingReminderEvent = useMemo(() => {
     const eventInThreeDays = upcomingOccurrences.find((event) => {
       const eventDate = startOfDay(new Date(`${event.occurrenceDate}T12:00:00`));
       const diffDays = Math.round(
@@ -1378,196 +1126,23 @@ export default function ClubCommandCenter({
       return diffDays >= 0 && diffDays <= 3;
     });
 
-    if (eventInThreeDays) {
-      actions.push({
-        id: "event-reminder",
-        priority: 12,
-        icon: <Megaphone size={20} aria-hidden />,
-        title: "Post an event reminder",
-        reason: `${eventInThreeDays.title} is coming up on ${formatEventDateLine(eventInThreeDays.occurrenceDate, eventInThreeDays.time)}.`,
-        actionLabel: "Use Reminder Template",
-        onAction: () => navigate(`${announcementsPath}?openTemplate=true`),
-      });
-    }
+    if (!eventInThreeDays) return null;
 
-    if (upcomingOccurrences.length === 0) {
-      actions.push({
-        id: "first-event",
-        priority: 13,
-        icon: <Calendar size={20} aria-hidden />,
-        title: "Create your first event",
-        reason: "No upcoming events are scheduled for your club yet.",
-        actionLabel: "Create Event",
-        onAction: () => navigate(`${eventsPath}?openCreate=true`),
-      });
-    }
+    return {
+      title: eventInThreeDays.title,
+      dateLine: formatEventDateLine(eventInThreeDays.occurrenceDate, eventInThreeDays.time),
+    };
+  }, [upcomingOccurrences, today]);
 
-    const latestPost = posts[0];
-    const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
-    const announcementStale =
-      !latestPost || new Date(latestPost.createdAt).getTime() < fourteenDaysAgo;
-
-    if (announcementStale) {
-      actions.push({
-        id: "club-update",
-        priority: 14,
-        icon: <Megaphone size={20} aria-hidden />,
-        title: "Post a club update",
-        reason: latestPost
-          ? "It has been more than 14 days since your last announcement."
-          : "Keep members informed with a welcome or weekly update.",
-        actionLabel: "Post Announcement",
-        onAction: () => navigate(`${announcementsPath}?openCreate=true`),
-      });
-    }
-
-    if (hiringSnapshot.rolesWithZeroApplicants > 0) {
-      actions.push({
-        id: "promote-role",
-        priority: 15,
-        icon: <Briefcase size={20} aria-hidden />,
-        title: "Promote your open role",
-        reason: `${hiringSnapshot.rolesWithZeroApplicants} open role${hiringSnapshot.rolesWithZeroApplicants === 1 ? "" : "s"} ha${hiringSnapshot.rolesWithZeroApplicants === 1 ? "s" : "ve"} no applicants yet.`,
-        actionLabel: "View Hiring",
-        onAction: () => navigate(recruitingPath),
-      });
-    }
-
-    if (profileCompletion < 100 && actions.length === 0) {
-      actions.push({
-        id: "complete-profile",
-        priority: 0,
-        icon: <Image size={20} aria-hidden />,
-        title: "Complete your club profile",
-        reason:
-          profileMissingLabels.length > 0
-            ? `Still missing: ${profileMissingLabels.join(", ")}.`
-            : "Finish the remaining setup items for your club profile.",
-        actionLabel: "Complete Setup",
-        onAction: () => navigate(setupSettingsPath),
-      });
-    }
-
-    const sorted = actions.sort((left, right) => left.priority - right.priority);
-    let result = sorted.slice(0, 3);
-
-    if (
-      profileCompletion < 100 &&
-      !result.some((action) => profileActionIds.has(action.id))
-    ) {
-      const firstProfileAction = sorted.find((action) => profileActionIds.has(action.id));
-      if (firstProfileAction) {
-        result = [
-          firstProfileAction,
-          ...result.filter((action) => action.id !== firstProfileAction.id),
-        ].slice(0, 3);
-      } else {
-        result = [
-          {
-            id: "complete-profile",
-            priority: 0,
-            icon: <Image size={20} aria-hidden />,
-            title: "Complete your club profile",
-            reason:
-              profileMissingLabels.length > 0
-                ? `Still missing: ${profileMissingLabels.join(", ")}.`
-                : "Finish the remaining setup items for your club profile.",
-            actionLabel: "Complete Setup",
-            onAction: () => navigate(setupSettingsPath),
-          },
-          ...result,
-        ].slice(0, 3);
-      }
-    }
-
-    return result;
-  }, [
-    profileCompletion,
-    profileMissingLabels,
-    pendingJoinCount,
-    pendingApplicationCount,
-    upcomingOccurrences,
-    today,
-    posts,
-    club.logoUrl,
-    club.bannerUrl,
-    club.contactEmail,
-    club.shortDescription,
-    club.meetingSchedule,
-    club.socialLinks,
-    hiringSnapshot.rolesWithZeroApplicants,
-    navigate,
-    membersPath,
-    recruitingPath,
-    announcementsPath,
-    eventsPath,
-    settingsPath,
-    setupSettingsPath,
-  ]);
-
-  const createOptions = [
-    { label: "Event", onClick: () => navigate(`${eventsPath}?openCreate=true`) },
-    { label: "Announcement", onClick: () => navigate(`${announcementsPath}?openCreate=true`) },
-    { label: "Task", onClick: () => navigate(`${tasksPath}?openCreate=true`) },
-    { label: "Hiring Role", onClick: () => navigate(`${recruitingPath}?openCreate=true`) },
-  ];
+  const pendingActionsLoading = tasksLoading || membersLoading || hiringSnapshot.loading;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "16px",
-        }}
-      >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h1
-            style={{
-              fontWeight: 700,
-              fontSize: "24px",
-              color: "#ffffff",
-              margin: 0,
-            }}
-          >
-            Club Command Center
-          </h1>
-          <p style={{ fontSize: "14px", color: "#777777", margin: "6px 0 0" }}>
-            Here&apos;s what needs attention across your club.
-          </p>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: "8px",
-              marginTop: "12px",
-            }}
-          >
-            <Link to={publicProfilePath} target="_blank" rel="noopener noreferrer" style={textLinkStyle}>
-              View Public Profile
-            </Link>
-            <span style={{ color: "#555555" }}>·</span>
-            <Link to={settingsPath} style={textLinkStyle}>
-              Manage Settings
-            </Link>
-          </div>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <ClubIdentityHeader club={club} />
 
-        <CreateMenuDropdown options={createOptions} />
-      </div>
-
-      <NeedsReviewSection
-        tasks={needsReviewTasks}
-        loading={tasksLoading}
-        onReviewTask={onOpenTask}
-      />
-
-      <section style={{ marginBottom: "8px", paddingBottom: 0 }}>
-        {tasksLoading || membersLoading || hiringSnapshot.loading ? (
-          <div className="flex justify-center py-6">
+      <section>
+        {pendingActionsLoading ? (
+          <div className="flex justify-center py-4">
             <Spinner label="Loading command center…" />
           </div>
         ) : (
@@ -1575,439 +1150,194 @@ export default function ClubCommandCenter({
             style={{
               display: "grid",
               gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)",
-              gap: "16px",
+              gap: "12px",
               alignItems: "stretch",
             }}
           >
-            {setupComplete ? (
-              <NextMeetingUrgentCard
-                display={nextMeetingDisplay}
-                onAction={() => navigate(eventsPath)}
-              />
-            ) : (
-              <ProfileCompletionUrgentCard
-                percent={profileCompletion}
-                missingLabels={profileMissingLabels}
-                onAction={openSetupSettings}
-              />
-            )}
-            <UrgentCountCard
-              title="Events This Month"
-              value={String(eventsThisMonthCount)}
-              actionLabel="View Events"
-              onAction={() => navigate(eventsPath)}
-              accent="note"
+            <CommandCenterStatCard
+              label="Profile"
+              value={profileCompletion}
+              sublabel={profileCompletion >= 100 ? "Setup complete" : "Completion"}
+              icon={<Users size={18} aria-hidden />}
+              accentColor={profileCompletion >= 100 ? "#4ade80" : GOLD}
+              onClick={openSetupSettings}
             />
-            <UrgentCountCard
-              title="Incomplete Club Tasks"
-              value={String(openTasks.length)}
-              actionLabel="View Tasks"
-              onAction={() => navigate(tasksPath)}
-              accent={overdueTasks.length > 0 ? "urgent" : "neutral"}
+            <CommandCenterStatCard
+              label="Events"
+              value={eventsThisMonthCount}
+              sublabel="This month"
+              icon={<Calendar size={18} aria-hidden />}
+              accentColor={GOLD}
+              onClick={() => navigate(eventsPath)}
             />
-            <RequestsApplicationsUrgentCard
-              joinCount={pendingJoinCount}
-              applicationCount={pendingApplicationCount}
-              onReviewRequests={() => navigate(`${membersPath}?tab=pending`)}
-              onReviewApplications={() => navigate(`${recruitingPath}?tab=applications`)}
+            <CommandCenterStatCard
+              label="Tasks"
+              value={openTasks.length}
+              sublabel={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : "Open tasks"}
+              icon={<CheckSquare size={18} aria-hidden />}
+              accentColor={overdueTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
+              onClick={() => navigate(tasksPath)}
+            />
+            <CommandCenterStatCard
+              label="Pending"
+              value={pendingRequestsTotal}
+              sublabel="Requests & applications"
+              icon={<ClipboardList size={18} aria-hidden />}
+              accentColor={pendingRequestsTotal > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
+              onClick={() =>
+                navigate(
+                  pendingJoinCount > 0
+                    ? `${membersPath}?tab=pending`
+                    : `${recruitingPath}?tab=applications`,
+                )
+              }
             />
           </div>
         )}
       </section>
 
+      <PendingActionsSection items={pendingActionsItems} loading={pendingActionsLoading} />
+
       <section>
-        <h2 style={sectionHeading}>This Week</h2>
-        <p style={{ margin: "0 0 16px", fontSize: "14px", color: "#777777" }}>
-          Events, tasks, and actions that need attention this week.
-        </p>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-            gap: "16px",
-          }}
-        >
-          <ThisWeekPanel title="Schedule">
-            {eventsLoading ? (
-              <Spinner label="Loading events…" />
-            ) : eventsThisWeekDisplay.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>No events this week.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {eventsThisWeekDisplay.slice(0, 4).map((event) => (
-                  <div
-                    key={`${event.id}-${event.occurrenceDate}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      borderTop: `1px solid ${CARD_BORDER}`,
-                      paddingTop: "10px",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
-                          {event.title}
-                        </p>
-                        {event.showRecurringBadge ? (
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 600,
-                              color: GOLD,
-                              border: `1px solid rgba(255, 196, 41, 0.35)`,
-                              background: "rgba(255, 196, 41, 0.1)",
-                              borderRadius: "4px",
-                              padding: "2px 6px",
-                            }}
-                          >
-                            Recurring
-                          </span>
-                        ) : null}
-                      </div>
-                      <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
-                        {formatEventDateLine(event.occurrenceDate, event.time)} ·{" "}
-                        {eventRsvpCounts[event.id]?.going ?? 0} RSVPs
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      style={outlineButtonStyle}
-                      onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
-                    >
-                      Manage Event
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ThisWeekPanel>
+        <h2 style={sectionHeading}>Upcoming Events</h2>
+        {eventsLoading ? (
+          <div className="flex justify-center py-4">
+            <Spinner label="Loading upcoming events…" />
+          </div>
+        ) : previewUpcomingEvents.length === 0 ? (
+          <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>
+            No upcoming events scheduled.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {previewUpcomingEvents.map((event) => {
+              const going = eventRsvpCounts[event.id]?.going ?? 0;
+              const timeLabel =
+                event.time && event.time.trim() && event.time.toUpperCase() !== "TBD"
+                  ? formatEventTime12h(event.time)
+                  : "Time TBD";
+              const locationLabel =
+                event.location && !isHiddenLocation(event.location)
+                  ? event.location.trim()
+                  : "Location TBD";
 
-          <ThisWeekPanel title="Tasks Due">
-            {tasksLoading ? (
-              <Spinner label="Loading tasks…" />
-            ) : tasksDueThisWeek.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>No tasks due this week.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {tasksDueThisWeek.slice(0, 4).map((task) => (
-                  <div
-                    key={task.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onOpenTask(task)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onOpenTask(task);
-                      }
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      borderTop: `1px solid ${CARD_BORDER}`,
-                      paddingTop: "10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
-                        {task.title}
-                      </p>
-                      <LinkedMeetingCancelledLabel task={task} />
-                      <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
-                        {task.assigneeName ?? "Unassigned"} ·{" "}
-                        {task.dueDate ? formatTaskDate(task.dueDate) : "No due date"}
-                      </p>
-                    </div>
-                    <span style={taskStatusPillStyle(task.status)}>
-                      {taskStatusLabel(task.status)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ThisWeekPanel>
-
-          <ThisWeekPanel title="Needs Attention">
-            {tasksLoading || membersLoading || hiringSnapshot.loading ? (
-              <Spinner label="Loading…" />
-            ) : needsAttentionItems.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>
-                Nothing needs attention right now.
-              </p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {needsAttentionItems.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      borderTop: `1px solid ${CARD_BORDER}`,
-                      paddingTop: "10px",
-                    }}
-                  >
-                    <p style={{ margin: 0, fontSize: "12px", color: "#cccccc", lineHeight: 1.45, flex: 1 }}>
-                      {item.label}
-                    </p>
-                    {item.onAction && item.actionLabel ? (
-                      <button
-                        type="button"
-                        style={{ ...needsAttentionButtonStyle(item.id), flexShrink: 0 }}
-                        onClick={item.onAction}
-                      >
-                        {item.actionLabel}
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </ThisWeekPanel>
-        </div>
-      </section>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: isMobile ? "column" : "row",
-          gap: "24px",
-          alignItems: "flex-start",
-        }}
-      >
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "24px" }}>
-          <section>
-            <h2 style={sectionHeading}>Upcoming Events &amp; RSVPs</h2>
-            {eventsLoading ? (
-              <div className="flex justify-center py-6">
-                <Spinner label="Loading upcoming events…" />
-              </div>
-            ) : previewUpcomingEvents.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-                No upcoming events scheduled.
-              </p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {previewUpcomingEvents.map((event) => {
-                  const rsvp = eventRsvpCounts[event.id];
-                  const going = rsvp?.going ?? 0;
-                  const maybe = rsvp?.maybe ?? 0;
-
-                  return (
-                    <div
-                      key={`${event.id}-${event.occurrenceDate}`}
-                      style={{
-                        background: CARD_BG,
-                        border: `1px solid ${CARD_BORDER}`,
-                        borderRadius: "10px",
-                        padding: "16px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "14px",
-                        }}
-                      >
-                        <EventDateBadge dateStr={event.occurrenceDate} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p
-                            style={{
-                              margin: "0 0 4px",
-                              fontSize: "14px",
-                              fontWeight: 700,
-                              color: "#ffffff",
-                            }}
-                          >
-                            {event.title}
-                          </p>
-                          <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
-                            {formatEventDetailLine(
-                              event.occurrenceDate,
-                              event.time,
-                              event.location,
-                            )}
-                          </p>
-                        </div>
-                        <div
-                          style={{
-                            textAlign: "center",
-                            flexShrink: 0,
-                            minWidth: "72px",
-                            padding: "0 8px",
-                          }}
-                        >
-                          <p
-                            style={{
-                              margin: 0,
-                              fontSize: "32px",
-                              fontWeight: 800,
-                              color: going > 0 ? "#ffffff" : "#777777",
-                              lineHeight: 1,
-                            }}
-                          >
-                            {going}
-                          </p>
-                          <p
-                            style={{
-                              margin: "4px 0 0",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              color: "#777777",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.04em",
-                            }}
-                          >
-                            Going
-                          </p>
-                          {maybe > 0 ? (
-                            <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#555555" }}>
-                              +{maybe} maybe
-                            </p>
-                          ) : null}
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "flex-end",
-                            gap: "8px",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: "#777777",
-                              fontSize: "12px",
-                              cursor: "pointer",
-                              padding: 0,
-                            }}
-                          >
-                            Manage Event
-                          </button>
-                          <button
-                            type="button"
-                            style={GOLD_OUTLINED_BUTTON_STYLE}
-                            onClick={() => navigate(`${eventsPath}?viewRsvps=${event.id}`)}
-                          >
-                            View RSVPs
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section>
-            <h2 style={sectionHeading}>Hiring Snapshot</h2>
-            {hiringSnapshot.loading ? (
-              <div className="flex justify-center py-6">
-                <Spinner label="Loading hiring snapshot…" />
-              </div>
-            ) : (
-              <>
+              return (
                 <div
+                  key={`${event.id}-${event.occurrenceDate}`}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+                    display: "flex",
+                    alignItems: "center",
                     gap: "12px",
+                    padding: "10px 0",
+                    borderBottom: `1px solid ${CARD_BORDER}`,
                   }}
                 >
-                  <div
-                    style={{
-                      background: "#1a1a1a",
-                      border: `1px solid ${CARD_BORDER}`,
-                      borderRadius: "8px",
-                      padding: "14px",
-                    }}
-                  >
+                  <CompactEventDateBadge dateStr={event.occurrenceDate} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <p
                       style={{
-                        margin: "0 0 6px",
-                        fontSize: "11px",
-                        color: "#555555",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
+                        margin: "0 0 2px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "#ffffff",
                       }}
                     >
-                      Open roles
+                      {event.title}
                     </p>
-                    <p style={{ margin: 0, fontSize: "24px", fontWeight: 800, color: "#ffffff" }}>
-                      {hiringSnapshot.openRolesCount}
+                    <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
+                      {timeLabel} · {locationLabel} · {going} going
                     </p>
                   </div>
-                  <div
-                    style={{
-                      background: "#1a1a1a",
-                      border: `1px solid ${CARD_BORDER}`,
-                      borderRadius: "8px",
-                      padding: "14px",
-                    }}
+                  <button
+                    type="button"
+                    onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
+                    style={textLinkStyle}
                   >
-                    <p
-                      style={{
-                        margin: "0 0 6px",
-                        fontSize: "11px",
-                        color: "#555555",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
-                      }}
-                    >
-                      Pending applications
-                    </p>
-                    <p style={{ margin: 0, fontSize: "24px", fontWeight: 800, color: "#ffffff" }}>
-                      {hiringSnapshot.pendingApplicationsCount}
-                    </p>
-                  </div>
-                  <div
-                    style={{
-                      background: "#1a1a1a",
-                      border: `1px solid ${CARD_BORDER}`,
-                      borderRadius: "8px",
-                      padding: "14px",
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: "0 0 6px",
-                        fontSize: "11px",
-                        color: "#555555",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
-                      }}
-                    >
-                      Roles with 0 applicants
-                    </p>
-                    <p style={{ margin: 0, fontSize: "24px", fontWeight: 800, color: "#ffffff" }}>
-                      {hiringSnapshot.rolesWithZeroApplicants}
-                    </p>
-                  </div>
+                    Manage →
+                  </button>
                 </div>
-                <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                  <button type="button" style={outlineButtonStyle} onClick={() => navigate(recruitingPath)}>
-                    View Hiring
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section
+        style={{
+          background: CARD_BG,
+          border: `1px solid ${CARD_BORDER}`,
+          borderRadius: "10px",
+          padding: "16px",
+        }}
+      >
+        <h2 style={{ ...sectionHeading, marginBottom: "12px" }}>Hiring Snapshot</h2>
+        {hiringSnapshot.loading ? (
+          <div className="flex justify-center py-4">
+            <Spinner label="Loading hiring snapshot…" />
+          </div>
+        ) : (
+          <>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                alignItems: isMobile ? "flex-start" : "center",
+                gap: "20px",
+              }}
+            >
+              <HiringDonutChart
+                openRolesCount={hiringSnapshot.openRolesCount}
+                rolesWithZeroApplicants={hiringSnapshot.rolesWithZeroApplicants}
+              />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                  gap: "16px",
+                  flex: 1,
+                  width: isMobile ? "100%" : undefined,
+                }}
+              >
+                <HiringMetricLine
+                  label="Pending Applications"
+                  value={hiringSnapshot.pendingApplicationsCount}
+                />
+                <HiringMetricLine
+                  label="Roles with 0 Applicants"
+                  value={hiringSnapshot.rolesWithZeroApplicants}
+                />
+                <HiringMetricLine label="Total Roles" value={hiringSnapshot.openRolesCount} />
+              </div>
+            </div>
+            {hiringSnapshot.topOpenRole ? (
+              <div
+                style={{
+                  marginTop: "16px",
+                  paddingTop: "14px",
+                  borderTop: `1px solid ${CARD_BORDER}`,
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 10px",
+                    fontSize: "12px",
+                    color: "#777777",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  Top Open Role
+                </p>
+                <p style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
+                  {hiringSnapshot.topOpenRole.title}
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  <button
+                    type="button"
+                    style={outlineButtonStyle}
+                    onClick={() => navigate(`${recruitingPath}?tab=applications`)}
+                  >
+                    Review Applications
                   </button>
                   <button
                     type="button"
@@ -2017,118 +1347,97 @@ export default function ClubCommandCenter({
                     Create Role
                   </button>
                 </div>
-              </>
-            )}
-          </section>
-
-          <section>
-            <h2 style={sectionHeading}>Recent Club Activity</h2>
-            {activityLoading ? (
-              <div className="flex justify-center py-6">
-                <Spinner label="Loading activity…" />
               </div>
-            ) : activityItems.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>No recent activity yet.</p>
             ) : (
-              <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-                    gap: "4px",
-                  }}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "16px" }}>
+                <button
+                  type="button"
+                  style={noteActionButtonStyle}
+                  onClick={() => navigate(`${recruitingPath}?openCreate=true`)}
                 >
-                  {activityItems.map((item) => (
-                    <div
-                      key={item.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        padding: "10px 0",
-                        borderBottom: "1px solid #1a1a1a",
-                      }}
-                    >
-                      <div style={{ color: "#555555", flexShrink: 0 }}>{item.icon}</div>
-                      <p
-                        style={{
-                          margin: 0,
-                          flex: 1,
-                          minWidth: 0,
-                          fontSize: "13px",
-                          color: "#cccccc",
-                        }}
-                      >
-                        {item.description}
-                      </p>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#555555",
-                          whiteSpace: "nowrap",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {formatRelativeTime(item.timestamp)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ textAlign: "center", marginTop: "12px" }}>
-                  <button
-                    type="button"
-                    onClick={() => navigate(membersPath)}
-                    style={textLinkStyle}
-                  >
-                    View all activity →
-                  </button>
-                </div>
-              </>
+                  Create Role
+                </button>
+              </div>
             )}
-          </section>
-        </div>
+          </>
+        )}
+      </section>
 
-        <aside
+      <RemindersQuickActionsCard
+        reminderEvent={upcomingReminderEvent}
+        onUseReminderTemplate={() => navigate(`${announcementsPath}?openTemplate=true`)}
+        onNewAnnouncement={() => navigate(`${announcementsPath}?openCreate=true`)}
+        onAddEvent={() => navigate(`${eventsPath}?openCreate=true`)}
+        onInviteMembers={() => navigate(membersPath)}
+        onViewReports={() => navigate(analyticsPath)}
+      />
+
+      <section
+        style={{
+          background: "#111111",
+          border: `1px solid #1f1f1f`,
+          borderRadius: "8px",
+          padding: "14px 16px",
+        }}
+      >
+        <h2
           style={{
-            width: isMobile ? "100%" : "320px",
-            flexShrink: 0,
+            fontWeight: 500,
+            fontSize: "13px",
+            color: "#666666",
+            margin: "0 0 10px",
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
           }}
         >
-          <h2
-            style={{
-              fontWeight: 700,
-              fontSize: "15px",
-              color: "#ffffff",
-              margin: "0 0 12px",
-            }}
-          >
-            Suggested Next Actions
-          </h2>
-          {hiringSnapshot.loading && postsLoading ? (
-            <div className="flex justify-center py-6">
-              <Spinner label="Loading suggestions…" />
-            </div>
-          ) : suggestedActions.length === 0 && profileCompletion >= 100 ? (
-            <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>
-              No suggestions right now — your club looks healthy.
-            </p>
-          ) : (
-            <div>
-              {suggestedActions.map((action) => (
-                <SuggestionCard
-                  key={action.id}
-                  icon={action.icon}
-                  title={action.title}
-                  reason={action.reason}
-                  actionLabel={action.actionLabel}
-                  onAction={action.onAction}
-                  tone={suggestedActionTone(action.id)}
-                />
-              ))}
-            </div>
-          )}
-        </aside>
-      </div>
+          Recent Club Activity
+        </h2>
+        {activityLoading ? (
+          <div className="flex justify-center py-3">
+            <Spinner label="Loading activity…" />
+          </div>
+        ) : activityItems.length === 0 ? (
+          <p style={{ margin: 0, fontSize: "12px", color: "#555555" }}>No recent activity yet.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            {activityItems.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "6px 0",
+                  borderBottom: "1px solid #1a1a1a",
+                }}
+              >
+                <div style={{ color: "#444444", flexShrink: 0 }}>{item.icon}</div>
+                <p
+                  style={{
+                    margin: 0,
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: "12px",
+                    color: "#888888",
+                  }}
+                >
+                  {item.description}
+                </p>
+                <span
+                  style={{
+                    fontSize: "10px",
+                    color: "#555555",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {formatRelativeTime(item.timestamp)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
