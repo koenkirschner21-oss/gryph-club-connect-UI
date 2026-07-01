@@ -6,10 +6,8 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { Check } from "lucide-react";
-import {
-  getClubBannerBrandBackground,
-  isUploadedClubBanner,
-} from "../../lib/clubUtils";
+import { isUploadedClubBanner, getClubInitials } from "../../lib/clubUtils";
+import type { ExploreClubClaimState } from "../../lib/clubClaimUtils";
 import type { Club } from "../../types";
 
 const ACCENT_RED = "#E51937";
@@ -63,18 +61,31 @@ function measureExploreDescription(
   };
 }
 
+const claimBadgeStyle = (tone: "available" | "pending"): CSSProperties => ({
+  background: tone === "available" ? "#1a1a1a" : "#1a1500",
+  border: `1px solid ${tone === "available" ? "#333333" : "#3a3010"}`,
+  color: tone === "available" ? "#cccccc" : "#FFC429",
+  borderRadius: "4px",
+  padding: "2px 8px",
+  fontSize: "10px",
+  fontWeight: 600,
+  display: "inline-block",
+});
+
 function ExploreCardFooter({
   club,
   joined,
   claimFocused,
+  claimState,
+  userManagesClub,
 }: {
   club: Club;
   joined: boolean;
   claimFocused: boolean;
+  claimState: ExploreClubClaimState;
+  userManagesClub: boolean;
 }) {
-  const isUnclaimed = club.claimStatus === "unclaimed";
-
-  if (claimFocused && isUnclaimed) {
+  if (claimFocused && claimState === "claimable") {
     return (
       <div
         style={{
@@ -124,6 +135,58 @@ function ExploreCardFooter({
     );
   }
 
+  if (claimFocused && claimState === "user_pending") {
+    return (
+      <div
+        style={{
+          marginTop: "auto",
+          paddingTop: "10px",
+          borderTop: "1px solid #1e1e1e",
+        }}
+      >
+        <p style={{ margin: "0 0 8px", fontSize: "11px", color: "#888888", lineHeight: 1.4 }}>
+          Your claim is under review
+        </p>
+        <Link
+          to={`/clubs/${club.slug}`}
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            display: "block",
+            textAlign: "center",
+            background: "transparent",
+            color: "#ffffff",
+            border: "1px solid #333333",
+            borderRadius: "6px",
+            padding: "8px 10px",
+            fontSize: "12px",
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          View Club
+        </Link>
+      </div>
+    );
+  }
+
+  if (claimFocused && claimState === "pending") {
+    return (
+      <div
+        style={{
+          marginTop: "auto",
+          paddingTop: "10px",
+          borderTop: "1px solid #1e1e1e",
+          display: "flex",
+          justifyContent: "flex-end",
+        }}
+      >
+        <span style={{ color: "#ffffff", fontSize: "12px", fontWeight: 500 }}>
+          View Club →
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -133,10 +196,15 @@ function ExploreCardFooter({
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
+        gap: "8px",
       }}
     >
-      <div>
-        {joined ? (
+      <div style={{ minWidth: 0 }}>
+        {userManagesClub ? (
+          <span style={{ color: "#FFC429", fontSize: "12px", fontWeight: 600 }}>
+            Managed by Me
+          </span>
+        ) : joined ? (
           <span
             style={{
               display: "inline-flex",
@@ -157,9 +225,10 @@ function ExploreCardFooter({
           color: "#ffffff",
           fontSize: "12px",
           fontWeight: 500,
+          flexShrink: 0,
         }}
       >
-        View Club →
+        {userManagesClub ? "Open Workspace →" : "View Club →"}
       </span>
     </div>
   );
@@ -168,12 +237,14 @@ function ExploreCardFooter({
 export default function ExploreClubCard({
   club,
   joined,
-  highlightUnclaimed = false,
+  claimState,
+  userManagesClub = false,
   claimFocused = false,
 }: {
   club: Club;
   joined: boolean;
-  highlightUnclaimed?: boolean;
+  claimState: ExploreClubClaimState;
+  userManagesClub?: boolean;
   claimFocused?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -186,9 +257,17 @@ export default function ExploreClubCard({
   const description = (club.shortDescription || club.description)?.trim();
   const bannerUrl = club.bannerUrl?.trim();
   const showBannerImage = isUploadedClubBanner(bannerUrl);
-  const brandBannerBg = getClubBannerBrandBackground(club.name);
-  const isUnclaimed = club.claimStatus === "unclaimed";
-  const useClaimActions = claimFocused && isUnclaimed;
+  const isClaimable = claimState === "claimable";
+  const useClaimActions = claimFocused && (isClaimable || claimState === "user_pending");
+  const showClaimBadge =
+    claimFocused &&
+    (claimState === "claimable" ||
+      claimState === "pending" ||
+      claimState === "user_pending");
+  const cardHeight = claimFocused && isClaimable ? "340px" : "320px";
+  const contentHeight = claimFocused && isClaimable ? "200px" : "180px";
+  const workspaceHref = `/app/clubs/${club.id}`;
+  const cardLinkTarget = userManagesClub ? workspaceHref : `/clubs/${club.slug}`;
 
   useLayoutEffect(() => {
     const container = descriptionContainerRef.current;
@@ -208,7 +287,7 @@ export default function ExploreClubCard({
         measureExploreDescription(
           measure,
           description,
-          EXPLORE_DESCRIPTION_MAX_LINES,
+          claimFocused && isClaimable ? 1 : EXPLORE_DESCRIPTION_MAX_LINES,
         ),
       );
     }
@@ -217,25 +296,19 @@ export default function ExploreClubCard({
     const observer = new ResizeObserver(updatePreview);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [description]);
+  }, [description, claimFocused, isClaimable]);
 
   const article = (
     <article
       style={{
         width: "100%",
         minWidth: 0,
-        height: "320px",
+        height: cardHeight,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
         background: "#1a1a1a",
-        border: `1px solid ${
-          highlightUnclaimed && isUnclaimed
-            ? "#E51937"
-            : hovered
-              ? "#333333"
-              : "#242424"
-        }`,
+        border: `1px solid ${hovered ? "#333333" : "#242424"}`,
         borderRadius: "12px",
         transition: "all 0.15s ease",
         transform: hovered ? "translateY(-2px)" : undefined,
@@ -250,7 +323,7 @@ export default function ExploreClubCard({
           overflow: "hidden",
           width: "100%",
           position: "relative",
-          background: showBannerImage ? "#1a1a1a" : undefined,
+          background: "#0f0f0f",
         }}
       >
         {showBannerImage ? (
@@ -270,7 +343,9 @@ export default function ExploreClubCard({
             style={{
               width: "100%",
               height: "100%",
-              background: brandBannerBg,
+              background: isClaimable
+                ? "linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%)"
+                : "linear-gradient(135deg, #141414 0%, #0f0f0f 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -281,18 +356,19 @@ export default function ExploreClubCard({
           >
             <span
               style={{
-                fontSize: "13px",
+                fontSize: isClaimable ? "28px" : "13px",
                 fontWeight: 700,
-                color: "#ffffff",
+                color: isClaimable ? "#666666" : "#ffffff",
                 textAlign: "center",
                 lineHeight: 1.35,
-                display: "-webkit-box",
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
+                letterSpacing: isClaimable ? "0.06em" : undefined,
+                display: isClaimable ? "block" : "-webkit-box",
+                WebkitLineClamp: isClaimable ? undefined : 3,
+                WebkitBoxOrient: isClaimable ? undefined : "vertical",
+                overflow: isClaimable ? undefined : "hidden",
               }}
             >
-              {club.name}
+              {isClaimable ? getClubInitials(club) : club.name}
             </span>
           </div>
         )}
@@ -300,7 +376,7 @@ export default function ExploreClubCard({
 
       <div
         style={{
-          height: "180px",
+          height: contentHeight,
           padding: "16px",
           overflow: "hidden",
           display: "flex",
@@ -364,27 +440,22 @@ export default function ExploreClubCard({
           </p>
         )}
 
-        {highlightUnclaimed && isUnclaimed ? (
-          <div style={{ marginTop: "10px" }}>
+        {showClaimBadge ? (
+          <div style={{ marginTop: "8px" }}>
             <span
-              style={{
-                background: "#1a0505",
-                border: "1px solid #E51937",
-                color: "#E51937",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "10px",
-                fontWeight: 600,
-                display: "inline-block",
-              }}
+              style={claimBadgeStyle(
+                claimState === "claimable" ? "available" : "pending",
+              )}
             >
-              Available to claim
+              {claimState === "claimable"
+                ? "Available to claim"
+                : "Claim Pending"}
             </span>
           </div>
         ) : null}
 
         {club.category ? (
-          <div style={{ marginTop: "10px" }}>
+          <div style={{ marginTop: showClaimBadge ? "6px" : "8px" }}>
             <span
               style={{
                 background: "#1a1a1a",
@@ -403,7 +474,13 @@ export default function ExploreClubCard({
           </div>
         ) : null}
 
-        <ExploreCardFooter club={club} joined={joined} claimFocused={claimFocused} />
+        <ExploreCardFooter
+          club={club}
+          joined={joined}
+          claimFocused={claimFocused}
+          claimState={claimState}
+          userManagesClub={userManagesClub}
+        />
       </div>
     </article>
   );
@@ -427,7 +504,7 @@ export default function ExploreClubCard({
 
   return (
     <Link
-      to={`/clubs/${club.slug}`}
+      to={cardLinkTarget}
       className="block no-underline"
       style={{
         cursor: "pointer",

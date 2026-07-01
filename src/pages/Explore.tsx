@@ -6,7 +6,11 @@ import {
   normalizeMembershipType,
   parseJoinQuestions,
 } from "../lib/clubJoinUtils";
-import { normalizeClaimStatus } from "../lib/clubClaimUtils";
+import {
+  normalizeClaimStatus,
+  resolveExploreClubClaimState,
+  type ExploreClubClaimState,
+} from "../lib/clubClaimUtils";
 import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
@@ -253,11 +257,13 @@ function CategoryFilterDropdown({
 function HorizontalClubRow({
   clubs,
   joinedByClubId,
-  highlightUnclaimed = false,
+  claimStateForClub,
+  managesClub,
 }: {
   clubs: Club[];
   joinedByClubId: (clubId: string) => boolean;
-  highlightUnclaimed?: boolean;
+  claimStateForClub: (club: Club) => ExploreClubClaimState;
+  managesClub: (clubId: string) => boolean;
 }) {
   return (
     <div
@@ -275,7 +281,8 @@ function HorizontalClubRow({
           <ExploreClubCard
             club={club}
             joined={joinedByClubId(club.id)}
-            highlightUnclaimed={highlightUnclaimed}
+            claimState={claimStateForClub(club)}
+            userManagesClub={managesClub(club.id)}
           />
         </div>
       ))}
@@ -330,7 +337,7 @@ export default function Explore() {
   const [searchParams] = useSearchParams();
   const claimMode = searchParams.get("claim") === "true";
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined } =
+  const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined, getUserRole } =
     useClubContext();
   const { user } = useAuthContext();
   const [guestClubs, setGuestClubs] = useState<Club[]>([]);
@@ -400,6 +407,109 @@ export default function Explore() {
   const loading = user ? contextLoading : guestLoading;
   const error = user ? contextError : guestError;
 
+  const [claimMetaReady, setClaimMetaReady] = useState(false);
+  const [activeOwnerCountByClubId, setActiveOwnerCountByClubId] = useState<
+    Record<string, number>
+  >({});
+  const [pendingClaimClubIds, setPendingClaimClubIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [userPendingClaimClubIds, setUserPendingClaimClubIds] = useState<
+    Set<string>
+  >(() => new Set());
+
+  useEffect(() => {
+    if (clubs.length === 0) {
+      setActiveOwnerCountByClubId({});
+      setPendingClaimClubIds(new Set());
+      setUserPendingClaimClubIds(new Set());
+      setClaimMetaReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    setClaimMetaReady(false);
+
+    void (async () => {
+      const clubIds = clubs.map((club) => club.id);
+
+      const [ownersRes, pendingRes, userPendingRes] = await Promise.all([
+        supabase
+          .from("club_members")
+          .select("club_id")
+          .eq("role", "owner")
+          .eq("status", "active")
+          .in("club_id", clubIds),
+        supabase
+          .from("club_claim_requests")
+          .select("club_id")
+          .in("club_id", clubIds)
+          .in("status", ["pending", "more_info"]),
+        user?.id
+          ? supabase
+              .from("club_claim_requests")
+              .select("club_id")
+              .eq("submitted_by", user.id)
+              .in("club_id", clubIds)
+              .in("status", ["pending", "more_info"])
+          : Promise.resolve({ data: [] as { club_id: string }[] }),
+      ]);
+
+      if (cancelled) return;
+
+      const ownerCounts: Record<string, number> = {};
+      for (const row of ownersRes.data ?? []) {
+        const clubId = row.club_id as string;
+        ownerCounts[clubId] = (ownerCounts[clubId] ?? 0) + 1;
+      }
+
+      setActiveOwnerCountByClubId(ownerCounts);
+      setPendingClaimClubIds(
+        new Set((pendingRes.data ?? []).map((row) => row.club_id as string)),
+      );
+      setUserPendingClaimClubIds(
+        new Set((userPendingRes.data ?? []).map((row) => row.club_id as string)),
+      );
+      setClaimMetaReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clubs, user?.id]);
+
+  const claimStateForClub = useCallback(
+    (club: Club): ExploreClubClaimState => {
+      if (!claimMetaReady) {
+        const status = club.claimStatus ?? "unclaimed";
+        if (status === "claimed" || status === "active") return "claimed";
+        if (status === "claim_pending") return "pending";
+        return "claimed";
+      }
+
+      return resolveExploreClubClaimState(
+        club.claimStatus ?? "unclaimed",
+        activeOwnerCountByClubId[club.id] ?? 0,
+        pendingClaimClubIds.has(club.id),
+        userPendingClaimClubIds.has(club.id),
+      );
+    },
+    [
+      claimMetaReady,
+      activeOwnerCountByClubId,
+      pendingClaimClubIds,
+      userPendingClaimClubIds,
+    ],
+  );
+
+  const managesClub = useCallback(
+    (clubId: string) => {
+      const role = getUserRole(clubId);
+      return role === "owner" || role === "executive";
+    },
+    [getUserRole],
+  );
+
   const categories = useMemo(() => {
     return [
       "All",
@@ -463,13 +573,13 @@ export default function Explore() {
   const displayClubs = useMemo(() => {
     if (!claimMode) return filteredClubs;
     const unclaimed = filteredClubs.filter(
-      (club) => club.claimStatus === "unclaimed",
+      (club) => claimStateForClub(club) === "claimable",
     );
     const claimed = filteredClubs.filter(
-      (club) => club.claimStatus !== "unclaimed",
+      (club) => claimStateForClub(club) !== "claimable",
     );
     return [...unclaimed, ...claimed];
-  }, [filteredClubs, claimMode]);
+  }, [filteredClubs, claimMode, claimStateForClub]);
 
   const categoryCount = Math.max(categories.length - 1, 0);
   const clubCountLabel =
@@ -689,6 +799,8 @@ export default function Explore() {
                       key={club.id}
                       club={club}
                       joined={isClubJoined(club.id)}
+                      claimState={claimStateForClub(club)}
+                      userManagesClub={managesClub(club.id)}
                     />
                   ))}
                 </div>
@@ -701,7 +813,8 @@ export default function Explore() {
                 <HorizontalClubRow
                   clubs={row.clubs}
                   joinedByClubId={isClubJoined}
-                  highlightUnclaimed={claimMode}
+                  claimStateForClub={claimStateForClub}
+                  managesClub={managesClub}
                 />
               </section>
             ))}
@@ -775,7 +888,8 @@ export default function Explore() {
                     key={club.id}
                     club={club}
                     joined={isClubJoined(club.id)}
-                    highlightUnclaimed={isClaimFocusedExplore}
+                    claimState={claimStateForClub(club)}
+                    userManagesClub={managesClub(club.id)}
                     claimFocused={isClaimFocusedExplore}
                   />
                 ))}

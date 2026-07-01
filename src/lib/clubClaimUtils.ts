@@ -38,3 +38,43 @@ export function isClubClaimable(
 ): boolean {
   return claimStatus === "unclaimed" && activeOwnerCount === 0;
 }
+
+/** Owners in club_members override stale claim_status on imported clubs. */
+export function resolveEffectiveClaimStatus(
+  claimStatus: ClaimStatus,
+  activeOwnerCount: number,
+): ClaimStatus {
+  if (activeOwnerCount > 0) {
+    return claimStatus === "active" ? "active" : "claimed";
+  }
+  return claimStatus;
+}
+
+export type ExploreClubClaimState =
+  | "claimable"
+  | "claimed"
+  | "pending"
+  | "user_pending";
+
+export function resolveExploreClubClaimState(
+  claimStatus: ClaimStatus,
+  activeOwnerCount: number,
+  hasPendingClubClaim: boolean,
+  userSubmittedPendingClaim: boolean,
+): ExploreClubClaimState {
+  const effective = resolveEffectiveClaimStatus(claimStatus, activeOwnerCount);
+
+  if (effective === "claimed" || effective === "active") {
+    return "claimed";
+  }
+  if (userSubmittedPendingClaim) {
+    return "user_pending";
+  }
+  if (effective === "claim_pending" || hasPendingClubClaim) {
+    return "pending";
+  }
+  if (effective === "unclaimed") {
+    return "claimable";
+  }
+  return "claimed";
+}
