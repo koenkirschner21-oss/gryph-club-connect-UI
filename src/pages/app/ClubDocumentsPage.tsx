@@ -25,6 +25,7 @@ import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import type { Visibility } from "../../types";
 import {
+  CategoryFilterDropdown,
   DocumentCard,
   DocumentsTipBar,
   ResourceLinkRow,
@@ -725,15 +726,6 @@ export default function ClubDocumentsPage() {
     setFeedback(null);
   }
 
-  function handleDeleteCustomCategory(value: string) {
-    if (!clubId) return;
-    const next = customCategories.filter((c) => c.value !== value);
-    setCustomCategories(next);
-    saveCustomCategories(clubId, next);
-    if (filterCategory === value) setFilterCategory("all");
-    if (uploadCategory === value) setUploadCategory("general");
-  }
-
   async function handleSaveLink() {
     if (!clubId || !user?.id || !linkTitle.trim() || !linkUrl.trim()) return;
 
@@ -1113,16 +1105,10 @@ export default function ClubDocumentsPage() {
           }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
-            <CategoryPills
+            <CategoryFilterDropdown
               value={filterCategory}
               onChange={setFilterCategory}
               categories={allCategories}
-              includeAll
-              customValues={customCategoryValues}
-              onDeleteCustom={isPrivileged ? handleDeleteCustomCategory : undefined}
-              onAddClick={
-                isPrivileged ? () => setShowCreateCategoryModal(true) : undefined
-              }
             />
           </div>
           {isPrivileged ? (
@@ -1149,7 +1135,7 @@ export default function ClubDocumentsPage() {
                 e.currentTarget.style.color = "#777777";
               }}
             >
-              Manage Categories
+              + New Category
             </button>
           ) : null}
         </div>

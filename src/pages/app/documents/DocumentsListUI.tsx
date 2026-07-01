@@ -940,6 +940,85 @@ export function SortDropdown({
   );
 }
 
+export function CategoryFilterDropdown({
+  value,
+  onChange,
+  categories,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  categories: CategoryOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const options = [{ value: "all", label: "All" }, ...categories];
+  const current = options.find((option) => option.value === value)?.label ?? "All";
+
+  return (
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          height: "40px",
+          background: "#111111",
+          border: `1px solid ${open ? ACCENT_RED : CARD_BORDER}`,
+          borderRadius: "8px",
+          padding: "0 12px",
+          fontSize: "13px",
+          color: "#cccccc",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Category: {current}
+        <ChevronDown size={14} color="#777777" aria-hidden />
+      </button>
+      {open ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: "calc(100% + 4px)",
+            minWidth: "200px",
+            maxHeight: "280px",
+            overflowY: "auto",
+            background: "#151515",
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: "8px",
+            zIndex: 20,
+          }}
+        >
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              style={{
+                width: "100%",
+                background: value === option.value ? "#1f1f1f" : "transparent",
+                border: "none",
+                textAlign: "left",
+                color: value === option.value ? "#ffffff" : "#999999",
+                fontSize: "13px",
+                padding: "10px 12px",
+                cursor: "pointer",
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function DocumentsTipBar() {
   return (
     <div
