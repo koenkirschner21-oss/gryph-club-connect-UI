@@ -1758,6 +1758,7 @@ export default function ClubTasksPage() {
           task={detailTask}
           clubId={clubId}
           onClose={closeTaskDetail}
+          onBack={closeTaskDetail}
           assigneeName={assigneeDisplayFor(detailTask)}
           assigneeAvatarUrl={assigneeAvatarFor(detailTask)}
           canEdit={canManageTasks && !isReviewingTask}

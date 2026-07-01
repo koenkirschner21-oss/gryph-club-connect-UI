@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { Send, X } from "lucide-react";
+import { ArrowLeft, Send, X } from "lucide-react";
 import LinkedMeetingCancelledLabel from "./LinkedMeetingCancelledLabel";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import { formatTaskDate, getTaskDueUrgency, taskDueBadgeConfig, taskDueDateColor } from "../../lib/taskDueUrgency";
 import { shouldSubmitTaskForReview } from "../../lib/taskCompletion";
 import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
@@ -13,6 +14,53 @@ const GOLD = "#FFC429";
 const ACCENT_RED = "#E51937";
 
 const statusLabels = TASK_STATUS_LABELS;
+
+type LinkedSource = {
+  fieldLabel: string;
+  value: string;
+};
+
+function resolveLinkedSource(
+  task: Task,
+  linkedEventFallback?: string,
+): LinkedSource | null {
+  if (task.linkedMeetingId) {
+    return {
+      fieldLabel: "Linked meeting",
+      value: task.linkedMeetingTitle ?? "Meeting",
+    };
+  }
+  if (task.taskType === "event" && (task.linkedEventId || linkedEventFallback)) {
+    return {
+      fieldLabel: "Linked event",
+      value: task.linkedEventTitle ?? linkedEventFallback ?? "Event",
+    };
+  }
+  if (task.linkedHiringListingId) {
+    return {
+      fieldLabel: "Linked role",
+      value: task.linkedHiringTitle ?? "Open role",
+    };
+  }
+  return null;
+}
+
+function resolveDisplayDescription(task: Task, linkedSource: LinkedSource | null): string | null {
+  const description = task.description.trim();
+  if (!description) return null;
+
+  if (linkedSource?.fieldLabel === "Linked meeting") {
+    const autoDescription = `From meeting: ${linkedSource.value}`;
+    if (description === autoDescription) return null;
+  }
+
+  if (linkedSource?.fieldLabel === "Linked event") {
+    const autoDescription = `From event: ${linkedSource.value}`;
+    if (description === autoDescription) return null;
+  }
+
+  return description;
+}
 
 function StatusBadge({ status }: { status: TaskStatus }) {
   const config = {
@@ -46,7 +94,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
   return (
     <p
       style={{
-        margin: "0 0 10px",
+        margin: "0 0 8px",
         fontSize: "10px",
         fontWeight: 700,
         color: "#555555",
@@ -59,37 +107,74 @@ function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
+function MetaField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ marginBottom: "14px" }}>
+      <p
+        style={{
+          margin: "0 0 4px",
+          fontSize: "10px",
+          fontWeight: 700,
+          color: "#555555",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </p>
+      <div style={{ fontSize: "13px", color: "#cccccc", lineHeight: 1.4 }}>{children}</div>
+    </div>
+  );
+}
+
 const primaryButtonStyle: CSSProperties = {
   background: GOLD,
   border: `1px solid ${GOLD}`,
   borderRadius: "6px",
-  padding: "8px 16px",
+  padding: "9px 18px",
   fontSize: "12px",
   fontWeight: 700,
   color: "#0f0f0f",
   cursor: "pointer",
+  fontFamily: "inherit",
 };
 
 const secondaryButtonStyle: CSSProperties = {
   background: "transparent",
   border: "1px solid #333333",
   borderRadius: "6px",
-  padding: "8px 16px",
+  padding: "9px 16px",
   fontSize: "12px",
   fontWeight: 600,
   color: "#cccccc",
   cursor: "pointer",
+  fontFamily: "inherit",
 };
 
-const managementButtonStyle: CSSProperties = {
-  background: "transparent",
-  border: "1px solid #2a2a2a",
+const dangerButtonStyle: CSSProperties = {
+  background: "rgba(229, 25, 55, 0.08)",
+  border: `1px solid ${ACCENT_RED}`,
   borderRadius: "6px",
-  padding: "6px 12px",
-  fontSize: "11px",
+  padding: "9px 16px",
+  fontSize: "12px",
   fontWeight: 600,
-  color: "#777777",
+  color: ACCENT_RED,
   cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const backButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "4px",
+  background: "none",
+  border: "none",
+  color: "#777777",
+  fontSize: "13px",
+  fontWeight: 500,
+  cursor: "pointer",
+  padding: 0,
+  fontFamily: "inherit",
 };
 
 interface TaskComment {
@@ -253,6 +338,7 @@ export interface TaskDetailModalProps {
   task: Task;
   clubId: string;
   onClose: () => void;
+  onBack?: () => void;
   assigneeName: string;
   assigneeAvatarUrl?: string;
   canEdit: boolean;
@@ -275,6 +361,7 @@ export default function TaskDetailModal({
   task,
   clubId,
   onClose,
+  onBack,
   assigneeName,
   assigneeAvatarUrl,
   canEdit,
@@ -292,11 +379,36 @@ export default function TaskDetailModal({
   onSendBackReview,
   onRequestChangesReview,
 }: TaskDetailModalProps) {
+  const isMobile = useIsMobile();
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(true);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
+
+  const handleBack = onBack ?? onClose;
+
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    const { style } = document.body;
+    const previousOverflow = style.overflow;
+    const previousPosition = style.position;
+    const previousTop = style.top;
+    const previousWidth = style.width;
+
+    style.overflow = "hidden";
+    style.position = "fixed";
+    style.top = `-${scrollY}px`;
+    style.width = "100%";
+
+    return () => {
+      style.overflow = previousOverflow;
+      style.position = previousPosition;
+      style.top = previousTop;
+      style.width = previousWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
 
   const loadComments = useCallback(async () => {
     setLoadingComments(true);
@@ -366,6 +478,8 @@ export default function TaskDetailModal({
   const dueUrgency = getTaskDueUrgency(task.dueDate, task.status);
   const dueColor = taskDueDateColor(dueUrgency);
   const dueBadge = taskDueBadgeConfig(dueUrgency);
+  const linkedSource = resolveLinkedSource(task, linkedEventFallback);
+  const displayDescription = resolveDisplayDescription(task, linkedSource);
   const canMarkComplete =
     canChangeStatus &&
     !isReviewMode &&
@@ -397,7 +511,7 @@ export default function TaskDetailModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="task-detail-title"
-      onClick={onClose}
+      onClick={handleBack}
       style={{
         position: "fixed",
         inset: 0,
@@ -406,7 +520,7 @@ export default function TaskDetailModal({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "24px",
+        padding: isMobile ? "12px" : "24px",
       }}
     >
       <div
@@ -415,270 +529,317 @@ export default function TaskDetailModal({
           background: "#141414",
           border: "1px solid #2a2a2a",
           borderRadius: "14px",
-          maxWidth: "580px",
+          maxWidth: isMobile ? "100%" : "920px",
           width: "100%",
-          maxHeight: "85vh",
-          overflowY: "auto",
-          padding: "28px",
+          maxHeight: isMobile ? "92vh" : "88vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           position: "relative",
         }}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            background: "none",
-            border: "none",
-            color: "#555555",
-            cursor: "pointer",
-          }}
-        >
-          <X size={20} />
-        </button>
-
         <div
           style={{
-            paddingBottom: "16px",
-            marginBottom: "20px",
-            borderBottom: "1px solid #1e1e1e",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: isMobile ? "14px 16px 0" : "18px 22px 0",
+            flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
-            <StatusBadge status={task.status} />
-            <PriorityPill priority={task.priority} />
-            <TaskTypeBadge taskType={task.taskType} />
-          </div>
-
-          <h2
-            id="task-detail-title"
+          <button type="button" onClick={handleBack} style={backButtonStyle}>
+            <ArrowLeft size={16} aria-hidden />
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
             style={{
-              margin: 0,
-              fontSize: "22px",
-              fontWeight: 800,
-              color: "#ffffff",
-              lineHeight: 1.25,
-              paddingRight: "28px",
+              background: "none",
+              border: "none",
+              color: "#555555",
+              cursor: "pointer",
+              padding: "4px",
             }}
           >
-            {task.title}
-          </h2>
-          <LinkedMeetingCancelledLabel task={task} />
-        </div>
-
-        <div style={{ marginBottom: "20px" }}>
-          <SectionTitle>Assignment</SectionTitle>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "12px",
-              background: "#111111",
-              border: "1px solid #1e1e1e",
-              borderRadius: "8px",
-            }}
-          >
-            <AvatarCircle name={assigneeName} avatarUrl={assigneeAvatarUrl} size={36} />
-            <div>
-              <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#ffffff" }}>
-                {assigneeName}
-              </p>
-              <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#555555" }}>
-                Assigned to
-              </p>
-            </div>
-          </div>
-          {task.creatorName ? (
-            <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#555555" }}>
-              Created by {task.creatorName}
-            </p>
-          ) : null}
-        </div>
-
-        <div style={{ marginBottom: "20px" }}>
-          <SectionTitle>Timeline</SectionTitle>
-          <div
-            style={{
-              padding: "14px 16px",
-              background: dueUrgency ? "rgba(229, 25, 55, 0.06)" : "#111111",
-              border: `1px solid ${dueUrgency === "overdue" ? ACCENT_RED : dueUrgency ? GOLD : "#1e1e1e"}`,
-              borderRadius: "8px",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: "11px", color: "#555555" }}>Due date</p>
-              <p
-                style={{
-                  margin: "4px 0 0",
-                  fontSize: dueUrgency ? "18px" : "15px",
-                  fontWeight: dueUrgency ? 800 : 600,
-                  color: task.dueDate ? dueColor : "#555555",
-                }}
-              >
-                {task.dueDate ? formatTaskDate(task.dueDate) : "No due date"}
-              </p>
-            </div>
-            {dueBadge ? (
-              <span style={dueBadge.style}>{dueBadge.label}</span>
-            ) : dueUrgency === "due_soon" ? (
-              <span
-                style={{
-                  background: "#1a1500",
-                  border: "1px solid #FFC429",
-                  color: "#FFC429",
-                  borderRadius: "4px",
-                  padding: "1px 6px",
-                  fontSize: "9px",
-                  fontWeight: 700,
-                }}
-              >
-                DUE SOON
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div style={{ marginBottom: "20px" }}>
-          <SectionTitle>Details</SectionTitle>
-          {task.taskType === "event" && (task.linkedEventId || linkedEventFallback) ? (
-            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#777777" }}>
-              Linked event: {task.linkedEventTitle ?? linkedEventFallback ?? "Event"}
-            </p>
-          ) : null}
-          {task.taskType === "meeting" && task.linkedMeetingId ? (
-            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#777777" }}>
-              Linked meeting: {task.linkedMeetingTitle ?? "Meeting"}
-            </p>
-          ) : null}
-          <p
-            style={{
-              margin: 0,
-              fontSize: "14px",
-              color: "#cccccc",
-              lineHeight: 1.6,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {task.description.trim() || "No description provided."}
-          </p>
+            <X size={20} />
+          </button>
         </div>
 
         <div
           style={{
-            marginBottom: "20px",
-            paddingTop: "4px",
-            borderTop: "1px solid #1e1e1e",
+            flex: 1,
+            overflowY: "auto",
+            padding: isMobile ? "14px 16px 16px" : "16px 22px 20px",
           }}
         >
-          <SectionTitle>Comments ({comments.length})</SectionTitle>
           <div
             style={{
-              background: "#0f0f0f",
-              border: "1px solid #1e1e1e",
-              borderRadius: "8px",
-              padding: "12px",
+              paddingBottom: "16px",
+              marginBottom: "18px",
+              borderBottom: "1px solid #1e1e1e",
             }}
           >
-            {loadingComments ? (
-              <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>Loading comments…</p>
-            ) : comments.length === 0 ? (
-              <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>No comments yet.</p>
-            ) : (
-              comments.map((comment) => (
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+              <StatusBadge status={task.status} />
+              <PriorityPill priority={task.priority} />
+              <TaskTypeBadge taskType={task.taskType} />
+            </div>
+
+            <h2
+              id="task-detail-title"
+              style={{
+                margin: 0,
+                fontSize: isMobile ? "20px" : "22px",
+                fontWeight: 800,
+                color: "#ffffff",
+                lineHeight: 1.25,
+              }}
+            >
+              {task.title}
+            </h2>
+            <LinkedMeetingCancelledLabel task={task} />
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.45fr) minmax(220px, 1fr)",
+              gap: isMobile ? "20px" : "28px",
+              alignItems: "start",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              {displayDescription ? (
+                <div style={{ marginBottom: "18px" }}>
+                  <SectionTitle>Description</SectionTitle>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: "14px",
+                      color: "#cccccc",
+                      lineHeight: 1.6,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {displayDescription}
+                  </p>
+                </div>
+              ) : null}
+
+              {linkedSource ? (
+                <div style={{ marginBottom: "18px" }}>
+                  <SectionTitle>{linkedSource.fieldLabel}</SectionTitle>
+                  <p style={{ margin: 0, fontSize: "14px", color: "#cccccc", fontWeight: 500 }}>
+                    {linkedSource.value}
+                  </p>
+                </div>
+              ) : null}
+
+              <div>
+                <SectionTitle>Comments ({comments.length})</SectionTitle>
                 <div
-                  key={comment.id}
+                  style={{
+                    background: "#0f0f0f",
+                    border: "1px solid #1e1e1e",
+                    borderRadius: "8px",
+                    padding: "12px",
+                  }}
+                >
+                  {loadingComments ? (
+                    <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>
+                      Loading comments…
+                    </p>
+                  ) : comments.length === 0 ? (
+                    <p style={{ fontSize: "12px", color: "#555555", margin: 0 }}>No comments yet.</p>
+                  ) : (
+                    comments.map((comment) => (
+                      <div
+                        key={comment.id}
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          marginBottom: "10px",
+                          paddingBottom: "10px",
+                          borderBottom: "1px solid #1a1a1a",
+                        }}
+                      >
+                        <AvatarCircle
+                          name={comment.authorName}
+                          avatarUrl={comment.avatarUrl}
+                          size={28}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#cccccc" }}>
+                              {comment.authorName}
+                            </span>
+                            <span style={{ fontSize: "11px", color: "#555555", marginLeft: "auto" }}>
+                              {formatCommentTime(comment.createdAt)}
+                            </span>
+                          </div>
+                          <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaaaaa" }}>
+                            {comment.content}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {canComment && userId ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        marginTop: comments.length > 0 ? "12px" : 0,
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void handleSendComment();
+                        }}
+                        placeholder="Add a comment…"
+                        style={{
+                          flex: 1,
+                          background: "#0f0f0f",
+                          border: "1px solid #2a2a2a",
+                          borderRadius: "6px",
+                          padding: "8px 10px",
+                          fontSize: "13px",
+                          color: "#ffffff",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleSendComment()}
+                        disabled={sending || !draft.trim()}
+                        style={{
+                          ...secondaryButtonStyle,
+                          padding: "8px 12px",
+                          opacity: sending || !draft.trim() ? 0.6 : 1,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <Send size={14} aria-hidden />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <aside
+              style={{
+                minWidth: 0,
+                background: isMobile ? "transparent" : "#111111",
+                border: isMobile ? "none" : "1px solid #1e1e1e",
+                borderRadius: isMobile ? 0 : "10px",
+                padding: isMobile ? 0 : "14px 16px",
+              }}
+            >
+              <MetaField label="Assignee">
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <AvatarCircle name={assigneeName} avatarUrl={assigneeAvatarUrl} size={28} />
+                  <span style={{ fontWeight: 600, color: "#ffffff" }}>{assigneeName}</span>
+                </div>
+              </MetaField>
+
+              {task.creatorName ? (
+                <MetaField label="Created by">{task.creatorName}</MetaField>
+              ) : null}
+
+              <MetaField label="Due date">
+                <div
                   style={{
                     display: "flex",
-                    gap: "8px",
-                    marginBottom: "10px",
-                    paddingBottom: "10px",
-                    borderBottom: "1px solid #1a1a1a",
-                  }}
-                >
-                  <AvatarCircle
-                    name={comment.authorName}
-                    avatarUrl={comment.avatarUrl}
-                    size={28}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#cccccc" }}>
-                        {comment.authorName}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "#555555", marginLeft: "auto" }}>
-                        {formatCommentTime(comment.createdAt)}
-                      </span>
-                    </div>
-                    <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaaaaa" }}>
-                      {comment.content}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-
-            {canComment && userId ? (
-              <div style={{ display: "flex", gap: "8px", marginTop: comments.length > 0 ? "12px" : 0 }}>
-                <input
-                  type="text"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void handleSendComment();
-                  }}
-                  placeholder="Add a comment…"
-                  style={{
-                    flex: 1,
-                    background: "#0f0f0f",
-                    border: "1px solid #2a2a2a",
-                    borderRadius: "6px",
-                    padding: "8px 10px",
-                    fontSize: "13px",
-                    color: "#ffffff",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleSendComment()}
-                  disabled={sending || !draft.trim()}
-                  style={{
-                    ...secondaryButtonStyle,
-                    padding: "8px 12px",
-                    opacity: sending || !draft.trim() ? 0.6 : 1,
-                    display: "inline-flex",
                     alignItems: "center",
-                    gap: "4px",
+                    gap: "8px",
+                    flexWrap: "wrap",
                   }}
                 >
-                  <Send size={14} aria-hidden />
-                </button>
-              </div>
-            ) : null}
+                  <span
+                    style={{
+                      fontSize: dueUrgency ? "16px" : "14px",
+                      fontWeight: dueUrgency ? 800 : 600,
+                      color: task.dueDate ? dueColor : "#555555",
+                    }}
+                  >
+                    {task.dueDate ? formatTaskDate(task.dueDate) : "No due date"}
+                  </span>
+                  {dueBadge ? (
+                    <span style={dueBadge.style}>{dueBadge.label}</span>
+                  ) : dueUrgency === "due_soon" ? (
+                    <span
+                      style={{
+                        background: "#1a1500",
+                        border: "1px solid #FFC429",
+                        color: "#FFC429",
+                        borderRadius: "4px",
+                        padding: "1px 6px",
+                        fontSize: "9px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      DUE SOON
+                    </span>
+                  ) : null}
+                </div>
+              </MetaField>
+
+              <MetaField label="Status">
+                <StatusBadge status={task.status} />
+              </MetaField>
+
+              <MetaField label="Priority">
+                <PriorityPill priority={task.priority} />
+              </MetaField>
+
+              <MetaField label="Type">
+                <TaskTypeBadge taskType={task.taskType} />
+              </MetaField>
+
+              {linkedSource ? (
+                <MetaField label="Source">{linkedSource.value}</MetaField>
+              ) : null}
+            </aside>
           </div>
+
+          {metadataFooter ? (
+            <p
+              style={{
+                margin: "16px 0 0",
+                fontSize: "10px",
+                color: "#444444",
+                lineHeight: 1.5,
+              }}
+            >
+              {metadataFooter}
+            </p>
+          ) : null}
         </div>
 
         <div
           style={{
-            paddingTop: "16px",
+            flexShrink: 0,
             borderTop: "1px solid #1e1e1e",
+            background: "#121212",
+            padding: isMobile ? "12px 16px 16px" : "14px 22px 18px",
           }}
         >
-          <SectionTitle>Actions</SectionTitle>
           {isReviewMode ? (
             <div style={{ width: "100%" }}>
               <textarea
                 value={reviewNote}
                 onChange={(event) => setReviewNote(event.target.value)}
                 placeholder="Optional note for send-back or change request…"
-                rows={3}
+                rows={2}
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
@@ -717,73 +878,38 @@ export default function TaskDetailModal({
               </div>
             </div>
           ) : (
-            <>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
-                {canMarkComplete ? (
-                  <button
-                    type="button"
-                    onClick={() => onStatusChange("done")}
-                    style={primaryButtonStyle}
-                  >
-                    {completeLabel}
-                  </button>
-                ) : null}
-                {canMoveToTodo ? (
-                  <button
-                    type="button"
-                    onClick={() => onStatusChange("todo")}
-                    style={secondaryButtonStyle}
-                  >
-                    Move to To Do
-                  </button>
-                ) : null}
-              </div>
-              {(canEdit || canDelete) && (
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "8px",
-                    paddingTop: "8px",
-                    borderTop: "1px solid #1a1a1a",
-                  }}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+              {canMarkComplete ? (
+                <button
+                  type="button"
+                  onClick={() => onStatusChange("done")}
+                  style={primaryButtonStyle}
                 >
-                  {canEdit ? (
-                    <button type="button" onClick={onEdit} style={managementButtonStyle}>
-                      Edit
-                    </button>
-                  ) : null}
-                  {canDelete ? (
-                    <button
-                      type="button"
-                      onClick={onDelete}
-                      style={{
-                        ...managementButtonStyle,
-                        borderColor: "rgba(229, 25, 55, 0.4)",
-                        color: ACCENT_RED,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  ) : null}
-                </div>
-              )}
-            </>
+                  {completeLabel}
+                </button>
+              ) : null}
+              {canMoveToTodo ? (
+                <button
+                  type="button"
+                  onClick={() => onStatusChange("todo")}
+                  style={secondaryButtonStyle}
+                >
+                  Move to To Do
+                </button>
+              ) : null}
+              {canEdit ? (
+                <button type="button" onClick={onEdit} style={secondaryButtonStyle}>
+                  Edit
+                </button>
+              ) : null}
+              {canDelete ? (
+                <button type="button" onClick={onDelete} style={dangerButtonStyle}>
+                  Delete
+                </button>
+              ) : null}
+            </div>
           )}
         </div>
-
-        {metadataFooter ? (
-          <p
-            style={{
-              margin: "16px 0 0",
-              fontSize: "10px",
-              color: "#444444",
-              lineHeight: 1.5,
-            }}
-          >
-            {metadataFooter}
-          </p>
-        ) : null}
       </div>
     </div>
   );
