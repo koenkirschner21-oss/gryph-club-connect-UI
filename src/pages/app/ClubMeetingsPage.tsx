@@ -176,11 +176,11 @@ export default function ClubMeetingsPage() {
   }, [loadMeetings, loadClubActionItems, meetingId]);
 
   useEffect(() => {
-    if (isCreateRoute && isPrivileged) {
+    if (isCreateRoute && isPrivileged && !editMeetingId) {
       setEditingMeeting(null);
       setCreateInitial(emptyCreateForm(presetType));
     }
-  }, [isCreateRoute, isPrivileged, presetType]);
+  }, [isCreateRoute, isPrivileged, presetType, editMeetingId]);
 
   const visibleMeetings = useMemo(() => {
     if (isPrivileged || !user?.id) return meetings;

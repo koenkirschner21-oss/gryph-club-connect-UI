@@ -46,6 +46,8 @@ function useDebouncedSave(
   const [status, setStatus] = useState<"saved" | "saving" | "error">("saved");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipInitialRef = useRef(true);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
 
   useEffect(() => {
     if (skipInitialRef.current) {
@@ -56,14 +58,15 @@ function useDebouncedSave(
     setStatus("saving");
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      void onSave(value)
+      void onSaveRef
+        .current(value)
         .then(() => setStatus("saved"))
         .catch(() => setStatus("error"));
     }, delay);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [value, onSave, delay]);
+  }, [value, delay]);
 
   return status;
 }
@@ -186,7 +189,9 @@ export function MeetingDetailView({
 
   const saveAgenda = useCallback(
     async (items: string[]) => {
-      if (!isPrivileged || !meeting) return;
+      if (!isPrivileged || !meeting) {
+        throw new Error("Unable to save agenda");
+      }
       const serialized = serializeAgendaItems(items);
       const { error } = await supabase
         .from("club_meetings")
@@ -200,7 +205,9 @@ export function MeetingDetailView({
 
   const saveNotesBundle = useCallback(
     async (notes: string, decisions: string) => {
-      if (!isPrivileged || !meeting || !metadata) return;
+      if (!isPrivileged || !meeting || !metadata) {
+        throw new Error("Unable to save notes");
+      }
       const nextMetadata: MeetingMetadata = { ...metadata, decisions: decisions.trim() || undefined };
       const serialized = serializeMeetingNotes(nextMetadata, notes);
       const { error } = await supabase
@@ -216,12 +223,16 @@ export function MeetingDetailView({
 
   const agendaSaveStatus = useDebouncedSave(
     JSON.stringify(agendaItems),
-    async () => saveAgenda(agendaItems),
+    async () => {
+      await saveAgenda(agendaItems);
+    },
   );
 
   const notesSaveStatus = useDebouncedSave(
     `${notesDraft}|||${decisionsDraft}`,
-    async () => saveNotesBundle(notesDraft, decisionsDraft),
+    async () => {
+      await saveNotesBundle(notesDraft, decisionsDraft);
+    },
   );
 
   const convertedCount = actionItems.filter((item) => item.linkedTaskId).length;

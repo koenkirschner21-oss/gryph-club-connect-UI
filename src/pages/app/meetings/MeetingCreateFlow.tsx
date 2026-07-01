@@ -52,6 +52,8 @@ export function MeetingCreateFlow({
   const { members } = useClubMembers(clubId);
   const [form, setForm] = useState<MeetingCreateFormState>(initial);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [eventOptions, setEventOptions] = useState<LinkOption[]>([]);
   const [hiringOptions, setHiringOptions] = useState<LinkOption[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -176,50 +178,66 @@ export function MeetingCreateFlow({
   const handleSave = async () => {
     if (!form.title.trim() || !form.date || !form.time) return;
     setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
 
-    const eventTitle = eventOptions.find((option) => option.id === form.linkedEventId)?.title;
-    const hiringTitle = hiringOptions.find((option) => option.id === form.linkedHiringListingId)?.title;
-    const payload = buildMeetingUpdatePayload(form, eventTitle, hiringTitle);
+    try {
+      const eventTitle = eventOptions.find((option) => option.id === form.linkedEventId)?.title;
+      const hiringTitle = hiringOptions.find((option) => option.id === form.linkedHiringListingId)?.title;
+      const payload = buildMeetingUpdatePayload(form, eventTitle, hiringTitle);
 
-    let meetingId = editingId;
-    if (editingId) {
-      const { error } = await supabase
-        .from("club_meetings")
-        .update(payload)
-        .eq("id", editingId);
-      if (error) {
-        setSaving(false);
-        return;
+      let meetingId = editingId;
+      if (editingId) {
+        const { error } = await supabase
+          .from("club_meetings")
+          .update(payload)
+          .eq("id", editingId);
+        if (error) {
+          setSaveError(error.message);
+          return;
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("club_meetings")
+          .insert({ ...payload, club_id: clubId, created_by: userId })
+          .select("id")
+          .single();
+        if (error || !data) {
+          setSaveError(error?.message ?? "Could not create meeting.");
+          return;
+        }
+        meetingId = data.id as string;
+
+        const draftItems = form.actionItems.filter((item) => item.title.trim());
+        if (draftItems.length > 0) {
+          const { error: itemsError } = await supabase.from("meeting_action_items").insert(
+            draftItems.map((item) => ({
+              meeting_id: meetingId,
+              title: item.title.trim(),
+              assignee_id: item.assigneeId || null,
+              due_date: item.dueDate || null,
+            })),
+          );
+          if (itemsError) {
+            setSaveError(itemsError.message);
+            return;
+          }
+        }
       }
-    } else {
-      const { data, error } = await supabase
-        .from("club_meetings")
-        .insert({ ...payload, club_id: clubId, created_by: userId })
-        .select("id")
-        .single();
-      if (error || !data) {
-        setSaving(false);
-        return;
-      }
-      meetingId = data.id as string;
 
-      const draftItems = form.actionItems.filter((item) => item.title.trim());
-      if (draftItems.length > 0) {
-        await supabase.from("meeting_action_items").insert(
-          draftItems.map((item) => ({
-            meeting_id: meetingId,
-            title: item.title.trim(),
-            assignee_id: item.assigneeId || null,
-            due_date: item.dueDate || null,
-          })),
-        );
-      }
-    }
+      setSaveSuccess(true);
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
 
-    setSaving(false);
-    if (meetingId) {
-      navigate(`/app/clubs/${clubId}/meetings/${meetingId}`);
-      onSaved();
+      if (meetingId) {
+        navigate(`/app/clubs/${clubId}/meetings/${meetingId}`);
+        onSaved();
+      }
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Could not save meeting.",
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -633,8 +651,19 @@ export function MeetingCreateFlow({
             opacity: saving || !form.title.trim() ? 0.6 : 1,
           }}
         >
-          {saving ? "Saving…" : editingId ? "Save Changes" : "Create Meeting"}
+          {saving
+            ? "Saving…"
+            : saveSuccess
+              ? "Saved"
+              : editingId
+                ? "Save Changes"
+                : "Create Meeting"}
         </button>
+        {saveError ? (
+          <p style={{ margin: "10px 0 0", fontSize: "13px", color: "#E51937" }}>
+            {saveError}
+          </p>
+        ) : null}
       </div>
     </div>
   );
