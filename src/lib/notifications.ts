@@ -1306,3 +1306,90 @@ export async function notifyMemberRemovedFromClub(
     console.error("Failed to create member removal inbox message.");
   }
 }
+
+function describeRoleChange(params: {
+  previousAccessLevel: AccessLevel;
+  nextAccessLevel: AccessLevel;
+  previousTitle?: string | null;
+  nextTitle?: string | null;
+  clubName: string;
+}): string {
+  const previousLabel = accessLevelBadgeLabel(params.previousAccessLevel);
+  const nextLabel = accessLevelBadgeLabel(params.nextAccessLevel);
+  const previousTitle = params.previousTitle?.trim();
+  const nextTitle = params.nextTitle?.trim();
+
+  if (params.previousAccessLevel !== params.nextAccessLevel) {
+    if (
+      params.nextAccessLevel === "president" ||
+      (params.previousAccessLevel === "member" &&
+        (params.nextAccessLevel === "executive" ||
+          params.nextAccessLevel === "managerial_executive"))
+    ) {
+      return `Your role in ${params.clubName} has been updated to ${nextLabel}${nextTitle ? ` (${nextTitle})` : ""}.`;
+    }
+    if (params.nextAccessLevel === "member") {
+      return `Your role in ${params.clubName} has been updated to ${nextLabel}${nextTitle ? ` (${nextTitle})` : ""}.`;
+    }
+    return `Your access level in ${params.clubName} changed from ${previousLabel} to ${nextLabel}.`;
+  }
+
+  if (previousTitle !== nextTitle) {
+    return nextTitle
+      ? `Your role title in ${params.clubName} is now ${nextTitle}.`
+      : `Your role title in ${params.clubName} has been updated.`;
+  }
+
+  return `Your role or permissions in ${params.clubName} have been updated.`;
+}
+
+export async function notifyRoleUpdated(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    memberUserId: string;
+    memberRowId: string;
+    previousAccessLevel: AccessLevel;
+    nextAccessLevel: AccessLevel;
+    previousTitle?: string | null;
+    nextTitle?: string | null;
+  },
+): Promise<void> {
+  const detail = describeRoleChange({
+    previousAccessLevel: params.previousAccessLevel,
+    nextAccessLevel: params.nextAccessLevel,
+    previousTitle: params.previousTitle,
+    nextTitle: params.nextTitle,
+    clubName: params.clubName,
+  });
+  const bellMessage = `[Role Updated] ${detail}`;
+  const inboxMessage = detail;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.memberUserId,
+    type: "role_updated",
+    message: bellMessage,
+    clubId: params.clubId,
+    referenceId: params.memberRowId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send role update notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.memberUserId,
+    type: "role_updated",
+    title: `Role updated — ${params.clubName}`,
+    message: inboxMessage,
+    clubId: params.clubId,
+    referenceId: params.memberRowId,
+    referenceType: "club_member",
+    actionData: {
+      path: `/app/clubs/${params.clubId}/members`,
+    },
+  });
+  if (!inboxOk) {
+    console.error("Failed to create role update inbox message.");
+  }
+}

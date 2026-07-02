@@ -25,6 +25,7 @@ import {
   notifyJoinRequestApproved,
   notifyJoinRequestRejected,
   notifyMemberRemovedFromClub,
+  notifyRoleUpdated,
 } from "../../lib/notifications";
 import type { ClubMember, JoinAnswer, MemberRole, AccessLevel } from "../../types";
 import { isTopClubModeratorRole } from "../../lib/clubRoles";
@@ -1035,6 +1036,7 @@ export default function ClubMembersPage() {
     setActionLoading(memberId);
     setFeedback(null);
 
+    const member = members.find((entry) => entry.id === memberId);
     const trimmedTitle = resolveRoleTitleFromSelection(
       editTitleSelection,
       editTitleCustom,
@@ -1068,6 +1070,26 @@ export default function ClubMembersPage() {
       setFeedback({ type: "error", text: "Failed to update member role and title." });
       setActionLoading(null);
       return;
+    }
+
+    if (member && clubId && club?.name && member.userId !== user?.id) {
+      const previousAccessLevel = accessLevelFromMember(member);
+      const previousTitle = member.roleTitle ?? memberTitles[memberId] ?? null;
+      const roleChanged =
+        previousAccessLevel !== editAccessLevel ||
+        (previousTitle?.trim() || null) !== (trimmedTitle || null);
+      if (roleChanged) {
+        void notifyRoleUpdated(supabase, {
+          clubId,
+          clubName: club.name,
+          memberUserId: member.userId,
+          memberRowId: memberId,
+          previousAccessLevel,
+          nextAccessLevel: editAccessLevel,
+          previousTitle,
+          nextTitle: trimmedTitle || null,
+        });
+      }
     }
 
     setMemberTitles((prev) => ({

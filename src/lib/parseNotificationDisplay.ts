@@ -86,6 +86,9 @@ export function parseNotificationDisplay(
   if (type === "member_removed") {
     return { title: "Membership Update", body: trimmed };
   }
+  if (type === "role_updated") {
+    return { title: "Role Updated", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }

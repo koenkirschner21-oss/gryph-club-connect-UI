@@ -105,6 +105,8 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "join_rejected":
     case "join_request_submitted":
     case "member_joined":
+    case "role_updated":
+    case "member_removed":
       return `${base}/members`;
     case "direct_message":
     case "mention":
