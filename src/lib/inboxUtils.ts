@@ -9,6 +9,7 @@ export type InboxMessageType =
   | "ownership_transfer"
   | "join_approved"
   | "join_rejected"
+  | "join_request_submitted"
   | "club_claim_approved"
   | "club_claim_rejected"
   | "club_request_approved"
@@ -71,6 +72,7 @@ const INVITE_TYPES = new Set<InboxMessageType>([
 const CLUB_UPDATE_TYPES = new Set<InboxMessageType>([
   "join_approved",
   "join_rejected",
+  "join_request_submitted",
   "club_claim_approved",
   "club_claim_rejected",
   "club_request_approved",

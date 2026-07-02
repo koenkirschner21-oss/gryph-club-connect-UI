@@ -392,14 +392,27 @@ export async function notifyJoinRequestRejected(
     studentUserId: string;
   },
 ): Promise<void> {
+  const message = `Your request to join ${params.clubName} was not approved at this time.`;
+
   const ok = await createNotification(supabase, {
     userId: params.studentUserId,
     type: "join_rejected",
-    message: `Your request to join ${params.clubName} was not approved at this time.`,
+    message,
     clubId: params.clubId,
   });
   if (!ok) {
     console.error("Failed to send join rejection notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.studentUserId,
+    type: "join_rejected",
+    title: "Join Request Declined",
+    message,
+    clubId: params.clubId,
+  });
+  if (!inboxOk) {
+    console.error("Failed to create join rejection inbox message.");
   }
 }
 
