@@ -297,24 +297,18 @@ export function ClubProvider({ children }: { children: ReactNode }) {
     ): Promise<boolean> => {
       if (!user) return false;
 
-      const localClub = clubs.find((c) => c.id === clubId);
-      let membershipType = localClub?.membershipType ?? "open";
+      const { data: clubRow, error: clubError } = await supabase
+        .from("clubs")
+        .select("membership_type")
+        .eq("id", clubId)
+        .maybeSingle();
 
-      if (!localClub) {
-        const { data, error } = await supabase
-          .from("clubs")
-          .select("*")
-          .eq("id", clubId)
-          .maybeSingle();
-        if (error || !data) {
-          console.error("Failed to load club for join:", error?.message);
-          return false;
-        }
-        const c = mapRow(data as Record<string, unknown>);
-        membershipType = c.membershipType ?? "open";
-        setClubs((prev) =>
-          prev.some((x) => x.id === c.id) ? prev : [...prev, c]);
+      if (clubError || !clubRow) {
+        console.error("Failed to load club for join:", clubError?.message);
+        return false;
       }
+
+      const membershipType = normalizeMembershipType(clubRow.membership_type);
 
       if (membershipType === "no_membership") {
         return false;
@@ -360,7 +354,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
 
       return true;
     },
-    [user, clubs],
+    [user],
   );
 
   const leaveClub = useCallback(

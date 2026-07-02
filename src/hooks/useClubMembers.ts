@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { provisionClubChatsForUser } from "../lib/clubChatProvisioning";
 import { normalizeMembershipType } from "../lib/clubJoinUtils";
 import type { ClubMember, MemberRole, MembershipType, AccessLevel } from "../types";
 import { parseJoinAnswers } from "../lib/clubJoinUtils";
@@ -241,14 +240,6 @@ export function useClubMembers(
       if (approved) {
         const approvedMember = approved;
         setMembers((active) => [...active, { ...approvedMember, status: "active" }]);
-        if (clubId) {
-          await provisionClubChatsForUser(
-            supabase,
-            clubId,
-            approvedMember.userId,
-            true,
-          );
-        }
       }
       return true;
     },
