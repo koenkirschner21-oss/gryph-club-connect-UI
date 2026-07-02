@@ -859,3 +859,97 @@ export async function notifyClubRequestMoreInfo(
     console.error("Failed to create club request more-info inbox message.");
   }
 }
+
+function formatEventScheduleLabel(date: string, time: string): string {
+  const parsed = new Date(date);
+  const datePart = Number.isNaN(parsed.getTime())
+    ? date
+    : parsed.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+  const rawTime = time.trim();
+  if (!rawTime || rawTime.toUpperCase() === "TBD") return datePart;
+  const parsedTime = new Date(`1970-01-01T${rawTime}`);
+  const timePart = Number.isNaN(parsedTime.getTime())
+    ? rawTime
+    : parsedTime.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+  return `${datePart} · ${timePart}`;
+}
+
+export async function fetchEventRsvpRecipientUserIds(
+  supabase: SupabaseClient,
+  eventId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("event_rsvps")
+    .select("user_id")
+    .eq("event_id", eventId)
+    .in("status", ["going", "maybe"]);
+
+  if (error) {
+    console.error("Failed to load event RSVP recipients:", error.message);
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.user_id as string)
+        .filter((id) => Boolean(id)),
+    ),
+  );
+}
+
+export async function notifyEventCancelled(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    eventId: string;
+    eventTitle: string;
+    eventDate: string;
+    eventTime: string;
+    recipientUserIds: string[];
+  },
+): Promise<void> {
+  if (params.recipientUserIds.length === 0) return;
+
+  const schedule = formatEventScheduleLabel(params.eventDate, params.eventTime);
+  const bellMessage = `[Event Cancelled] ${params.eventTitle} on ${schedule} has been cancelled.`;
+  const inboxMessage = `The event "${params.eventTitle}" scheduled for ${schedule} has been cancelled. Your sign-up is no longer active.`;
+
+  const bellOk = await createNotifications(
+    supabase,
+    params.recipientUserIds.map((userId) => ({
+      userId,
+      type: "event_cancelled",
+      message: bellMessage,
+      clubId: params.clubId,
+      referenceId: params.eventId,
+    })),
+  );
+  if (!bellOk) {
+    console.error("Failed to send event cancellation notifications.");
+  }
+
+  for (const userId of params.recipientUserIds) {
+    const inboxOk = await createInboxMessage(supabase, {
+      recipientId: userId,
+      type: "event_cancelled",
+      title: `Event cancelled — ${params.eventTitle}`,
+      message: inboxMessage,
+      clubId: params.clubId,
+      referenceId: params.eventId,
+      referenceType: "event",
+    });
+    if (!inboxOk) {
+      console.error("Failed to create event cancellation inbox message for:", userId);
+    }
+  }
+}

@@ -65,6 +65,9 @@ export function parseNotificationDisplay(
   if (type === "club_request_more_info") {
     return { title: "More Info Needed", body: trimmed };
   }
+  if (type === "event_cancelled") {
+    return { title: "Event Cancelled", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }

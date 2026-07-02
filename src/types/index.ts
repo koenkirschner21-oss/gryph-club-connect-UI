@@ -291,7 +291,8 @@ export type NotificationType =
   | "club_request_submitted"
   | "club_request_approved"
   | "club_request_rejected"
-  | "club_request_more_info";
+  | "club_request_more_info"
+  | "event_cancelled";
 
 export interface Notification {
   id: string;

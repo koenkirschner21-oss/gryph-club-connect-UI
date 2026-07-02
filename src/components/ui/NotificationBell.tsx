@@ -20,6 +20,7 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   club_request_approved: "✅",
   club_request_rejected: "✕",
   club_request_more_info: "❓",
+  event_cancelled: "📅",
   club_update: "🔔",
 };
 

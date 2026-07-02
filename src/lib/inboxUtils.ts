@@ -22,6 +22,7 @@ export type InboxMessageType =
   | "invite_accepted"
   | "invite_declined"
   | "role_updated"
+  | "event_cancelled"
   | "system_message";
 
 export type InboxFilter =
@@ -79,6 +80,7 @@ const CLUB_UPDATE_TYPES = new Set<InboxMessageType>([
   "club_request_rejected",
   "ownership_transfer",
   "role_updated",
+  "event_cancelled",
 ]);
 
 const ADMIN_TYPES = new Set<InboxMessageType>(["admin_message", "system_message"]);

@@ -41,6 +41,10 @@ import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import { summarizeFeedbackRows, type EventReviewStatus } from "../../lib/eventReview";
 import {
+  fetchEventRsvpRecipientUserIds,
+  notifyEventCancelled,
+} from "../../lib/notifications";
+import {
   filterRsvpQuestionsForLoggedInUser,
   formatGoingCount,
   getEventRsvpAccess,
@@ -2852,8 +2856,23 @@ export default function ClubEventsPage() {
   async function handleDelete(eventId: string) {
     if (!window.confirm("Delete this event? This cannot be undone.")) return;
     setFeedback(null);
+
+    const event = events.find((entry) => entry.id === eventId);
+    const recipientUserIds = await fetchEventRsvpRecipientUserIds(supabase, eventId);
+
     const ok = await deleteEvent(eventId);
     if (ok) {
+      if (event && clubId && recipientUserIds.length > 0) {
+        void notifyEventCancelled(supabase, {
+          clubId,
+          clubName: club?.name ?? "Club",
+          eventId,
+          eventTitle: event.title,
+          eventDate: event.date,
+          eventTime: event.time,
+          recipientUserIds,
+        });
+      }
       setFeedback({ type: "success", text: "Event deleted." });
     } else {
       setFeedback({ type: "error", text: "Failed to delete event." });

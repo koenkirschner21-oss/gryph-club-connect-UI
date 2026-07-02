@@ -85,6 +85,7 @@ function resolveNotificationLink(notification: Notification): string | null {
   switch (notification.type as string) {
     case "new_event":
     case "event":
+    case "event_cancelled":
       return `${base}/events`;
     case "announcement":
       return `${base}/announcements`;
@@ -147,6 +148,7 @@ function notificationGroupId(type: string): NotificationGroupId {
       return "membership";
     case "new_event":
     case "event":
+    case "event_cancelled":
       return "events";
     case "task_assigned":
     case "task":
