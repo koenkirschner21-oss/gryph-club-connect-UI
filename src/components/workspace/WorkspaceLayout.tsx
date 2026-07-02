@@ -32,7 +32,14 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubWorkspaceNav } from "../../hooks/useClubWorkspaceNav";
+import { useClubMembers } from "../../hooks/useClubMembers";
 import { CLUB_CHAT_READ_EVENT } from "../../lib/clubChatEvents";
+import {
+  markWorkspaceSectionViewed,
+  sectionFromWorkspacePath,
+  type WorkspaceSection,
+} from "../../lib/workspaceSectionViews";
+import { loadWorkspaceBadgeCounts } from "../../lib/workspaceBadgeCounts";
 import type { WorkspaceNavKey } from "../../lib/workspaceNavVisibility";
 import { formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import Spinner from "../ui/Spinner";
@@ -43,7 +50,7 @@ const workspaceLinks: {
   label: string;
   end: boolean;
   Icon: (props: IconProps) => ReactElement;
-  badgeKey?: "chat" | "tasks" | "announcements" | "members";
+  badgeKey?: "chat" | "tasks" | "announcements" | "events" | "meetings" | "members";
 }[] = [
   { key: "dashboard", to: "", label: "Dashboard", end: true, Icon: LayoutDashboard },
   {
@@ -56,7 +63,7 @@ const workspaceLinks: {
   },
   { key: "chat", to: "chat", label: "Chat", end: false, Icon: MessageSquare, badgeKey: "chat" },
   { key: "tasks", to: "tasks", label: "Tasks", end: false, Icon: CheckSquare, badgeKey: "tasks" },
-  { key: "events", to: "events", label: "Events", end: false, Icon: Calendar },
+  { key: "events", to: "events", label: "Events", end: false, Icon: Calendar, badgeKey: "events" },
   {
     key: "meetings",
     to: "meetings",
@@ -65,6 +72,7 @@ const workspaceLinks: {
     Icon: ({ size = 16, strokeWidth = 2, "aria-hidden": ariaHidden = true }) => (
       <LucideCalendar size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
     ),
+    badgeKey: "meetings",
   },
   {
     key: "documents",
@@ -122,22 +130,6 @@ const badgeStyle: CSSProperties = {
   flexShrink: 0,
 };
 
-function announcementsVisitedKey(clubId: string): string {
-  return `last_visited_announcements_${clubId}`;
-}
-
-function tasksVisitedKey(clubId: string): string {
-  return `last_visited_tasks_${clubId}`;
-}
-
-function visitedTimestampForQuery(value: string | null): string | null {
-  if (!value) return null;
-  if (/^\d+$/.test(value)) {
-    return new Date(Number(value)).toISOString();
-  }
-  return value;
-}
-
 function workspaceNavClass(isActive: boolean) {
   const base =
     "flex w-full items-center justify-between rounded-[6px] border-l-[3px] py-[9px] pr-[14px] text-[13px] font-normal transition-colors";
@@ -192,119 +184,86 @@ export default function WorkspaceLayout() {
   const { getClubById, loading, activeClubId, switchClub } = useClubContext();
   const resolvedClubId = clubId ?? activeClubId ?? "";
   const workspaceNav = useClubWorkspaceNav(resolvedClubId);
-  const [chatUnread, setChatUnread] = useState(0);
-  const [tasksUnread, setTasksUnread] = useState(0);
-  const [announcementsUnread, setAnnouncementsUnread] = useState(0);
+  const { members } = useClubMembers(resolvedClubId);
+  const [badgeCounts, setBadgeCounts] = useState({
+    chat: 0,
+    tasks: 0,
+    announcements: 0,
+    events: 0,
+    meetings: 0,
+  });
 
   const workspaceBasePath = resolvedClubId
     ? `/app/clubs/${resolvedClubId}`
     : "";
 
+  const canManageMeetings =
+    workspaceNav.isPresident || workspaceNav.can("manage_meetings");
+  const isPrivilegedMember =
+    workspaceNav.isPresident ||
+    workspaceNav.role === "owner" ||
+    workspaceNav.role === "executive";
+
   const loadBadgeCounts = useCallback(async () => {
     if (!user?.id || !resolvedClubId) {
-      setChatUnread(0);
-      setTasksUnread(0);
-      setAnnouncementsUnread(0);
+      setBadgeCounts({
+        chat: 0,
+        tasks: 0,
+        announcements: 0,
+        events: 0,
+        meetings: 0,
+      });
       return;
     }
 
     try {
-      const { data: memberships, error: membershipsError } = await supabase
-        .from("conversation_members")
-        .select("conversation_id")
-        .eq("user_id", user.id);
-
-      if (membershipsError) {
-        console.error("Failed to load chat memberships for badges:", membershipsError.message);
-        setChatUnread(0);
-      } else {
-        const membershipIds = (memberships ?? []).map((row) => row.conversation_id as string);
-        if (membershipIds.length === 0) {
-          setChatUnread(0);
-        } else {
-          const { data: clubConvos, error: convosError } = await supabase
-            .from("conversations")
-            .select("id")
-            .eq("club_id", resolvedClubId)
-            .in("id", membershipIds);
-
-          if (convosError) {
-            console.error("Failed to load club conversations for badges:", convosError.message);
-            setChatUnread(0);
-          } else {
-            const clubConversationIds = (clubConvos ?? []).map((row) => row.id as string);
-            if (clubConversationIds.length === 0) {
-              setChatUnread(0);
-            } else {
-              const { data: unreadMessages, error: messagesError } = await supabase
-                .from("direct_messages")
-                .select("id, read_by, sender_id")
-                .in("conversation_id", clubConversationIds)
-                .neq("sender_id", user.id);
-
-              if (messagesError) {
-                console.error("Failed to load chat unread for badges:", messagesError.message);
-                setChatUnread(0);
-              } else {
-                setChatUnread(
-                  (unreadMessages ?? []).filter(
-                    (row) => !(row.read_by ?? []).includes(user.id),
-                  ).length,
-                );
-              }
-            }
-          }
-        }
-      }
+      const counts = await loadWorkspaceBadgeCounts(supabase, {
+        clubId: resolvedClubId,
+        userId: user.id,
+        canManageMeetings,
+        isPrivilegedMember,
+        pendingJoinRequestCount: workspaceNav.pendingJoinRequestCount,
+        members,
+      });
+      setBadgeCounts({
+        chat: counts.chat,
+        tasks: counts.tasks,
+        announcements: counts.announcements,
+        events: counts.events,
+        meetings: counts.meetings,
+      });
     } catch (err) {
-      console.error("Failed to load chat badge count:", err);
-      setChatUnread(0);
+      console.error("Failed to load workspace badge counts:", err);
+      setBadgeCounts({
+        chat: 0,
+        tasks: 0,
+        announcements: 0,
+        events: 0,
+        meetings: 0,
+      });
     }
+  }, [
+    canManageMeetings,
+    isPrivilegedMember,
+    members,
+    resolvedClubId,
+    user?.id,
+    workspaceNav.pendingJoinRequestCount,
+  ]);
 
-    const lastTasksVisited = visitedTimestampForQuery(
-      localStorage.getItem(tasksVisitedKey(resolvedClubId)),
-    );
-    let tasksQuery = supabase
-      .from("tasks")
-      .select("id", { count: "exact", head: true })
-      .eq("club_id", resolvedClubId)
-      .eq("assigned_to", user.id)
-      .neq("status", "done");
-
-    if (lastTasksVisited) {
-      tasksQuery = tasksQuery.gt("created_at", lastTasksVisited);
-    }
-
-    const { count: openTasks, error: tasksError } = await tasksQuery;
-
-    if (tasksError) {
-      console.error("Failed to load task badge count:", tasksError.message);
-      setTasksUnread(0);
-    } else {
-      setTasksUnread(openTasks ?? 0);
-    }
-
-    const lastVisited = visitedTimestampForQuery(
-      localStorage.getItem(announcementsVisitedKey(resolvedClubId)),
-    );
-    let announcementsQuery = supabase
-      .from("posts")
-      .select("id", { count: "exact", head: true })
-      .eq("club_id", resolvedClubId);
-
-    if (lastVisited) {
-      announcementsQuery = announcementsQuery.gt("created_at", lastVisited);
-    }
-
-    const { count: newAnnouncements, error: announcementsError } = await announcementsQuery;
-
-    if (announcementsError) {
-      console.error("Failed to load announcements badge count:", announcementsError.message);
-      setAnnouncementsUnread(0);
-    } else {
-      setAnnouncementsUnread(newAnnouncements ?? 0);
-    }
-  }, [resolvedClubId, user?.id]);
+  const markSectionViewed = useCallback(
+    async (section: WorkspaceSection) => {
+      if (!resolvedClubId) return;
+      const viewedAt = await markWorkspaceSectionViewed(resolvedClubId, section);
+      if (!viewedAt) return;
+      setBadgeCounts((prev) => ({
+        ...prev,
+        [section]: 0,
+      }));
+      void loadBadgeCounts();
+    },
+    [loadBadgeCounts, resolvedClubId],
+  );
 
   useEffect(() => {
     if (clubId && clubId !== activeClubId) {
@@ -319,38 +278,19 @@ export default function WorkspaceLayout() {
   useEffect(() => {
     if (!resolvedClubId || !workspaceBasePath) return;
 
-    const path = location.pathname;
-    if (path.startsWith(`${workspaceBasePath}/tasks`)) {
-      localStorage.setItem(tasksVisitedKey(resolvedClubId), String(Date.now()));
-      setTasksUnread(0);
-      return;
-    }
-    if (path.startsWith(`${workspaceBasePath}/announcements`)) {
-      localStorage.setItem(
-        announcementsVisitedKey(resolvedClubId),
-        String(Date.now()),
-      );
-      setAnnouncementsUnread(0);
-    }
-  }, [location.pathname, resolvedClubId, workspaceBasePath]);
+    const section = sectionFromWorkspacePath(location.pathname, workspaceBasePath);
+    if (!section) return;
+
+    void markSectionViewed(section);
+  }, [location.pathname, markSectionViewed, resolvedClubId, workspaceBasePath]);
 
   const handleBadgeNavClick = useCallback(
-    (badgeKey?: "chat" | "tasks" | "announcements" | "members") => {
+    (badgeKey?: "chat" | "tasks" | "announcements" | "events" | "meetings" | "members") => {
       if (!resolvedClubId || !badgeKey) return;
-      if (badgeKey === "tasks") {
-        localStorage.setItem(tasksVisitedKey(resolvedClubId), String(Date.now()));
-        setTasksUnread(0);
-        return;
-      }
-      if (badgeKey === "announcements") {
-        localStorage.setItem(
-          announcementsVisitedKey(resolvedClubId),
-          String(Date.now()),
-        );
-        setAnnouncementsUnread(0);
-      }
+      if (badgeKey === "chat" || badgeKey === "members") return;
+      void markSectionViewed(badgeKey);
     },
-    [resolvedClubId],
+    [markSectionViewed, resolvedClubId],
   );
 
   useEffect(() => {
@@ -450,6 +390,41 @@ export default function WorkspaceLayout() {
           void loadBadgeCounts();
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "events",
+          filter: `club_id=eq.${resolvedClubId}`,
+        },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "event_rsvps",
+        },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "club_meetings",
+          filter: `club_id=eq.${resolvedClubId}`,
+        },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
       .subscribe();
 
     return () => {
@@ -475,10 +450,14 @@ export default function WorkspaceLayout() {
     void loadBadgeCounts();
   }, [location.pathname, loadBadgeCounts]);
 
-  const badgeCountFor = (key?: "chat" | "tasks" | "announcements" | "members") => {
-    if (key === "chat") return chatUnread;
-    if (key === "tasks") return tasksUnread;
-    if (key === "announcements") return announcementsUnread;
+  const badgeCountFor = (
+    key?: "chat" | "tasks" | "announcements" | "events" | "meetings" | "members",
+  ) => {
+    if (key === "chat") return badgeCounts.chat;
+    if (key === "tasks") return badgeCounts.tasks;
+    if (key === "announcements") return badgeCounts.announcements;
+    if (key === "events") return badgeCounts.events;
+    if (key === "meetings") return badgeCounts.meetings;
     if (key === "members") return workspaceNav.pendingJoinRequestCount;
     return 0;
   };
