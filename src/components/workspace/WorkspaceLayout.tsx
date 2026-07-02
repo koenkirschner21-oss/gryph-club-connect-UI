@@ -146,6 +146,35 @@ function workspaceNavClass(isActive: boolean) {
   return `${base} border-l-transparent pl-[14px] text-[#777777] hover:bg-[#1a1a1a] hover:text-[#cccccc]`;
 }
 
+function NavItemLabel({
+  Icon,
+  label,
+}: {
+  Icon: (props: IconProps) => ReactElement;
+  label: string;
+}) {
+  return (
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        minWidth: 0,
+      }}
+    >
+      <Icon size={16} strokeWidth={2} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+const navLinkStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  width: "100%",
+};
+
 function NavCountBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
@@ -521,56 +550,104 @@ export default function WorkspaceLayout() {
   const sidebarContent = (
     <div className="flex h-full flex-col">
       <div className="border-b p-4" style={{ borderColor: "#1e1e1e" }}>
-        <div
-          role="button"
-          tabIndex={0}
-          className="flex items-center gap-3"
-          onClick={() => {
-            closeDrawer();
-            navigate(clubProfilePath);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
+        <div style={{ position: "relative" }}>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label={`${club.name} — View public profile`}
+            className="flex items-center gap-3"
+            onClick={() => {
               closeDrawer();
               navigate(clubProfilePath);
-            }
-          }}
-          onMouseEnter={() => setClubHeaderHovered(true)}
-          onMouseLeave={() => setClubHeaderHovered(false)}
-          style={{
-            cursor: "pointer",
-            opacity: clubHeaderHovered ? 0.8 : 1,
-            transition: "opacity 0.15s ease",
-          }}
-        >
-          <img
-            src={club.imageUrl}
-            alt=""
-            className="h-10 w-10 shrink-0 object-cover"
-            style={{ borderRadius: "8px", backgroundColor: "#1a1a1a" }}
-          />
-          <div className="min-w-0 flex-1">
-            <h2
-              className="truncate"
-              style={{
-                fontWeight: 600,
-                fontSize: "13px",
-                color: "#ffffff",
-              }}
-            >
-              {club.name}
-            </h2>
-            <p
-              className="truncate"
-              style={{
-                fontSize: "11px",
-                color: "#555555",
-              }}
-            >
-              {club.category}
-            </p>
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                closeDrawer();
+                navigate(clubProfilePath);
+              }
+            }}
+            onMouseEnter={() => setClubHeaderHovered(true)}
+            onMouseLeave={() => setClubHeaderHovered(false)}
+            onFocus={() => setClubHeaderHovered(true)}
+            onBlur={() => setClubHeaderHovered(false)}
+            style={{
+              cursor: "pointer",
+              opacity: clubHeaderHovered ? 0.85 : 1,
+              transition: "opacity 0.15s ease",
+            }}
+          >
+            <img
+              src={club.imageUrl}
+              alt=""
+              className="h-10 w-10 shrink-0 object-cover"
+              style={{ borderRadius: "8px", backgroundColor: "#1a1a1a" }}
+            />
+            <div className="min-w-0 flex-1">
+              <h2
+                className="truncate"
+                style={{
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  color: "#ffffff",
+                }}
+              >
+                {club.name}
+              </h2>
+              <p
+                className="truncate"
+                style={{
+                  fontSize: "11px",
+                  color: "#555555",
+                }}
+              >
+                {club.category}
+              </p>
+            </div>
+            <span style={{ color: "#555555", flexShrink: 0, display: "flex" }}>
+              <ExternalLink size={14} strokeWidth={2} aria-hidden />
+            </span>
           </div>
+          {clubHeaderHovered ? (
+            <div
+              role="tooltip"
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: "calc(100% + 8px)",
+                zIndex: 20,
+                background: "#1a1a1a",
+                border: "1px solid #333333",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                boxShadow: "0 8px 20px rgba(0, 0, 0, 0.45)",
+                pointerEvents: "none",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  lineHeight: 1.35,
+                }}
+              >
+                {club.name}
+              </p>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  fontSize: "11px",
+                  color: "#888888",
+                  lineHeight: 1.35,
+                }}
+              >
+                View public profile
+              </p>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -590,24 +667,9 @@ export default function WorkspaceLayout() {
               handleBadgeNavClick(badgeKey);
               closeDrawer();
             }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-            }}
+            style={navLinkStyle}
           >
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                minWidth: 0,
-              }}
-            >
-              <Icon size={16} strokeWidth={2} aria-hidden />
-              {label}
-            </span>
+            <NavItemLabel Icon={Icon} label={label} />
             <NavCountBadge count={badgeCountFor(badgeKey)} />
           </NavLink>
         ))}
@@ -617,18 +679,18 @@ export default function WorkspaceLayout() {
             to={analyticsLink.to}
             className={({ isActive }) => workspaceNavClass(isActive)}
             onClick={closeDrawer}
+            style={navLinkStyle}
           >
-            <analyticsLink.Icon size={16} strokeWidth={2} aria-hidden />
-            {analyticsLink.label}
+            <NavItemLabel Icon={analyticsLink.Icon} label={analyticsLink.label} />
           </NavLink>
         ) : null}
         <NavLink
           to={settingsLink.to}
           className={({ isActive }) => workspaceNavClass(isActive)}
           onClick={closeDrawer}
+          style={navLinkStyle}
         >
-          <settingsLink.Icon size={16} strokeWidth={2} aria-hidden />
-          {workspaceNav.settingsLabel}
+          <NavItemLabel Icon={settingsLink.Icon} label={workspaceNav.settingsLabel} />
         </NavLink>
       </nav>
 
@@ -723,18 +785,6 @@ export default function WorkspaceLayout() {
             </div>
           </div>
         ) : null}
-        <NavLink
-          to={`/clubs/${club.slug}`}
-          className="flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[#1a1a1a] hover:text-[#cccccc]"
-          style={{
-            fontSize: "11px",
-            color: "#555555",
-          }}
-          onClick={closeDrawer}
-        >
-          <ExternalLink size={13} strokeWidth={2} aria-hidden />
-          View Public Profile
-        </NavLink>
       </div>
     </div>
   );
