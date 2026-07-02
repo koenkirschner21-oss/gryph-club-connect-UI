@@ -91,6 +91,8 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "meeting_updated":
     case "meeting_cancelled":
       return `${base}/meetings`;
+    case "new_document":
+      return `${base}/documents`;
     case "announcement":
       return `${base}/announcements`;
     case "task_assigned":

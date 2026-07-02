@@ -23,6 +23,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
+import { notifyNewDocumentUploaded } from "../../lib/notifications";
 import type { Visibility } from "../../types";
 import {
   CategoryFilterDropdown,
@@ -839,25 +840,37 @@ export default function ClubDocumentsPage() {
       return;
     }
 
-    const { error } = await supabase.from("club_documents").insert({
-      club_id: clubId,
-      uploaded_by: user.id,
-      name: docName.trim(),
-      description: docDescription.trim() || null,
-      file_url: fileUrl,
-      file_type: selectedFile.type || null,
-      file_size: selectedFile.size,
-      category: uploadCategory,
-      visibility: uploadVisibility,
-    });
+    const { data: inserted, error } = await supabase
+      .from("club_documents")
+      .insert({
+        club_id: clubId,
+        uploaded_by: user.id,
+        name: docName.trim(),
+        description: docDescription.trim() || null,
+        file_url: fileUrl,
+        file_type: selectedFile.type || null,
+        file_size: selectedFile.size,
+        category: uploadCategory,
+        visibility: uploadVisibility,
+      })
+      .select("id")
+      .single();
 
     setUploading(false);
 
-    if (error) {
-      console.error("Failed to save document:", error.message);
+    if (error || !inserted?.id) {
+      console.error("Failed to save document:", error?.message);
       setFeedback({ type: "error", text: "Failed to save document record." });
       return;
     }
+
+    void notifyNewDocumentUploaded(supabase, {
+      clubId,
+      documentId: inserted.id as string,
+      documentName: docName.trim(),
+      visibility: uploadVisibility,
+      uploadedByUserId: user.id,
+    });
 
     setFeedback({ type: "success", text: "Document uploaded." });
     closeUploadModal();

@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyUsers } from "./notifyUsers";
 import { createInboxMessage } from "./inboxUtils";
 import { accessLevelBadgeLabel } from "./memberRoleTitle";
-import type { AccessLevel, NotificationType } from "../types";
+import type { AccessLevel, NotificationType, Visibility } from "../types";
+import { canViewContent } from "./contentVisibility";
+import { isExecutiveAccessLevel } from "./clubPermissions";
 
 export interface CreateNotificationInput {
   userId: string;
@@ -1115,5 +1117,73 @@ export async function notifyMeetingCancelled(
     if (!inboxOk) {
       console.error("Failed to create meeting cancellation inbox message for:", userId);
     }
+  }
+}
+
+async function fetchClubMemberVisibilityContexts(
+  supabase: SupabaseClient,
+  clubId: string,
+): Promise<Array<{ userId: string; isMember: boolean; isPrivileged: boolean }>> {
+  const { data, error } = await supabase
+    .from("club_members")
+    .select("user_id, role, access_level, status")
+    .eq("club_id", clubId)
+    .eq("status", "active");
+
+  if (error) {
+    console.error("Failed to load club members for document notifications:", error.message);
+    return [];
+  }
+
+  return (data ?? [])
+    .map((row) => {
+      const role = row.role as string;
+      const accessLevel = row.access_level as AccessLevel | null;
+      return {
+        userId: row.user_id as string,
+        isMember: true,
+        isPrivileged: isExecutiveAccessLevel(accessLevel, role),
+      };
+    })
+    .filter((entry) => Boolean(entry.userId));
+}
+
+export async function notifyNewDocumentUploaded(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    documentId: string;
+    documentName: string;
+    visibility: Visibility;
+    uploadedByUserId: string;
+  },
+): Promise<void> {
+  const members = await fetchClubMemberVisibilityContexts(supabase, params.clubId);
+  const recipientIds = members
+    .filter((member) =>
+      canViewContent(params.visibility, {
+        isMember: member.isMember,
+        isPrivileged: member.isPrivileged,
+      }),
+    )
+    .map((member) => member.userId)
+    .filter((userId) => userId !== params.uploadedByUserId);
+
+  if (recipientIds.length === 0) return;
+
+  const message = `[New Document] ${params.documentName} was uploaded to the club documents library.`;
+
+  const ok = await createNotifications(
+    supabase,
+    recipientIds.map((userId) => ({
+      userId,
+      type: "new_document",
+      message,
+      clubId: params.clubId,
+      referenceId: params.documentId,
+    })),
+  );
+  if (!ok) {
+    console.error("Failed to send new document notifications.");
   }
 }

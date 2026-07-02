@@ -77,6 +77,9 @@ export function parseNotificationDisplay(
   if (type === "meeting_cancelled") {
     return { title: "Meeting Cancelled", body: trimmed };
   }
+  if (type === "new_document") {
+    return { title: "New Document", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }

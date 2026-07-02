@@ -295,7 +295,8 @@ export type NotificationType =
   | "event_cancelled"
   | "meeting_invite"
   | "meeting_updated"
-  | "meeting_cancelled";
+  | "meeting_cancelled"
+  | "new_document";
 
 export interface Notification {
   id: string;
