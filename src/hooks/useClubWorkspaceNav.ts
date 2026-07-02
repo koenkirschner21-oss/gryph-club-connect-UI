@@ -26,7 +26,7 @@ const EMPTY_FLAGS: WorkspaceNavFlags = {
 export function useClubWorkspaceNav(clubId: string | undefined) {
   const { user } = useAuthContext();
   const access = useClubMemberAccess(clubId);
-  const { members } = useClubMembers(clubId);
+  const { members, pendingMembers } = useClubMembers(clubId);
 
   const [flags, setFlags] = useState<WorkspaceNavFlags>(EMPTY_FLAGS);
   const [flagsLoading, setFlagsLoading] = useState(true);
@@ -133,6 +133,10 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
 
   const showAnalytics = shouldShowAnalyticsNav(navContext);
 
+  const pendingJoinRequestCount = access.canApproveMembers
+    ? pendingMembers.length
+    : 0;
+
   return {
     ...access,
     flags,
@@ -140,6 +144,7 @@ export function useClubWorkspaceNav(clubId: string | undefined) {
     navContext,
     isLinkVisible,
     showAnalytics,
+    pendingJoinRequestCount,
     settingsLabel: access.canManageClubSettings ? "Club Settings" : "My Membership",
     refreshFlags: loadFlags,
   };

@@ -42,7 +42,7 @@ const workspaceLinks: {
   label: string;
   end: boolean;
   Icon: (props: IconProps) => ReactElement;
-  badgeKey?: "chat" | "tasks" | "announcements";
+  badgeKey?: "chat" | "tasks" | "announcements" | "members";
 }[] = [
   { key: "dashboard", to: "", label: "Dashboard", end: true, Icon: LayoutDashboard },
   {
@@ -74,7 +74,7 @@ const workspaceLinks: {
       <FileText size={size} strokeWidth={strokeWidth} aria-hidden={ariaHidden} />
     ),
   },
-  { key: "members", to: "members", label: "Members", end: false, Icon: Users },
+  { key: "members", to: "members", label: "Members", end: false, Icon: Users, badgeKey: "members" },
   {
     key: "recruiting",
     to: "recruiting",
@@ -334,7 +334,7 @@ export default function WorkspaceLayout() {
   }, [location.pathname, resolvedClubId, workspaceBasePath]);
 
   const handleBadgeNavClick = useCallback(
-    (badgeKey?: "chat" | "tasks" | "announcements") => {
+    (badgeKey?: "chat" | "tasks" | "announcements" | "members") => {
       if (!resolvedClubId || !badgeKey) return;
       if (badgeKey === "tasks") {
         localStorage.setItem(tasksVisitedKey(resolvedClubId), String(Date.now()));
@@ -456,10 +456,11 @@ export default function WorkspaceLayout() {
     };
   }, [loadBadgeCounts, resolvedClubId, user?.id]);
 
-  const badgeCountFor = (key?: "chat" | "tasks" | "announcements") => {
+  const badgeCountFor = (key?: "chat" | "tasks" | "announcements" | "members") => {
     if (key === "chat") return chatUnread;
     if (key === "tasks") return tasksUnread;
     if (key === "announcements") return announcementsUnread;
+    if (key === "members") return workspaceNav.pendingJoinRequestCount;
     return 0;
   };
 

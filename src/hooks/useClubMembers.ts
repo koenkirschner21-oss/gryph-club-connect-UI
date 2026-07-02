@@ -154,6 +154,30 @@ export function useClubMembers(
     };
   }, [clubId, refreshKey]);
 
+  useEffect(() => {
+    if (!clubId) return;
+
+    const channel = supabase
+      .channel(`club-members:${clubId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "club_members",
+          filter: `club_id=eq.${clubId}`,
+        },
+        () => {
+          refresh();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [clubId, refresh]);
+
   /** Change a member's role (e.g. member → exec, exec → member). */
   const updateRole = useCallback(
     async (
