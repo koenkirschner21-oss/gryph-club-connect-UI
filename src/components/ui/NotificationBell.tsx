@@ -26,6 +26,7 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   meeting_cancelled: "📆",
   new_document: "📄",
   new_hiring_role: "💼",
+  member_removed: "👤",
   club_update: "🔔",
 };
 

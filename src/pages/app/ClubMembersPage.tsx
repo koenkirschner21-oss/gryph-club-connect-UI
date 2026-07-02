@@ -24,6 +24,7 @@ import {
 import {
   notifyJoinRequestApproved,
   notifyJoinRequestRejected,
+  notifyMemberRemovedFromClub,
 } from "../../lib/notifications";
 import type { ClubMember, JoinAnswer, MemberRole, AccessLevel } from "../../types";
 import { isTopClubModeratorRole } from "../../lib/clubRoles";
@@ -1093,8 +1094,16 @@ export default function ClubMembersPage() {
     if (!window.confirm("Remove this member from the club?")) return;
     setActionLoading(memberId);
     setFeedback(null);
+    const removedMember = members.find((member) => member.id === memberId);
     const ok = await removeMember(memberId);
     if (ok) {
+      if (removedMember && clubId && club?.name) {
+        void notifyMemberRemovedFromClub(supabase, {
+          clubId,
+          clubName: club.name,
+          removedUserId: removedMember.userId,
+        });
+      }
       setFeedback({ type: "success", text: "Member removed." });
     } else {
       setFeedback({ type: "error", text: "Failed to remove member." });

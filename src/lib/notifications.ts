@@ -1272,3 +1272,37 @@ export async function notifyNewHiringRolePosted(
     console.error("Failed to send new hiring role notifications.");
   }
 }
+
+export async function notifyMemberRemovedFromClub(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    removedUserId: string;
+  },
+): Promise<void> {
+  const bellMessage = `[Membership Update] Your access to ${params.clubName} has ended. You no longer have workspace access for this club.`;
+  const inboxMessage = `Your membership in ${params.clubName} has been updated. You no longer have access to this club's workspace. If you have questions, please contact the club's leadership directly.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.removedUserId,
+    type: "member_removed",
+    message: bellMessage,
+    clubId: params.clubId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send member removal notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.removedUserId,
+    type: "member_removed",
+    title: `Membership update — ${params.clubName}`,
+    message: inboxMessage,
+    clubId: params.clubId,
+    referenceType: "club_member",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create member removal inbox message.");
+  }
+}

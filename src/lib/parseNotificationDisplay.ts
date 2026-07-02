@@ -83,6 +83,9 @@ export function parseNotificationDisplay(
   if (type === "new_hiring_role") {
     return { title: "New Role Posted", body: trimmed };
   }
+  if (type === "member_removed") {
+    return { title: "Membership Update", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }
