@@ -8,6 +8,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
   Briefcase,
+  BarChart2,
   Calendar,
   CheckSquare,
   ClipboardList,
@@ -52,10 +53,18 @@ const urgentOutlinedButtonStyle: CSSProperties = {
 };
 
 const sectionHeading: CSSProperties = {
-  fontWeight: 600,
-  fontSize: "16px",
+  fontWeight: 700,
+  fontSize: "15px",
   color: "#ffffff",
-  margin: "0 0 16px",
+  margin: "0 0 12px",
+  letterSpacing: "-0.01em",
+};
+
+const sectionCardStyle: CSSProperties = {
+  background: CARD_BG,
+  border: `1px solid ${CARD_BORDER}`,
+  borderRadius: "12px",
+  padding: "16px",
 };
 
 const noteActionButtonStyle: CSSProperties = {
@@ -234,7 +243,7 @@ function CommandCenterStatCard({
   onClick,
 }: {
   label: string;
-  value: number;
+  value: string | number;
   sublabel: string;
   icon: ReactNode;
   accentColor: string;
@@ -243,20 +252,24 @@ function CommandCenterStatCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const resolvedIconColor = iconColor ?? accentColor;
-  const borderColor = hovered ? "#2a2a2a" : "transparent";
   const style: CSSProperties = {
-    background: "#1a1a1a",
-    borderRadius: "8px",
-    padding: "12px 16px",
+    background: CARD_BG,
+    borderRadius: "12px",
+    padding: "16px 18px",
     position: "relative",
     width: "100%",
+    minHeight: "112px",
     textAlign: "left",
-    borderTop: `1px solid ${borderColor}`,
-    borderRight: `1px solid ${borderColor}`,
-    borderBottom: `1px solid ${borderColor}`,
-    borderLeft: `3px solid ${accentColor}`,
+    borderTop: `2px solid ${accentColor}`,
+    borderRight: `1px solid ${CARD_BORDER}`,
+    borderBottom: `1px solid ${CARD_BORDER}`,
+    borderLeft: `1px solid ${CARD_BORDER}`,
     cursor: onClick ? "pointer" : "default",
-    transition: "border-color 0.15s ease",
+    transition: "transform 0.15s ease, border-color 0.15s ease",
+    transform: hovered && onClick ? "translateY(-1px)" : undefined,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
   };
 
   const content = (
@@ -265,40 +278,41 @@ function CommandCenterStatCard({
         className="[&_svg]:h-[18px] [&_svg]:w-[18px]"
         style={{
           position: "absolute",
-          top: "12px",
-          right: "12px",
+          top: "14px",
+          right: "14px",
           color: resolvedIconColor,
-          fontSize: "18px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          opacity: 0.9,
         }}
       >
         {icon}
       </span>
       <p
         style={{
-          fontSize: "12px",
+          fontSize: "11px",
           textTransform: "uppercase",
-          letterSpacing: "0.1em",
-          color: "#747676",
-          margin: "0 0 6px",
+          letterSpacing: "0.08em",
+          color: "#666666",
+          margin: "0 0 8px",
+          fontWeight: 600,
         }}
       >
         {label}
       </p>
       <p
         style={{
-          fontSize: "2rem",
-          fontWeight: 700,
+          fontSize: "30px",
+          fontWeight: 800,
           color: "#ffffff",
           lineHeight: 1,
-          margin: "0 0 3px",
+          margin: "0 0 6px",
         }}
       >
         {value}
       </p>
-      <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>{sublabel}</p>
+      <p style={{ fontSize: "12px", color: "#555555", margin: 0, lineHeight: 1.35 }}>{sublabel}</p>
     </>
   );
 
@@ -325,11 +339,12 @@ function ClubIdentityHeader({ club }: { club: Club }) {
   return (
     <header
       style={{
+        ...sectionCardStyle,
         display: "flex",
         alignItems: "center",
         gap: "16px",
-        paddingBottom: "20px",
-        borderBottom: `1px solid ${CARD_BORDER}`,
+        padding: "18px 20px",
+        background: "linear-gradient(135deg, #161616 0%, #141414 100%)",
       }}
     >
       {club.logoUrl?.trim() ? (
@@ -337,47 +352,64 @@ function ClubIdentityHeader({ club }: { club: Club }) {
           src={club.logoUrl}
           alt=""
           style={{
-            width: "56px",
-            height: "56px",
-            borderRadius: "10px",
+            width: "64px",
+            height: "64px",
+            borderRadius: "12px",
             objectFit: "cover",
             flexShrink: 0,
             border: `1px solid ${CARD_BORDER}`,
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.25)",
           }}
         />
       ) : (
         <div
           style={{
-            width: "56px",
-            height: "56px",
-            borderRadius: "10px",
+            width: "64px",
+            height: "64px",
+            borderRadius: "12px",
             background: "#1a1a1a",
             border: `1px solid ${CARD_BORDER}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            fontSize: "18px",
-            fontWeight: 700,
+            fontSize: "20px",
+            fontWeight: 800,
             color: GOLD,
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.25)",
           }}
         >
           {getClubInitials(club)}
         </div>
       )}
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p
+          style={{
+            margin: "0 0 6px",
+            fontSize: "10px",
+            fontWeight: 700,
+            color: ACCENT_RED,
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
+          }}
+        >
+          Club Command Center
+        </p>
         <h1
           style={{
             margin: 0,
-            fontSize: "22px",
-            fontWeight: 700,
+            fontSize: "24px",
+            fontWeight: 800,
             color: "#ffffff",
-            lineHeight: 1.2,
+            lineHeight: 1.15,
+            letterSpacing: "-0.02em",
           }}
         >
           {club.name}
         </h1>
-        <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#777777" }}>{university}</p>
+        <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#888888", fontWeight: 500 }}>
+          {university}
+        </p>
       </div>
     </header>
   );
@@ -399,8 +431,8 @@ function HiringDonutChart({
   openRolesCount: number;
   rolesWithZeroApplicants: number;
 }) {
-  const size = 120;
-  const stroke = 14;
+  const size = 96;
+  const stroke = 12;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const rolesWithApplicants = Math.max(openRolesCount - rolesWithZeroApplicants, 0);
@@ -460,41 +492,68 @@ function HiringDonutChart({
           pointerEvents: "none",
         }}
       >
-        <span style={{ fontSize: "22px", fontWeight: 800, color: "#ffffff", lineHeight: 1 }}>
+        <span style={{ fontSize: "20px", fontWeight: 800, color: "#ffffff", lineHeight: 1 }}>
           {openRolesCount}
         </span>
         <span
           style={{
-            fontSize: "9px",
-            fontWeight: 600,
+            fontSize: "8px",
+            fontWeight: 700,
             color: "#777777",
             textTransform: "uppercase",
-            letterSpacing: "0.04em",
+            letterSpacing: "0.05em",
             marginTop: "2px",
           }}
         >
-          Open Role
+          Open Roles
         </span>
       </div>
     </div>
   );
 }
 
-function HiringMetricLine({ label, value }: { label: string; value: number }) {
+function HiringMetricLine({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  highlight?: boolean;
+}) {
   return (
-    <div style={{ minWidth: 0 }}>
+    <div
+      style={{
+        minWidth: 0,
+        padding: "10px 12px",
+        borderRadius: "8px",
+        background: "#1a1a1a",
+        border: `1px solid ${highlight ? "rgba(229, 25, 55, 0.35)" : CARD_BORDER}`,
+      }}
+    >
       <p
         style={{
-          margin: "0 0 2px",
-          fontSize: "11px",
-          color: "#555555",
+          margin: "0 0 4px",
+          fontSize: "10px",
+          color: "#666666",
           textTransform: "uppercase",
-          letterSpacing: "0.04em",
+          letterSpacing: "0.05em",
+          fontWeight: 600,
         }}
       >
         {label}
       </p>
-      <p style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "#ffffff" }}>{value}</p>
+      <p
+        style={{
+          margin: 0,
+          fontSize: "22px",
+          fontWeight: 800,
+          color: highlight && value > 0 ? ACCENT_RED : "#ffffff",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -522,49 +581,53 @@ function PendingActionsSection({
   loading: boolean;
 }) {
   return (
-    <section
-      style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderRadius: "10px",
-        padding: "16px",
-      }}
-    >
+    <section style={sectionCardStyle}>
       <h2
         style={{
           ...sectionHeading,
-          marginBottom: "12px",
+          marginBottom: "10px",
           display: "flex",
           alignItems: "center",
           gap: "6px",
         }}
       >
         <span>Pending Actions</span>
-        <span style={{ color: "#777777", fontWeight: 500 }}>· {items.length}</span>
+        <span style={{ color: "#666666", fontWeight: 600, fontSize: "13px" }}>· {items.length}</span>
       </h2>
       {loading ? (
-        <div className="flex justify-center py-4">
+        <div className="flex justify-center py-3">
           <Spinner label="Loading pending actions…" />
         </div>
       ) : items.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>
-          Nothing needs attention right now.
-        </p>
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: "8px",
+            background: "#111111",
+            border: `1px solid ${CARD_BORDER}`,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: "13px", color: "#666666" }}>
+            Nothing needs attention right now.
+          </p>
+        </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {items.map((item) => (
             <div
               key={item.id}
               style={{
                 display: "flex",
-                alignItems: "flex-start",
+                alignItems: "center",
                 justifyContent: "space-between",
                 gap: "12px",
-                borderTop: `1px solid ${CARD_BORDER}`,
-                paddingTop: "8px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                background: "#1a1a1a",
+                border: `1px solid ${CARD_BORDER}`,
               }}
             >
-              <p style={{ margin: 0, fontSize: "13px", color: "#cccccc", lineHeight: 1.45, flex: 1 }}>
+              <p style={{ margin: 0, fontSize: "13px", color: "#cccccc", lineHeight: 1.4, flex: 1 }}>
                 {item.label}
               </p>
               {item.onAction && item.actionLabel ? (
@@ -584,8 +647,50 @@ function PendingActionsSection({
   );
 }
 
+function QuickActionTile({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: "10px",
+        padding: "12px 14px",
+        minHeight: "84px",
+        background: hovered ? "#1f1f1f" : "#1a1a1a",
+        border: `1px solid ${hovered ? "#333333" : CARD_BORDER}`,
+        borderRadius: "8px",
+        color: "#cccccc",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "background 0.15s ease, border-color 0.15s ease",
+      }}
+    >
+      <span style={{ color: GOLD, display: "flex" }}>{icon}</span>
+      <span style={{ fontSize: "12px", fontWeight: 600, color: "#dddddd", lineHeight: 1.3 }}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
 function RemindersQuickActionsCard({
   reminderEvent,
+  isMobile,
   onUseReminderTemplate,
   onNewAnnouncement,
   onAddEvent,
@@ -593,6 +698,7 @@ function RemindersQuickActionsCard({
   onViewReports,
 }: {
   reminderEvent: { title: string; dateLine: string } | null;
+  isMobile: boolean;
   onUseReminderTemplate: () => void;
   onNewAnnouncement: () => void;
   onAddEvent: () => void;
@@ -600,26 +706,19 @@ function RemindersQuickActionsCard({
   onViewReports: () => void;
 }) {
   return (
-    <section
-      style={{
-        background: CARD_BG,
-        border: `1px solid ${CARD_BORDER}`,
-        borderRadius: "10px",
-        padding: "16px",
-      }}
-    >
-      <h2 style={{ ...sectionHeading, marginBottom: "12px" }}>Reminders &amp; Quick Actions</h2>
+    <section style={sectionCardStyle}>
+      <h2 style={{ ...sectionHeading, marginBottom: "10px" }}>Reminders &amp; Quick Actions</h2>
       {reminderEvent ? (
         <div
           style={{
             background: "rgba(255, 196, 41, 0.08)",
-            border: `1px solid rgba(255, 196, 41, 0.25)`,
+            border: `1px solid rgba(255, 196, 41, 0.28)`,
             borderRadius: "8px",
-            padding: "12px 14px",
-            marginBottom: "12px",
+            padding: "10px 12px",
+            marginBottom: "10px",
           }}
         >
-          <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#cccccc", lineHeight: 1.45 }}>
+          <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#cccccc", lineHeight: 1.45 }}>
             <strong style={{ color: GOLD }}>{reminderEvent.title}</strong> is coming up on{" "}
             {reminderEvent.dateLine}.
           </p>
@@ -631,22 +730,30 @@ function RemindersQuickActionsCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
           gap: "8px",
         }}
       >
-        <button type="button" style={outlineButtonStyle} onClick={onNewAnnouncement}>
-          New Announcement
-        </button>
-        <button type="button" style={outlineButtonStyle} onClick={onAddEvent}>
-          Add Event
-        </button>
-        <button type="button" style={outlineButtonStyle} onClick={onInviteMembers}>
-          Invite Members
-        </button>
-        <button type="button" style={outlineButtonStyle} onClick={onViewReports}>
-          View Reports
-        </button>
+        <QuickActionTile
+          icon={<Megaphone size={16} aria-hidden />}
+          label="New Announcement"
+          onClick={onNewAnnouncement}
+        />
+        <QuickActionTile
+          icon={<Calendar size={16} aria-hidden />}
+          label="Add Event"
+          onClick={onAddEvent}
+        />
+        <QuickActionTile
+          icon={<UserPlus size={16} aria-hidden />}
+          label="Invite Members"
+          onClick={onInviteMembers}
+        />
+        <QuickActionTile
+          icon={<BarChart2 size={16} aria-hidden />}
+          label="View Reports"
+          onClick={onViewReports}
+        />
       </div>
     </section>
   );
@@ -906,7 +1013,7 @@ export default function ClubCommandCenter({
           kind: "join",
           description: `${name} joined the club`,
           timestamp: row.created_at as string,
-          icon: <UserPlus size={14} color="#555555" aria-hidden />,
+          icon: <UserPlus size={14} color="#888888" aria-hidden />,
         });
       }
 
@@ -918,7 +1025,7 @@ export default function ClubCommandCenter({
           kind: "rsvp",
           description: `${name} RSVP'd to ${eventTitle}`,
           timestamp: row.created_at as string,
-          icon: <Calendar size={14} color="#555555" aria-hidden />,
+          icon: <Calendar size={14} color="#888888" aria-hidden />,
         });
       }
 
@@ -928,7 +1035,7 @@ export default function ClubCommandCenter({
           kind: "announcement",
           description: `${post.authorName ?? "Someone"} posted an announcement`,
           timestamp: post.createdAt,
-          icon: <Megaphone size={14} color="#555555" aria-hidden />,
+          icon: <Megaphone size={14} color="#888888" aria-hidden />,
         });
       }
 
@@ -938,7 +1045,7 @@ export default function ClubCommandCenter({
           kind: "task",
           description: `Task completed: ${task.title}`,
           timestamp: task.createdAt,
-          icon: <CheckSquare size={14} color="#555555" aria-hidden />,
+          icon: <CheckSquare size={14} color="#888888" aria-hidden />,
         });
       }
 
@@ -950,7 +1057,7 @@ export default function ClubCommandCenter({
           kind: "application",
           description: `${name} applied for ${roleTitle}`,
           timestamp: row.created_at as string,
-          icon: <Briefcase size={14} color="#555555" aria-hidden />,
+          icon: <Briefcase size={14} color="#888888" aria-hidden />,
         });
       }
 
@@ -1137,37 +1244,39 @@ export default function ClubCommandCenter({
   const pendingActionsLoading = tasksLoading || membersLoading || hiringSnapshot.loading;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <ClubIdentityHeader club={club} />
 
       <section>
         {pendingActionsLoading ? (
-          <div className="flex justify-center py-4">
+          <div className="flex justify-center py-3">
             <Spinner label="Loading command center…" />
           </div>
         ) : (
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)",
-              gap: "12px",
+              gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
+              gap: "10px",
               alignItems: "stretch",
             }}
           >
             <CommandCenterStatCard
               label="Profile"
-              value={profileCompletion}
-              sublabel={profileCompletion >= 100 ? "Setup complete" : "Completion"}
+              value={`${profileCompletion}%`}
+              sublabel={profileCompletion >= 100 ? "Setup complete" : "Complete your club profile"}
               icon={<Users size={18} aria-hidden />}
               accentColor={profileCompletion >= 100 ? "#4ade80" : GOLD}
+              iconColor={profileCompletion >= 100 ? "#4ade80" : GOLD}
               onClick={openSetupSettings}
             />
             <CommandCenterStatCard
               label="Events"
               value={eventsThisMonthCount}
-              sublabel="This month"
+              sublabel="Scheduled this month"
               icon={<Calendar size={18} aria-hidden />}
               accentColor={GOLD}
+              iconColor={GOLD}
               onClick={() => navigate(eventsPath)}
             />
             <CommandCenterStatCard
@@ -1176,14 +1285,18 @@ export default function ClubCommandCenter({
               sublabel={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : "Open tasks"}
               icon={<CheckSquare size={18} aria-hidden />}
               accentColor={overdueTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
+              iconColor={overdueTasks.length > 0 ? ACCENT_RED : "#888888"}
               onClick={() => navigate(tasksPath)}
             />
             <CommandCenterStatCard
               label="Pending"
               value={pendingRequestsTotal}
-              sublabel="Requests & applications"
+              sublabel={
+                pendingRequestsTotal > 0 ? "Needs your review" : "Requests & applications"
+              }
               icon={<ClipboardList size={18} aria-hidden />}
               accentColor={pendingRequestsTotal > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
+              iconColor={pendingRequestsTotal > 0 ? ACCENT_RED : "#888888"}
               onClick={() =>
                 navigate(
                   pendingJoinCount > 0
@@ -1198,18 +1311,18 @@ export default function ClubCommandCenter({
 
       <PendingActionsSection items={pendingActionsItems} loading={pendingActionsLoading} />
 
-      <section>
+      <section style={sectionCardStyle}>
         <h2 style={sectionHeading}>Upcoming Events</h2>
         {eventsLoading ? (
-          <div className="flex justify-center py-4">
+          <div className="flex justify-center py-3">
             <Spinner label="Loading upcoming events…" />
           </div>
         ) : previewUpcomingEvents.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>
+          <p style={{ margin: 0, fontSize: "13px", color: "#666666" }}>
             No upcoming events scheduled.
           </p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {previewUpcomingEvents.map((event) => {
               const going = eventRsvpCounts[event.id]?.going ?? 0;
               const timeLabel =
@@ -1228,33 +1341,63 @@ export default function ClubCommandCenter({
                     display: "flex",
                     alignItems: "center",
                     gap: "12px",
-                    padding: "10px 0",
-                    borderBottom: `1px solid ${CARD_BORDER}`,
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                    background: "#1a1a1a",
+                    border: `1px solid ${CARD_BORDER}`,
                   }}
                 >
                   <CompactEventDateBadge dateStr={event.occurrenceDate} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p
                       style={{
-                        margin: "0 0 2px",
-                        fontSize: "13px",
+                        margin: "0 0 4px",
+                        fontSize: "14px",
                         fontWeight: 600,
                         color: "#ffffff",
+                        lineHeight: 1.25,
                       }}
                     >
                       {event.title}
                     </p>
-                    <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
-                      {timeLabel} · {locationLabel} · {going} going
+                    <p style={{ margin: 0, fontSize: "12px", color: "#777777", lineHeight: 1.35 }}>
+                      {timeLabel} · {locationLabel}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
-                    style={textLinkStyle}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: "6px",
+                      flexShrink: 0,
+                    }}
                   >
-                    Manage →
-                  </button>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: going > 0 ? GOLD : "#666666",
+                        background: going > 0 ? "rgba(255, 196, 41, 0.1)" : "#111111",
+                        border: `1px solid ${going > 0 ? "rgba(255, 196, 41, 0.25)" : CARD_BORDER}`,
+                        borderRadius: "999px",
+                        padding: "3px 8px",
+                      }}
+                    >
+                      {going} going
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
+                      style={{
+                        ...textLinkStyle,
+                        fontSize: "12px",
+                        color: "#aaaaaa",
+                      }}
+                    >
+                      Manage →
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -1262,27 +1405,20 @@ export default function ClubCommandCenter({
         )}
       </section>
 
-      <section
-        style={{
-          background: CARD_BG,
-          border: `1px solid ${CARD_BORDER}`,
-          borderRadius: "10px",
-          padding: "16px",
-        }}
-      >
-        <h2 style={{ ...sectionHeading, marginBottom: "12px" }}>Hiring Snapshot</h2>
+      <section style={sectionCardStyle}>
+        <h2 style={{ ...sectionHeading, marginBottom: "10px" }}>Hiring Snapshot</h2>
         {hiringSnapshot.loading ? (
-          <div className="flex justify-center py-4">
+          <div className="flex justify-center py-3">
             <Spinner label="Loading hiring snapshot…" />
           </div>
         ) : (
           <>
             <div
               style={{
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
-                alignItems: isMobile ? "flex-start" : "center",
-                gap: "20px",
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "auto 1fr",
+                gap: "12px",
+                alignItems: "center",
               }}
             >
               <HiringDonutChart
@@ -1292,18 +1428,18 @@ export default function ClubCommandCenter({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-                  gap: "16px",
-                  flex: 1,
-                  width: isMobile ? "100%" : undefined,
+                  gridTemplateColumns: isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
+                  gap: "8px",
+                  width: "100%",
                 }}
               >
                 <HiringMetricLine
-                  label="Pending Applications"
+                  label="Pending Apps"
                   value={hiringSnapshot.pendingApplicationsCount}
+                  highlight={hiringSnapshot.pendingApplicationsCount > 0}
                 />
                 <HiringMetricLine
-                  label="Roles with 0 Applicants"
+                  label="0 Applicants"
                   value={hiringSnapshot.rolesWithZeroApplicants}
                 />
                 <HiringMetricLine label="Total Roles" value={hiringSnapshot.openRolesCount} />
@@ -1312,23 +1448,26 @@ export default function ClubCommandCenter({
             {hiringSnapshot.topOpenRole ? (
               <div
                 style={{
-                  marginTop: "16px",
-                  paddingTop: "14px",
-                  borderTop: `1px solid ${CARD_BORDER}`,
+                  marginTop: "12px",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  background: "#1a1a1a",
+                  border: `1px solid ${CARD_BORDER}`,
                 }}
               >
                 <p
                   style={{
-                    margin: "0 0 10px",
-                    fontSize: "12px",
-                    color: "#777777",
+                    margin: "0 0 6px",
+                    fontSize: "10px",
+                    color: "#666666",
                     textTransform: "uppercase",
-                    letterSpacing: "0.04em",
+                    letterSpacing: "0.06em",
+                    fontWeight: 700,
                   }}
                 >
                   Top Open Role
                 </p>
-                <p style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
+                <p style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
                   {hiringSnapshot.topOpenRole.title}
                 </p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -1349,7 +1488,7 @@ export default function ClubCommandCenter({
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "16px" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
                 <button
                   type="button"
                   style={noteActionButtonStyle}
@@ -1365,6 +1504,7 @@ export default function ClubCommandCenter({
 
       <RemindersQuickActionsCard
         reminderEvent={upcomingReminderEvent}
+        isMobile={isMobile}
         onUseReminderTemplate={() => navigate(`${announcementsPath}?openTemplate=true`)}
         onNewAnnouncement={() => navigate(`${announcementsPath}?openCreate=true`)}
         onAddEvent={() => navigate(`${eventsPath}?openCreate=true`)}
@@ -1374,17 +1514,16 @@ export default function ClubCommandCenter({
 
       <section
         style={{
+          ...sectionCardStyle,
           background: "#111111",
-          border: `1px solid #1f1f1f`,
-          borderRadius: "8px",
-          padding: "14px 16px",
+          borderColor: "#1f1f1f",
         }}
       >
         <h2
           style={{
-            fontWeight: 500,
-            fontSize: "13px",
-            color: "#666666",
+            fontWeight: 600,
+            fontSize: "12px",
+            color: "#777777",
             margin: "0 0 10px",
             textTransform: "uppercase",
             letterSpacing: "0.06em",
@@ -1399,34 +1538,50 @@ export default function ClubCommandCenter({
         ) : activityItems.length === 0 ? (
           <p style={{ margin: 0, fontSize: "12px", color: "#555555" }}>No recent activity yet.</p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
             {activityItems.map((item) => (
               <div
                 key={item.id}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "8px",
-                  padding: "6px 0",
+                  gap: "10px",
+                  padding: "8px 0",
                   borderBottom: "1px solid #1a1a1a",
                 }}
               >
-                <div style={{ color: "#444444", flexShrink: 0 }}>{item.icon}</div>
+                <div
+                  style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    background: "#1a1a1a",
+                    border: `1px solid ${CARD_BORDER}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    color: "#888888",
+                  }}
+                >
+                  {item.icon}
+                </div>
                 <p
                   style={{
                     margin: 0,
                     flex: 1,
                     minWidth: 0,
-                    fontSize: "12px",
-                    color: "#888888",
+                    fontSize: "13px",
+                    color: "#aaaaaa",
+                    lineHeight: 1.35,
                   }}
                 >
                   {item.description}
                 </p>
                 <span
                   style={{
-                    fontSize: "10px",
-                    color: "#555555",
+                    fontSize: "11px",
+                    color: "#666666",
                     whiteSpace: "nowrap",
                     flexShrink: 0,
                   }}
