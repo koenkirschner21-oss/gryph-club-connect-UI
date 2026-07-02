@@ -1488,3 +1488,60 @@ export async function notifyReportStatusUpdated(
     console.error("Failed to create report status inbox message.");
   }
 }
+
+export async function notifyEventSignupPendingReview(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    eventId: string;
+    eventTitle: string;
+    registrantUserId: string;
+    registrantName: string;
+    rsvpId?: string;
+  },
+): Promise<void> {
+  const organizerIds = await fetchClubExecutiveUserIds(supabase, params.clubId);
+  const recipients = organizerIds.filter(
+    (userId) => userId && userId !== params.registrantUserId,
+  );
+  if (recipients.length === 0) return;
+
+  const bellMessage = `[Sign-up Needs Review] ${params.registrantName} requested to join ${params.eventTitle}. Review and approve their sign-up.`;
+  const inboxMessage = `${params.registrantName} submitted a sign-up request for ${params.eventTitle} that requires your approval.`;
+
+  const bellOk = await createNotifications(
+    supabase,
+    recipients.map((userId) => ({
+      userId,
+      type: "event_signup_pending",
+      message: bellMessage,
+      clubId: params.clubId,
+      referenceId: params.rsvpId ?? params.eventId,
+    })),
+  );
+  if (!bellOk) {
+    console.error("Failed to send pending event sign-up notifications.");
+  }
+
+  for (const userId of recipients) {
+    const inboxOk = await createInboxMessage(supabase, {
+      recipientId: userId,
+      type: "event_signup_pending",
+      title: `Sign-up needs review — ${params.eventTitle}`,
+      message: inboxMessage,
+      actionRequired: true,
+      actionType: "review_event_signup",
+      actionData: {
+        path: `/app/clubs/${params.clubId}/events`,
+        eventId: params.eventId,
+      },
+      clubId: params.clubId,
+      referenceId: params.rsvpId ?? params.eventId,
+      referenceType: "event_rsvp",
+    });
+    if (!inboxOk) {
+      console.error("Failed to create pending sign-up inbox message for:", userId);
+    }
+  }
+}

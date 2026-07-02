@@ -89,6 +89,8 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "event":
     case "event_cancelled":
       return `${base}/events`;
+    case "event_signup_pending":
+      return `${base}/events`;
     case "meeting_invite":
     case "meeting_updated":
     case "meeting_cancelled":
@@ -161,6 +163,8 @@ function notificationGroupId(type: string): NotificationGroupId {
     case "new_event":
     case "event":
     case "event_cancelled":
+      return "events";
+    case "event_signup_pending":
       return "events";
     case "meeting_invite":
     case "meeting_updated":

@@ -10,6 +10,10 @@ import {
 } from "../../lib/eventRsvpUtils";
 import { normalizeVisibility } from "../../lib/contentVisibility";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  notifyEventSignupPendingReview,
+  resolveStudentDisplayName,
+} from "../../lib/notifications";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import type { MembershipType, Visibility } from "../../types";
 
@@ -34,6 +38,7 @@ interface PublicEvent {
   location: string;
   category: string;
   visibility: Visibility;
+  signupRequiresApproval?: boolean;
   bannerUrl?: string;
 }
 
@@ -259,7 +264,7 @@ export default function EventRSVPPage() {
 
       const { data: eventRow, error: eventError } = await supabase
         .from("events")
-        .select("id, club_id, title, description, date, time, location, category, visibility")
+        .select("id, club_id, title, description, date, time, location, category, visibility, signup_requires_approval")
         .eq("id", eventId)
         .maybeSingle();
 
@@ -282,6 +287,7 @@ export default function EventRSVPPage() {
         location: (eventRow.location as string) ?? "",
         category: (eventRow.category as string) ?? "general",
         visibility: normalizeVisibility(eventRow.visibility as string | null, "public"),
+        signupRequiresApproval: Boolean(eventRow.signup_requires_approval),
       };
 
       setEvent(loadedEvent);
@@ -452,10 +458,11 @@ export default function EventRSVPPage() {
       }
 
       if (!existing) {
+        const signupStatus = event.signupRequiresApproval ? "pending" : "going";
         const { error: rsvpError } = await supabase.from("event_rsvps").insert({
           event_id: eventId,
           user_id: user.id,
-          status: "going",
+          status: signupStatus,
         });
 
         if (rsvpError) {
@@ -466,14 +473,25 @@ export default function EventRSVPPage() {
           return;
         }
 
-        const dateLabel = formatEventDateTime(event.date, event.time);
-        await supabase.from("notifications").insert({
-          user_id: user.id,
-          type: "club_update",
-          message: `[Event Registration Confirmed] You're registered for ${event.title} on ${dateLabel}. Location: ${event.location?.trim() || "TBD"}`,
-          club_id: event.clubId,
-          reference_id: event.id,
-        });
+        if (signupStatus === "going") {
+          const dateLabel = formatEventDateTime(event.date, event.time);
+          await supabase.from("notifications").insert({
+            user_id: user.id,
+            type: "club_update",
+            message: `[Event Registration Confirmed] You're registered for ${event.title} on ${dateLabel}. Location: ${event.location?.trim() || "TBD"}`,
+            club_id: event.clubId,
+            reference_id: event.id,
+          });
+        } else {
+          void notifyEventSignupPendingReview(supabase, {
+            clubId: event.clubId,
+            clubName: clubName || "Club",
+            eventId: event.id,
+            eventTitle: event.title,
+            registrantUserId: user.id,
+            registrantName: resolveStudentDisplayName(name, user.email),
+          });
+        }
       }
 
       setSubmitting(false);

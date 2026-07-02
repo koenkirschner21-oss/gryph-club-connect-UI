@@ -106,6 +106,7 @@ export interface ClubEvent {
   endAt?: string;
   location: string;
   visibility?: Visibility;
+  signupRequiresApproval?: boolean;
   /** Event author (auth user id). */
   createdBy?: string;
   createdAt?: string;
@@ -113,7 +114,7 @@ export interface ClubEvent {
   creatorAvatar?: string;
 }
 
-export type RsvpStatus = "going" | "maybe" | "not_going";
+export type RsvpStatus = "going" | "maybe" | "not_going" | "pending";
 
 export interface EventRsvp {
   id: string;
@@ -301,7 +302,8 @@ export type NotificationType =
   | "member_removed"
   | "role_updated"
   | "report_submitted"
-  | "report_status_updated";
+  | "report_status_updated"
+  | "event_signup_pending";
 
 export interface Notification {
   id: string;

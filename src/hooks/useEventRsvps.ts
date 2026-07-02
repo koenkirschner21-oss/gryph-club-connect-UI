@@ -85,7 +85,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
       for (const r of rows) {
         const eid = r.event_id as string;
         const status = r.status as RsvpStatus;
-        if (newCounts[eid]) {
+        if (newCounts[eid] && (status === "going" || status === "maybe" || status === "not_going")) {
           newCounts[eid][status] += 1;
         }
       }
@@ -151,8 +151,12 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
         const old = prev[eventId] ?? emptyCounts();
         const prevStatus = myRsvpsRef.current[eventId];
         const updated = { ...old };
-        if (prevStatus) updated[prevStatus] = Math.max(0, updated[prevStatus] - 1);
-        updated[status] += 1;
+        if (prevStatus === "going" || prevStatus === "maybe" || prevStatus === "not_going") {
+          updated[prevStatus] = Math.max(0, updated[prevStatus] - 1);
+        }
+        if (status === "going" || status === "maybe" || status === "not_going") {
+          updated[status] += 1;
+        }
         return { ...prev, [eventId]: updated };
       });
 
@@ -184,7 +188,7 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
         return next;
       });
 
-      if (prevStatus) {
+      if (prevStatus === "going" || prevStatus === "maybe" || prevStatus === "not_going") {
         setCounts((prev) => {
           const old = prev[eventId] ?? emptyCounts();
           return {

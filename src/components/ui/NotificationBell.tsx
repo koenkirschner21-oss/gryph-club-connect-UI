@@ -30,6 +30,7 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   role_updated: "🛡️",
   report_submitted: "🚩",
   report_status_updated: "🚩",
+  event_signup_pending: "📅",
   club_update: "🔔",
 };
 

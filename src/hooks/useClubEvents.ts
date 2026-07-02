@@ -21,6 +21,7 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
     creatorAvatar: (creator?.avatar_url as string) ?? undefined,
     createdAt: (row.created_at as string) ?? "",
     visibility: normalizeVisibility(row.visibility as string | null, "public"),
+    signupRequiresApproval: Boolean(row.signup_requires_approval),
   };
 }
 
@@ -31,12 +32,13 @@ export interface UseClubEventsReturn {
   createEvent: (
     fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location"> & {
       visibility?: ClubEvent["visibility"];
+      signupRequiresApproval?: boolean;
     },
   ) => Promise<boolean>;
   updateEvent: (
     eventId: string,
     fields: Partial<
-      Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility">
+      Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility" | "signupRequiresApproval">
     >,
   ) => Promise<boolean>;
   deleteEvent: (eventId: string) => Promise<boolean>;
@@ -74,6 +76,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
         time,
         location,
         visibility,
+        signup_requires_approval,
         created_at,
         created_by,
         creator:profiles!events_creator_profile_fkey (
@@ -138,6 +141,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
     async (
       fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location"> & {
         visibility?: ClubEvent["visibility"];
+        signupRequiresApproval?: boolean;
       },
     ): Promise<boolean> => {
       if (!clubId || !user) return false;
@@ -152,6 +156,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           time: fields.time,
           location: fields.location,
           visibility: fields.visibility ?? "public",
+          signup_requires_approval: fields.signupRequiresApproval ?? false,
           created_by: user.id,
         })
         .select(`
@@ -163,6 +168,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           time,
           location,
           visibility,
+          signup_requires_approval,
           created_at,
           created_by,
           creator:profiles!events_creator_profile_fkey (
@@ -188,7 +194,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
     async (
       eventId: string,
       fields: Partial<
-        Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility">
+        Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility" | "signupRequiresApproval">
       >,
     ): Promise<boolean> => {
       const row: Record<string, unknown> = {};
@@ -198,6 +204,9 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
       if (fields.time !== undefined) row.time = fields.time;
       if (fields.location !== undefined) row.location = fields.location;
       if (fields.visibility !== undefined) row.visibility = fields.visibility;
+      if (fields.signupRequiresApproval !== undefined) {
+        row.signup_requires_approval = fields.signupRequiresApproval;
+      }
 
       const { data, error: err } = await supabase
         .from("events")
@@ -212,6 +221,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           time,
           location,
           visibility,
+          signup_requires_approval,
           created_at,
           created_by,
           creator:profiles!events_creator_profile_fkey (

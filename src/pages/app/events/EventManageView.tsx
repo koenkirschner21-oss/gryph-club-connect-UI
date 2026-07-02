@@ -162,6 +162,7 @@ function AttendeeRow({
     going: { bg: "#1a1200", color: "#FFC429", border: "1px solid #FFC429" },
     maybe: { bg: "#1a1a1a", color: "#aaaaaa", border: "1px solid #555555" },
     not_going: { bg: "#1a0505", color: "#E51937", border: "1px solid #E51937" },
+    pending: { bg: "#1a1005", color: "#FFC429", border: "1px solid #666666" },
   };
 
   const name =
@@ -181,7 +182,9 @@ function AttendeeRow({
         ? "Going"
         : item.attendee.status === "maybe"
           ? "Maybe"
-          : "Not Going";
+          : item.attendee.status === "pending"
+            ? "Pending Approval"
+            : "Not Going";
   const statusStyle =
     item.kind === "no_response"
       ? { bg: "#141414", color: "#777777", border: "1px solid #333333" }
@@ -424,7 +427,8 @@ export function EventManageView({
     const statusOrder: Record<RsvpStatus, number> = {
       going: 0,
       maybe: 1,
-      not_going: 2,
+      pending: 2,
+      not_going: 3,
     };
 
     const allRows = [...rsvpRows, ...noResponseRows].sort((left, right) => {

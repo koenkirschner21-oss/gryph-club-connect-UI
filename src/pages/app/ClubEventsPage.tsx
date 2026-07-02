@@ -43,6 +43,8 @@ import { summarizeFeedbackRows, type EventReviewStatus } from "../../lib/eventRe
 import {
   fetchEventRsvpRecipientUserIds,
   notifyEventCancelled,
+  notifyEventSignupPendingReview,
+  resolveStudentDisplayName,
 } from "../../lib/notifications";
 import {
   filterRsvpQuestionsForLoggedInUser,
@@ -2204,6 +2206,7 @@ export default function ClubEventsPage() {
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
   const [visibility, setVisibility] = useState<Visibility>("public");
+  const [signupRequiresApproval, setSignupRequiresApproval] = useState(false);
   const [category, setCategory] = useState<EventCategory>(DEFAULT_EVENT_CATEGORY);
   const [categoryColumnReady, setCategoryColumnReady] = useState(false);
   const [eventCategories, setEventCategories] = useState<
@@ -2676,6 +2679,7 @@ export default function ClubEventsPage() {
     setTime("");
     setLocation("");
     setVisibility("public");
+    setSignupRequiresApproval(false);
     setCategory(DEFAULT_EVENT_CATEGORY);
     setIsRecurring(false);
     setRecurrenceFrequency("weekly");
@@ -2694,6 +2698,7 @@ export default function ClubEventsPage() {
     setTime(current.time);
     setLocation(current.location);
     setVisibility(normalizeVisibility(current.visibility, "public"));
+    setSignupRequiresApproval(Boolean(current.signupRequiresApproval));
     setCategory(
       eventCategories[current.id] ?? DEFAULT_EVENT_CATEGORY,
     );
@@ -2735,6 +2740,7 @@ export default function ClubEventsPage() {
       time: time || "TBD",
       location: location.trim() || "TBD",
       visibility,
+      signupRequiresApproval,
     };
 
     let ok: boolean;
@@ -2923,12 +2929,38 @@ export default function ClubEventsPage() {
     }
 
     const hadRsvp = Boolean(myRsvps[eventId]);
-    const ok = await setRsvp(eventId, status);
-    if (ok && status === "going" && !hadRsvp && !existing) {
+    const eventForSignup = events.find((entry) => entry.id === eventId);
+    const signupStatus: RsvpStatus =
+      status === "going" && eventForSignup?.signupRequiresApproval
+        ? "pending"
+        : status;
+
+    const ok = await setRsvp(eventId, signupStatus);
+    if (ok && signupStatus === "going" && !hadRsvp && !existing) {
       const event = events.find((e) => e.id === eventId);
       if (event) {
         await sendEventRegistrationNotification(event, user.id);
       }
+    } else if (
+      ok &&
+      signupStatus === "pending" &&
+      !hadRsvp &&
+      !existing &&
+      eventForSignup &&
+      clubId
+    ) {
+      const member = members.find((entry) => entry.userId === user.id);
+      void notifyEventSignupPendingReview(supabase, {
+        clubId,
+        clubName: club?.name ?? "Club",
+        eventId: eventForSignup.id,
+        eventTitle: eventForSignup.title,
+        registrantUserId: user.id,
+        registrantName: resolveStudentDisplayName(
+          member?.fullName,
+          user.email,
+        ),
+      });
     }
   }
 
@@ -2984,11 +3016,29 @@ export default function ClubEventsPage() {
       return;
     }
 
-    const ok = await setRsvp(rsvpModalEvent.id, "going");
+    const signupStatus: RsvpStatus = rsvpModalEvent.signupRequiresApproval
+      ? "pending"
+      : "going";
+    const ok = await setRsvp(rsvpModalEvent.id, signupStatus);
     setRsvpSubmitting(false);
 
     if (ok) {
-      await sendEventRegistrationNotification(rsvpModalEvent, user.id);
+      if (signupStatus === "going") {
+        await sendEventRegistrationNotification(rsvpModalEvent, user.id);
+      } else if (clubId) {
+        const member = members.find((entry) => entry.userId === user.id);
+        void notifyEventSignupPendingReview(supabase, {
+          clubId,
+          clubName: club?.name ?? "Club",
+          eventId: rsvpModalEvent.id,
+          eventTitle: rsvpModalEvent.title,
+          registrantUserId: user.id,
+          registrantName: resolveStudentDisplayName(
+            member?.fullName,
+            user.email,
+          ),
+        });
+      }
       setRsvpModalEvent(null);
       setRsvpAnswers({});
     } else {
@@ -3632,6 +3682,30 @@ export default function ClubEventsPage() {
               onChange={setVisibility}
               label="Who can see this event?"
             />
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                fontSize: "13px",
+                color: "#cccccc",
+                marginBottom: "4px",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={signupRequiresApproval}
+                onChange={(e) => setSignupRequiresApproval(e.target.checked)}
+                style={{ marginTop: "2px" }}
+              />
+              <span>
+                Require organizer approval for sign-ups
+                <span style={{ display: "block", color: "#666666", fontSize: "12px", marginTop: "4px" }}>
+                  Registrants are held as pending until an executive reviews their request.
+                </span>
+              </span>
+            </label>
             <div
               style={{
                 display: "flex",

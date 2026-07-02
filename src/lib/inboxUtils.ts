@@ -27,6 +27,7 @@ export type InboxMessageType =
   | "member_removed"
   | "report_submitted"
   | "report_status_updated"
+  | "event_signup_pending"
   | "system_message";
 
 export type InboxFilter =
@@ -87,6 +88,7 @@ const CLUB_UPDATE_TYPES = new Set<InboxMessageType>([
   "event_cancelled",
   "meeting_cancelled",
   "member_removed",
+  "event_signup_pending",
 ]);
 
 const ADMIN_TYPES = new Set<InboxMessageType>(["admin_message", "system_message"]);

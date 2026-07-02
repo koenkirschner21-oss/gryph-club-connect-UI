@@ -95,6 +95,9 @@ export function parseNotificationDisplay(
   if (type === "report_status_updated") {
     return { title: "Report Update", body: trimmed };
   }
+  if (type === "event_signup_pending") {
+    return { title: "Sign-up Needs Review", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }
