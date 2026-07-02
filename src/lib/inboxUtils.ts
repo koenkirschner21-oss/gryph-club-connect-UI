@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  fetchNotificationPreferencesByUserId,
+  shouldDeliverInboxMessage,
+} from "./notificationPreferences";
 
 export type InboxMessageType =
   | "interview_invite"
@@ -241,6 +245,18 @@ export async function createInboxMessage(
   supabase: SupabaseClient,
   input: CreateInboxMessageInput,
 ): Promise<boolean> {
+  const prefsByUserId = await fetchNotificationPreferencesByUserId(supabase, [
+    input.recipientId,
+  ]);
+  if (
+    !shouldDeliverInboxMessage(
+      prefsByUserId.get(input.recipientId) ?? null,
+      input.type,
+    )
+  ) {
+    return true;
+  }
+
   const row = {
     recipient_id: input.recipientId,
     sender_id: input.senderId ?? null,

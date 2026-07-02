@@ -1,3 +1,7 @@
+import {
+  fetchNotificationPreferencesByUserId,
+  shouldDeliverBellNotification,
+} from "./notificationPreferences";
 import { supabase } from "./supabaseClient";
 import type { NotificationType } from "../types";
 
@@ -24,7 +28,21 @@ export async function notifyUsers(
 ): Promise<boolean> {
   if (notifications.length === 0) return true;
 
-  const payload = mapNotificationPayload(notifications);
+  const prefsByUserId = await fetchNotificationPreferencesByUserId(
+    supabase,
+    notifications.map((notification) => notification.user_id),
+  );
+
+  const deliverable = notifications.filter((notification) =>
+    shouldDeliverBellNotification(
+      prefsByUserId.get(notification.user_id) ?? null,
+      notification.type,
+    ),
+  );
+
+  if (deliverable.length === 0) return true;
+
+  const payload = mapNotificationPayload(deliverable);
 
   const { error: rpcError } = await supabase.rpc("send_app_notifications", {
     p_notifications: payload,
@@ -44,7 +62,7 @@ export async function notifyUsers(
   const { error: fnError, data: fnData } = await supabase.functions.invoke(
     "send-notification",
     {
-      body: { notifications },
+      body: { notifications: deliverable },
     },
   );
 
