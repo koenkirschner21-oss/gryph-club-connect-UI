@@ -2,8 +2,17 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check, X } from "lucide-react";
 import {
+  buildClubSettingsConfirmPath,
   buildClubSettingsSectionPath,
+  clubHasBannerValue,
+  clubHasLogoValue,
+  clubHasSocialLinks,
+  getSetupFieldState,
   resolveClubSetupSettingsPath,
+  setupChecklistActionLabel,
+  setupChecklistItemLabel,
+  type ClubSetupSettingsSection,
+  type SetupFieldState,
 } from "../../lib/clubProfileCompletion";
 import type { Club } from "../../types";
 
@@ -21,6 +30,7 @@ interface ChecklistItem {
   complete: boolean;
   section: SectionKey;
   fixPath?: string;
+  actionLabel?: string;
   templateType?: TemplateLaunchType;
   instruction?: string;
 }
@@ -31,23 +41,16 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   live: "Go Live",
 };
 
-function buildCompletionChecks(
-  club: Club,
-  postsCount: number,
-  eventsCount: number,
-) {
-  return {
-    clubName: Boolean(club.name?.trim()),
-    shortDescription: club.descriptionConfirmed === true,
-    logo: club.logoConfirmed === true,
-    banner: club.bannerConfirmed === true,
-    contactEmail: club.contactEmailConfirmed === true,
-    meetingSchedule: club.meetingScheduleConfirmed === true,
-    socialLinks: club.socialLinksConfirmed === true,
-    membershipType: club.membershipConfirmed === true,
-    firstAnnouncement: postsCount > 0,
-    firstEvent: eventsCount > 0,
-  };
+function settingsPathForField(
+  clubId: string,
+  section: ClubSetupSettingsSection,
+  confirmField: string,
+  state: SetupFieldState,
+): string {
+  if (state === "existing_unconfirmed") {
+    return buildClubSettingsConfirmPath(clubId, section, confirmField);
+  }
+  return buildClubSettingsSectionPath(clubId, section);
 }
 
 function buildChecklistItems(
@@ -55,92 +58,168 @@ function buildChecklistItems(
   postsCount: number,
   eventsCount: number,
 ): ChecklistItem[] {
-  const checks = buildCompletionChecks(club, postsCount, eventsCount);
+  const logoState = getSetupFieldState(
+    clubHasLogoValue(club),
+    club.logoConfirmed === true,
+  );
+  const bannerState = getSetupFieldState(
+    clubHasBannerValue(club),
+    club.bannerConfirmed === true,
+  );
+  const descriptionState = getSetupFieldState(
+    Boolean(club.shortDescription?.trim()),
+    club.descriptionConfirmed === true,
+  );
+  const contactEmailState = getSetupFieldState(
+    Boolean(club.contactEmail?.trim()),
+    club.contactEmailConfirmed === true,
+  );
+  const meetingScheduleState = getSetupFieldState(
+    Boolean(club.meetingSchedule?.trim()),
+    club.meetingScheduleConfirmed === true,
+  );
+  const socialLinksState = getSetupFieldState(
+    clubHasSocialLinks(club.socialLinks),
+    club.socialLinksConfirmed === true,
+  );
+  const membershipState = getSetupFieldState(
+    Boolean(club.membershipType),
+    club.membershipConfirmed === true,
+  );
 
   return [
     {
       id: "name",
       label: "Club name confirmed",
-      complete: checks.clubName,
+      complete: Boolean(club.name?.trim()),
       section: "profile",
     },
     {
       id: "logo",
-      label: "Update club logo",
-      complete: checks.logo,
+      label: setupChecklistItemLabel("club logo", logoState),
+      complete: logoState === "confirmed",
       section: "profile",
-      fixPath: buildClubSettingsSectionPath(club.id, "branding"),
+      fixPath: settingsPathForField(club.id, "branding", "logo", logoState),
+      actionLabel: setupChecklistActionLabel(logoState),
       instruction:
-        "Replace the default logo with your club's official logo.",
+        logoState === "existing_unconfirmed"
+          ? "Review your club logo and click Save in Settings to confirm it."
+          : "Replace the default logo with your club's official logo.",
     },
     {
       id: "banner",
-      label: "Update club banner",
-      complete: checks.banner,
+      label: setupChecklistItemLabel("club banner", bannerState),
+      complete: bannerState === "confirmed",
       section: "profile",
-      fixPath: buildClubSettingsSectionPath(club.id, "branding"),
+      fixPath: settingsPathForField(club.id, "branding", "banner", bannerState),
+      actionLabel: setupChecklistActionLabel(bannerState),
       instruction:
-        "Replace the default banner with a real club banner image.",
+        bannerState === "existing_unconfirmed"
+          ? "Review your club banner and click Save in Settings to confirm it."
+          : "Replace the default banner with a real club banner image.",
     },
     {
       id: "short-description",
-      label: "Review or update short description",
-      complete: checks.shortDescription,
+      label: setupChecklistItemLabel("short description", descriptionState),
+      complete: descriptionState === "confirmed",
       section: "profile",
-      fixPath: buildClubSettingsSectionPath(club.id, "profile"),
+      fixPath: settingsPathForField(
+        club.id,
+        "profile",
+        "short-description",
+        descriptionState,
+      ),
+      actionLabel: setupChecklistActionLabel(descriptionState),
       instruction:
-        "Review the imported description and update it to accurately represent your club. Click Save in Settings to confirm.",
+        descriptionState === "existing_unconfirmed"
+          ? "Review the description from your club request and click Save to confirm."
+          : "Add a short description that accurately represents your club.",
     },
     {
       id: "contact-email",
-      label: "Add contact email",
-      complete: checks.contactEmail,
+      label: setupChecklistItemLabel("contact email", contactEmailState),
+      complete: contactEmailState === "confirmed",
       section: "profile",
-      fixPath: buildClubSettingsSectionPath(club.id, "profile"),
-      instruction: "Add a contact email so students can reach your club.",
+      fixPath: settingsPathForField(
+        club.id,
+        "profile",
+        "contact-email",
+        contactEmailState,
+      ),
+      actionLabel: setupChecklistActionLabel(contactEmailState),
+      instruction:
+        contactEmailState === "existing_unconfirmed"
+          ? "Review the contact email from your club request and click Save to confirm."
+          : "Add a contact email so students can reach your club.",
     },
     {
       id: "meeting-schedule",
-      label: "Add meeting schedule",
-      complete: checks.meetingSchedule,
+      label: setupChecklistItemLabel("meeting schedule", meetingScheduleState),
+      complete: meetingScheduleState === "confirmed",
       section: "profile",
-      fixPath: buildClubSettingsSectionPath(club.id, "profile"),
-      instruction: "Let members know when and where your club meets.",
+      fixPath: settingsPathForField(
+        club.id,
+        "profile",
+        "meeting-schedule",
+        meetingScheduleState,
+      ),
+      actionLabel: setupChecklistActionLabel(meetingScheduleState),
+      instruction:
+        meetingScheduleState === "existing_unconfirmed"
+          ? "Review the meeting schedule from your club request and click Save to confirm."
+          : "Let members know when and where your club meets.",
     },
     {
       id: "social-links",
-      label: "Add social links",
-      complete: checks.socialLinks,
+      label: setupChecklistItemLabel("social links", socialLinksState),
+      complete: socialLinksState === "confirmed",
       section: "profile",
-      fixPath: buildClubSettingsSectionPath(club.id, "social"),
-      instruction: "Link your Instagram, website, or other channels.",
+      fixPath: settingsPathForField(
+        club.id,
+        "social",
+        "social-links",
+        socialLinksState,
+      ),
+      actionLabel: setupChecklistActionLabel(socialLinksState),
+      instruction:
+        socialLinksState === "existing_unconfirmed"
+          ? "Review your social links and click Save to confirm."
+          : "Link your Instagram, website, or other channels.",
     },
     {
       id: "membership-type",
-      label: "Choose membership rules",
-      complete: checks.membershipType,
+      label: setupChecklistItemLabel("membership rules", membershipState),
+      complete: membershipState === "confirmed",
       section: "profile",
-      fixPath: buildClubSettingsSectionPath(club.id, "membership"),
+      fixPath: settingsPathForField(
+        club.id,
+        "membership",
+        "membership-type",
+        membershipState,
+      ),
+      actionLabel: setupChecklistActionLabel(membershipState),
       instruction:
-        "Choose how students can join your club and click Save to confirm.",
+        membershipState === "existing_unconfirmed"
+          ? "Review how students can join your club and click Save to confirm."
+          : "Choose how students can join your club.",
     },
     {
       id: "announcement",
       label: "Create welcome announcement",
-      complete: checks.firstAnnouncement,
+      complete: postsCount > 0,
       section: "launch",
       fixPath: `/app/clubs/${club.id}/announcements?openCreate=true`,
-      templateType: "announcement",
+      actionLabel: "Add →",
       instruction:
         "Post a welcome message to introduce your club to new members.",
     },
     {
       id: "event",
       label: "Create first event",
-      complete: checks.firstEvent,
+      complete: eventsCount > 0,
       section: "launch",
       fixPath: `/app/clubs/${club.id}/events?openCreate=true`,
-      templateType: "event",
+      actionLabel: "Add →",
       instruction: "Create your first event to start engaging your club community.",
     },
   ];
@@ -177,6 +256,7 @@ function ChecklistRow({
 }) {
   const navigate = useNavigate();
   const canDeepLink = !item.complete && Boolean(item.fixPath);
+  const actionLabel = item.actionLabel ?? "Fix this →";
 
   return (
     <div>
@@ -245,7 +325,7 @@ function ChecklistRow({
             onClick={() => navigate(item.fixPath!)}
             style={{ ...fixButtonStyle, marginTop: "2px" }}
           >
-            Fix this →
+            {actionLabel}
           </button>
         ) : null}
       </div>
@@ -304,9 +384,11 @@ export default function SetupChecklist({
       if (document.visibilityState === "visible") handleRefresh();
     };
     window.addEventListener("focus", handleRefresh);
+    window.addEventListener("club-setup-progress-changed", handleRefresh);
     document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener("club-setup-progress-changed", handleRefresh);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [onRefetch]);

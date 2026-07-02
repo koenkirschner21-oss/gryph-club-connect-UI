@@ -20,6 +20,63 @@ export function buildClubSettingsSectionPath(
   return `/app/clubs/${clubId}/settings?section=${section}&highlight=${section}`;
 }
 
+export function buildClubSettingsConfirmPath(
+  clubId: string,
+  section: ClubSetupSettingsSection,
+  confirmField: string,
+): string {
+  return `/app/clubs/${clubId}/settings?section=${section}&highlight=${confirmField}&confirm=${confirmField}`;
+}
+
+export type SetupFieldState = "missing" | "existing_unconfirmed" | "confirmed";
+
+export function getSetupFieldState(
+  hasValue: boolean,
+  isConfirmed: boolean,
+): SetupFieldState {
+  if (isConfirmed) return "confirmed";
+  if (hasValue) return "existing_unconfirmed";
+  return "missing";
+}
+
+export function setupChecklistItemLabel(
+  fieldLabel: string,
+  state: SetupFieldState,
+): string {
+  if (state === "confirmed") {
+    return `${fieldLabel} confirmed`;
+  }
+  if (state === "existing_unconfirmed") {
+    return `Confirm ${fieldLabel}`;
+  }
+  return `Add ${fieldLabel}`;
+}
+
+export function setupChecklistActionLabel(state: SetupFieldState): string {
+  if (state === "confirmed") return "";
+  if (state === "existing_unconfirmed") return "Confirm →";
+  return "Add →";
+}
+
+export function isPlaceholderClubImageUrl(url: string | undefined | null): boolean {
+  const normalized = (url ?? "").trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized.includes("ui-avatars") ||
+    normalized.includes("placeholder") ||
+    normalized.includes("default") ||
+    normalized.includes("initials")
+  );
+}
+
+export function clubHasLogoValue(club: Club): boolean {
+  return Boolean(club.logoUrl?.trim()) && !isPlaceholderClubImageUrl(club.logoUrl);
+}
+
+export function clubHasBannerValue(club: Club): boolean {
+  return Boolean(club.bannerUrl?.trim()) && !isPlaceholderClubImageUrl(club.bannerUrl);
+}
+
 export function isClubSetupSettingsDeepLink(
   searchParams: Pick<URLSearchParams, "get">,
 ): boolean {

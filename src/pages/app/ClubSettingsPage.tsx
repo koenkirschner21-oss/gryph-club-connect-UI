@@ -932,7 +932,7 @@ function JoinQuestionBuilder({
 export default function ClubSettingsPage() {
   const { clubId } = useParams<{ clubId: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
   const { getClubById, updateClub } = useClubContext();
   const { members } = useClubMembers(clubId);
@@ -1095,9 +1095,20 @@ export default function ClubSettingsPage() {
       social: "social-links",
       membership: "membership",
     };
+    const fieldScrollIdMap: Record<string, string> = {
+      logo: "branding",
+      banner: "branding",
+      "short-description": "short-description",
+      "contact-email": "contact-email",
+      "meeting-schedule": "meeting-schedule",
+      "social-links": "social-links",
+      "membership-type": "membership",
+    };
 
     const scrollKey = section ?? highlight;
-    const targetId = scrollKey ? sectionIdMap[scrollKey] : undefined;
+    const targetId =
+      (highlight ? fieldScrollIdMap[highlight] : undefined) ??
+      (scrollKey ? sectionIdMap[scrollKey] : undefined);
 
     if (highlight) {
       setHighlightedSection(highlight);
@@ -1288,6 +1299,8 @@ export default function ClubSettingsPage() {
 
     setSaving(true);
     const permissionsDirty = !permissionsEqual(permissions, savedPermissions);
+    const confirmField = searchParams.get("confirm");
+    const wantsConfirm = (field: string) => confirmField === field;
 
     const ownerUpdate: Partial<Club> = {
       name: name.trim(),
@@ -1306,25 +1319,27 @@ export default function ClubSettingsPage() {
     if (savedSnapshot) {
       if (
         shortDescription.trim() &&
-        shortDescription.trim() !== savedSnapshot.shortDescription
+        (wantsConfirm("short-description") ||
+          shortDescription.trim() !== savedSnapshot.shortDescription)
       ) {
         ownerUpdate.descriptionConfirmed = true;
       }
       if (
         logoUrl.trim() &&
         !isPlaceholderImageUrl(logoUrl) &&
-        logoUrl.trim() !== savedSnapshot.logoUrl
+        (wantsConfirm("logo") || logoUrl.trim() !== savedSnapshot.logoUrl)
       ) {
         ownerUpdate.logoConfirmed = true;
       }
       if (
         bannerUrl.trim() &&
         !isPlaceholderImageUrl(bannerUrl) &&
-        bannerUrl.trim() !== savedSnapshot.bannerUrl
+        (wantsConfirm("banner") || bannerUrl.trim() !== savedSnapshot.bannerUrl)
       ) {
         ownerUpdate.bannerConfirmed = true;
       }
       if (
+        wantsConfirm("membership-type") ||
         membershipDirty ||
         membershipType !== savedSnapshot.membershipType
       ) {
@@ -1332,13 +1347,15 @@ export default function ClubSettingsPage() {
       }
       if (
         contactEmail.trim() &&
-        contactEmail.trim() !== savedSnapshot.contactEmail
+        (wantsConfirm("contact-email") ||
+          contactEmail.trim() !== savedSnapshot.contactEmail)
       ) {
         ownerUpdate.contactEmailConfirmed = true;
       }
       if (
         meetingSchedule.trim() &&
-        meetingSchedule.trim() !== savedSnapshot.meetingSchedule
+        (wantsConfirm("meeting-schedule") ||
+          meetingSchedule.trim() !== savedSnapshot.meetingSchedule)
       ) {
         ownerUpdate.meetingScheduleConfirmed = true;
       }
@@ -1351,8 +1368,8 @@ export default function ClubSettingsPage() {
         websiteUrl.trim() !== savedSnapshot.websiteUrl
       : false;
     const shouldConfirmSocialLinks =
-      socialLinksChanged &&
-      hasSocialLinkValue(instagramUrl, linkedinUrl, twitterUrl, websiteUrl);
+      hasSocialLinkValue(instagramUrl, linkedinUrl, twitterUrl, websiteUrl) &&
+      (wantsConfirm("social-links") || socialLinksChanged);
 
     const ok = await updateClub(
       clubId!,
@@ -1430,6 +1447,11 @@ export default function ClubSettingsPage() {
         twitterUrl: twitterUrl.trim(),
         websiteUrl: websiteUrl.trim(),
       });
+      if (confirmField) {
+        const next = new URLSearchParams(searchParams);
+        next.delete("confirm");
+        setSearchParams(next, { replace: true });
+      }
       window.dispatchEvent(
         new CustomEvent("club-setup-progress-changed", { detail: { clubId } }),
       );
@@ -1593,7 +1615,9 @@ export default function ClubSettingsPage() {
     }
 
     setJoinQuestions(parseJoinQuestions(questions));
-    void updateClub(clubId, { membershipConfirmed: true });
+    if (searchParams.get("confirm") === "membership-type") {
+      void updateClub(clubId, { membershipConfirmed: true });
+    }
     window.dispatchEvent(
       new CustomEvent("club-setup-progress-changed", { detail: { clubId } }),
     );
@@ -1743,7 +1767,12 @@ export default function ClubSettingsPage() {
           title="Club Profile"
           subtitle="Basic information members see on your club page."
           sectionId="club-profile"
-          highlighted={highlightedSection === "profile"}
+          highlighted={
+            highlightedSection === "profile" ||
+            highlightedSection === "short-description" ||
+            highlightedSection === "contact-email" ||
+            highlightedSection === "meeting-schedule"
+          }
         >
           <SettingsField id="club-name" label="Club Name" required>
             <SettingsTextInput
@@ -1844,7 +1873,11 @@ export default function ClubSettingsPage() {
             title="Branding"
             subtitle="Logo, banner, and accent color for your club."
             sectionId="branding"
-            highlighted={highlightedSection === "branding"}
+          highlighted={
+            highlightedSection === "branding" ||
+            highlightedSection === "logo" ||
+            highlightedSection === "banner"
+          }
           >
             <SettingsField label="Club Logo">
               <div
@@ -2060,7 +2093,10 @@ export default function ClubSettingsPage() {
             title="Social Links"
             subtitle="Connect your club's social profiles and website."
             sectionId="social-links"
-            highlighted={highlightedSection === "social"}
+            highlighted={
+              highlightedSection === "social" ||
+              highlightedSection === "social-links"
+            }
           >
             <SocialLinkField
               id="instagram-url"
@@ -2104,7 +2140,10 @@ export default function ClubSettingsPage() {
             title="Membership"
             subtitle="Control how new members join your club."
             sectionId="membership"
-            highlighted={highlightedSection === "membership"}
+            highlighted={
+              highlightedSection === "membership" ||
+              highlightedSection === "membership-type"
+            }
           >
             <div
               style={{
