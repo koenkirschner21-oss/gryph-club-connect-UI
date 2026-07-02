@@ -721,7 +721,8 @@ export default function ClubMembersPage() {
   const isOwner = role === "owner";
   const canManageMembers = memberAccess.can("manage_members");
   const canManageRoles = memberAccess.can("manage_roles") || memberAccess.isPresident;
-  const canUseMembershipQueue = canManageMembers;
+  const canReviewJoinRequests = memberAccess.canApproveMembers;
+  const canInviteMembers = memberAccess.canInviteMembers;
   const isDirectoryView = !canManageMembers;
 
   const {
@@ -766,7 +767,7 @@ export default function ClubMembersPage() {
     null,
   );
 
-  const showInviteCodeSection = canManageMembers && Boolean(club?.joinCode);
+  const showInviteCodeSection = canInviteMembers && Boolean(club?.joinCode);
 
   const roleOrder: Record<MemberRole, number> = {
     owner: 0,
@@ -886,10 +887,13 @@ export default function ClubMembersPage() {
   }, [clubId]);
 
   useEffect(() => {
-    if (!canUseMembershipQueue && (viewMode === "pendingRequests" || viewMode === "invites")) {
+    if (!canReviewJoinRequests && viewMode === "pendingRequests") {
       setViewMode("list");
     }
-  }, [canUseMembershipQueue, viewMode]);
+    if (!canInviteMembers && viewMode === "invites") {
+      setViewMode("list");
+    }
+  }, [canReviewJoinRequests, canInviteMembers, viewMode]);
 
   useEffect(() => {
     if (!clubId || !canManageMembers) return;
@@ -921,18 +925,18 @@ export default function ClubMembersPage() {
   }, [clubId, showInviteModal, showExecutiveInviteModal, canManageMembers]);
 
   useEffect(() => {
-    if (viewMode === "invites" && canUseMembershipQueue) {
+    if (viewMode === "invites" && canInviteMembers) {
       void loadExecutiveInvites();
     }
-  }, [canUseMembershipQueue, loadExecutiveInvites, viewMode]);
+  }, [canInviteMembers, loadExecutiveInvites, viewMode]);
 
   useEffect(() => {
-    if (searchParams.get("tab") !== "pending" || !canUseMembershipQueue) return;
+    if (searchParams.get("tab") !== "pending" || !canReviewJoinRequests) return;
     setViewMode("pendingRequests");
     const next = new URLSearchParams(searchParams);
     next.delete("tab");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, canUseMembershipQueue]);
+  }, [searchParams, setSearchParams, canReviewJoinRequests]);
 
   const loadOrgChartMembers = useCallback(async () => {
     if (!clubId) return;
@@ -1351,7 +1355,7 @@ export default function ClubMembersPage() {
           </p>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          {canManageMembers ? (
+          {canInviteMembers ? (
             <button
               type="button"
               onClick={() => setShowInviteModal(true)}
@@ -1369,7 +1373,7 @@ export default function ClubMembersPage() {
               Invite Member
             </button>
           ) : null}
-          {canUseMembershipQueue ? (
+          {canInviteMembers ? (
             <button
               type="button"
               onClick={() => setShowExecutiveInviteModal(true)}
@@ -1553,7 +1557,7 @@ export default function ClubMembersPage() {
         }}
       >
         {viewToggleButton("list", "Members")}
-        {canUseMembershipQueue
+        {canReviewJoinRequests
           ? viewToggleButton(
               "pendingRequests",
               pendingMembers.length > 0
@@ -1561,11 +1565,11 @@ export default function ClubMembersPage() {
                 : "Pending Requests",
             )
           : null}
-        {canUseMembershipQueue ? viewToggleButton("invites", "Invites") : null}
+        {canInviteMembers ? viewToggleButton("invites", "Invites") : null}
         {viewToggleButton("orgChart", "Org Chart")}
       </div>
 
-      {viewMode === "pendingRequests" && canUseMembershipQueue ? (
+      {viewMode === "pendingRequests" && canReviewJoinRequests ? (
         <div>
           {pendingMembers.length === 0 ? (
             <div
@@ -1838,14 +1842,14 @@ export default function ClubMembersPage() {
           <OrgChartView
             members={orgChartMembers}
             totalMemberCount={members.length}
-            canInviteExecutive={canUseMembershipQueue}
+            canInviteExecutive={canInviteMembers}
             onInviteExecutive={() => setShowExecutiveInviteModal(true)}
             onSwitchToMembers={() => setViewMode("list")}
           />
         )
       ) : null}
 
-      {viewMode === "invites" && canUseMembershipQueue ? (
+      {viewMode === "invites" && canInviteMembers ? (
         <div>
           {executiveInvitesLoading ? (
             <div className="flex min-h-[200px] items-center justify-center">
@@ -2272,7 +2276,7 @@ export default function ClubMembersPage() {
         />
       ) : null}
 
-      {viewRequestMember ? (
+      {viewRequestMember && canReviewJoinRequests ? (
         <PendingRequestModal
           member={viewRequestMember}
           actionLoading={actionLoading === viewRequestMember.id}
