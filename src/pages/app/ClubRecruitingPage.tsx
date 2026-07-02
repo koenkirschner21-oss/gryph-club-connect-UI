@@ -13,6 +13,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
+import { notifyNewHiringRolePosted } from "../../lib/notifications";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
 import ProfileAvatarCircle from "../../components/ui/ProfileAvatarCircle";
@@ -1249,22 +1250,35 @@ export default function ClubRecruitingPage() {
         return;
       }
     } else {
-      const { error } = await supabase.from("hiring_listings").insert({
-        club_id: clubId,
-        created_by: user.id,
-        is_open: true,
-        ...listingFields,
-      });
+      const { data: inserted, error } = await supabase
+        .from("hiring_listings")
+        .insert({
+          club_id: clubId,
+          created_by: user.id,
+          is_open: true,
+          ...listingFields,
+        })
+        .select("id")
+        .single();
 
-      if (error) {
-        console.error("Failed to create hiring listing:", error.message, error);
+      if (error || !inserted?.id) {
+        console.error("Failed to create hiring listing:", error?.message, error);
         setSavePositionError(
-          error.message ||
+          error?.message ||
             "Failed to save position. Check that hiring_listings is set up correctly.",
         );
         setSaving(false);
         return;
       }
+
+      void notifyNewHiringRolePosted(supabase, {
+        clubId,
+        clubName,
+        listingId: inserted.id as string,
+        roleTitle: title.trim(),
+        isPublic: true,
+        excludeUserId: user.id,
+      });
     }
 
     setSaving(false);

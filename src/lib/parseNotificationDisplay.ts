@@ -80,6 +80,9 @@ export function parseNotificationDisplay(
   if (type === "new_document") {
     return { title: "New Document", body: trimmed };
   }
+  if (type === "new_hiring_role") {
+    return { title: "New Role Posted", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }

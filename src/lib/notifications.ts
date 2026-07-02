@@ -1187,3 +1187,88 @@ export async function notifyNewDocumentUploaded(
     console.error("Failed to send new document notifications.");
   }
 }
+
+async function fetchActiveClubMemberUserIds(
+  supabase: SupabaseClient,
+  clubId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("club_members")
+    .select("user_id")
+    .eq("club_id", clubId)
+    .eq("status", "active");
+
+  if (error) {
+    console.error("Failed to load club members for hiring notifications:", error.message);
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.user_id as string)
+        .filter((id) => Boolean(id)),
+    ),
+  );
+}
+
+async function fetchClubFollowerUserIds(
+  supabase: SupabaseClient,
+  clubId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("user_clubs")
+    .select("user_id")
+    .eq("club_id", clubId);
+
+  if (error) {
+    console.error("Failed to load club followers for hiring notifications:", error.message);
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.user_id as string)
+        .filter((id) => Boolean(id)),
+    ),
+  );
+}
+
+export async function notifyNewHiringRolePosted(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    listingId: string;
+    roleTitle: string;
+    isPublic: boolean;
+    excludeUserId?: string;
+  },
+): Promise<void> {
+  const memberIds = await fetchActiveClubMemberUserIds(supabase, params.clubId);
+  const followerIds = params.isPublic
+    ? await fetchClubFollowerUserIds(supabase, params.clubId)
+    : [];
+  const recipientIds = Array.from(new Set([...memberIds, ...followerIds])).filter(
+    (userId) => userId && userId !== params.excludeUserId,
+  );
+
+  if (recipientIds.length === 0) return;
+
+  const message = `[New Role Posted] ${params.clubName} posted ${params.roleTitle}. View details on the hiring board.`;
+
+  const ok = await createNotifications(
+    supabase,
+    recipientIds.map((userId) => ({
+      userId,
+      type: "new_hiring_role",
+      message,
+      clubId: params.clubId,
+      referenceId: params.listingId,
+    })),
+  );
+  if (!ok) {
+    console.error("Failed to send new hiring role notifications.");
+  }
+}
