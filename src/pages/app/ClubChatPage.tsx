@@ -37,7 +37,7 @@ import {
   type ConversationMember,
   type DirectMessage,
 } from "../../hooks/useConversations";
-import { parseChatSystemMessage } from "../../lib/chatSystemMessages";
+import { parseChatSystemMessage, formatConversationListPreview } from "../../lib/chatSystemMessages";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { notifyUnreadCountRefresh } from "../../components/ui/NotificationsDropdown";
 import { supabase } from "../../lib/supabaseClient";
@@ -1352,6 +1352,7 @@ export default function ClubChatPage() {
   const [showMentionPopup, setShowMentionPopup] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionMembers, setMentionMembers] = useState<ConversationMember[]>([]);
+  const [memberJoinedAt, setMemberJoinedAt] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isMobile = useIsMobile();
@@ -1467,9 +1468,9 @@ export default function ClubChatPage() {
       const name = displayConversationName(convo).toLowerCase();
       const msg = convo.lastMessage;
       const preview = msg
-        ? msg.attachmentUrl && !msg.content
-          ? "attachment"
-          : (msg.content ?? "").toLowerCase()
+        ? formatConversationListPreview(msg.content, {
+            attachmentUrl: msg.attachmentUrl,
+          }).toLowerCase()
         : "no messages yet";
       return (
         name.includes(conversationSearchTrimmed) ||
@@ -1535,7 +1536,44 @@ export default function ClubChatPage() {
     setReplyingTo(null);
     setChatContentFilter("all");
     setShowAddMembersModal(false);
+    setMemberJoinedAt(null);
   }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!activeConversationId || !user?.id) {
+      setMemberJoinedAt(null);
+      return;
+    }
+
+    let cancelled = false;
+    void supabase
+      .from("conversation_members")
+      .select("joined_at")
+      .eq("conversation_id", activeConversationId)
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load conversation membership:", error.message);
+          setMemberJoinedAt(null);
+          return;
+        }
+        setMemberJoinedAt((data?.joined_at as string | null) ?? null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId, user?.id]);
+
+  const showHistoryCutoffNotice = useMemo(() => {
+    if (!activeConversation || !memberJoinedAt) return false;
+    const joinedMs = new Date(memberJoinedAt).getTime();
+    const createdMs = new Date(activeConversation.createdAt).getTime();
+    if (Number.isNaN(joinedMs) || Number.isNaN(createdMs)) return false;
+    return joinedMs > createdMs + 60_000;
+  }, [activeConversation, memberJoinedAt]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1948,8 +1986,9 @@ export default function ClubChatPage() {
   function previewText(convo: Conversation): string {
     const msg = convo.lastMessage;
     if (!msg) return "No messages yet";
-    if (msg.attachmentUrl && !msg.content) return "📎 Attachment";
-    return msg.content ?? "";
+    return formatConversationListPreview(msg.content, {
+      attachmentUrl: msg.attachmentUrl,
+    });
   }
 
   function openEditGroupModal() {
@@ -2529,7 +2568,25 @@ export default function ClubChatPage() {
                   />
                 )
               ) : (
-                filteredChatTimeline.map((item) => {
+                <>
+                  {showHistoryCutoffNotice ? (
+                    <p
+                      style={{
+                        margin: "0 0 12px",
+                        padding: "10px 12px",
+                        borderRadius: "8px",
+                        background: "#171717",
+                        border: "1px solid #262626",
+                        color: "#888888",
+                        fontSize: "12px",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      Messages sent before you joined this conversation are not
+                      visible.
+                    </p>
+                  ) : null}
+                  {filteredChatTimeline.map((item) => {
                   if (item.kind === "message") {
                     const systemMessage = parseChatSystemMessage(
                       item.message.content,
@@ -2573,7 +2630,8 @@ export default function ClubChatPage() {
                       voting={votingPollId === item.poll.id}
                     />
                   );
-                })
+                  })}
+                </>
               )}
               <div ref={messagesEndRef} />
             </div>

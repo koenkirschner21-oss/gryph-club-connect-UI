@@ -20,3 +20,28 @@ export function parseChatSystemMessage(
 export function isChatSystemMessage(content: string | null | undefined): boolean {
   return parseChatSystemMessage(content) !== null;
 }
+
+/** Short preview for the conversation list (not in-thread bubbles). */
+export function formatConversationListPreview(
+  content: string | null | undefined,
+  options?: { attachmentUrl?: string | null },
+): string {
+  const parsed = parseChatSystemMessage(content);
+  if (parsed?.type === "member_joined") {
+    const joinedMatch = parsed.text.match(/^(.+?)\s+just joined the club!?$/i);
+    if (joinedMatch?.[1]) {
+      return `${joinedMatch[1].trim()} joined the club`;
+    }
+    return parsed.text.replace(/\s*!+\s*$/, "").trim();
+  }
+
+  if (options?.attachmentUrl && !content?.trim()) {
+    return "Attachment";
+  }
+
+  if (!content?.trim()) {
+    return "No messages yet";
+  }
+
+  return content.trim();
+}
