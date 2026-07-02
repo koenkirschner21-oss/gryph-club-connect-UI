@@ -57,6 +57,8 @@ function resolveNotificationLink(notification: Notification): string | null {
       return notification.referenceId
         ? `/app/admin?tab=requests&request=${notification.referenceId}`
         : "/app/admin?tab=requests";
+    case "report_submitted":
+      return "/app/admin?tab=reports";
     case "new_claim_request":
       return notification.referenceId
         ? `/app/admin?tab=claims&claim=${notification.referenceId}`

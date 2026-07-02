@@ -16,6 +16,7 @@ import {
   notifyClubRequestApproved,
   notifyClubRequestMoreInfo,
   notifyClubRequestRejected,
+  notifyReportStatusUpdated,
 } from "../../lib/notifications";
 import { ensurePresidentMembership } from "../../lib/clubPresidentMembership";
 import { applySocialLinksToClubPayload } from "../../lib/clubSocialLinks";
@@ -113,6 +114,7 @@ interface AdminStats {
 
 interface BugReportRow {
   id: string;
+  reported_by: string | null;
   page: string | null;
   description: string;
   severity: "minor" | "moderate" | "critical";
@@ -908,6 +910,7 @@ export default function AdminPage() {
     setBugReports(
       (reports ?? []).map((row) => ({
         id: row.id as string,
+        reported_by: (row.reported_by as string | null) ?? null,
         page: (row.page as string) ?? null,
         description: (row.description as string) ?? "",
         severity: (row.severity as BugReportRow["severity"]) ?? "minor",
@@ -1496,6 +1499,14 @@ export default function AdminPage() {
     if (updateError) {
       console.error("Failed to update report:", updateError.message);
       setFeedback("Post removed but report status could not be updated.");
+    } else if (report.reported_by) {
+      void notifyReportStatusUpdated(supabase, {
+        reporterUserId: report.reported_by,
+        reportId: report.id,
+        reportKind: "post",
+        status: "resolved",
+        subjectLabel: "an announcement",
+      });
     }
 
     setReportActionLoadingId(null);
@@ -1516,6 +1527,16 @@ export default function AdminPage() {
       setFeedback("Failed to dismiss report.");
       setReportActionLoadingId(null);
       return;
+    }
+
+    if (report.reported_by) {
+      void notifyReportStatusUpdated(supabase, {
+        reporterUserId: report.reported_by,
+        reportId: report.id,
+        reportKind: "post",
+        status: "dismissed",
+        subjectLabel: "an announcement",
+      });
     }
 
     setReportActionLoadingId(null);
@@ -1547,6 +1568,19 @@ export default function AdminPage() {
       return;
     }
 
+    if (
+      report.reporter_id &&
+      (status === "resolved" || status === "dismissed")
+    ) {
+      void notifyReportStatusUpdated(supabase, {
+        reporterUserId: report.reporter_id,
+        reportId: report.id,
+        reportKind: "club",
+        status,
+        subjectLabel: report.club_name?.trim() || "a club",
+      });
+    }
+
     setClubReportActionLoadingId(null);
     void loadClubReports();
   }
@@ -1558,6 +1592,8 @@ export default function AdminPage() {
     setBugActionLoadingId(reportId);
     setFeedback(null);
 
+    const report = bugReports.find((entry) => entry.id === reportId);
+
     const { error } = await supabase
       .from("bug_reports")
       .update({ status })
@@ -1568,6 +1604,16 @@ export default function AdminPage() {
       setFeedback("Failed to update bug report status.");
       setBugActionLoadingId(null);
       return;
+    }
+
+    if (report?.reported_by && status === "resolved") {
+      void notifyReportStatusUpdated(supabase, {
+        reporterUserId: report.reported_by,
+        reportId: report.id,
+        reportKind: "bug",
+        status: "resolved",
+        subjectLabel: "a platform issue",
+      });
     }
 
     setBugActionLoadingId(null);

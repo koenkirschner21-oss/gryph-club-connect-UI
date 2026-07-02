@@ -25,6 +25,8 @@ export type InboxMessageType =
   | "event_cancelled"
   | "meeting_cancelled"
   | "member_removed"
+  | "report_submitted"
+  | "report_status_updated"
   | "system_message";
 
 export type InboxFilter =

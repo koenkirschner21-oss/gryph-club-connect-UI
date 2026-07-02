@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { X } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
+import { notifyReportSubmitted } from "../../lib/notifications";
 import { CLUB_REPORT_REASONS, type ClubReportReason } from "../../lib/clubReportUtils";
 import { modalOverlayStyle } from "../../pages/app/HiringBoardPage";
 
@@ -59,21 +60,32 @@ export default function ReportClubModal({
     setSubmitting(true);
     setError(null);
 
-    const { error: insertError } = await supabase.from("club_reports").insert({
-      club_id: clubId,
-      club_name: clubName,
-      reporter_id: reporterId,
-      reason,
-      description: description.trim() || null,
-      current_url: window.location.href,
-    });
+    const { data: inserted, error: insertError } = await supabase
+      .from("club_reports")
+      .insert({
+        club_id: clubId,
+        club_name: clubName,
+        reporter_id: reporterId,
+        reason,
+        description: description.trim() || null,
+        current_url: window.location.href,
+      })
+      .select("id")
+      .single();
 
-    if (insertError) {
-      console.error("Failed to submit club report:", insertError.message);
+    if (insertError || !inserted?.id) {
+      console.error("Failed to submit club report:", insertError?.message);
       setError("Could not submit your report. Please try again.");
       setSubmitting(false);
       return;
     }
+
+    void notifyReportSubmitted(supabase, {
+      reportId: inserted.id as string,
+      reportKind: "club",
+      summary: `Club report for ${clubName} (${reason.replaceAll("_", " ")}).`,
+      adminPath: "/app/admin?tab=reports",
+    });
 
     setSubmitting(false);
     onSubmitted();

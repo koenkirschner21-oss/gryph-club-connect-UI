@@ -89,6 +89,12 @@ export function parseNotificationDisplay(
   if (type === "role_updated") {
     return { title: "Role Updated", body: trimmed };
   }
+  if (type === "report_submitted") {
+    return { title: "Report Submitted", body: trimmed };
+  }
+  if (type === "report_status_updated") {
+    return { title: "Report Update", body: trimmed };
+  }
 
   return { title: "Update", body: trimmed };
 }

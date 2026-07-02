@@ -299,7 +299,9 @@ export type NotificationType =
   | "new_document"
   | "new_hiring_role"
   | "member_removed"
-  | "role_updated";
+  | "role_updated"
+  | "report_submitted"
+  | "report_status_updated";
 
 export interface Notification {
   id: string;

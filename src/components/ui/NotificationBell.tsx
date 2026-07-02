@@ -28,6 +28,8 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   new_hiring_role: "💼",
   member_removed: "👤",
   role_updated: "🛡️",
+  report_submitted: "🚩",
+  report_status_updated: "🚩",
   club_update: "🔔",
 };
 

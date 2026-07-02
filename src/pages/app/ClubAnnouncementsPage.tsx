@@ -8,6 +8,7 @@ import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
+import { notifyReportSubmitted } from "../../lib/notifications";
 import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
@@ -625,17 +626,27 @@ export default function ClubAnnouncementsPage() {
   async function handleSubmitReport() {
     if (!user?.id || !reportPostId || !reportReason) return;
     setReportSubmitting(true);
-    const { error } = await supabase.from("post_reports").insert({
-      post_id: reportPostId,
-      reported_by: user.id,
-      reason: reportReason,
-      details: reportDetails.trim() || null,
-    });
+    const { data: inserted, error } = await supabase
+      .from("post_reports")
+      .insert({
+        post_id: reportPostId,
+        reported_by: user.id,
+        reason: reportReason,
+        details: reportDetails.trim() || null,
+      })
+      .select("id")
+      .single();
     setReportSubmitting(false);
-    if (error) {
+    if (error || !inserted?.id) {
       setFeedback({ type: "error", text: "Could not submit report. Please try again." });
       return;
     }
+    void notifyReportSubmitted(supabase, {
+      reportId: inserted.id as string,
+      reportKind: "post",
+      summary: `Announcement/message report (${reportReason.replaceAll("_", " ")}).`,
+      adminPath: "/app/admin?tab=reports",
+    });
     closeReportModal();
     setReportSuccessMessage("Report submitted");
   }

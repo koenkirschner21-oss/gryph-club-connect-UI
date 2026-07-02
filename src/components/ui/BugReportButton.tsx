@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Bug, X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
+import { notifyReportSubmitted } from "../../lib/notifications";
 import { showToast } from "./Toast";
 
 type Severity = "minor" | "moderate" | "critical";
@@ -96,22 +97,33 @@ export default function BugReportButton() {
     setSubmitting(true);
     setSubmitError(null);
 
-    const { error } = await supabase.from("bug_reports").insert({
-      reported_by: user.id,
-      page: page.trim() || window.location.pathname,
-      description: trimmed,
-      severity,
-    });
+    const { data: inserted, error } = await supabase
+      .from("bug_reports")
+      .insert({
+        reported_by: user.id,
+        page: page.trim() || window.location.pathname,
+        description: trimmed,
+        severity,
+      })
+      .select("id")
+      .single();
 
     setSubmitting(false);
 
-    if (error) {
-      console.error("Failed to submit bug report:", error.message, error);
+    if (error || !inserted?.id) {
+      console.error("Failed to submit bug report:", error?.message, error);
       setSubmitError(
-        error.message || "Failed to submit bug report. Please try again.",
+        error?.message || "Failed to submit bug report. Please try again.",
       );
       return;
     }
+
+    void notifyReportSubmitted(supabase, {
+      reportId: inserted.id as string,
+      reportKind: "bug",
+      summary: `Bug report (${severity}) on ${page.trim() || window.location.pathname}.`,
+      adminPath: "/app/admin?tab=bugs",
+    });
 
     showToast("Bug report submitted", "success");
     setOpen(false);

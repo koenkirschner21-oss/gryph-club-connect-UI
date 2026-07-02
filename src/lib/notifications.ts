@@ -1393,3 +1393,98 @@ export async function notifyRoleUpdated(
     console.error("Failed to create role update inbox message.");
   }
 }
+
+export type ReportSubmissionKind = "club" | "post" | "bug";
+
+export async function notifyReportSubmitted(
+  supabase: SupabaseClient,
+  params: {
+    reportId: string;
+    reportKind: ReportSubmissionKind;
+    summary: string;
+    adminPath: string;
+  },
+): Promise<void> {
+  const adminIds = await fetchPlatformAdminUserIds(supabase);
+  if (adminIds.length === 0) return;
+
+  const bellMessage = `[Report Submitted] ${params.summary}`;
+  const inboxMessage = `A new ${params.reportKind} report needs review. ${params.summary}`;
+
+  const bellOk = await createNotifications(
+    supabase,
+    adminIds.map((userId) => ({
+      userId,
+      type: "report_submitted",
+      message: bellMessage,
+      referenceId: params.reportId,
+    })),
+  );
+  if (!bellOk) {
+    console.error("Failed to send report submission notifications.");
+  }
+
+  for (const adminId of adminIds) {
+    const inboxOk = await createInboxMessage(supabase, {
+      recipientId: adminId,
+      type: "report_submitted",
+      title: "New report submitted",
+      message: inboxMessage,
+      actionRequired: true,
+      actionType: "review_report",
+      actionData: {
+        path: params.adminPath,
+        reportId: params.reportId,
+        reportKind: params.reportKind,
+      },
+      referenceId: params.reportId,
+      referenceType: `${params.reportKind}_report`,
+    });
+    if (!inboxOk) {
+      console.error("Failed to create report submission inbox message for:", adminId);
+    }
+  }
+}
+
+export async function notifyReportStatusUpdated(
+  supabase: SupabaseClient,
+  params: {
+    reporterUserId: string;
+    reportId: string;
+    reportKind: ReportSubmissionKind;
+    status: "resolved" | "dismissed" | "in_progress";
+    subjectLabel: string;
+  },
+): Promise<void> {
+  if (params.status === "in_progress") return;
+
+  const statusLabel =
+    params.status === "resolved" ? "reviewed and addressed" : "reviewed and closed";
+  const bellMessage = `[Report Update] Your report about ${params.subjectLabel} has been ${statusLabel}.`;
+  const inboxMessage =
+    params.status === "resolved"
+      ? `Thank you for your report about ${params.subjectLabel}. Our team has reviewed it and taken appropriate action.`
+      : `Thank you for your report about ${params.subjectLabel}. Our team has reviewed it. No further action is required at this time.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.reporterUserId,
+    type: "report_status_updated",
+    message: bellMessage,
+    referenceId: params.reportId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send report status notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.reporterUserId,
+    type: "report_status_updated",
+    title: "Report update",
+    message: inboxMessage,
+    referenceId: params.reportId,
+    referenceType: `${params.reportKind}_report`,
+  });
+  if (!inboxOk) {
+    console.error("Failed to create report status inbox message.");
+  }
+}
