@@ -292,7 +292,10 @@ export type NotificationType =
   | "club_request_approved"
   | "club_request_rejected"
   | "club_request_more_info"
-  | "event_cancelled";
+  | "event_cancelled"
+  | "meeting_invite"
+  | "meeting_updated"
+  | "meeting_cancelled";
 
 export interface Notification {
   id: string;

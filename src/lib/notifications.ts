@@ -953,3 +953,167 @@ export async function notifyEventCancelled(
     }
   }
 }
+
+function formatMeetingSchedule(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatMeetingLocationLabel(
+  location: string | null | undefined,
+  meetingLink: string | null | undefined,
+): string {
+  const loc = location?.trim();
+  const link = meetingLink?.trim();
+  if (loc && link) return `${loc} (online link provided)`;
+  if (link) return "Online";
+  if (loc) return loc;
+  return "TBD";
+}
+
+export async function notifyMeetingInvited(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    meetingId: string;
+    meetingTitle: string;
+    meetingDateIso: string;
+    location: string | null;
+    meetingLink: string | null;
+    inviteeUserIds: string[];
+    excludeUserId?: string;
+  },
+): Promise<void> {
+  const recipients = params.inviteeUserIds.filter(
+    (id) => id && id !== params.excludeUserId,
+  );
+  if (recipients.length === 0) return;
+
+  const schedule = formatMeetingSchedule(params.meetingDateIso);
+  const locationLabel = formatMeetingLocationLabel(
+    params.location,
+    params.meetingLink,
+  );
+  const message = `[Meeting Invite] You're invited to ${params.meetingTitle} on ${schedule}. Location: ${locationLabel}.`;
+
+  const ok = await createNotifications(
+    supabase,
+    recipients.map((userId) => ({
+      userId,
+      type: "meeting_invite",
+      message,
+      clubId: params.clubId,
+      referenceId: params.meetingId,
+    })),
+  );
+  if (!ok) {
+    console.error("Failed to send meeting invite notifications.");
+  }
+}
+
+export async function notifyMeetingUpdated(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    meetingId: string;
+    meetingTitle: string;
+    meetingDateIso: string;
+    location: string | null;
+    meetingLink: string | null;
+    inviteeUserIds: string[];
+    excludeUserId?: string;
+    changedFields: Array<"date" | "location" | "meeting_link">;
+  },
+): Promise<void> {
+  const recipients = params.inviteeUserIds.filter(
+    (id) => id && id !== params.excludeUserId,
+  );
+  if (recipients.length === 0 || params.changedFields.length === 0) return;
+
+  const fieldLabels = params.changedFields.map((field) => {
+    if (field === "date") return "date/time";
+    if (field === "meeting_link") return "meeting link";
+    return "location";
+  });
+  const schedule = formatMeetingSchedule(params.meetingDateIso);
+  const locationLabel = formatMeetingLocationLabel(
+    params.location,
+    params.meetingLink,
+  );
+  const message = `[Meeting Updated] ${params.meetingTitle} has a new ${fieldLabels.join(" and ")}. Now scheduled for ${schedule} at ${locationLabel}.`;
+
+  const ok = await createNotifications(
+    supabase,
+    recipients.map((userId) => ({
+      userId,
+      type: "meeting_updated",
+      message,
+      clubId: params.clubId,
+      referenceId: params.meetingId,
+    })),
+  );
+  if (!ok) {
+    console.error("Failed to send meeting update notifications.");
+  }
+}
+
+export async function notifyMeetingCancelled(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    meetingId: string;
+    meetingTitle: string;
+    meetingDateIso: string;
+    inviteeUserIds: string[];
+    excludeUserId?: string;
+  },
+): Promise<void> {
+  const recipients = params.inviteeUserIds.filter(
+    (id) => id && id !== params.excludeUserId,
+  );
+  if (recipients.length === 0) return;
+
+  const schedule = formatMeetingSchedule(params.meetingDateIso);
+  const bellMessage = `[Meeting Cancelled] ${params.meetingTitle} on ${schedule} has been cancelled.`;
+  const inboxMessage = `The meeting "${params.meetingTitle}" scheduled for ${schedule} has been cancelled.`;
+
+  const bellOk = await createNotifications(
+    supabase,
+    recipients.map((userId) => ({
+      userId,
+      type: "meeting_cancelled",
+      message: bellMessage,
+      clubId: params.clubId,
+      referenceId: params.meetingId,
+    })),
+  );
+  if (!bellOk) {
+    console.error("Failed to send meeting cancellation notifications.");
+  }
+
+  for (const userId of recipients) {
+    const inboxOk = await createInboxMessage(supabase, {
+      recipientId: userId,
+      type: "meeting_cancelled",
+      title: `Meeting cancelled — ${params.meetingTitle}`,
+      message: inboxMessage,
+      clubId: params.clubId,
+      referenceId: params.meetingId,
+      referenceType: "club_meeting",
+      actionData: {
+        path: `/app/clubs/${params.clubId}/meetings`,
+      },
+    });
+    if (!inboxOk) {
+      console.error("Failed to create meeting cancellation inbox message for:", userId);
+    }
+  }
+}

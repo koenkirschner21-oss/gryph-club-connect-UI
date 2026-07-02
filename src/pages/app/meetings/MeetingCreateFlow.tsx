@@ -7,10 +7,15 @@ import {
   AGENDA_TEMPLATES,
   DEFAULT_INVITEE_BY_TYPE,
   INVITEE_GROUP_LABELS,
+  resolveInviteeUserIds,
   type InviteeGroup,
   type MeetingFormat,
   type MeetingType,
 } from "../../../lib/meetingMetadata";
+import {
+  notifyMeetingInvited,
+  notifyMeetingUpdated,
+} from "../../../lib/notifications";
 import { supabase } from "../../../lib/supabaseClient";
 import {
   inputStyle,
@@ -21,7 +26,7 @@ import {
 } from "./meetingStyles";
 import type { MeetingCreateFormState } from "./meetingTypes";
 import { MEETING_TYPES } from "./meetingTypes";
-import { buildMeetingUpdatePayload, emptyCreateForm } from "./meetingUtils";
+import { buildMeetingUpdatePayload, combineDateTime, emptyCreateForm } from "./meetingUtils";
 
 interface LinkOption {
   id: string;
@@ -62,6 +67,42 @@ export function MeetingCreateFlow({
     () => members.filter((member) => member.status === "active"),
     [members],
   );
+
+  function effectiveMeetingLocation(formState: MeetingCreateFormState): string | null {
+    return formState.format === "online"
+      ? null
+      : formState.location.trim() || null;
+  }
+
+  function effectiveMeetingLink(formState: MeetingCreateFormState): string | null {
+    return formState.format === "in_person"
+      ? null
+      : formState.meetingLink.trim() || null;
+  }
+
+  function meetingScheduleChanged(
+    before: MeetingCreateFormState,
+    after: MeetingCreateFormState,
+  ): boolean {
+    return (
+      combineDateTime(before.date, before.time) !==
+      combineDateTime(after.date, after.time)
+    );
+  }
+
+  function meetingLocationChanged(
+    before: MeetingCreateFormState,
+    after: MeetingCreateFormState,
+  ): boolean {
+    return effectiveMeetingLocation(before) !== effectiveMeetingLocation(after);
+  }
+
+  function meetingLinkChanged(
+    before: MeetingCreateFormState,
+    after: MeetingCreateFormState,
+  ): boolean {
+    return effectiveMeetingLink(before) !== effectiveMeetingLink(after);
+  }
 
   useEffect(() => {
     setForm(initial);
@@ -196,6 +237,30 @@ export function MeetingCreateFlow({
           setSaveError(error.message);
           return;
         }
+
+        const changedFields: Array<"date" | "location" | "meeting_link"> = [];
+        if (meetingScheduleChanged(initial, form)) changedFields.push("date");
+        if (meetingLocationChanged(initial, form)) changedFields.push("location");
+        if (meetingLinkChanged(initial, form)) changedFields.push("meeting_link");
+
+        if (changedFields.length > 0) {
+          const inviteeUserIds = resolveInviteeUserIds(
+            form.inviteeGroup,
+            members,
+            form.customInviteeIds,
+          );
+          void notifyMeetingUpdated(supabase, {
+            clubId,
+            meetingId: editingId,
+            meetingTitle: form.title.trim(),
+            meetingDateIso: payload.date as string,
+            location: payload.location as string | null,
+            meetingLink: payload.meeting_link as string | null,
+            inviteeUserIds,
+            excludeUserId: userId,
+            changedFields,
+          });
+        }
       } else {
         const { data, error } = await supabase
           .from("club_meetings")
@@ -207,6 +272,22 @@ export function MeetingCreateFlow({
           return;
         }
         meetingId = data.id as string;
+
+        const inviteeUserIds = resolveInviteeUserIds(
+          form.inviteeGroup,
+          members,
+          form.customInviteeIds,
+        );
+        void notifyMeetingInvited(supabase, {
+          clubId,
+          meetingId,
+          meetingTitle: form.title.trim(),
+          meetingDateIso: payload.date as string,
+          location: payload.location as string | null,
+          meetingLink: payload.meeting_link as string | null,
+          inviteeUserIds,
+          excludeUserId: userId,
+        });
 
         const draftItems = form.actionItems.filter((item) => item.title.trim());
         if (draftItems.length > 0) {

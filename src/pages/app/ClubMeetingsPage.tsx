@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Calendar, Plus } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
+import { useClubContext } from "../../context/useClubContext";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
@@ -26,6 +27,7 @@ import {
   mapMeetingRow,
 } from "./meetings/meetingUtils";
 import { parseMeetingNotes, resolveInviteeUserIds } from "../../lib/meetingMetadata";
+import { notifyMeetingCancelled } from "../../lib/notifications";
 import type { MeetingType } from "../../lib/meetingMetadata";
 import { meetingNeedsRecap, meetingPrepStatus } from "./meetings/meetingDisplayHelpers";
 import { supabase } from "../../lib/supabaseClient";
@@ -38,6 +40,8 @@ export default function ClubMeetingsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
+  const { getClubById } = useClubContext();
+  const club = getClubById(clubId ?? "");
   const { members } = useClubMembers(clubId);
   const isMobile = useIsMobile();
 
@@ -358,6 +362,24 @@ export default function ClubMeetingsPage() {
       console.error("Failed to cancel meeting:", meetingError.message);
       setCancelModal((prev) => (prev ? { ...prev, applying: false } : prev));
       return;
+    }
+
+    const { metadata } = parseMeetingNotes(meeting.notes);
+    const inviteeUserIds = resolveInviteeUserIds(
+      metadata.inviteeGroup,
+      members,
+      metadata.customInviteeIds,
+    );
+    if (clubId && inviteeUserIds.length > 0) {
+      void notifyMeetingCancelled(supabase, {
+        clubId,
+        clubName: club?.name ?? "Club",
+        meetingId: meeting.id,
+        meetingTitle: meeting.title,
+        meetingDateIso: meeting.date,
+        inviteeUserIds,
+        excludeUserId: user?.id,
+      });
     }
 
     if (selectedOption === "meeting_and_tasks") {

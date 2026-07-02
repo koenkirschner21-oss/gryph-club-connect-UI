@@ -87,6 +87,10 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "event":
     case "event_cancelled":
       return `${base}/events`;
+    case "meeting_invite":
+    case "meeting_updated":
+    case "meeting_cancelled":
+      return `${base}/meetings`;
     case "announcement":
       return `${base}/announcements`;
     case "task_assigned":
@@ -149,6 +153,10 @@ function notificationGroupId(type: string): NotificationGroupId {
     case "new_event":
     case "event":
     case "event_cancelled":
+      return "events";
+    case "meeting_invite":
+    case "meeting_updated":
+    case "meeting_cancelled":
       return "events";
     case "task_assigned":
     case "task":
