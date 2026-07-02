@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 import {
   cloneDefaultPermissions,
   hasClubPermission,
+  hasPermissionKey,
   isPresidentAccess,
   resolvePermissionRole,
   type PermissionRole,
@@ -132,6 +133,18 @@ export function useClubMemberAccess(clubId: string | undefined) {
     [isPresident, can],
   );
 
+  const canApproveMembers = useMemo(
+    () =>
+      hasPermissionKey(permissions, storedAccessLevel, role, "approve_members"),
+    [permissions, storedAccessLevel, role],
+  );
+
+  const canInviteMembers = useMemo(
+    () =>
+      hasPermissionKey(permissions, storedAccessLevel, role, "invite_members"),
+    [permissions, storedAccessLevel, role],
+  );
+
   return {
     loading,
     role,
@@ -141,6 +154,8 @@ export function useClubMemberAccess(clubId: string | undefined) {
     permissions,
     can,
     canManageClubSettings,
+    canApproveMembers,
+    canInviteMembers,
     joinedAt,
     memberTitle,
     hasMembership,

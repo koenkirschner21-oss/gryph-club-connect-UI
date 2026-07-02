@@ -1686,7 +1686,9 @@ export default function ClubHomePage() {
   }
 
   const showSetupChecklist =
-    club.claimStatus === "claimed" && !club.setupCompleted;
+    memberAccess.canManageClubSettings &&
+    club.claimStatus === "claimed" &&
+    !club.setupCompleted;
 
   async function handlePublishClub() {
     if (!clubId) return;

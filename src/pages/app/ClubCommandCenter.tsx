@@ -19,6 +19,7 @@ import {
 import { useAuthContext } from "../../context/useAuthContext";
 import { isTaskAwaitingReviewFromUser } from "../../lib/taskCompletion";
 import { getClubInitials } from "../../lib/clubUtils";
+import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import {
   computeClubProfileCompletionPercent,
@@ -789,6 +790,7 @@ export default function ClubCommandCenter({
 }: ClubCommandCenterProps) {
   const navigate = useNavigate();
   const { user } = useAuthContext();
+  const memberAccess = useClubMemberAccess(clubId);
   const { pendingMembers, loading: membersLoading } = useClubMembers(clubId);
 
   const [hiringSnapshot, setHiringSnapshot] = useState<HiringSnapshot>({
@@ -1140,7 +1142,7 @@ export default function ClubCommandCenter({
   const pendingActionsItems = useMemo(() => {
     const items: PendingActionItem[] = [];
 
-    if (pendingJoinCount > 0) {
+    if (memberAccess.canApproveMembers && pendingJoinCount > 0) {
       items.push({
         id: "join-requests",
         label: `${pendingJoinCount} pending join request${pendingJoinCount === 1 ? "" : "s"}`,
@@ -1158,7 +1160,7 @@ export default function ClubCommandCenter({
       });
     }
 
-    if (profileCompletion < 100) {
+    if (memberAccess.canManageClubSettings && profileCompletion < 100) {
       items.push({
         id: "profile-setup",
         label:
@@ -1206,6 +1208,8 @@ export default function ClubCommandCenter({
 
     return items.slice(0, 8);
   }, [
+    memberAccess.canManageClubSettings,
+    memberAccess.canApproveMembers,
     pendingJoinCount,
     pendingApplicationCount,
     profileCompletion,

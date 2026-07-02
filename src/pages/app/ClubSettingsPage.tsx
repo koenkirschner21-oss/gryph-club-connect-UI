@@ -40,7 +40,6 @@ import ImageCropModal from "../../components/ui/ImageCropModal";
 import { showToast } from "../../components/ui/Toast";
 import MyMembershipPanel from "../../components/club/MyMembershipPanel";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
-import { isClubSetupSettingsDeepLink } from "../../lib/clubProfileCompletion";
 import {
   cancelOwnershipTransfer,
   isPresidentMember,
@@ -1017,8 +1016,7 @@ export default function ClubSettingsPage() {
   const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
 
   const canViewClubSettings =
-    memberAccess.canManageClubSettings ||
-    (isClubSetupSettingsDeepLink(searchParams) && isOwner);
+    memberAccess.canManageClubSettings;
 
   const buildSnapshot = useCallback(
     (): FormSnapshot => ({
