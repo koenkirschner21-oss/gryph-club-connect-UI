@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { ensureMyClubChats } from "../lib/clubChatProvisioning";
+import { notifyClubChatRead } from "../lib/clubChatEvents";
 import { uploadImage } from "../lib/uploadImage";
 import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import { useAuthContext } from "../context/useAuthContext";
@@ -833,8 +834,13 @@ export function useConversations(
           ),
         ),
       );
+
+      if (clubId) {
+        notifyClubChatRead(clubId, conversationId);
+      }
+      void loadConversations();
     },
-    [user?.id],
+    [clubId, loadConversations, user?.id],
   );
 
   useEffect(() => {

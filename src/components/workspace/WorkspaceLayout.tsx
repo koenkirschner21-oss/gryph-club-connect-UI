@@ -32,6 +32,7 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useClubContext } from "../../context/useClubContext";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubWorkspaceNav } from "../../hooks/useClubWorkspaceNav";
+import { CLUB_CHAT_READ_EVENT } from "../../lib/clubChatEvents";
 import type { WorkspaceNavKey } from "../../lib/workspaceNavVisibility";
 import { formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import Spinner from "../ui/Spinner";
@@ -455,6 +456,24 @@ export default function WorkspaceLayout() {
       supabase.removeChannel(channel);
     };
   }, [loadBadgeCounts, resolvedClubId, user?.id]);
+
+  useEffect(() => {
+    const handleChatRead = (event: Event) => {
+      const detail = (event as CustomEvent<{ clubId?: string }>).detail;
+      if (detail?.clubId && detail.clubId !== resolvedClubId) return;
+      void loadBadgeCounts();
+    };
+
+    window.addEventListener(CLUB_CHAT_READ_EVENT, handleChatRead);
+    return () => {
+      window.removeEventListener(CLUB_CHAT_READ_EVENT, handleChatRead);
+    };
+  }, [loadBadgeCounts, resolvedClubId]);
+
+  useEffect(() => {
+    if (!location.pathname.includes("/chat")) return;
+    void loadBadgeCounts();
+  }, [location.pathname, loadBadgeCounts]);
 
   const badgeCountFor = (key?: "chat" | "tasks" | "announcements" | "members") => {
     if (key === "chat") return chatUnread;
