@@ -971,26 +971,6 @@ export default function ClubTasksPage() {
     } else {
       const taskId = await createTask(taskFields);
       ok = Boolean(taskId);
-      if (
-        taskId &&
-        assignedTo &&
-        assignedTo !== user?.id &&
-        clubId &&
-        club?.name
-      ) {
-        const dueLabel = dueDate.trim()
-          ? formatTaskDate(dueDate)
-          : "No due date";
-        void notifyUsers([
-          {
-            user_id: assignedTo,
-            type: "task_assigned",
-            message: `You've been assigned "${title.trim()}" in ${club.name}. Due: ${dueLabel}`,
-            club_id: clubId,
-            reference_id: taskId,
-          },
-        ]);
-      }
     }
 
     setSaving(false);

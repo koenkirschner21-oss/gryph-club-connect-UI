@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
-import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import type { Post, Visibility } from "../types";
 import { normalizeVisibility } from "../lib/contentVisibility";
 
@@ -122,33 +121,6 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
       }
 
       setPosts((prev) => [mapPostRow(data), ...prev]);
-
-      Promise.resolve(
-        supabase
-          .from("club_members")
-          .select("user_id")
-          .eq("club_id", clubId)
-          .eq("status", "active")
-          .then(({ data: members }) => {
-            if (!members || members.length === 0) return;
-            const recipients = members.filter((m) => m.user_id !== user.id);
-            if (recipients.length === 0) return;
-            const rows: NotificationRequest[] = recipients.map((m) => ({
-              user_id: m.user_id,
-              type: "announcement",
-              message: `New announcement: ${fields.title}`,
-              club_id: clubId,
-              reference_id: data.id as string,
-            }));
-            notifyUsers(rows).then((ok) => {
-              if (!ok) {
-                console.error("Failed to send announcement notifications.");
-              }
-            });
-          }),
-      ).catch((err: unknown) => {
-        console.error("Failed to send announcement notifications:", err);
-      });
 
       return true;
     },
