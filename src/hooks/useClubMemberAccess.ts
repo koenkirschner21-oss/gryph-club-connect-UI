@@ -38,6 +38,7 @@ export function useClubMemberAccess(clubId: string | undefined) {
   const { user } = useAuthContext();
   const { getClubById } = useClubContext();
   const club = getClubById(clubId ?? "");
+  const userId = user?.id ?? null;
 
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<MemberRole>("member");
@@ -45,20 +46,34 @@ export function useClubMemberAccess(clubId: string | undefined) {
   const [joinedAt, setJoinedAt] = useState<string | null>(null);
   const [memberTitle, setMemberTitle] = useState<string | null>(null);
   const [hasMembership, setHasMembership] = useState(false);
+  const [loadedContext, setLoadedContext] = useState<{
+    clubId: string | undefined;
+    userId: string | null;
+  }>({ clubId: undefined, userId: null });
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadMembership() {
-      if (!user?.id || !clubId) {
+      const currentUserId = user?.id ?? null;
+
+      setRole("member");
+      setStoredAccessLevel(null);
+      setJoinedAt(null);
+      setMemberTitle(null);
+      setHasMembership(false);
+
+      if (!currentUserId || !clubId) {
         if (!cancelled) {
           setLoading(false);
+          setLoadedContext({ clubId, userId: currentUserId });
           setHasMembership(false);
         }
         return;
       }
 
       setLoading(true);
+      setLoadedContext({ clubId: undefined, userId: currentUserId });
 
       const previewRole = localStorage.getItem("previewRole");
       if (previewRole) {
@@ -73,6 +88,7 @@ export function useClubMemberAccess(clubId: string | undefined) {
                 : "member",
           );
           setHasMembership(true);
+          setLoadedContext({ clubId, userId: currentUserId });
           setLoading(false);
         }
         return;
@@ -82,13 +98,14 @@ export function useClubMemberAccess(clubId: string | undefined) {
         .from("club_members")
         .select("role, access_level, joined_at, title, status")
         .eq("club_id", clubId)
-        .eq("user_id", user.id)
+        .eq("user_id", currentUserId)
         .maybeSingle();
 
       if (cancelled) return;
 
       if (error || !data || data.status !== "active") {
         setHasMembership(false);
+        setLoadedContext({ clubId, userId: currentUserId });
         setLoading(false);
         return;
       }
@@ -101,6 +118,7 @@ export function useClubMemberAccess(clubId: string | undefined) {
       setJoinedAt((data.joined_at as string | null) ?? null);
       setMemberTitle((data.title as string | null) ?? null);
       setHasMembership(true);
+      setLoadedContext({ clubId, userId: currentUserId });
       setLoading(false);
     }
 
@@ -112,20 +130,39 @@ export function useClubMemberAccess(clubId: string | undefined) {
   }, [clubId, user?.id]);
 
   const permissions = club?.customPermissions ?? cloneDefaultPermissions();
+  const hasLoadedCurrentContext =
+    loadedContext.clubId === clubId && loadedContext.userId === userId;
+  const effectiveLoading = loading || !hasLoadedCurrentContext;
+  const effectiveRole = hasLoadedCurrentContext ? role : "member";
+  const effectiveStoredAccessLevel = hasLoadedCurrentContext
+    ? storedAccessLevel
+    : null;
+  const effectiveHasMembership = hasLoadedCurrentContext ? hasMembership : false;
+  const effectiveJoinedAt = hasLoadedCurrentContext ? joinedAt : null;
+  const effectiveMemberTitle = hasLoadedCurrentContext ? memberTitle : null;
   const accessLevel = useMemo(
-    () => accessLevelFromMember({ role, accessLevel: storedAccessLevel }),
-    [role, storedAccessLevel],
+    () =>
+      accessLevelFromMember({
+        role: effectiveRole,
+        accessLevel: effectiveStoredAccessLevel,
+      }),
+    [effectiveRole, effectiveStoredAccessLevel],
   );
   const permissionRole: PermissionRole = resolvePermissionRole(
-    storedAccessLevel,
-    role,
+    effectiveStoredAccessLevel,
+    effectiveRole,
   );
-  const isPresident = isPresidentAccess(storedAccessLevel, role);
+  const isPresident = isPresidentAccess(effectiveStoredAccessLevel, effectiveRole);
 
   const can = useCallback(
     (capability: keyof typeof PERMISSION_CAPABILITY_ALIASES) =>
-      hasClubPermission(permissions, storedAccessLevel, role, capability),
-    [permissions, storedAccessLevel, role],
+      hasClubPermission(
+        permissions,
+        effectiveStoredAccessLevel,
+        effectiveRole,
+        capability,
+      ),
+    [permissions, effectiveStoredAccessLevel, effectiveRole],
   );
 
   const canManageClubSettings = useMemo(
@@ -135,19 +172,29 @@ export function useClubMemberAccess(clubId: string | undefined) {
 
   const canApproveMembers = useMemo(
     () =>
-      hasPermissionKey(permissions, storedAccessLevel, role, "approve_members"),
-    [permissions, storedAccessLevel, role],
+      hasPermissionKey(
+        permissions,
+        effectiveStoredAccessLevel,
+        effectiveRole,
+        "approve_members",
+      ),
+    [permissions, effectiveStoredAccessLevel, effectiveRole],
   );
 
   const canInviteMembers = useMemo(
     () =>
-      hasPermissionKey(permissions, storedAccessLevel, role, "invite_members"),
-    [permissions, storedAccessLevel, role],
+      hasPermissionKey(
+        permissions,
+        effectiveStoredAccessLevel,
+        effectiveRole,
+        "invite_members",
+      ),
+    [permissions, effectiveStoredAccessLevel, effectiveRole],
   );
 
   return {
-    loading,
-    role,
+    loading: effectiveLoading,
+    role: effectiveRole,
     accessLevel,
     permissionRole,
     isPresident,
@@ -156,9 +203,9 @@ export function useClubMemberAccess(clubId: string | undefined) {
     canManageClubSettings,
     canApproveMembers,
     canInviteMembers,
-    joinedAt,
-    memberTitle,
-    hasMembership,
+    joinedAt: effectiveJoinedAt,
+    memberTitle: effectiveMemberTitle,
+    hasMembership: effectiveHasMembership,
     club,
   };
 }
