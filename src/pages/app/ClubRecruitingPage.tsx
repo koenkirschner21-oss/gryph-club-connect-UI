@@ -84,6 +84,7 @@ interface ClubPosition {
   acceptedCount: number;
   questions: ListingQuestion[];
   uploadFields: HiringUploadFields;
+  reviewerIds: string[];
 }
 
 function mapRoleType(positionType: string): "executive" | "volunteer" | "general" {
@@ -187,6 +188,12 @@ function parseHiringAnswers(raw: unknown): HiringApplicationAnswer[] {
       .filter((a) => a.answer);
   }
   return [];
+}
+
+function normalizeReviewerIds(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((value): value is string => typeof value === "string")
+    : [];
 }
 
 function answerLabel(
@@ -616,6 +623,36 @@ function ApplicationReviewModal({
 }) {
   const applicantName = application.profile?.full_name ?? "Applicant";
   const profileLine = applicantProfileLine(application.profile);
+  const [reviewAccess, setReviewAccess] = useState<
+    "checking" | "allowed" | "denied"
+  >("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function verifyReviewAccess() {
+      setReviewAccess("checking");
+      const { data, error } = await supabase.rpc("can_review_hiring_listing", {
+        p_listing_id: positionId,
+        p_user_id: userId,
+      });
+
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to verify hiring review access:", error.message);
+        setReviewAccess("denied");
+        return;
+      }
+
+      setReviewAccess(data === true ? "allowed" : "denied");
+    }
+
+    void verifyReviewAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [positionId, userId]);
 
   return (
     <div role="dialog" aria-modal="true" style={modalOverlayStyle} onClick={onClose}>
@@ -701,22 +738,37 @@ function ApplicationReviewModal({
           </div>
         </div>
 
-        <CandidateReviewPanel
-          application={toCandidateReviewApplication(application)}
-          positionTitle={positionTitle}
-          positionId={positionId}
-          clubId={clubId}
-          clubName={clubName}
-          userId={userId}
-          showActionBar
-          pendingAction={pendingAction}
-          onPendingActionHandled={onPendingActionHandled}
-          answerLabel={(questionId) =>
-            answerLabel(questionId, listingQuestionsForApply(positionQuestions))
-          }
-          onApplicationUpdated={onApplicationUpdated}
-          onStatusChanged={onStatusChanged}
-        />
+        {reviewAccess === "checking" ? (
+          <div className="flex min-h-[160px] items-center justify-center">
+            <Spinner label="Checking review access…" />
+          </div>
+        ) : reviewAccess === "allowed" ? (
+          <CandidateReviewPanel
+            application={toCandidateReviewApplication(application)}
+            positionTitle={positionTitle}
+            positionId={positionId}
+            clubId={clubId}
+            clubName={clubName}
+            userId={userId}
+            showActionBar
+            pendingAction={pendingAction}
+            onPendingActionHandled={onPendingActionHandled}
+            answerLabel={(questionId) =>
+              answerLabel(questionId, listingQuestionsForApply(positionQuestions))
+            }
+            onApplicationUpdated={onApplicationUpdated}
+            onStatusChanged={onStatusChanged}
+          />
+        ) : (
+          <div style={{ padding: "24px", textAlign: "center" }}>
+            <p style={{ color: "#ffffff", fontSize: "15px", fontWeight: 700, margin: 0 }}>
+              You do not have access to review this application.
+            </p>
+            <p style={{ color: "#777777", fontSize: "13px", marginTop: "8px" }}>
+              Ask a hiring manager to add you as a reviewer for this listing.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -851,6 +903,7 @@ export default function ClubRecruitingPage() {
   const canDeleteHiring =
     memberAccess.isPresident || memberAccess.can("manage_hiring");
   const isPrivileged = canManageHiring;
+  const currentUserId = user?.id ?? null;
 
   const [loading, setLoading] = useState(true);
   const [positions, setPositions] = useState<ClubPosition[]>([]);
@@ -905,6 +958,20 @@ export default function ClubRecruitingPage() {
     Record<string, number>
   >({});
   const skipApplicantFilterResetRef = useRef(false);
+
+  const canReviewPosition = useCallback(
+    (position: ClubPosition): boolean =>
+      canManageHiring ||
+      Boolean(currentUserId && position.reviewerIds.includes(currentUserId)),
+    [canManageHiring, currentUserId],
+  );
+
+  const reviewablePositions = useMemo(
+    () => positions.filter((position) => canReviewPosition(position)),
+    [positions, canReviewPosition],
+  );
+
+  const canReviewHiring = canManageHiring || reviewablePositions.length > 0;
 
   const loadSavedRoles = useCallback(async () => {
     if (!user?.id) {
@@ -977,7 +1044,7 @@ export default function ClubRecruitingPage() {
     let query = supabase
       .from("hiring_listings")
       .select(
-        "id, title, description, requirements, role_type, commitment_level, weekly_hours, deadline, is_open, questions, upload_fields",
+        "id, title, description, requirements, role_type, commitment_level, weekly_hours, deadline, is_open, questions, upload_fields, reviewer_ids",
       )
       .eq("club_id", clubId)
       .order("created_at", { ascending: false });
@@ -999,12 +1066,20 @@ export default function ClubRecruitingPage() {
     const counts: Record<string, number> = {};
     const pendingCounts: Record<string, number> = {};
     const acceptedCounts: Record<string, number> = {};
+    const reviewableIds = (rows ?? [])
+      .filter((row) => {
+        if (canManageHiring) return true;
+        return Boolean(
+          user?.id && normalizeReviewerIds(row.reviewer_ids).includes(user.id),
+        );
+      })
+      .map((row) => row.id as string);
 
-    if (canManageHiring && ids.length > 0) {
+    if (reviewableIds.length > 0) {
       const { data: apps } = await supabase
         .from("hiring_applications")
         .select("listing_id, status")
-        .in("listing_id", ids);
+        .in("listing_id", reviewableIds);
 
       (apps ?? []).forEach((a) => {
         const lid = a.listing_id as string;
@@ -1035,6 +1110,7 @@ export default function ClubRecruitingPage() {
         acceptedCount: acceptedCounts[row.id as string] ?? 0,
         questions: parseListingQuestions(row.questions),
         uploadFields: parseHiringUploadFields(row.upload_fields),
+        reviewerIds: normalizeReviewerIds(row.reviewer_ids),
       })),
     );
 
@@ -1109,20 +1185,26 @@ export default function ClubRecruitingPage() {
   }, [expandedPositionId]);
 
   useEffect(() => {
-    if (searchParams.get("openCreate") !== "true" || !isPrivileged || loading) return;
+    if (searchParams.get("openCreate") !== "true" || !canManageHiring || loading) return;
     openCreateModal();
     const next = new URLSearchParams(searchParams);
     next.delete("openCreate");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading]);
+  }, [searchParams, setSearchParams, canManageHiring, loading]);
 
   useEffect(() => {
-    if (searchParams.get("tab") !== "applications" || !isPrivileged || loading || positions.length === 0) {
+    if (
+      searchParams.get("tab") !== "applications" ||
+      !canReviewHiring ||
+      loading ||
+      reviewablePositions.length === 0
+    ) {
       return;
     }
 
     const target =
-      positions.find((position) => position.pendingCount > 0) ?? positions[0];
+      reviewablePositions.find((position) => position.pendingCount > 0) ??
+      reviewablePositions[0];
 
     skipApplicantFilterResetRef.current = true;
     setExpandedPositionId(target.id);
@@ -1133,16 +1215,22 @@ export default function ClubRecruitingPage() {
     const next = new URLSearchParams(searchParams);
     next.delete("tab");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading, positions]);
+  }, [
+    searchParams,
+    setSearchParams,
+    canReviewHiring,
+    loading,
+    reviewablePositions,
+  ]);
 
   useEffect(() => {
     const listingId = searchParams.get("listing");
-    if (!listingId || !isPrivileged || loading || positions.length === 0) {
+    if (!listingId || !canReviewHiring || loading || positions.length === 0) {
       return;
     }
 
     const position = positions.find((item) => item.id === listingId);
-    if (!position) return;
+    if (!position || !canReviewPosition(position)) return;
 
     const applicationId = searchParams.get("application");
 
@@ -1158,7 +1246,14 @@ export default function ClubRecruitingPage() {
     next.delete("listing");
     next.delete("application");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading, positions]);
+  }, [
+    searchParams,
+    setSearchParams,
+    canReviewHiring,
+    canReviewPosition,
+    loading,
+    positions,
+  ]);
 
   function resetPostForm() {
     setTitle("");
@@ -1335,6 +1430,14 @@ export default function ClubRecruitingPage() {
   }
 
   async function loadApplicationsForPosition(listingId: string) {
+    const position = positions.find((item) => item.id === listingId);
+    if (!position || !canReviewPosition(position)) {
+      setApplications([]);
+      setApplicationNoteCounts({});
+      setAppsLoading(false);
+      return;
+    }
+
     setAppsLoading(true);
 
     const { data: applicationRows, error } = await supabase
@@ -1446,6 +1549,8 @@ export default function ClubRecruitingPage() {
   }
 
   async function toggleApplications(position: ClubPosition) {
+    if (!canReviewPosition(position)) return;
+
     if (expandedPositionId === position.id) {
       setExpandedPositionId(null);
       setApplications([]);
@@ -1457,16 +1562,22 @@ export default function ClubRecruitingPage() {
 
   useEffect(() => {
     if (
-      !isPrivileged ||
+      !canReviewHiring ||
       loading ||
-      positions.length === 0 ||
+      reviewablePositions.length === 0 ||
       expandedPositionId !== null ||
       searchParams.get("listing")
     ) {
       return;
     }
-    void toggleApplications(positions[0]);
-  }, [isPrivileged, loading, positions, expandedPositionId, searchParams]);
+    void toggleApplications(reviewablePositions[0]);
+  }, [
+    canReviewHiring,
+    loading,
+    reviewablePositions,
+    expandedPositionId,
+    searchParams,
+  ]);
 
   function patchApplication(applicationId: string, patch: CandidateReviewPatch) {
     setApplications((prev) =>
@@ -1545,6 +1656,7 @@ export default function ClubRecruitingPage() {
       const menuOpen = openMenuId === position.id;
       const cardHovered = hoveredCardId === position.id;
       const status = listingStatus(position);
+      const canReviewThisPosition = canReviewPosition(position);
       const showClosingSoonBadge = status === "open" && Boolean(deadline?.urgent);
       const applicantSummary = positionApplicantSummary(position);
 
@@ -1564,13 +1676,13 @@ export default function ClubRecruitingPage() {
       return (
         <div
           key={position.id}
-          role={canManageHiring ? "button" : undefined}
-          tabIndex={canManageHiring ? 0 : undefined}
+          role={canReviewThisPosition ? "button" : undefined}
+          tabIndex={canReviewThisPosition ? 0 : undefined}
           onClick={() => {
-            if (canManageHiring) void toggleApplications(position);
+            if (canReviewThisPosition) void toggleApplications(position);
           }}
           onKeyDown={(event) => {
-            if (!canManageHiring) return;
+            if (!canReviewThisPosition) return;
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               void toggleApplications(position);
@@ -1586,7 +1698,7 @@ export default function ClubRecruitingPage() {
             borderRadius: "12px",
             padding: "20px 24px",
             marginBottom: "12px",
-            cursor: canManageHiring ? "pointer" : undefined,
+            cursor: canReviewThisPosition ? "pointer" : undefined,
             ...positionCardBorderStyle(isExpanded),
           }}
         >
@@ -1699,7 +1811,7 @@ export default function ClubRecruitingPage() {
               </span>
             ))}
           </p>
-          {canManageHiring ? (
+          {canReviewThisPosition ? (
             <p
               style={{
                 fontSize: "12px",
@@ -1910,6 +2022,44 @@ export default function ClubRecruitingPage() {
                 ) : null}
               </div>
             </div>
+          ) : canReviewThisPosition ? (
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void toggleApplications(position);
+                }}
+                style={{
+                  background: isExpanded ? "transparent" : "#E51937",
+                  color: isExpanded ? "#cccccc" : "#ffffff",
+                  borderRadius: "8px",
+                  padding: "8px 18px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  border: isExpanded ? "1px solid #333333" : "none",
+                  cursor: "pointer",
+                }}
+              >
+                {isExpanded ? "Reviewing Applicants" : "Review Applicants"}
+              </button>
+              <span
+                style={{
+                  color: "#777777",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                }}
+              >
+                Assigned reviewer
+              </span>
+            </div>
           ) : (
             <div
               style={{
@@ -2016,7 +2166,7 @@ export default function ClubRecruitingPage() {
           justifyContent: "space-between",
           alignItems: "flex-start",
           gap: "12px",
-          marginBottom: isPrivileged ? "16px" : "24px",
+          marginBottom: canReviewHiring ? "16px" : "24px",
         }}
       >
         <div>
@@ -2028,7 +2178,11 @@ export default function ClubRecruitingPage() {
               margin: 0,
             }}
           >
-            {isPrivileged ? "Hiring" : "We're Hiring"}
+            {canManageHiring
+              ? "Hiring"
+              : canReviewHiring
+                ? "Hiring Reviews"
+                : "We're Hiring"}
           </h1>
           <p
             style={{
@@ -2038,12 +2192,14 @@ export default function ClubRecruitingPage() {
               marginBottom: 0,
             }}
           >
-            {isPrivileged
+            {canManageHiring
               ? "Post open roles, review applicants, and build your club team."
+              : canReviewHiring
+                ? "Review applicants for positions assigned to you."
               : `Open positions in ${clubName}`}
           </p>
         </div>
-        {isPrivileged ? (
+        {canManageHiring ? (
           <button
             type="button"
             onClick={openCreateModal}
@@ -2063,7 +2219,7 @@ export default function ClubRecruitingPage() {
         ) : null}
       </div>
 
-      {isPrivileged ? (
+      {canReviewHiring ? (
         <>
           <div
             style={{
@@ -2927,7 +3083,11 @@ export default function ClubRecruitingPage() {
         />
       ) : null}
 
-      {applicationReviewModalId && selectedPosition && clubId && user?.id
+      {applicationReviewModalId &&
+      selectedPosition &&
+      canReviewPosition(selectedPosition) &&
+      clubId &&
+      user?.id
         ? (() => {
             const reviewApplication = applications.find(
               (application) => application.id === applicationReviewModalId,

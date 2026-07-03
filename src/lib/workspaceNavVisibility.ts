@@ -76,7 +76,7 @@ export function shouldShowWorkspaceNavLink(
       case "documents":
         return ctx.flags.hasMemberDocuments;
       case "recruiting":
-        return ctx.flags.hasActiveHiring;
+        return ctx.flags.hasActiveHiring || ctx.flags.isHiringReviewer;
       default:
         return false;
     }
