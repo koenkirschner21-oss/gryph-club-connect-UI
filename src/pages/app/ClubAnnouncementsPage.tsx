@@ -166,10 +166,6 @@ function normalizeRole(role: string | null | undefined): MemberRole {
   return "member";
 }
 
-function isPrivilegedRole(role: MemberRole | null): boolean {
-  return role === "owner" || role === "executive";
-}
-
 function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -354,11 +350,10 @@ export default function ClubAnnouncementsPage() {
   const club = getClubById(clubId ?? "");
   const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
   const memberAccess = useClubMemberAccess(clubId);
-  const canViewEngagement =
+  const canManageAnnouncements =
     memberAccess.isPresident || memberAccess.can("manage_announcements");
+  const canViewEngagement = canManageAnnouncements;
 
-  const [userRole, setUserRole] = useState<MemberRole | null>(null);
-  const [roleLoading, setRoleLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -432,41 +427,6 @@ export default function ClubAnnouncementsPage() {
     const timer = window.setTimeout(() => setReportSuccessMessage(null), 3000);
     return () => window.clearTimeout(timer);
   }, [reportSuccessMessage]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchRole() {
-      const previewRole = localStorage.getItem("previewRole");
-      if (previewRole) {
-        setUserRole(previewRole as MemberRole);
-        setRoleLoading(false);
-        return;
-      }
-
-      if (!clubId || !user?.id) {
-        if (!cancelled) {
-          setUserRole(null);
-          setRoleLoading(false);
-        }
-        return;
-      }
-      setRoleLoading(true);
-      const { data } = await supabase
-        .from("club_members")
-        .select("role")
-        .eq("club_id", clubId)
-        .eq("user_id", user.id)
-        .single();
-      if (!cancelled) {
-        setUserRole(data?.role ? normalizeRole(data.role as string) : "member");
-        setRoleLoading(false);
-      }
-    }
-    void fetchRole();
-    return () => {
-      cancelled = true;
-    };
-  }, [clubId, user?.id]);
 
   useEffect(() => {
     if (!clubId || posts.length === 0) {
@@ -605,9 +565,10 @@ export default function ClubAnnouncementsPage() {
     [user?.id, clubId],
   );
 
-  const isPrivileged = isPrivilegedRole(userRole);
-  const isMemberRole = userRole === "member";
-  const isMember = userRole !== null;
+  const isPrivileged = canManageAnnouncements;
+  const isMemberRole =
+    memberAccess.hasMembership && memberAccess.permissionRole === "member";
+  const isMember = memberAccess.hasMembership;
 
   function openReportModal(postId: string) {
     setMenuOpenPostId(null);
@@ -741,7 +702,7 @@ export default function ClubAnnouncementsPage() {
     const shouldOpenCreate =
       searchParams.get("openCreate") === "true" ||
       searchParams.get("create") === "true";
-    if (!shouldOpenCreate || !isPrivileged || loading || roleLoading) {
+    if (!shouldOpenCreate || !isPrivileged || loading || memberAccess.loading) {
       return;
     }
     const templateState = location.state as {
@@ -763,7 +724,7 @@ export default function ClubAnnouncementsPage() {
     setSearchParams,
     isPrivileged,
     loading,
-    roleLoading,
+    memberAccess.loading,
     location.state,
   ]);
 
@@ -772,7 +733,7 @@ export default function ClubAnnouncementsPage() {
       searchParams.get("openTemplate") !== "true" ||
       !isPrivileged ||
       loading ||
-      roleLoading
+      memberAccess.loading
     ) {
       return;
     }
@@ -780,7 +741,7 @@ export default function ClubAnnouncementsPage() {
     const next = new URLSearchParams(searchParams);
     next.delete("openTemplate");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isPrivileged, loading, roleLoading]);
+  }, [searchParams, setSearchParams, isPrivileged, loading, memberAccess.loading]);
 
   function openEditForm(post: Post) {
     setEditingPostId(post.id);
@@ -928,7 +889,7 @@ export default function ClubAnnouncementsPage() {
     }
   }
 
-  if (loading || roleLoading) {
+  if (loading || memberAccess.loading) {
     return (
       <div
         style={{
