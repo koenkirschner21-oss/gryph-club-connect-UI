@@ -51,7 +51,7 @@ export function accessLevelBadgeLabel(level: AccessLevel): string {
     case "president":
       return "President";
     case "managerial_executive":
-      return "Managerial Exec";
+      return "Managerial Executive";
     case "executive":
       return "Executive";
     default:
@@ -61,8 +61,22 @@ export function accessLevelBadgeLabel(level: AccessLevel): string {
 
 export function accessLevelBadgeColor(level: AccessLevel): string {
   if (level === "president") return "#E51937";
-  if (level === "managerial_executive" || level === "executive") return "#FFC429";
+  if (level === "managerial_executive") return "#38BDF8";
+  if (level === "executive") return "#FFC429";
   return "#555555";
+}
+
+export function accessLevelPresentationHint(level: AccessLevel): string {
+  switch (level) {
+    case "president":
+      return "Displayed as the top club leadership tier.";
+    case "managerial_executive":
+      return "Displayed as its own Managerial Executive tier, separate from regular executives.";
+    case "executive":
+      return "Displayed as a regular Executive tier.";
+    default:
+      return "Displayed as a General Member tier.";
+  }
 }
 
 export function roleTitleGroupForAccessLevel(level: AccessLevel): string {

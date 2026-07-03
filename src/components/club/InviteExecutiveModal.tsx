@@ -10,6 +10,7 @@ import {
 import {
   ROLE_TITLE_CUSTOM,
   ROLE_TITLE_GROUPS,
+  accessLevelPresentationHint,
   resolveRoleTitleFromSelection,
   roleTitleGroupForAccessLevel,
   roleTitleOptionsForAccessLevel,
@@ -291,6 +292,9 @@ export default function InviteExecutiveModal({
                   </option>
                 ))}
               </select>
+              <p style={{ margin: "-4px 0 12px", fontSize: "11px", color: "#777777" }}>
+                {accessLevelPresentationHint(row.accessLevel)}
+              </p>
               <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
                 Role title
               </label>

@@ -14,6 +14,7 @@ import {
   accessLevelBadgeColor,
   accessLevelBadgeLabel,
   accessLevelFromMember,
+  accessLevelPresentationHint,
   formatMemberDisplayRole,
   resolveRoleTitleFromSelection,
   resolveRoleTitleSelectionForAccessLevel,
@@ -2157,6 +2158,9 @@ export default function ClubMembersPage() {
                       setEditTitleCustom(custom);
                     }}
                   />
+                  <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#777777" }}>
+                    {accessLevelPresentationHint(editAccessLevel)}
+                  </p>
                   <label
                     htmlFor={`member-title-${member.id}`}
                     style={{
