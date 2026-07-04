@@ -1123,7 +1123,15 @@ export async function notifyMeetingCancelled(
 async function fetchClubMemberVisibilityContexts(
   supabase: SupabaseClient,
   clubId: string,
-): Promise<Array<{ userId: string; isMember: boolean; isPrivileged: boolean }>> {
+): Promise<
+  Array<{
+    userId: string;
+    isMember: boolean;
+    isPrivileged: boolean;
+    accessLevel: AccessLevel | null;
+    role: string | null;
+  }>
+> {
   const { data, error } = await supabase
     .from("club_members")
     .select("user_id, role, access_level, status")
@@ -1143,6 +1151,8 @@ async function fetchClubMemberVisibilityContexts(
         userId: row.user_id as string,
         isMember: true,
         isPrivileged: isExecutiveAccessLevel(accessLevel, role),
+        accessLevel,
+        role,
       };
     })
     .filter((entry) => Boolean(entry.userId));
@@ -1155,6 +1165,8 @@ export async function notifyNewDocumentUploaded(
     documentId: string;
     documentName: string;
     visibility: Visibility;
+    visibilityRoles?: AccessLevel[];
+    visibilityUserIds?: string[];
     uploadedByUserId: string;
   },
 ): Promise<void> {
@@ -1164,6 +1176,12 @@ export async function notifyNewDocumentUploaded(
       canViewContent(params.visibility, {
         isMember: member.isMember,
         isPrivileged: member.isPrivileged,
+        userId: member.userId,
+        accessLevel: member.accessLevel,
+        role: member.role,
+      }, {
+        visibilityRoles: params.visibilityRoles ?? [],
+        visibilityUserIds: params.visibilityUserIds ?? [],
       }),
     )
     .map((member) => member.userId)

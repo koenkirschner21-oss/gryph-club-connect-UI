@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   Lock,
   Pin,
+  Target,
   Users,
 } from "lucide-react";
 import { formatRelativeTime } from "../../../lib/formatRelativeTime";
@@ -21,6 +22,7 @@ import type { Post, Visibility } from "../../../types";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
+const CYAN = "#38BDF8";
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
 
@@ -32,6 +34,7 @@ export const VISIBILITY_FILTER_OPTIONS: { value: VisibilityFilter; label: string
   { value: "public", label: "Public Only" },
   { value: "members_only", label: "Members Only" },
   { value: "executives_only", label: "Executives Only" },
+  { value: "selected", label: "Selected Only" },
 ];
 
 export const SORT_OPTIONS: { value: AnnouncementSort; label: string }[] = [
@@ -180,6 +183,27 @@ export function AnnouncementVisibilityBadge({
       >
         <Lock size={12} aria-hidden />
         Members Only
+      </span>
+    );
+  }
+
+  if (level === "selected") {
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "5px",
+          fontSize: "11px",
+          color: CYAN,
+          border: `1px solid ${CYAN}`,
+          background: "rgba(56,189,248,0.1)",
+          borderRadius: "12px",
+          padding: "3px 8px",
+        }}
+      >
+        <Target size={12} aria-hidden />
+        Selected
       </span>
     );
   }

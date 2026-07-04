@@ -1,10 +1,11 @@
-import { Globe, Lock } from "lucide-react";
+import { Globe, Lock, Target } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { Visibility } from "../../types";
 import { normalizeVisibility } from "../../lib/contentVisibility";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
+const CYAN = "#38BDF8";
 
 const badgeStyle: CSSProperties = {
   display: "inline-flex",
@@ -52,6 +53,22 @@ export default function VisibilityBadge({
       >
         <Lock size={12} aria-hidden />
         Members Only
+      </span>
+    );
+  }
+
+  if (level === "selected") {
+    return (
+      <span
+        style={{
+          ...badgeStyle,
+          color: CYAN,
+          border: `1px solid ${CYAN}`,
+          background: "rgba(56,189,248,0.1)",
+        }}
+      >
+        <Target size={12} aria-hidden />
+        Selected
       </span>
     );
   }

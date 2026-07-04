@@ -4,6 +4,7 @@ import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import { useClubMembers } from "../../hooks/useClubMembers";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
@@ -11,8 +12,14 @@ import { supabase } from "../../lib/supabaseClient";
 import { notifyReportSubmitted } from "../../lib/notifications";
 import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
+import SelectedVisibilityPicker from "../../components/club/SelectedVisibilityPicker";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import { filterByVisibility } from "../../lib/contentVisibility";
+import {
+  EMPTY_SELECTED_VISIBILITY,
+  hasSelectedVisibilityTargets,
+  selectedVisibilityPayload,
+} from "../../lib/selectedVisibility";
 import {
   fetchPostViewCountsForClub,
   recordAnnouncementView,
@@ -350,6 +357,7 @@ export default function ClubAnnouncementsPage() {
   const club = getClubById(clubId ?? "");
   const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
   const memberAccess = useClubMemberAccess(clubId);
+  const { members } = useClubMembers(clubId);
   const canManageAnnouncements =
     memberAccess.isPresident || memberAccess.can("manage_announcements");
   const canViewEngagement = canManageAnnouncements;
@@ -378,6 +386,9 @@ export default function ClubAnnouncementsPage() {
   const [announcementFilter, setAnnouncementFilter] =
     useState<AnnouncementFilter>("all");
   const [postVisibility, setPostVisibility] = useState<Visibility>("members_only");
+  const [selectedVisibilityTargets, setSelectedVisibilityTargets] = useState(
+    EMPTY_SELECTED_VISIBILITY,
+  );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -613,7 +624,13 @@ export default function ClubAnnouncementsPage() {
   }
 
   const displayPosts = useMemo(() => {
-    let list = filterByVisibility(posts, { isMember, isPrivileged });
+    let list = filterByVisibility(posts, {
+      isMember,
+      isPrivileged,
+      userId: user?.id,
+      accessLevel: memberAccess.accessLevel,
+      role: memberAccess.role,
+    });
 
     if (visibilityFilter !== "all") {
       list = list.filter((post) => (post.visibility ?? "members_only") === visibilityFilter);
@@ -658,6 +675,9 @@ export default function ClubAnnouncementsPage() {
     sortBy,
     isMember,
     isPrivileged,
+    user?.id,
+    memberAccess.accessLevel,
+    memberAccess.role,
     reactionCountsByPost,
     viewCountByPost,
   ]);
@@ -677,6 +697,7 @@ export default function ClubAnnouncementsPage() {
     setContent("");
     setLinkUrl("");
     setPostVisibility("members_only");
+    setSelectedVisibilityTargets(EMPTY_SELECTED_VISIBILITY);
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -691,6 +712,7 @@ export default function ClubAnnouncementsPage() {
     setContent("");
     setLinkUrl("");
     setPostVisibility("members_only");
+    setSelectedVisibilityTargets(EMPTY_SELECTED_VISIBILITY);
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -749,6 +771,12 @@ export default function ClubAnnouncementsPage() {
     setContent(post.content);
     setLinkUrl(post.linkUrl ?? "");
     setPostVisibility(post.visibility ?? "members_only");
+    setSelectedVisibilityTargets(
+      selectedVisibilityPayload(
+        post.visibilityRoles ?? [],
+        post.visibilityUserIds ?? [],
+      ),
+    );
     setSelectedFile(null);
     setExistingAttachmentUrl(post.attachmentUrl ?? null);
     setExistingAttachmentType(post.attachmentType ?? null);
@@ -791,6 +819,16 @@ export default function ClubAnnouncementsPage() {
 
   async function handleSubmit() {
     if (!title.trim() || !content.trim() || !clubId) return;
+    if (
+      postVisibility === "selected" &&
+      !hasSelectedVisibilityTargets(selectedVisibilityTargets)
+    ) {
+      setFeedback({
+        type: "error",
+        text: "Choose at least one role or member for selected visibility.",
+      });
+      return;
+    }
     setSaving(true);
     setFeedback(null);
 
@@ -815,6 +853,14 @@ export default function ClubAnnouncementsPage() {
       attachmentType,
       linkUrl: linkUrl.trim() || null,
       visibility: postVisibility,
+      visibilityRoles:
+        postVisibility === "selected"
+          ? selectedVisibilityTargets.visibilityRoles
+          : [],
+      visibilityUserIds:
+        postVisibility === "selected"
+          ? selectedVisibilityTargets.visibilityUserIds
+          : [],
     };
 
     const isEditing = Boolean(editingPostId);
@@ -1068,6 +1114,14 @@ export default function ClubAnnouncementsPage() {
               value={postVisibility}
               onChange={setPostVisibility}
             />
+            {postVisibility === "selected" ? (
+              <SelectedVisibilityPicker
+                members={members}
+                targets={selectedVisibilityTargets}
+                onChange={setSelectedVisibilityTargets}
+                disabled={saving}
+              />
+            ) : null}
             <div>
               <label htmlFor="postAttachment" style={labelStyle}>
                 Attach Image or File (optional)
@@ -1099,11 +1153,31 @@ export default function ClubAnnouncementsPage() {
                 type="button"
                 style={{
                   ...submitButtonStyle,
-                  opacity: !title.trim() || !content.trim() || saving ? 0.6 : 1,
-                  cursor: !title.trim() || !content.trim() || saving ? "not-allowed" : "pointer",
+                  opacity:
+                    !title.trim() ||
+                    !content.trim() ||
+                    saving ||
+                    (postVisibility === "selected" &&
+                      !hasSelectedVisibilityTargets(selectedVisibilityTargets))
+                      ? 0.6
+                      : 1,
+                  cursor:
+                    !title.trim() ||
+                    !content.trim() ||
+                    saving ||
+                    (postVisibility === "selected" &&
+                      !hasSelectedVisibilityTargets(selectedVisibilityTargets))
+                      ? "not-allowed"
+                      : "pointer",
                 }}
                 onClick={handleSubmit}
-                disabled={!title.trim() || !content.trim() || saving}
+                disabled={
+                  !title.trim() ||
+                  !content.trim() ||
+                  saving ||
+                  (postVisibility === "selected" &&
+                    !hasSelectedVisibilityTargets(selectedVisibilityTargets))
+                }
               >
                 {saving ? (editingPostId ? "Saving…" : "Posting…") : editingPostId ? "Save Changes" : "Post Announcement"}
               </button>

@@ -33,6 +33,7 @@ import FormInput from "../../components/ui/FormInput";
 import Spinner from "../../components/ui/Spinner";
 import VisibilitySelector from "../../components/club/VisibilitySelector";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
+import SelectedVisibilityPicker from "../../components/club/SelectedVisibilityPicker";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import CompletedEventCard from "../../components/club/CompletedEventCard";
 import EventMemberFeedbackModal from "../../components/club/EventMemberFeedbackModal";
@@ -63,6 +64,11 @@ import EventPlanningTasksSection from "../../components/club/EventPlanningTasksS
 import { EventManageView } from "./events/EventManageView";
 import { getPublicEventDetailPath } from "../../lib/eventNavigation";
 import { useClubMembers } from "../../hooks/useClubMembers";
+import {
+  EMPTY_SELECTED_VISIBILITY,
+  hasSelectedVisibilityTargets,
+  selectedVisibilityPayload,
+} from "../../lib/selectedVisibility";
 
 type EventFilter = "all" | "going_to" | "needs_response";
 
@@ -2129,8 +2135,18 @@ export default function ClubEventsPage() {
       filterByVisibility(events, {
         isMember: isActiveMember,
         isPrivileged: isExecutiveForVisibility,
+        userId: user?.id,
+        accessLevel: memberAccess.accessLevel,
+        role: memberAccess.role,
       }),
-    [events, isActiveMember, isExecutiveForVisibility],
+    [
+      events,
+      isActiveMember,
+      isExecutiveForVisibility,
+      user?.id,
+      memberAccess.accessLevel,
+      memberAccess.role,
+    ],
   );
 
   const getRsvpAccessForEvent = useCallback(
@@ -2206,6 +2222,9 @@ export default function ClubEventsPage() {
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
   const [visibility, setVisibility] = useState<Visibility>("public");
+  const [selectedVisibilityTargets, setSelectedVisibilityTargets] = useState(
+    EMPTY_SELECTED_VISIBILITY,
+  );
   const [signupRequiresApproval, setSignupRequiresApproval] = useState(false);
   const [category, setCategory] = useState<EventCategory>(DEFAULT_EVENT_CATEGORY);
   const [categoryColumnReady, setCategoryColumnReady] = useState(false);
@@ -2581,6 +2600,8 @@ export default function ClubEventsPage() {
       time: string;
       location: string;
       visibility: Visibility;
+      visibilityRoles: NonNullable<ClubEvent["visibilityRoles"]>;
+      visibilityUserIds: NonNullable<ClubEvent["visibilityUserIds"]>;
     },
     instanceDates: string[],
     recurring: {
@@ -2602,6 +2623,8 @@ export default function ClubEventsPage() {
       time: baseFields.time,
       location: baseFields.location,
       visibility: baseFields.visibility,
+      visibility_roles: baseFields.visibilityRoles,
+      visibility_user_ids: baseFields.visibilityUserIds,
       created_by: user.id,
       is_recurring: true,
       recurrence_frequency: recurring.frequency,
@@ -2679,6 +2702,7 @@ export default function ClubEventsPage() {
     setTime("");
     setLocation("");
     setVisibility("public");
+    setSelectedVisibilityTargets(EMPTY_SELECTED_VISIBILITY);
     setSignupRequiresApproval(false);
     setCategory(DEFAULT_EVENT_CATEGORY);
     setIsRecurring(false);
@@ -2698,6 +2722,12 @@ export default function ClubEventsPage() {
     setTime(current.time);
     setLocation(current.location);
     setVisibility(normalizeVisibility(current.visibility, "public"));
+    setSelectedVisibilityTargets(
+      selectedVisibilityPayload(
+        current.visibilityRoles ?? [],
+        current.visibilityUserIds ?? [],
+      ),
+    );
     setSignupRequiresApproval(Boolean(current.signupRequiresApproval));
     setCategory(
       eventCategories[current.id] ?? DEFAULT_EVENT_CATEGORY,
@@ -2730,16 +2760,36 @@ export default function ClubEventsPage() {
 
   async function handleSubmit() {
     if (!title.trim() || !date) return;
+    if (
+      visibility === "selected" &&
+      !hasSelectedVisibilityTargets(selectedVisibilityTargets)
+    ) {
+      setFeedback({
+        type: "error",
+        text: "Choose at least one role or member for selected visibility.",
+      });
+      return;
+    }
     setSaving(true);
     setFeedback(null);
 
+    const newEventId = editingId ? null : crypto.randomUUID();
     const fields = {
+      ...(newEventId ? { id: newEventId } : {}),
       title: title.trim(),
       description: description.trim(),
       date,
       time: time || "TBD",
       location: location.trim() || "TBD",
       visibility,
+      visibilityRoles:
+        visibility === "selected"
+          ? selectedVisibilityTargets.visibilityRoles
+          : [],
+      visibilityUserIds:
+        visibility === "selected"
+          ? selectedVisibilityTargets.visibilityUserIds
+          : [],
       signupRequiresApproval,
     };
 
@@ -2763,34 +2813,11 @@ export default function ClubEventsPage() {
       }
     } else {
       ok = !!(await createEvent(fields));
+      if (ok) {
+        savedEventId = newEventId;
+      }
       if (ok && categoryColumnReady) {
-        const { data, error } = await supabase
-          .from("events")
-          .select("id")
-          .eq("club_id", clubId!)
-          .eq("title", fields.title)
-          .eq("date", fields.date)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error || !data?.id) {
-          ok = false;
-        } else {
-          savedEventId = data.id as string;
-          ok = await saveEventCategory(savedEventId, category);
-        }
-      } else if (ok) {
-        const { data } = await supabase
-          .from("events")
-          .select("id")
-          .eq("club_id", clubId!)
-          .eq("title", fields.title)
-          .eq("date", fields.date)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        savedEventId = (data?.id as string) ?? null;
+        ok = savedEventId ? await saveEventCategory(savedEventId, category) : false;
       }
       if (ok && savedEventId && isRecurring && recurringColumnReady) {
         const recurringSaved = await saveEventRecurringMeta(savedEventId, {
@@ -3682,6 +3709,14 @@ export default function ClubEventsPage() {
               onChange={setVisibility}
               label="Who can see this event?"
             />
+            {visibility === "selected" ? (
+              <SelectedVisibilityPicker
+                members={members}
+                targets={selectedVisibilityTargets}
+                onChange={setSelectedVisibilityTargets}
+                disabled={saving}
+              />
+            ) : null}
             <label
               style={{
                 display: "flex",
@@ -3767,7 +3802,13 @@ export default function ClubEventsPage() {
               )}
               <Button
                 onClick={handleSubmit}
-                disabled={!title.trim() || !date || saving}
+                disabled={
+                  !title.trim() ||
+                  !date ||
+                  saving ||
+                  (visibility === "selected" &&
+                    !hasSelectedVisibilityTargets(selectedVisibilityTargets))
+                }
               >
                 {saving
                   ? "Saving…"

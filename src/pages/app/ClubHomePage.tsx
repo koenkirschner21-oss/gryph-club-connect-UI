@@ -1568,8 +1568,14 @@ export default function ClubHomePage() {
   const isPresidentCommandCenter =
     memberAccess.isPresident || userRole === "owner" || userAccessLevel === "president";
   const visibilityContext = useMemo(
-    () => ({ isMember: true, isPrivileged }),
-    [isPrivileged],
+    () => ({
+      isMember: true,
+      isPrivileged,
+      userId: user?.id,
+      accessLevel: userAccessLevel,
+      role: userRole,
+    }),
+    [isPrivileged, user?.id, userAccessLevel, userRole],
   );
 
   const previewPosts = posts.slice(0, 2);

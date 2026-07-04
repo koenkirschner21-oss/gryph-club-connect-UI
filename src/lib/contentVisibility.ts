@@ -1,4 +1,4 @@
-import type { Visibility } from "../types";
+import type { AccessLevel, MemberRole, Visibility } from "../types";
 
 export function normalizeVisibility(
   value: string | null | undefined,
@@ -7,7 +7,8 @@ export function normalizeVisibility(
   if (
     value === "public" ||
     value === "members_only" ||
-    value === "executives_only"
+    value === "executives_only" ||
+    value === "selected"
   ) {
     return value;
   }
@@ -19,19 +20,76 @@ export function normalizeVisibility(
 
 export function canViewContent(
   visibility: Visibility | undefined,
-  context: { isMember: boolean; isPrivileged: boolean },
+  context: {
+    isMember: boolean;
+    isPrivileged: boolean;
+    userId?: string | null;
+    accessLevel?: AccessLevel | null;
+    role?: MemberRole | string | null;
+  },
+  targets?: {
+    visibilityRoles?: AccessLevel[];
+    visibilityUserIds?: string[];
+  },
 ): boolean {
   const level = visibility ?? "members_only";
   if (level === "public") return true;
   if (level === "executives_only") return context.isPrivileged;
+  if (level === "selected") {
+    if (!context.isMember) return false;
+
+    const selectedUserIds = targets?.visibilityUserIds ?? [];
+    if (context.userId && selectedUserIds.includes(context.userId)) {
+      return true;
+    }
+
+    const selectedRoles = targets?.visibilityRoles ?? [];
+    const viewerRole = resolveViewerAccessLevel(context.accessLevel, context.role);
+    return Boolean(viewerRole && selectedRoles.includes(viewerRole));
+  }
   return context.isMember;
 }
 
-export function filterByVisibility<T extends { visibility?: Visibility }>(
+export function filterByVisibility<
+  T extends {
+    visibility?: Visibility;
+    visibilityRoles?: AccessLevel[];
+    visibilityUserIds?: string[];
+  },
+>(
   items: T[],
-  context: { isMember: boolean; isPrivileged: boolean },
+  context: {
+    isMember: boolean;
+    isPrivileged: boolean;
+    userId?: string | null;
+    accessLevel?: AccessLevel | null;
+    role?: MemberRole | string | null;
+  },
 ): T[] {
-  return items.filter((item) => canViewContent(item.visibility, context));
+  return items.filter((item) =>
+    canViewContent(item.visibility, context, {
+      visibilityRoles: item.visibilityRoles,
+      visibilityUserIds: item.visibilityUserIds,
+    }),
+  );
+}
+
+function resolveViewerAccessLevel(
+  accessLevel: AccessLevel | null | undefined,
+  role: MemberRole | string | null | undefined,
+): AccessLevel | null {
+  if (
+    accessLevel === "president" ||
+    accessLevel === "managerial_executive" ||
+    accessLevel === "executive" ||
+    accessLevel === "member"
+  ) {
+    return accessLevel;
+  }
+  if (role === "owner" || role === "admin") return "president";
+  if (role === "executive" || role === "exec") return "executive";
+  if (role === "member") return "member";
+  return null;
 }
 
 export const VISIBILITY_OPTIONS: {
@@ -57,5 +115,11 @@ export const VISIBILITY_OPTIONS: {
     emoji: "🔒",
     label: "Executives Only",
     description: "Only executives and above",
+  },
+  {
+    value: "selected",
+    emoji: "🎯",
+    label: "Selected",
+    description: "Specific roles or members",
   },
 ];

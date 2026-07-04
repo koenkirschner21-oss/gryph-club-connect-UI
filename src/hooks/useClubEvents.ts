@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { ClubEvent } from "../types";
 import { normalizeVisibility } from "../lib/contentVisibility";
+import { normalizeAccessLevelArray, normalizeUuidArray } from "../lib/selectedVisibility";
 
 /** Map a Supabase `events` row to our ClubEvent type. */
 function mapEventRow(row: Record<string, unknown>): ClubEvent {
@@ -21,6 +22,8 @@ function mapEventRow(row: Record<string, unknown>): ClubEvent {
     creatorAvatar: (creator?.avatar_url as string) ?? undefined,
     createdAt: (row.created_at as string) ?? "",
     visibility: normalizeVisibility(row.visibility as string | null, "public"),
+    visibilityRoles: normalizeAccessLevelArray(row.visibility_roles),
+    visibilityUserIds: normalizeUuidArray(row.visibility_user_ids),
     signupRequiresApproval: Boolean(row.signup_requires_approval),
   };
 }
@@ -31,14 +34,28 @@ export interface UseClubEventsReturn {
   error: string | null;
   createEvent: (
     fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location"> & {
+      id?: string;
       visibility?: ClubEvent["visibility"];
+      visibilityRoles?: ClubEvent["visibilityRoles"];
+      visibilityUserIds?: ClubEvent["visibilityUserIds"];
       signupRequiresApproval?: boolean;
     },
   ) => Promise<boolean>;
   updateEvent: (
     eventId: string,
     fields: Partial<
-      Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility" | "signupRequiresApproval">
+      Pick<
+        ClubEvent,
+        | "title"
+        | "description"
+        | "date"
+        | "time"
+        | "location"
+        | "visibility"
+        | "visibilityRoles"
+        | "visibilityUserIds"
+        | "signupRequiresApproval"
+      >
     >,
   ) => Promise<boolean>;
   deleteEvent: (eventId: string) => Promise<boolean>;
@@ -76,6 +93,8 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
         time,
         location,
         visibility,
+        visibility_roles,
+        visibility_user_ids,
         signup_requires_approval,
         created_at,
         created_by,
@@ -140,7 +159,10 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
   const createEvent = useCallback(
     async (
       fields: Pick<ClubEvent, "title" | "description" | "date" | "time" | "location"> & {
+        id?: string;
         visibility?: ClubEvent["visibility"];
+        visibilityRoles?: ClubEvent["visibilityRoles"];
+        visibilityUserIds?: ClubEvent["visibilityUserIds"];
         signupRequiresApproval?: boolean;
       },
     ): Promise<boolean> => {
@@ -149,6 +171,7 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
       const { data, error: err } = await supabase
         .from("events")
         .insert({
+          id: fields.id ?? crypto.randomUUID(),
           club_id: clubId,
           title: fields.title,
           description: fields.description,
@@ -156,6 +179,8 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           time: fields.time,
           location: fields.location,
           visibility: fields.visibility ?? "public",
+          visibility_roles: fields.visibilityRoles ?? [],
+          visibility_user_ids: fields.visibilityUserIds ?? [],
           signup_requires_approval: fields.signupRequiresApproval ?? false,
           created_by: user.id,
         })
@@ -168,6 +193,8 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           time,
           location,
           visibility,
+          visibility_roles,
+          visibility_user_ids,
           signup_requires_approval,
           created_at,
           created_by,
@@ -176,25 +203,40 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
             avatar_url
           )
         `)
-        .single();
+        .maybeSingle();
 
-      if (err || !data) {
+      if (err) {
         console.error("Failed to create event:", err?.message);
         return false;
       }
 
-      setEvents((prev) => [...prev, mapEventRow(data)]);
+      if (data) {
+        setEvents((prev) => [...prev, mapEventRow(data)]);
+      } else {
+        refresh();
+      }
 
       return true;
     },
-    [clubId, user],
+    [clubId, refresh, user],
   );
 
   const updateEvent = useCallback(
     async (
       eventId: string,
       fields: Partial<
-        Pick<ClubEvent, "title" | "description" | "date" | "time" | "location" | "visibility" | "signupRequiresApproval">
+        Pick<
+          ClubEvent,
+          | "title"
+          | "description"
+          | "date"
+          | "time"
+          | "location"
+          | "visibility"
+          | "visibilityRoles"
+          | "visibilityUserIds"
+          | "signupRequiresApproval"
+        >
       >,
     ): Promise<boolean> => {
       const row: Record<string, unknown> = {};
@@ -204,6 +246,12 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
       if (fields.time !== undefined) row.time = fields.time;
       if (fields.location !== undefined) row.location = fields.location;
       if (fields.visibility !== undefined) row.visibility = fields.visibility;
+      if (fields.visibilityRoles !== undefined) {
+        row.visibility_roles = fields.visibilityRoles;
+      }
+      if (fields.visibilityUserIds !== undefined) {
+        row.visibility_user_ids = fields.visibilityUserIds;
+      }
       if (fields.signupRequiresApproval !== undefined) {
         row.signup_requires_approval = fields.signupRequiresApproval;
       }
@@ -221,6 +269,8 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
           time,
           location,
           visibility,
+          visibility_roles,
+          visibility_user_ids,
           signup_requires_approval,
           created_at,
           created_by,
@@ -229,18 +279,22 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
             avatar_url
           )
         `)
-        .single();
+        .maybeSingle();
 
-      if (err || !data) {
+      if (err) {
         console.error("Failed to update event:", err?.message);
         return false;
       }
 
-      const updated = mapEventRow(data);
-      setEvents((prev) => prev.map((e) => (e.id === eventId ? updated : e)));
+      if (data) {
+        const updated = mapEventRow(data);
+        setEvents((prev) => prev.map((e) => (e.id === eventId ? updated : e)));
+      } else {
+        refresh();
+      }
       return true;
     },
-    [],
+    [refresh],
   );
 
   const deleteEvent = useCallback(async (eventId: string): Promise<boolean> => {

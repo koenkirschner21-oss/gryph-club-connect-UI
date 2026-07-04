@@ -90,7 +90,7 @@ export interface Club {
 // ---------------------------------------------------------------------------
 // Content visibility
 // ---------------------------------------------------------------------------
-export type Visibility = "public" | "members_only" | "executives_only";
+export type Visibility = "public" | "members_only" | "executives_only" | "selected";
 
 // ---------------------------------------------------------------------------
 // Events
@@ -106,6 +106,8 @@ export interface ClubEvent {
   endAt?: string;
   location: string;
   visibility?: Visibility;
+  visibilityRoles?: AccessLevel[];
+  visibilityUserIds?: string[];
   signupRequiresApproval?: boolean;
   /** Event author (auth user id). */
   createdBy?: string;
@@ -251,6 +253,8 @@ export interface Post {
   attachmentType?: string | null;
   linkUrl?: string | null;
   visibility?: Visibility;
+  visibilityRoles?: AccessLevel[];
+  visibilityUserIds?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +272,8 @@ export interface ClubDocument {
   category: string;
   createdAt: string;
   visibility?: Visibility;
+  visibilityRoles?: AccessLevel[];
+  visibilityUserIds?: string[];
   uploaderName?: string;
 }
 

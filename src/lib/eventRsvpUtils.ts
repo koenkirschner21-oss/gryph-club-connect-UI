@@ -52,6 +52,13 @@ export function getEventRsvpAccess(
     };
   }
 
+  if (level === "selected") {
+    if (context.isActiveMember) {
+      return { canRsvp: true, showRsvpButton: true };
+    }
+    return { canRsvp: false, showRsvpButton: false };
+  }
+
   if (context.isPrivileged) {
     return { canRsvp: true, showRsvpButton: true };
   }

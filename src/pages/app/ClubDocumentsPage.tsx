@@ -13,6 +13,7 @@ import {
   Lock,
   Plus,
   Search,
+  Target,
   Users,
   X,
 } from "lucide-react";
@@ -21,10 +22,19 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import { useClubMembers } from "../../hooks/useClubMembers";
 import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import { notifyNewDocumentUploaded } from "../../lib/notifications";
-import type { Visibility } from "../../types";
+import type { AccessLevel, Visibility } from "../../types";
+import SelectedVisibilityPicker from "../../components/club/SelectedVisibilityPicker";
+import {
+  EMPTY_SELECTED_VISIBILITY,
+  hasSelectedVisibilityTargets,
+  normalizeAccessLevelArray,
+  normalizeUuidArray,
+  selectedVisibilityPayload,
+} from "../../lib/selectedVisibility";
 import {
   CategoryFilterDropdown,
   DocumentCard,
@@ -63,6 +73,10 @@ interface ClubDocument {
   category: string;
   created_at: string;
   visibility?: Visibility;
+  visibility_roles?: unknown;
+  visibility_user_ids?: unknown;
+  visibilityRoles?: AccessLevel[];
+  visibilityUserIds?: string[];
   uploaderName?: string;
 }
 
@@ -210,6 +224,12 @@ const DOCUMENT_VISIBILITY_OPTIONS: {
     label: "Executives Only",
     description: "Only executives and above",
     Icon: Lock,
+  },
+  {
+    value: "selected",
+    label: "Selected",
+    description: "Specific roles or members",
+    Icon: Target,
   },
 ];
 
@@ -457,6 +477,7 @@ export default function ClubDocumentsPage() {
   const { user } = useAuthContext();
 
   const memberAccess = useClubMemberAccess(clubId);
+  const { members } = useClubMembers(clubId);
   const canManageDocuments =
     memberAccess.isPresident || memberAccess.can("manage_documents");
   const isExecutiveForVisibility = isExecutiveAccessLevel(
@@ -480,6 +501,9 @@ export default function ClubDocumentsPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [uploadCategory, setUploadCategory] = useState("general");
   const [uploadVisibility, setUploadVisibility] = useState<Visibility>("members_only");
+  const [uploadSelectedTargets, setUploadSelectedTargets] = useState(
+    EMPTY_SELECTED_VISIBILITY,
+  );
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [feedback, setFeedback] = useState<{
@@ -490,6 +514,11 @@ export default function ClubDocumentsPage() {
   const [previewDoc, setPreviewDoc] = useState<ClubDocument | null>(null);
   const [editingDocument, setEditingDocument] = useState<ClubDocument | null>(null);
   const [editDocName, setEditDocName] = useState("");
+  const [editDocVisibility, setEditDocVisibility] =
+    useState<Visibility>("members_only");
+  const [editSelectedTargets, setEditSelectedTargets] = useState(
+    EMPTY_SELECTED_VISIBILITY,
+  );
   const [savingEdit, setSavingEdit] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -613,6 +642,8 @@ export default function ClubDocumentsPage() {
       rows.map((row) => ({
         ...row,
         visibility: normalizeVisibility(row.visibility, "members_only"),
+        visibilityRoles: normalizeAccessLevelArray(row.visibility_roles),
+        visibilityUserIds: normalizeUuidArray(row.visibility_user_ids),
         uploaderName: row.uploaded_by
           ? profileMap[row.uploaded_by] ?? "Unknown"
           : "Unknown",
@@ -635,6 +666,9 @@ export default function ClubDocumentsPage() {
     let result = filterByVisibility(documents, {
       isMember,
       isPrivileged: isExecutiveForVisibility,
+      userId: user?.id,
+      accessLevel: memberAccess.accessLevel,
+      role: memberAccess.role,
     });
     if (filterCategory !== "all") {
       result = result.filter((doc) => doc.category === filterCategory);
@@ -651,7 +685,17 @@ export default function ClubDocumentsPage() {
       });
     }
     return result;
-  }, [documents, filterCategory, searchQuery, allCategories, isMember, isExecutiveForVisibility]);
+  }, [
+    documents,
+    filterCategory,
+    searchQuery,
+    allCategories,
+    isMember,
+    isExecutiveForVisibility,
+    user?.id,
+    memberAccess.accessLevel,
+    memberAccess.role,
+  ]);
 
   const sortedDocuments = useMemo(
     () => sortDocuments(filteredDocuments, sortBy),
@@ -685,6 +729,7 @@ export default function ClubDocumentsPage() {
     setDocDescription("");
     setUploadCategory("general");
     setUploadVisibility("members_only");
+    setUploadSelectedTargets(EMPTY_SELECTED_VISIBILITY);
     setUploadProgress(0);
   }
 
@@ -828,6 +873,16 @@ export default function ClubDocumentsPage() {
 
   async function handleUpload() {
     if (!clubId || !user?.id || !selectedFile || !docName.trim()) return;
+    if (
+      uploadVisibility === "selected" &&
+      !hasSelectedVisibilityTargets(uploadSelectedTargets)
+    ) {
+      setFeedback({
+        type: "error",
+        text: "Choose at least one role or member for selected visibility.",
+      });
+      return;
+    }
 
     setUploading(true);
     setUploadProgress(0);
@@ -840,9 +895,11 @@ export default function ClubDocumentsPage() {
       return;
     }
 
-    const { data: inserted, error } = await supabase
+    const documentId = crypto.randomUUID();
+    const { error } = await supabase
       .from("club_documents")
       .insert({
+        id: documentId,
         club_id: clubId,
         uploaded_by: user.id,
         name: docName.trim(),
@@ -852,13 +909,19 @@ export default function ClubDocumentsPage() {
         file_size: selectedFile.size,
         category: uploadCategory,
         visibility: uploadVisibility,
-      })
-      .select("id")
-      .single();
+        visibility_roles:
+          uploadVisibility === "selected"
+            ? uploadSelectedTargets.visibilityRoles
+            : [],
+        visibility_user_ids:
+          uploadVisibility === "selected"
+            ? uploadSelectedTargets.visibilityUserIds
+            : [],
+      });
 
     setUploading(false);
 
-    if (error || !inserted?.id) {
+    if (error) {
       console.error("Failed to save document:", error?.message);
       setFeedback({ type: "error", text: "Failed to save document record." });
       return;
@@ -866,9 +929,17 @@ export default function ClubDocumentsPage() {
 
     void notifyNewDocumentUploaded(supabase, {
       clubId,
-      documentId: inserted.id as string,
+      documentId,
       documentName: docName.trim(),
       visibility: uploadVisibility,
+      visibilityRoles:
+        uploadVisibility === "selected"
+          ? uploadSelectedTargets.visibilityRoles
+          : [],
+      visibilityUserIds:
+        uploadVisibility === "selected"
+          ? uploadSelectedTargets.visibilityUserIds
+          : [],
       uploadedByUserId: user.id,
     });
 
@@ -888,12 +959,21 @@ export default function ClubDocumentsPage() {
   function openEditDocument(doc: ClubDocument) {
     setEditingDocument(doc);
     setEditDocName(doc.name);
+    setEditDocVisibility(doc.visibility ?? "members_only");
+    setEditSelectedTargets(
+      selectedVisibilityPayload(
+        doc.visibilityRoles ?? [],
+        doc.visibilityUserIds ?? [],
+      ),
+    );
   }
 
   function closeEditModal() {
     if (savingEdit) return;
     setEditingDocument(null);
     setEditDocName("");
+    setEditDocVisibility("members_only");
+    setEditSelectedTargets(EMPTY_SELECTED_VISIBILITY);
   }
 
   function openMoveCategory(doc: ClubDocument) {
@@ -933,13 +1013,34 @@ export default function ClubDocumentsPage() {
 
   async function handleRenameDocument() {
     if (!editingDocument || !editDocName.trim()) return;
+    if (
+      editDocVisibility === "selected" &&
+      !hasSelectedVisibilityTargets(editSelectedTargets)
+    ) {
+      setFeedback({
+        type: "error",
+        text: "Choose at least one role or member for selected visibility.",
+      });
+      return;
+    }
 
     setSavingEdit(true);
     setFeedback(null);
 
     const { error } = await supabase
       .from("club_documents")
-      .update({ name: editDocName.trim() })
+      .update({
+        name: editDocName.trim(),
+        visibility: editDocVisibility,
+        visibility_roles:
+          editDocVisibility === "selected"
+            ? editSelectedTargets.visibilityRoles
+            : [],
+        visibility_user_ids:
+          editDocVisibility === "selected"
+            ? editSelectedTargets.visibilityUserIds
+            : [],
+      })
       .eq("id", editingDocument.id);
 
     setSavingEdit(false);
@@ -950,7 +1051,7 @@ export default function ClubDocumentsPage() {
       return;
     }
 
-    setFeedback({ type: "success", text: "Document renamed." });
+    setFeedback({ type: "success", text: "Document updated." });
     closeEditModal();
     void loadDocuments();
   }
@@ -1603,6 +1704,16 @@ export default function ClubDocumentsPage() {
                 onChange={setUploadVisibility}
               />
             </Box>
+            {uploadVisibility === "selected" ? (
+              <Box style={{ marginTop: "12px" }}>
+                <SelectedVisibilityPicker
+                  members={members}
+                  targets={uploadSelectedTargets}
+                  onChange={setUploadSelectedTargets}
+                  disabled={uploading}
+                />
+              </Box>
+            ) : null}
 
             {uploading ? (
               <Box style={{ marginTop: "16px" }}>
@@ -1662,7 +1773,13 @@ export default function ClubDocumentsPage() {
               <button
                 type="button"
                 onClick={() => void handleUpload()}
-                disabled={uploading || !selectedFile || !docName.trim()}
+                disabled={
+                  uploading ||
+                  !selectedFile ||
+                  !docName.trim() ||
+                  (uploadVisibility === "selected" &&
+                    !hasSelectedVisibilityTargets(uploadSelectedTargets))
+                }
                 style={{
                   background: "#E51937",
                   color: "#ffffff",
@@ -1673,7 +1790,13 @@ export default function ClubDocumentsPage() {
                   fontWeight: 600,
                   cursor: "pointer",
                   opacity:
-                    uploading || !selectedFile || !docName.trim() ? 0.5 : 1,
+                    uploading ||
+                    !selectedFile ||
+                    !docName.trim() ||
+                    (uploadVisibility === "selected" &&
+                      !hasSelectedVisibilityTargets(uploadSelectedTargets))
+                      ? 0.5
+                      : 1,
                 }}
               >
                 {uploading ? "Uploading…" : "Upload"}
@@ -1827,6 +1950,23 @@ export default function ClubDocumentsPage() {
               style={{ ...inputStyle, marginBottom: "16px" }}
             />
 
+            <DocumentsVisibilitySelector
+              value={editDocVisibility}
+              onChange={setEditDocVisibility}
+            />
+            {editDocVisibility === "selected" ? (
+              <Box style={{ marginTop: "12px", marginBottom: "16px" }}>
+                <SelectedVisibilityPicker
+                  members={members}
+                  targets={editSelectedTargets}
+                  onChange={setEditSelectedTargets}
+                  disabled={savingEdit}
+                />
+              </Box>
+            ) : (
+              <Box style={{ marginBottom: "16px" }} />
+            )}
+
             <Box
               style={{
                 display: "flex",
@@ -1853,7 +1993,12 @@ export default function ClubDocumentsPage() {
               <button
                 type="button"
                 onClick={() => void handleRenameDocument()}
-                disabled={savingEdit || !editDocName.trim()}
+                disabled={
+                  savingEdit ||
+                  !editDocName.trim() ||
+                  (editDocVisibility === "selected" &&
+                    !hasSelectedVisibilityTargets(editSelectedTargets))
+                }
                 style={{
                   background: "#E51937",
                   color: "#ffffff",
@@ -1863,7 +2008,13 @@ export default function ClubDocumentsPage() {
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity: savingEdit || !editDocName.trim() ? 0.5 : 1,
+                  opacity:
+                    savingEdit ||
+                    !editDocName.trim() ||
+                    (editDocVisibility === "selected" &&
+                      !hasSelectedVisibilityTargets(editSelectedTargets))
+                      ? 0.5
+                      : 1,
                 }}
               >
                 {savingEdit ? "Saving…" : "Save"}

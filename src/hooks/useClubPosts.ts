@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { Post, Visibility } from "../types";
 import { normalizeVisibility } from "../lib/contentVisibility";
+import { normalizeAccessLevelArray, normalizeUuidArray } from "../lib/selectedVisibility";
 
 const POST_SELECT = `
   id,
@@ -16,6 +17,8 @@ const POST_SELECT = `
   attachment_type,
   link_url,
   visibility,
+  visibility_roles,
+  visibility_user_ids,
   author:profiles!posts_author_profile_fkey (
     full_name
   )
@@ -37,6 +40,8 @@ function mapPostRow(row: Record<string, unknown>): Post {
     attachmentType: (row.attachment_type as string | null) ?? null,
     linkUrl: (row.link_url as string | null) ?? null,
     visibility: normalizeVisibility(row.visibility as string | null, "members_only"),
+    visibilityRoles: normalizeAccessLevelArray(row.visibility_roles),
+    visibilityUserIds: normalizeUuidArray(row.visibility_user_ids),
   };
 }
 
@@ -45,6 +50,8 @@ export type PostWriteFields = Pick<Post, "title" | "content"> & {
   attachmentType?: string | null;
   linkUrl?: string | null;
   visibility?: Visibility;
+  visibilityRoles?: Post["visibilityRoles"];
+  visibilityUserIds?: Post["visibilityUserIds"];
 };
 
 export interface UseClubPostsReturn {
@@ -103,6 +110,7 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
       const { data, error: err } = await supabase
         .from("posts")
         .insert({
+          id: crypto.randomUUID(),
           club_id: clubId,
           author_id: user.id,
           title: fields.title,
@@ -111,20 +119,26 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           attachment_type: fields.attachmentType ?? null,
           link_url: fields.linkUrl?.trim() || null,
           visibility: fields.visibility ?? "members_only",
+          visibility_roles: fields.visibilityRoles ?? [],
+          visibility_user_ids: fields.visibilityUserIds ?? [],
         })
         .select(POST_SELECT)
-        .single();
+        .maybeSingle();
 
-      if (err || !data) {
+      if (err) {
         console.error("Failed to create post:", err?.message);
         return false;
       }
 
-      setPosts((prev) => [mapPostRow(data), ...prev]);
+      if (data) {
+        setPosts((prev) => [mapPostRow(data), ...prev]);
+      } else {
+        refresh();
+      }
 
       return true;
     },
-    [clubId, user],
+    [clubId, refresh, user],
   );
 
   const updatePost = useCallback(
@@ -138,12 +152,14 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           attachment_type: fields.attachmentType ?? null,
           updated_at: new Date().toISOString(),
           visibility: fields.visibility ?? "members_only",
+          visibility_roles: fields.visibilityRoles ?? [],
+          visibility_user_ids: fields.visibilityUserIds ?? [],
         })
         .eq("id", postId)
         .select(POST_SELECT);
 
-      if (err || !data?.length) {
-        console.error("Failed to update post:", err?.message ?? "no rows updated");
+      if (err) {
+        console.error("Failed to update post:", err.message);
         return false;
       }
 
@@ -152,25 +168,11 @@ export function useClubPosts(clubId: string | undefined): UseClubPostsReturn {
           prev.map((p) => (p.id === postId ? mapPostRow(data[0]) : p)),
         );
       } else {
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === postId
-              ? {
-                  ...p,
-                  title: fields.title,
-                  content: fields.content,
-                  attachmentUrl: fields.attachmentUrl ?? null,
-                  attachmentType: fields.attachmentType ?? null,
-                  linkUrl: fields.linkUrl?.trim() || null,
-                  updatedAt: new Date().toISOString(),
-                }
-              : p,
-          ),
-        );
+        refresh();
       }
       return true;
     },
-    [],
+    [refresh],
   );
 
   const deletePost = useCallback(async (postId: string): Promise<boolean> => {
