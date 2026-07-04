@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createInboxMessage } from "./inboxUtils";
 import { createNotification } from "./notifications";
-import type { AccessLevel, MemberRole } from "../types";
 
 export type OwnershipTransferRole = "owner" | "co_president";
 export type OwnershipTransferStatus =
@@ -254,33 +253,14 @@ export async function acceptOwnershipTransfer(
   }
 
   const transfer = mapOwnershipTransferRow(transferRow as Record<string, unknown>);
-  const now = new Date().toISOString();
 
-  const { error: memberError } = await supabase
-    .from("club_members")
-    .update({ role: "owner", access_level: "president" })
-    .eq("club_id", transfer.clubId)
-    .eq("user_id", transfer.toUserId);
+  const { error: rpcError } = await supabase.rpc("accept_ownership_transfer", {
+    p_transfer_id: transfer.id,
+  });
 
-  if (memberError) {
+  if (rpcError) {
+    console.error("Failed to accept ownership transfer:", rpcError.message);
     return { ok: false, error: "Failed to accept ownership transfer." };
-  }
-
-  const recipientTitle =
-    transfer.newRole === "co_president" ? "Co-President" : "President";
-  await supabase
-    .from("club_members")
-    .update({ title: recipientTitle })
-    .eq("club_id", transfer.clubId)
-    .eq("user_id", transfer.toUserId);
-
-  const { error: transferError } = await supabase
-    .from("ownership_transfers")
-    .update({ status: "accepted", responded_at: now })
-    .eq("id", transfer.id);
-
-  if (transferError) {
-    return { ok: false, error: "Member role updated but transfer could not be finalized." };
   }
 
   if (params.inboxMessageId) {
@@ -348,14 +328,13 @@ export async function declineOwnershipTransfer(
   }
 
   const transfer = mapOwnershipTransferRow(transferRow as Record<string, unknown>);
-  const now = new Date().toISOString();
 
-  const { error } = await supabase
-    .from("ownership_transfers")
-    .update({ status: "declined", responded_at: now })
-    .eq("id", transfer.id);
+  const { error: rpcError } = await supabase.rpc("decline_ownership_transfer", {
+    p_transfer_id: transfer.id,
+  });
 
-  if (error) {
+  if (rpcError) {
+    console.error("Failed to decline ownership transfer:", rpcError.message);
     return { ok: false, error: "Failed to decline ownership transfer." };
   }
 
@@ -385,35 +364,6 @@ export async function declineOwnershipTransfer(
   return { ok: true };
 }
 
-function choiceToMemberUpdate(choice: FormerOwnerChoice): {
-  role: MemberRole;
-  accessLevel: AccessLevel;
-  title: string | null;
-  leave: boolean;
-} {
-  switch (choice) {
-    case "stay_co_president":
-      return {
-        role: "owner",
-        accessLevel: "president",
-        title: "Co-President",
-        leave: false,
-      };
-    case "executive":
-      return {
-        role: "executive",
-        accessLevel: "executive",
-        title: null,
-        leave: false,
-      };
-    case "member":
-      return { role: "member", accessLevel: "member", title: null, leave: false };
-    case "leave":
-    default:
-      return { role: "member", accessLevel: "member", title: null, leave: true };
-  }
-}
-
 export async function applyFormerOwnerChoice(
   supabase: SupabaseClient,
   params: {
@@ -437,32 +387,15 @@ export async function applyFormerOwnerChoice(
   }
 
   const transfer = mapOwnershipTransferRow(transferRow as Record<string, unknown>);
-  const update = choiceToMemberUpdate(params.choice);
 
-  if (update.leave) {
-    const { error: deleteError } = await supabase
-      .from("club_members")
-      .delete()
-      .eq("club_id", transfer.clubId)
-      .eq("user_id", params.userId);
+  const { error: rpcError } = await supabase.rpc("apply_former_owner_role_choice", {
+    p_transfer_id: transfer.id,
+    p_choice: params.choice,
+  });
 
-    if (deleteError) {
-      return { ok: false, error: "Failed to leave the club." };
-    }
-  } else {
-    const { error: memberError } = await supabase
-      .from("club_members")
-      .update({
-        role: update.role,
-        access_level: update.accessLevel,
-        title: update.title,
-      })
-      .eq("club_id", transfer.clubId)
-      .eq("user_id", params.userId);
-
-    if (memberError) {
-      return { ok: false, error: "Failed to update your role." };
-    }
+  if (rpcError) {
+    console.error("Failed to apply former owner role choice:", rpcError.message);
+    return { ok: false, error: "Failed to update your role." };
   }
 
   if (params.inboxMessageId) {
