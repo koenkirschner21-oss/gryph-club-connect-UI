@@ -486,9 +486,11 @@ function TaskOverviewColumn({
 
 function UpcomingClubActivityRow({
   row,
+  club,
   onManage,
 }: {
   row: UpcomingActivityRow;
+  club: Club;
   onManage: () => void;
 }) {
   if (row.kind === "event") {
@@ -511,7 +513,7 @@ function UpcomingClubActivityRow({
           border: `1px solid ${CARD_BORDER}`,
         }}
       >
-        <CompactEventDateBadge dateStr={row.dateStr} />
+        <ActivityRowLeading club={club} dateStr={row.dateStr} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
@@ -594,7 +596,7 @@ function UpcomingClubActivityRow({
         border: `1px solid ${CARD_BORDER}`,
       }}
     >
-      <CompactEventDateBadge dateStr={row.dateStr} />
+      <ActivityRowLeading club={club} dateStr={row.dateStr} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -680,18 +682,59 @@ function CompactEventDateBadge({ dateStr }: { dateStr: string }) {
         width: "40px",
         height: "44px",
         borderRadius: "6px",
-        background: GOLD,
+        background: ACCENT_RED,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
-        color: "#1a1200",
+        color: "#ffffff",
         lineHeight: 1.1,
       }}
     >
       <span style={{ fontSize: "9px", fontWeight: 600 }}>{month}</span>
       <span style={{ fontSize: "15px", fontWeight: 700 }}>{day}</span>
+    </div>
+  );
+}
+
+function ActivityRowLeading({ club, dateStr }: { club: Club; dateStr: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+      <CompactEventDateBadge dateStr={dateStr} />
+      {club.logoUrl?.trim() ? (
+        <img
+          src={club.logoUrl}
+          alt=""
+          style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "8px",
+            objectFit: "cover",
+            border: `1px solid ${CARD_BORDER}`,
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "8px",
+            background: "#1a1a1a",
+            border: `1px solid ${CARD_BORDER}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            fontSize: "11px",
+            fontWeight: 800,
+            color: GOLD,
+          }}
+        >
+          {getClubInitials(club)}
+        </div>
+      )}
     </div>
   );
 }
@@ -823,7 +866,9 @@ function CommandCenterStatCard({
       >
         {value}
       </p>
-      <p style={{ fontSize: "12px", color: "#555555", margin: 0, lineHeight: 1.35 }}>{sublabel}</p>
+      {sublabel ? (
+        <p style={{ fontSize: "12px", color: "#555555", margin: 0, lineHeight: 1.35 }}>{sublabel}</p>
+      ) : null}
       {actionLabel ? (
         <p
           style={{
@@ -2003,7 +2048,7 @@ export default function ClubCommandCenter({
 
   const delegatedTasksSublabel = useMemo(() => {
     if (delegatedOpenTasks.length === 0) {
-      return "No delegated tasks yet";
+      return "";
     }
     const parts: string[] = [];
     if (delegatedOverdueTasks.length > 0) {
@@ -2012,7 +2057,7 @@ export default function ClubCommandCenter({
     if (unassignedDelegatedTasks.length > 0) {
       parts.push(`${unassignedDelegatedTasks.length} unassigned`);
     }
-    return parts.length > 0 ? parts.join(" · ") : "Open delegated tasks";
+    return parts.length > 0 ? parts.join(" · ") : "";
   }, [
     delegatedOpenTasks.length,
     delegatedOverdueTasks.length,
@@ -2131,8 +2176,8 @@ export default function ClubCommandCenter({
               }
               actionLabel="Review"
               icon={<ClipboardList size={18} aria-hidden />}
-              accentColor={pendingActionsCount > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
-              iconColor={pendingActionsCount > 0 ? ACCENT_RED : "#888888"}
+              accentColor={ACCENT_RED}
+              iconColor={ACCENT_RED}
               onClick={scrollToPendingActions}
             />
             <CommandCenterStatCard
@@ -2155,9 +2200,9 @@ export default function ClubCommandCenter({
               sublabel={
                 myOverdueAssignedTasks.length > 0
                   ? `${myOverdueAssignedTasks.length} overdue`
-                  : myOpenAssignedTasks.length > 0
-                    ? "Open assigned tasks"
-                    : "No open tasks"
+                  : myOpenAssignedTasks.length === 0
+                    ? "No open tasks"
+                    : ""
               }
               actionLabel="View My Tasks"
               icon={<CheckSquare size={18} aria-hidden />}
@@ -2207,6 +2252,7 @@ export default function ClubCommandCenter({
               <UpcomingClubActivityRow
                 key={row.key}
                 row={row}
+                club={club}
                 onManage={() =>
                   navigate(
                     row.kind === "event"
