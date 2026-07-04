@@ -344,6 +344,9 @@ export default function Explore() {
   const [guestLoading, setGuestLoading] = useState(true);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [manageIntent, setManageIntent] = useState(false);
+  const [claimCreateModalOpen, setClaimCreateModalOpen] = useState(false);
+  const [claimCreateModalMode, setClaimCreateModalMode] =
+    useState<"choose" | "claim">("choose");
 
   useEffect(() => {
     if (!user?.id) {
@@ -366,6 +369,13 @@ export default function Explore() {
   const focusClubSearch = useCallback(() => {
     searchInputRef.current?.focus();
     document.getElementById("all-clubs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const scrollToExploreTop = useCallback(() => {
+    document.getElementById("explore-top")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }, []);
 
   useEffect(() => {
@@ -581,6 +591,14 @@ export default function Explore() {
     return [...unclaimed, ...claimed];
   }, [filteredClubs, claimMode, claimStateForClub]);
 
+  const claimableClubs = useMemo(
+    () =>
+      sortClubsByMemberActivity(
+        clubs.filter((club) => claimStateForClub(club) === "claimable"),
+      ),
+    [clubs, claimStateForClub],
+  );
+
   const categoryCount = Math.max(categories.length - 1, 0);
   const clubCountLabel =
     clubs.length >= 260 ? "260+" : clubs.length > 0 ? String(clubs.length) : "0";
@@ -617,7 +635,7 @@ export default function Explore() {
   return (
     <div style={{ backgroundColor: PAGE_BG, minHeight: "100%" }}>
       {/* Hero */}
-      <section style={{ backgroundColor: PAGE_BG }}>
+      <section id="explore-top" style={{ backgroundColor: PAGE_BG }}>
         <div
           style={{
             padding: isMobile ? "24px 16px 12px" : "36px 48px 16px",
@@ -674,14 +692,12 @@ export default function Explore() {
             >
               Browse Clubs
             </button>
-            <Link
-              to={
-                isClaimFocusedExplore
-                  ? user
-                    ? "/app/create-club"
-                    : "/signup?redirect=/app/create-club"
-                  : "/explore?claim=true"
-              }
+            <button
+              type="button"
+              onClick={() => {
+                setClaimCreateModalMode("choose");
+                setClaimCreateModalOpen(true);
+              }}
               style={{
                 background: "transparent",
                 color: "#888888",
@@ -690,13 +706,13 @@ export default function Explore() {
                 padding: "8px 14px",
                 fontSize: "12px",
                 fontWeight: 500,
-                textDecoration: "none",
                 display: "inline-flex",
                 alignItems: "center",
+                cursor: "pointer",
               }}
             >
               Claim or Create a Club
-            </Link>
+            </button>
           </div>
 
           <div
@@ -961,8 +977,381 @@ export default function Explore() {
               ) : null}
             </div>
           )}
+
+          {!loading && !error ? (
+            <div
+              style={{
+                marginTop: "32px",
+                border: "1px solid #242424",
+                borderRadius: "14px",
+                background: "#141414",
+                padding: isMobile ? "20px" : "24px",
+                display: "flex",
+                flexDirection: isMobile ? "column" : "row",
+                alignItems: isMobile ? "stretch" : "center",
+                justifyContent: "space-between",
+                gap: "16px",
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    color: "#ffffff",
+                    fontSize: "18px",
+                    fontWeight: 800,
+                  }}
+                >
+                  Couldn&apos;t find your club?
+                </h3>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "#777777",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Create a new club request or jump back to the top to search again.
+                </p>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  justifyContent: isMobile ? "stretch" : "flex-end",
+                }}
+              >
+                <Link
+                  to={user ? "/app/create-club" : "/signup?redirect=/app/create-club"}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: ACCENT_RED,
+                    color: "#ffffff",
+                    borderRadius: "8px",
+                    padding: "10px 16px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    textDecoration: "none",
+                    flex: isMobile ? "1 1 auto" : undefined,
+                  }}
+                >
+                  Create a Club
+                </Link>
+                <button
+                  type="button"
+                  onClick={scrollToExploreTop}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "transparent",
+                    color: "#cccccc",
+                    border: "1px solid #333333",
+                    borderRadius: "8px",
+                    padding: "10px 16px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    flex: isMobile ? "1 1 auto" : undefined,
+                  }}
+                >
+                  Back to Top ↑
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {claimCreateModalOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="claim-create-club-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.72)",
+            padding: "18px",
+          }}
+          onClick={() => setClaimCreateModalOpen(false)}
+        >
+          <div
+            role="presentation"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: claimCreateModalMode === "claim" ? "720px" : "560px",
+              maxHeight: "86vh",
+              overflowY: "auto",
+              background: "#141414",
+              border: "1px solid #2a2a2a",
+              borderRadius: "16px",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
+              padding: isMobile ? "20px" : "24px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "16px",
+                marginBottom: "18px",
+              }}
+            >
+              <div>
+                <h2
+                  id="claim-create-club-title"
+                  style={{
+                    margin: 0,
+                    color: "#ffffff",
+                    fontSize: "22px",
+                    fontWeight: 800,
+                  }}
+                >
+                  {claimCreateModalMode === "claim"
+                    ? "Claim an Existing Club"
+                    : "Claim or Create a Club"}
+                </h2>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "#777777",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {claimCreateModalMode === "claim"
+                    ? "Choose an unclaimed club profile to start the claim request."
+                    : "Claim an existing club profile if your club is already listed, or create a new club request."}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setClaimCreateModalOpen(false)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  borderRadius: "999px",
+                  color: "#999999",
+                  width: "32px",
+                  height: "32px",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {claimCreateModalMode === "choose" ? (
+              <div style={{ display: "grid", gap: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => setClaimCreateModalMode("claim")}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "18px",
+                    width: "100%",
+                    textAlign: "left",
+                    background: "#1a1a1a",
+                    border: "1px solid #333333",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span>
+                    <span style={{ display: "block", fontSize: "15px", fontWeight: 800 }}>
+                      Claim a Club
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: "5px",
+                        color: "#777777",
+                        fontSize: "13px",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      See clubs that are available to claim and submit a request for admin review.
+                    </span>
+                  </span>
+                  <span style={{ color: ACCENT_RED, fontWeight: 800 }}>→</span>
+                </button>
+
+                <Link
+                  to={user ? "/app/create-club" : "/signup?redirect=/app/create-club"}
+                  onClick={() => setClaimCreateModalOpen(false)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "18px",
+                    width: "100%",
+                    textAlign: "left",
+                    background: ACCENT_RED,
+                    border: "1px solid #E51937",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    color: "#ffffff",
+                    textDecoration: "none",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <span>
+                    <span style={{ display: "block", fontSize: "15px", fontWeight: 800 }}>
+                      Create a Club
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: "5px",
+                        color: "rgba(255,255,255,0.78)",
+                        fontSize: "13px",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      Start the new club request process for a club that is not listed yet.
+                    </span>
+                  </span>
+                  <span style={{ fontWeight: 800 }}>→</span>
+                </Link>
+              </div>
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setClaimCreateModalMode("choose")}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#888888",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    padding: 0,
+                    cursor: "pointer",
+                    marginBottom: "14px",
+                  }}
+                >
+                  ← Back to options
+                </button>
+
+                {claimableClubs.length === 0 ? (
+                  <div
+                    style={{
+                      border: "1px solid #2a2a2a",
+                      borderRadius: "12px",
+                      padding: "22px",
+                      textAlign: "center",
+                      background: "#111111",
+                    }}
+                  >
+                    <p style={{ margin: 0, color: "#ffffff", fontSize: "15px", fontWeight: 700 }}>
+                      No clubs are currently available to claim.
+                    </p>
+                    <p style={{ margin: "8px 0 0", color: "#777777", fontSize: "13px" }}>
+                      If your club is not listed, create a new club request instead.
+                    </p>
+                    <Link
+                      to={user ? "/app/create-club" : "/signup?redirect=/app/create-club"}
+                      onClick={() => setClaimCreateModalOpen(false)}
+                      style={{
+                        display: "inline-block",
+                        marginTop: "16px",
+                        background: ACCENT_RED,
+                        color: "#ffffff",
+                        borderRadius: "8px",
+                        padding: "9px 16px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Create a Club
+                    </Link>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: "10px" }}>
+                    {claimableClubs.map((club) => (
+                      <Link
+                        key={club.id}
+                        to={
+                          user
+                            ? `/clubs/${club.slug}/claim`
+                            : `/signup?redirect=/clubs/${club.slug}/claim`
+                        }
+                        onClick={() => setClaimCreateModalOpen(false)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "14px",
+                          border: "1px solid #2a2a2a",
+                          borderRadius: "12px",
+                          padding: "12px 14px",
+                          background: "#111111",
+                          textDecoration: "none",
+                          color: "inherit",
+                        }}
+                      >
+                        <span style={{ minWidth: 0 }}>
+                          <span
+                            style={{
+                              display: "block",
+                              color: "#ffffff",
+                              fontSize: "14px",
+                              fontWeight: 800,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {club.name}
+                          </span>
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: "3px",
+                              color: "#777777",
+                              fontSize: "12px",
+                            }}
+                          >
+                            {club.category || "Club"} · {club.memberCount} member
+                            {club.memberCount === 1 ? "" : "s"}
+                          </span>
+                        </span>
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: ACCENT_RED,
+                            fontSize: "13px",
+                            fontWeight: 800,
+                          }}
+                        >
+                          Claim →
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
