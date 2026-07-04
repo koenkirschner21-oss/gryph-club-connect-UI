@@ -875,7 +875,7 @@ function PublicEventCard({
         style={{
           display: "flex",
           flexDirection: "row",
-          alignItems: "center",
+          alignItems: "flex-start",
           gap: "12px",
         }}
       >
@@ -915,25 +915,13 @@ function PublicEventCard({
           </span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2
-            style={{
-              fontSize: "16px",
-              fontWeight: 700,
-              color: "#ffffff",
-              margin: 0,
-              lineHeight: 1.25,
-            }}
-          >
-            {event.title}
-          </h2>
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "flex-start",
-              gap: "6px",
+              gap: "10px",
               minWidth: 0,
-              marginTop: "8px",
+              minHeight: "56px",
             }}
           >
             <ClubAvatar
@@ -941,20 +929,18 @@ function PublicEventCard({
               logoUrl={event.clubLogoUrl}
               size={40}
             />
-            <span
+            <h2
               style={{
-                fontSize: "14px",
-                fontWeight: 600,
-                color: "#aaaaaa",
-                lineHeight: 1.2,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                fontSize: "16px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: 0,
+                lineHeight: 1.25,
                 minWidth: 0,
               }}
             >
-              {event.clubName}
-            </span>
+              {event.title}
+            </h2>
           </div>
         </div>
       </div>
@@ -963,11 +949,31 @@ function PublicEventCard({
         style={{
           fontSize: "12px",
           color: "#555555",
-          marginTop: "10px",
-          marginBottom: 0,
+          textAlign: "left",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          minWidth: 0,
+          margin: "8px 0 0",
         }}
       >
         {formatTimeLocationLine(event)}
+      </p>
+
+      <p
+        style={{
+          fontSize: "13px",
+          fontWeight: 600,
+          color: "#888888",
+          marginTop: "4px",
+          marginBottom: 0,
+          textAlign: "left",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {event.clubName}
       </p>
 
       {description ? (

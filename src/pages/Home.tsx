@@ -319,32 +319,16 @@ function HomeFeaturedClubBanner({ bannerUrl }: { bannerUrl: string }) {
         flexShrink: 0,
         overflow: "hidden",
         width: "100%",
-        position: "relative",
-        background: "#1a1a1a",
-        isolation: "isolate",
+        background: "#111111",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       <img
         src={bannerUrl}
         alt=""
-        aria-hidden
         style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          objectPosition: "center",
-          filter: "blur(18px) brightness(0.5)",
-          transform: "scale(1.1)",
-        }}
-      />
-      <img
-        src={bannerUrl}
-        alt=""
-        style={{
-          position: "relative",
-          zIndex: 1,
           width: "100%",
           height: "100%",
           objectFit: "contain",
