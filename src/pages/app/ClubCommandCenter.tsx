@@ -11,6 +11,7 @@ import {
   Briefcase,
   BarChart2,
   Calendar,
+  CalendarClock,
   CheckSquare,
   ClipboardList,
   Megaphone,
@@ -53,9 +54,23 @@ import { isMeetingPast, mapMeetingRow, splitDateTime } from "./meetings/meetingU
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
+const SUCCESS_GREEN = "#4ade80";
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
 const NEUTRAL_TOP_BORDER = "#3a3a3a";
+
+const secondarySectionStyle: CSSProperties = {
+  background: "#111111",
+  borderColor: "#1f1f1f",
+};
+
+const secondarySectionHeading: CSSProperties = {
+  fontWeight: 600,
+  fontSize: "13px",
+  color: "#888888",
+  margin: "0 0 10px",
+  letterSpacing: "-0.01em",
+};
 
 const urgentOutlinedButtonStyle: CSSProperties = {
   background: "transparent",
@@ -268,9 +283,9 @@ function taskStatusPillStyle(status: TaskStatus): CSSProperties {
   }
   if (status === "done") {
     return {
-      background: "#1a0a0a",
-      border: "1px solid #E51937",
-      color: "#E51937",
+      background: "rgba(74, 222, 128, 0.08)",
+      border: `1px solid ${SUCCESS_GREEN}`,
+      color: SUCCESS_GREEN,
       borderRadius: "999px",
       padding: "2px 8px",
       fontSize: "10px",
@@ -1234,20 +1249,18 @@ function QuickActionTile({
 function RemindersQuickActionsCard({
   reminderEvent,
   isMobile,
+  quickActions,
   onUseReminderTemplate,
-  onNewAnnouncement,
-  onAddEvent,
-  onInviteMembers,
-  onViewReports,
 }: {
   reminderEvent: { title: string; dateLine: string } | null;
   isMobile: boolean;
+  quickActions: { id: string; icon: ReactNode; label: string; onClick: () => void }[];
   onUseReminderTemplate: () => void;
-  onNewAnnouncement: () => void;
-  onAddEvent: () => void;
-  onInviteMembers: () => void;
-  onViewReports: () => void;
 }) {
+  const gridColumns = isMobile
+    ? "repeat(2, minmax(0, 1fr))"
+    : `repeat(${Math.min(Math.max(quickActions.length, 1), 5)}, minmax(0, 1fr))`;
+
   return (
     <section style={sectionCardStyle}>
       <h2 style={{ ...sectionHeading, marginBottom: "10px" }}>Reminders &amp; Quick Actions</h2>
@@ -1270,34 +1283,28 @@ function RemindersQuickActionsCard({
           </button>
         </div>
       ) : null}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
-          gap: "8px",
-        }}
-      >
-        <QuickActionTile
-          icon={<Megaphone size={16} aria-hidden />}
-          label="New Announcement"
-          onClick={onNewAnnouncement}
-        />
-        <QuickActionTile
-          icon={<Calendar size={16} aria-hidden />}
-          label="Add Event"
-          onClick={onAddEvent}
-        />
-        <QuickActionTile
-          icon={<UserPlus size={16} aria-hidden />}
-          label="Invite Members"
-          onClick={onInviteMembers}
-        />
-        <QuickActionTile
-          icon={<BarChart2 size={16} aria-hidden />}
-          label="View Reports"
-          onClick={onViewReports}
-        />
-      </div>
+      {quickActions.length === 0 ? (
+        <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>
+          No quick actions available for your role.
+        </p>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: gridColumns,
+            gap: "8px",
+          }}
+        >
+          {quickActions.map((action) => (
+            <QuickActionTile
+              key={action.id}
+              icon={action.icon}
+              label={action.label}
+              onClick={action.onClick}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1361,6 +1368,17 @@ export default function ClubCommandCenter({
 
   const canManageMeetings =
     memberAccess.isPresident || memberAccess.can("manage_meetings");
+  const canManageHiring =
+    memberAccess.isPresident || memberAccess.can("manage_hiring");
+  const canViewAnalytics =
+    memberAccess.isPresident || memberAccess.can("view_analytics");
+  const canCreateAnnouncement =
+    memberAccess.isPresident || memberAccess.can("manage_announcements");
+  const canCreateEvent =
+    memberAccess.isPresident || memberAccess.can("manage_events");
+  const canCreateTask =
+    memberAccess.isPresident || memberAccess.can("manage_tasks");
+  const canInviteMembersQuickAction = memberAccess.canInviteMembers;
 
   const openSetupSettings = () => navigate(setupSettingsPath);
 
@@ -1439,6 +1457,17 @@ export default function ClubCommandCenter({
     let cancelled = false;
 
     async function loadHiringSnapshot() {
+      if (!canManageHiring) {
+        setHiringSnapshot({
+          openRolesCount: 0,
+          pendingApplicationsCount: 0,
+          rolesWithZeroApplicants: 0,
+          topOpenRole: null,
+          loading: false,
+        });
+        return;
+      }
+
       setHiringSnapshot((prev) => ({ ...prev, loading: true }));
 
       const { data: listings, error: listingsError } = await supabase
@@ -1531,7 +1560,7 @@ export default function ClubCommandCenter({
     return () => {
       cancelled = true;
     };
-  }, [clubId]);
+  }, [clubId, canManageHiring]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1851,7 +1880,7 @@ export default function ClubCommandCenter({
       });
     }
 
-    if (pendingApplicationCount > 0) {
+    if (canManageHiring && pendingApplicationCount > 0) {
       items.push({
         id: "applications",
         label: `${pendingApplicationCount} pending application${pendingApplicationCount === 1 ? "" : "s"}`,
@@ -1906,6 +1935,7 @@ export default function ClubCommandCenter({
     return items;
   }, [
     memberAccess.canApproveMembers,
+    canManageHiring,
     pendingJoinCount,
     pendingApplicationCount,
     overdueTasks.length,
@@ -1989,6 +2019,80 @@ export default function ClubCommandCenter({
     unassignedDelegatedTasks.length,
   ]);
 
+  const hiringIsUrgent =
+    canManageHiring && hiringSnapshot.pendingApplicationsCount > 0;
+
+  const quickActions = useMemo(() => {
+    const actions: { id: string; icon: ReactNode; label: string; onClick: () => void }[] = [];
+
+    if (canCreateAnnouncement) {
+      actions.push({
+        id: "announcement",
+        icon: <Megaphone size={16} aria-hidden />,
+        label: "New Announcement",
+        onClick: () => navigate(`${announcementsPath}?openCreate=true`),
+      });
+    }
+    if (canCreateEvent) {
+      actions.push({
+        id: "event",
+        icon: <Calendar size={16} aria-hidden />,
+        label: "Add Event",
+        onClick: () => navigate(`${eventsPath}?openCreate=true`),
+      });
+    }
+    if (canCreateTask) {
+      actions.push({
+        id: "task",
+        icon: <CheckSquare size={16} aria-hidden />,
+        label: "Create Task",
+        onClick: () => navigate(`${tasksPath}?openCreate=true`),
+      });
+    }
+    if (canManageMeetings) {
+      actions.push({
+        id: "meeting",
+        icon: <CalendarClock size={16} aria-hidden />,
+        label: "Schedule Meeting",
+        onClick: () => navigate(`${meetingsPath}/new`),
+      });
+    }
+    if (canInviteMembersQuickAction) {
+      actions.push({
+        id: "invite",
+        icon: <UserPlus size={16} aria-hidden />,
+        label: "Invite Members",
+        onClick: () => navigate(membersPath),
+      });
+    }
+    if (canViewAnalytics) {
+      actions.push({
+        id: "analytics",
+        icon: <BarChart2 size={16} aria-hidden />,
+        label: "View Reports",
+        onClick: () => navigate(analyticsPath),
+      });
+    }
+
+    return actions;
+  }, [
+    analyticsPath,
+    announcementsPath,
+    canCreateAnnouncement,
+    canCreateEvent,
+    canCreateTask,
+    canInviteMembersQuickAction,
+    canManageMeetings,
+    canViewAnalytics,
+    eventsPath,
+    meetingsPath,
+    membersPath,
+    navigate,
+    tasksPath,
+  ]);
+
+  const topStatCardCount = canCreateTask ? 4 : 3;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <ClubIdentityHeader club={club} roleContextLabel={roleContextLabel} />
@@ -2010,7 +2114,9 @@ export default function ClubCommandCenter({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, 1fr)"
+                : `repeat(${topStatCardCount}, 1fr)`,
               gap: "10px",
               alignItems: "stretch",
             }}
@@ -2061,18 +2167,20 @@ export default function ClubCommandCenter({
               iconColor={myOverdueAssignedTasks.length > 0 ? ACCENT_RED : "#888888"}
               onClick={() => navigate(`${tasksPath}?tab=assigned_to_me`)}
             />
-            <CommandCenterStatCard
-              label="Tasks I Assigned"
-              value={delegatedOpenTasks.length}
-              sublabel={delegatedTasksSublabel}
-              actionLabel="Track Tasks"
-              icon={<CheckSquare size={18} aria-hidden />}
-              accentColor={
-                delegatedOverdueTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER
-              }
-              iconColor={delegatedOverdueTasks.length > 0 ? ACCENT_RED : "#888888"}
-              onClick={() => navigate(`${tasksPath}?tab=assigned_by_me`)}
-            />
+            {canCreateTask ? (
+              <CommandCenterStatCard
+                label="Tasks I Assigned"
+                value={delegatedOpenTasks.length}
+                sublabel={delegatedTasksSublabel}
+                actionLabel="Track Tasks"
+                icon={<CheckSquare size={18} aria-hidden />}
+                accentColor={
+                  delegatedOverdueTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER
+                }
+                iconColor={delegatedOverdueTasks.length > 0 ? ACCENT_RED : "#888888"}
+                onClick={() => navigate(`${tasksPath}?tab=assigned_by_me`)}
+              />
+            ) : null}
           </div>
         )}
       </section>
@@ -2122,7 +2230,10 @@ export default function ClubCommandCenter({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+              gridTemplateColumns:
+                isMobile || !canCreateTask
+                  ? "1fr"
+                  : "repeat(2, minmax(0, 1fr))",
               gap: "12px",
             }}
           >
@@ -2142,99 +2253,145 @@ export default function ClubCommandCenter({
                 />
               ))}
             </TaskOverviewColumn>
-            <TaskOverviewColumn
-              title="Tasks I Assigned"
-              emptyMessage="You haven't assigned any tasks yet."
-              footerLabel="Track Tasks"
-              isEmpty={delegatedTasksOverviewPreview.length === 0}
-              onFooterClick={() => navigate(`${tasksPath}?tab=assigned_by_me`)}
-            >
-              {delegatedTasksOverviewPreview.map((task) => (
-                <CompactTaskOverviewRow
-                  key={task.id}
-                  task={task}
-                  meta={`${task.assigneeName ?? "Unassigned"} · ${formatTaskDueLabel(task)}`}
-                  onClick={() => onOpenTask(task)}
-                />
-              ))}
-            </TaskOverviewColumn>
+            {canCreateTask ? (
+              <TaskOverviewColumn
+                title="Tasks I Assigned"
+                emptyMessage="You haven't assigned any tasks yet."
+                footerLabel="Track Tasks"
+                isEmpty={delegatedTasksOverviewPreview.length === 0}
+                onFooterClick={() => navigate(`${tasksPath}?tab=assigned_by_me`)}
+              >
+                {delegatedTasksOverviewPreview.map((task) => (
+                  <CompactTaskOverviewRow
+                    key={task.id}
+                    task={task}
+                    meta={`${task.assigneeName ?? "Unassigned"} · ${formatTaskDueLabel(task)}`}
+                    onClick={() => onOpenTask(task)}
+                  />
+                ))}
+              </TaskOverviewColumn>
+            ) : null}
           </div>
         )}
       </section>
 
-      <section style={sectionCardStyle}>
-        <h2 style={{ ...sectionHeading, marginBottom: "10px" }}>Hiring Snapshot</h2>
-        {hiringSnapshot.loading ? (
-          <div className="flex justify-center py-3">
-            <Spinner label="Loading hiring snapshot…" />
-          </div>
-        ) : (
-          <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "auto 1fr",
-                gap: "12px",
-                alignItems: "center",
-              }}
-            >
-              <HiringDonutChart
-                openRolesCount={hiringSnapshot.openRolesCount}
-                rolesWithZeroApplicants={hiringSnapshot.rolesWithZeroApplicants}
-              />
+      {canManageHiring ? (
+        <section
+          style={{
+            ...sectionCardStyle,
+            ...(hiringIsUrgent
+              ? { borderColor: "rgba(229, 25, 55, 0.35)" }
+              : secondarySectionStyle),
+          }}
+        >
+          <h2
+            style={
+              hiringIsUrgent
+                ? { ...sectionHeading, marginBottom: "10px" }
+                : secondarySectionHeading
+            }
+          >
+            Hiring Snapshot
+            {hiringIsUrgent ? (
+              <span style={{ color: ACCENT_RED, fontSize: "11px", marginLeft: "8px" }}>
+                · Action needed
+              </span>
+            ) : null}
+          </h2>
+          {hiringSnapshot.loading ? (
+            <div className="flex justify-center py-3">
+              <Spinner label="Loading hiring snapshot…" />
+            </div>
+          ) : (
+            <>
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "repeat(3, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
-                  gap: "8px",
-                  width: "100%",
+                  gridTemplateColumns: isMobile ? "1fr" : "auto 1fr",
+                  gap: "12px",
+                  alignItems: "center",
+                  opacity: hiringIsUrgent ? 1 : 0.92,
                 }}
               >
-                <HiringMetricLine
-                  label="Pending Apps"
-                  value={hiringSnapshot.pendingApplicationsCount}
-                  highlight={hiringSnapshot.pendingApplicationsCount > 0}
+                <HiringDonutChart
+                  openRolesCount={hiringSnapshot.openRolesCount}
+                  rolesWithZeroApplicants={hiringSnapshot.rolesWithZeroApplicants}
                 />
-                <HiringMetricLine
-                  label="0 Applicants"
-                  value={hiringSnapshot.rolesWithZeroApplicants}
-                />
-                <HiringMetricLine label="Total Roles" value={hiringSnapshot.openRolesCount} />
-              </div>
-            </div>
-            {hiringSnapshot.topOpenRole ? (
-              <div
-                style={{
-                  marginTop: "12px",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  background: "#1a1a1a",
-                  border: `1px solid ${CARD_BORDER}`,
-                }}
-              >
-                <p
+                <div
                   style={{
-                    margin: "0 0 6px",
-                    fontSize: "10px",
-                    color: "#666666",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    fontWeight: 700,
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "repeat(3, minmax(0, 1fr))"
+                      : "repeat(3, minmax(0, 1fr))",
+                    gap: "8px",
+                    width: "100%",
                   }}
                 >
-                  Top Open Role
-                </p>
-                <p style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
-                  {hiringSnapshot.topOpenRole.title}
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                  <button
-                    type="button"
-                    style={outlineButtonStyle}
-                    onClick={() => navigate(`${recruitingPath}?tab=applications`)}
+                  <HiringMetricLine
+                    label="Pending Apps"
+                    value={hiringSnapshot.pendingApplicationsCount}
+                    highlight={hiringIsUrgent}
+                  />
+                  <HiringMetricLine
+                    label="0 Applicants"
+                    value={hiringSnapshot.rolesWithZeroApplicants}
+                  />
+                  <HiringMetricLine label="Total Roles" value={hiringSnapshot.openRolesCount} />
+                </div>
+              </div>
+              {hiringSnapshot.topOpenRole ? (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    background: "#1a1a1a",
+                    border: `1px solid ${CARD_BORDER}`,
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: "0 0 6px",
+                      fontSize: "10px",
+                      color: "#666666",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      fontWeight: 700,
+                    }}
                   >
-                    Review Applications
-                  </button>
+                    Top Open Role
+                  </p>
+                  <p
+                    style={{
+                      margin: "0 0 10px",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: "#ffffff",
+                    }}
+                  >
+                    {hiringSnapshot.topOpenRole.title}
+                  </p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    <button
+                      type="button"
+                      style={
+                        hiringIsUrgent ? urgentOutlinedButtonStyle : outlineButtonStyle
+                      }
+                      onClick={() => navigate(`${recruitingPath}?tab=applications`)}
+                    >
+                      Review Applications
+                    </button>
+                    <button
+                      type="button"
+                      style={noteActionButtonStyle}
+                      onClick={() => navigate(`${recruitingPath}?openCreate=true`)}
+                    >
+                      Create Role
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
                   <button
                     type="button"
                     style={noteActionButtonStyle}
@@ -2243,30 +2400,17 @@ export default function ClubCommandCenter({
                     Create Role
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
-                <button
-                  type="button"
-                  style={noteActionButtonStyle}
-                  onClick={() => navigate(`${recruitingPath}?openCreate=true`)}
-                >
-                  Create Role
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+              )}
+            </>
+          )}
+        </section>
+      ) : null}
 
       <RemindersQuickActionsCard
         reminderEvent={upcomingReminderEvent}
         isMobile={isMobile}
+        quickActions={quickActions}
         onUseReminderTemplate={() => navigate(`${announcementsPath}?openTemplate=true`)}
-        onNewAnnouncement={() => navigate(`${announcementsPath}?openCreate=true`)}
-        onAddEvent={() => navigate(`${eventsPath}?openCreate=true`)}
-        onInviteMembers={() => navigate(membersPath)}
-        onViewReports={() => navigate(analyticsPath)}
       />
 
       <section

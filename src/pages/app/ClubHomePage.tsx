@@ -26,6 +26,7 @@ import {
 } from "../../lib/eventRecurrence";
 import { filterByVisibility } from "../../lib/contentVisibility";
 import { formatNameWithRoleTitle, accessLevelFromMember, formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
+import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import {
@@ -68,6 +69,52 @@ import {
 
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
+
+const clubStatIconClass = "h-5 w-5";
+
+const clubStatTasksIcon = (
+  <svg className={clubStatIconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.5}
+      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
+  </svg>
+);
+
+const clubStatDelegatedTasksIcon = (
+  <svg className={clubStatIconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.5}
+      d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
+    />
+  </svg>
+);
+
+const clubStatEventsIcon = (
+  <svg className={clubStatIconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.5}
+      d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+    />
+  </svg>
+);
+
+const clubStatMeetingIcon = (
+  <svg className={clubStatIconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.5}
+      d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
+  </svg>
+);
 
 const sectionHeadingRow: CSSProperties = {
   display: "flex",
@@ -253,57 +300,51 @@ function normalizeUserRole(role: MemberRole | string | null | undefined): Member
   return "member";
 }
 
-function ClubStatCard({
+function ClubStatCardContent({
   label,
   value,
   sublabel,
-  to,
-  borderAccentColor = "#E51937",
-  valueFontSize = "30px",
+  icon,
+  iconColor,
+  valueFontSize = "2rem",
   valueColor = "#ffffff",
   valueFontStyle,
   valueHint,
 }: {
   label: string;
   value: string | number;
-  sublabel: string;
-  to?: string;
-  borderAccentColor?: string;
+  sublabel?: string;
+  icon: ReactNode;
+  iconColor: string;
   valueFontSize?: string;
   valueColor?: string;
   valueFontStyle?: CSSProperties["fontStyle"];
   valueHint?: string;
 }) {
-  const navigate = useNavigate();
-  const [hovered, setHovered] = useState(false);
-
-  const card = (
-    <div
-      className="flex h-full min-h-[120px] flex-col justify-center"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: CARD_BG,
-        borderTop: `2px solid ${borderAccentColor}`,
-        borderRight: `1px solid ${CARD_BORDER}`,
-        borderBottom: `1px solid ${CARD_BORDER}`,
-        borderLeft: `1px solid ${CARD_BORDER}`,
-        borderRadius: "12px",
-        padding: "18px 20px",
-        flex: 1,
-        cursor: to ? "pointer" : undefined,
-        transform: hovered && to ? "translateY(-1px)" : undefined,
-        transition: "all 0.15s ease",
-      }}
-    >
+  return (
+    <>
+      <span
+        className="[&_svg]:h-[18px] [&_svg]:w-[18px]"
+        style={{
+          position: "absolute",
+          top: "12px",
+          right: "12px",
+          color: iconColor,
+          fontSize: "18px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {icon}
+      </span>
       <p
         style={{
-          fontSize: "13px",
-          fontWeight: 600,
-          letterSpacing: "0.06em",
-          color: "#555555",
-          margin: 0,
+          fontSize: "12px",
           textTransform: "uppercase",
+          letterSpacing: "0.1em",
+          color: "#747676",
+          margin: "0 0 6px",
         }}
       >
         {label}
@@ -311,11 +352,11 @@ function ClubStatCard({
       <p
         style={{
           fontSize: valueFontSize,
-          fontWeight: valueFontStyle === "italic" ? 400 : 800,
+          fontWeight: valueFontStyle === "italic" ? 400 : 700,
           color: valueColor,
           fontStyle: valueFontStyle,
           lineHeight: 1.15,
-          margin: "8px 0 0",
+          margin: "0 0 3px",
         }}
       >
         {value}
@@ -323,9 +364,9 @@ function ClubStatCard({
       {valueHint ? (
         <p
           style={{
-            fontSize: "13px",
+            fontSize: "11px",
             color: "#E51937",
-            margin: "4px 0 0",
+            margin: "0 0 3px",
           }}
         >
           {valueHint}
@@ -334,9 +375,9 @@ function ClubStatCard({
       {sublabel ? (
         <p
           style={{
-            fontSize: "13px",
-            color: "#444444",
-            margin: "4px 0 0",
+            fontSize: "11px",
+            color: "#555555",
+            margin: 0,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -345,7 +386,69 @@ function ClubStatCard({
           {sublabel}
         </p>
       ) : null}
-    </div>
+    </>
+  );
+}
+
+function ClubStatCard({
+  label,
+  value,
+  sublabel,
+  to,
+  borderAccentColor = "#E51937",
+  iconColor,
+  icon,
+  valueFontSize,
+  valueColor = "#ffffff",
+  valueFontStyle,
+  valueHint,
+}: {
+  label: string;
+  value: string | number;
+  sublabel?: string;
+  to?: string;
+  borderAccentColor?: string;
+  iconColor?: string;
+  icon: ReactNode;
+  valueFontSize?: string;
+  valueColor?: string;
+  valueFontStyle?: CSSProperties["fontStyle"];
+  valueHint?: string;
+}) {
+  const navigate = useNavigate();
+  const [hovered, setHovered] = useState(false);
+  const resolvedIconColor = iconColor ?? borderAccentColor;
+  const borderColor = hovered ? CARD_BORDER : "transparent";
+
+  const cardStyle: CSSProperties = {
+    background: "#1a1a1a",
+    borderRadius: "8px",
+    padding: "12px 16px",
+    position: "relative",
+    width: "100%",
+    textAlign: "left",
+    borderTop: `1px solid ${borderColor}`,
+    borderRight: `1px solid ${borderColor}`,
+    borderBottom: `1px solid ${borderColor}`,
+    borderLeft: `3px solid ${borderAccentColor}`,
+    cursor: to ? "pointer" : undefined,
+    transition: "all 0.15s ease",
+    transform: hovered && to ? "translateY(-1px)" : undefined,
+    height: "100%",
+  };
+
+  const content = (
+    <ClubStatCardContent
+      label={label}
+      value={value}
+      sublabel={sublabel}
+      icon={icon}
+      iconColor={resolvedIconColor}
+      valueFontSize={valueFontSize}
+      valueColor={valueColor}
+      valueFontStyle={valueFontStyle}
+      valueHint={valueHint}
+    />
   );
 
   if (to) {
@@ -361,13 +464,24 @@ function ClubStatCard({
             navigate(to);
           }
         }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={cardStyle}
       >
-        {card}
+        {content}
       </div>
     );
   }
 
-  return card;
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={cardStyle}
+    >
+      {content}
+    </div>
+  );
 }
 
 function NextMeetingStatCard({
@@ -385,6 +499,9 @@ function NextMeetingStatCard({
   const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
 
+  const borderColor = hovered ? CARD_BORDER : "transparent";
+  const sublabel = [display.weekdayTimeLine, display.locationLine].filter(Boolean).join(" · ");
+
   return (
     <div
       role="link"
@@ -397,73 +514,34 @@ function NextMeetingStatCard({
           navigate(to);
         }
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "#1a1a1a",
+        borderRadius: "8px",
+        padding: "12px 16px",
+        position: "relative",
+        width: "100%",
+        textAlign: "left",
+        borderTop: `1px solid ${borderColor}`,
+        borderRight: `1px solid ${borderColor}`,
+        borderBottom: `1px solid ${borderColor}`,
+        borderLeft: "3px solid #747676",
+        transition: "all 0.15s ease",
+        transform: hovered ? "translateY(-1px)" : undefined,
+        height: "100%",
+      }}
     >
-      <div
-        className="flex h-full min-h-[120px] flex-col justify-center"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          background: CARD_BG,
-          borderTop: "2px solid #333333",
-          borderRight: `1px solid ${CARD_BORDER}`,
-          borderBottom: `1px solid ${CARD_BORDER}`,
-          borderLeft: `1px solid ${CARD_BORDER}`,
-          borderRadius: "12px",
-          padding: "18px 20px",
-          flex: 1,
-          transform: hovered ? "translateY(-1px)" : undefined,
-          transition: "all 0.15s ease",
-        }}
-      >
-        <p
-          style={{
-            fontSize: "11px",
-            fontWeight: 600,
-            letterSpacing: "0.06em",
-            color: "#777777",
-            margin: 0,
-            textTransform: "uppercase",
-          }}
-        >
-          Next Meeting
-        </p>
-        <p
-          style={{
-            fontSize: display.scheduled ? "26px" : "14px",
-            fontWeight: display.scheduled ? 800 : 400,
-            color: display.scheduled ? "#ffffff" : "#555555",
-            lineHeight: 1.15,
-            margin: "8px 0 0",
-          }}
-        >
-          {display.dateLine}
-        </p>
-        {display.weekdayTimeLine ? (
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#999999",
-              margin: "6px 0 0",
-            }}
-          >
-            {display.weekdayTimeLine}
-          </p>
-        ) : null}
-        {display.locationLine ? (
-          <p
-            style={{
-              fontSize: "13px",
-              color: "#777777",
-              margin: "4px 0 0",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {display.locationLine}
-          </p>
-        ) : null}
-      </div>
+      <ClubStatCardContent
+        label="Next Meeting"
+        value={display.dateLine}
+        sublabel={sublabel || undefined}
+        icon={clubStatMeetingIcon}
+        iconColor="#747676"
+        valueFontSize={display.scheduled ? "1.35rem" : "14px"}
+        valueColor={display.scheduled ? "#ffffff" : "#555555"}
+        valueFontStyle={display.scheduled ? undefined : "italic"}
+      />
     </div>
   );
 }
@@ -1565,8 +1643,9 @@ export default function ClubHomePage() {
     return tasks.filter((task) => isTaskAwaitingReviewFromUser(task, user.id));
   }, [tasks, user?.id]);
 
-  const isPresidentCommandCenter =
-    memberAccess.isPresident || userRole === "owner" || userAccessLevel === "president";
+  const showCommandCenter =
+    memberAccess.isPresident ||
+    isExecutiveAccessLevel(memberAccess.accessLevel, memberAccess.role);
   const visibilityContext = useMemo(
     () => ({
       isMember: true,
@@ -1838,7 +1917,7 @@ export default function ClubHomePage() {
         />
       ) : null}
 
-      {isPresidentCommandCenter ? (
+      {showCommandCenter ? (
         <ClubCommandCenter
           club={club}
           clubId={clubId!}
@@ -1905,6 +1984,8 @@ export default function ClubHomePage() {
             value={myOpenTasksCount}
             sublabel="Assigned to you"
             borderAccentColor="#E51937"
+            iconColor="#E51937"
+            icon={clubStatTasksIcon}
             to={tasksPath}
           />
           <ClubStatCard
@@ -1912,6 +1993,8 @@ export default function ClubHomePage() {
             value={delegatedOpenTasksCount}
             sublabel="Delegated to others"
             borderAccentColor="#E51937"
+            iconColor="#E51937"
+            icon={clubStatDelegatedTasksIcon}
             to={`${tasksPath}?tab=assigned_by_me`}
           />
           <ClubStatCard
@@ -1919,6 +2002,8 @@ export default function ClubHomePage() {
             value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
             sublabel="Club events this month"
             borderAccentColor="#FFC429"
+            iconColor="#FFC429"
+            icon={clubStatEventsIcon}
             to={eventsPath}
           />
           <NextMeetingStatCard display={nextMeetingDisplay} to={eventsPath} />
@@ -1934,6 +2019,8 @@ export default function ClubHomePage() {
             value={openTaskCount}
             sublabel="Assigned to you"
             borderAccentColor="#E51937"
+            iconColor="#E51937"
+            icon={clubStatTasksIcon}
             to={tasksPath}
           />
           <ClubStatCard
@@ -1941,6 +2028,8 @@ export default function ClubHomePage() {
             value={eventsLoading ? "…" : deduplicatedEventsThisMonth.length}
             sublabel="Club events this month"
             borderAccentColor="#FFC429"
+            iconColor="#FFC429"
+            icon={clubStatEventsIcon}
             to={eventsPath}
           />
           <NextMeetingStatCard display={nextMeetingDisplay} to={eventsPath} />
