@@ -423,37 +423,6 @@ function listingStatus(position: ClubPosition): ListingStatus {
   return "closed";
 }
 
-function statusPillStyle(status: ListingStatus): CSSProperties {
-  if (status === "open" || status === "filled") {
-    return {
-      background: "#1a1200",
-      border: "1px solid #FFC429",
-      color: "#FFC429",
-      borderRadius: "4px",
-      padding: "2px 8px",
-      fontSize: "11px",
-      fontWeight: 600,
-      display: "inline-block",
-    };
-  }
-  return {
-    background: "#1a1a1a",
-    border: "1px solid #333333",
-    color: "#555555",
-    borderRadius: "4px",
-    padding: "2px 8px",
-    fontSize: "11px",
-    fontWeight: 600,
-    display: "inline-block",
-  };
-}
-
-function statusPillLabel(status: ListingStatus): string {
-  if (status === "open") return "Open";
-  if (status === "filled") return "Filled";
-  return "Closed";
-}
-
 function formatCloseDate(deadline: string | null): string | null {
   if (!deadline) return null;
   const trimmed = deadline.trim();
@@ -1655,9 +1624,7 @@ export default function ClubRecruitingPage() {
       const isExpanded = expandedPositionId === position.id;
       const menuOpen = openMenuId === position.id;
       const cardHovered = hoveredCardId === position.id;
-      const status = listingStatus(position);
       const canReviewThisPosition = canReviewPosition(position);
-      const showClosingSoonBadge = status === "open" && Boolean(deadline?.urgent);
       const applicantSummary = positionApplicantSummary(position);
 
       const metaSegments: ReactNode[] = [];
@@ -1722,41 +1689,21 @@ export default function ClubRecruitingPage() {
               >
                 {position.title}
               </h3>
-              {!canManageHiring ? (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  flexWrap: "wrap",
-                  marginTop: "6px",
-                }}
-              >
-                <span style={roleTypeBadgeStyle()}>
-                  {positionTypeLabel(position.positionType)}
-                </span>
-                <span style={commitmentBadgeStyle()}>
-                  {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-                </span>
-                <span style={statusPillStyle(status)}>
-                  {statusPillLabel(status)}
-                </span>
-                {showClosingSoonBadge ? (
-                  <span
-                    style={{
-                      background: "#1a1200",
-                      border: "1px solid #FFC429",
-                      color: "#FFC429",
-                      borderRadius: "4px",
-                      padding: "2px 8px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      display: "inline-block",
-                    }}
-                  >
-                    Closing Soon
-                  </span>
-                ) : null}
-              </div>
+              {metaSegments.length > 0 ? (
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#666666",
+                    margin: "6px 0 0",
+                  }}
+                >
+                  {metaSegments.map((part, index) => (
+                    <span key={index}>
+                      {index > 0 ? " · " : null}
+                      {part}
+                    </span>
+                  ))}
+                </p>
               ) : null}
             </div>
 
@@ -1796,21 +1743,6 @@ export default function ClubRecruitingPage() {
             ) : null}
           </div>
 
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#444444",
-              marginTop: "8px",
-              marginBottom: "4px",
-            }}
-          >
-            {metaSegments.map((part, index) => (
-              <span key={index}>
-                {index > 0 ? " · " : null}
-                {part}
-              </span>
-            ))}
-          </p>
           {canReviewThisPosition ? (
             <p
               style={{
@@ -1835,7 +1767,7 @@ export default function ClubRecruitingPage() {
                 fontSize: "13px",
                 color: "#555555",
                 lineHeight: 1.6,
-                margin: "0 0 16px",
+                margin: `${canReviewThisPosition ? 0 : 12}px 0 16px`,
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical",

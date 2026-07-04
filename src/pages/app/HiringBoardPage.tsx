@@ -238,19 +238,13 @@ const COMMITMENT_FILTER_OPTIONS = [
   { value: "weekly_hours", label: "Weekly hours" },
 ] as const;
 
-const DEADLINE_FILTER_OPTIONS = [
-  { value: "all", label: "Any deadline" },
-  { value: "closing_soon", label: "Closing soon" },
-  { value: "has_deadline", label: "Has deadline" },
-  { value: "no_deadline", label: "No deadline" },
-] as const;
-
 const LIST_TAB_OPTIONS: { value: ListTab; label: string }[] = [
   { value: "all", label: "All Roles" },
   { value: "saved", label: "Saved Roles" },
   { value: "applied", label: "Applied" },
 ];
 
+const ROLES_PER_PAGE = 10;
 const BANNER_HEIGHT = 200;
 
 const filterSelectStyle: CSSProperties = {
@@ -258,11 +252,11 @@ const filterSelectStyle: CSSProperties = {
   border: "1px solid #2a2a2a",
   color: "#cccccc",
   borderRadius: "8px",
-  padding: "8px 32px 8px 12px",
+  padding: "9px 34px 9px 12px",
   fontSize: "12px",
   cursor: "pointer",
-  flex: "1 1 140px",
-  minWidth: "120px",
+  width: "100%",
+  minWidth: 0,
   outline: "none",
   boxSizing: "border-box",
 };
@@ -389,14 +383,6 @@ function listingDeadlineDisplay(deadline: string | null): {
     withinSevenDays: days <= 7,
     passed: false,
   };
-}
-
-function isClosingSoon(deadline: string | null): boolean {
-  if (!deadline) return false;
-  const end = parseDeadlineDate(deadline);
-  if (!end || end.getTime() < Date.now()) return false;
-  const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  return days <= 7;
 }
 
 function deadlineBadgeStyle(deadline: string | null): CSSProperties | null {
@@ -2160,7 +2146,6 @@ function filterBoardPositions(
     roleTypeFilter: string;
     commitmentFilter: string;
     clubCategoryFilter: string;
-    deadlineFilter: string;
     listTab: ListTab;
     savedRoleIds: Set<string>;
     myApplications: Record<string, boolean>;
@@ -2192,15 +2177,6 @@ function filterBoardPositions(
       (p.clubCategory ?? "").toLowerCase() !==
         options.clubCategoryFilter.toLowerCase()
     ) {
-      return false;
-    }
-    if (options.deadlineFilter === "closing_soon" && !isClosingSoon(p.deadline)) {
-      return false;
-    }
-    if (options.deadlineFilter === "has_deadline" && !p.deadline) {
-      return false;
-    }
-    if (options.deadlineFilter === "no_deadline" && p.deadline) {
       return false;
     }
     if (!q) return true;
@@ -2289,8 +2265,8 @@ export default function HiringBoardPage() {
   const [roleTypeFilter, setRoleTypeFilter] = useState("all");
   const [commitmentFilter, setCommitmentFilter] = useState("all");
   const [clubCategoryFilter, setClubCategoryFilter] = useState("all");
-  const [deadlineFilter, setDeadlineFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"newest" | "closing_soon" | "a-z">("newest");
+  const [rolesPage, setRolesPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [detailOverlayId, setDetailOverlayId] = useState<string | null>(null);
@@ -2460,15 +2436,13 @@ export default function HiringBoardPage() {
     search.trim().length > 0 ||
     roleTypeFilter !== "all" ||
     (showCommitmentFilter && commitmentFilter !== "all") ||
-    clubCategoryFilter !== "all" ||
-    deadlineFilter !== "all";
+    clubCategoryFilter !== "all";
 
   function clearFilters() {
     setSearch("");
     setRoleTypeFilter("all");
     setCommitmentFilter("all");
     setClubCategoryFilter("all");
-    setDeadlineFilter("all");
   }
 
   async function toggleSaveRole(positionId: string) {
@@ -2518,7 +2492,6 @@ export default function HiringBoardPage() {
       roleTypeFilter,
       commitmentFilter,
       clubCategoryFilter,
-      deadlineFilter,
       listTab,
       savedRoleIds,
       myApplications,
@@ -2530,12 +2503,30 @@ export default function HiringBoardPage() {
     roleTypeFilter,
     commitmentFilter,
     clubCategoryFilter,
-    deadlineFilter,
     listTab,
     savedRoleIds,
     myApplications,
     sortBy,
   ]);
+
+  const totalRolePages = Math.max(1, Math.ceil(filtered.length / ROLES_PER_PAGE));
+  const safeRolesPage = Math.min(Math.max(rolesPage, 1), totalRolePages);
+  const paginatedPositions = useMemo(() => {
+    const start = (safeRolesPage - 1) * ROLES_PER_PAGE;
+    return filtered.slice(start, start + ROLES_PER_PAGE);
+  }, [filtered, safeRolesPage]);
+  const pageStart = filtered.length === 0 ? 0 : (safeRolesPage - 1) * ROLES_PER_PAGE + 1;
+  const pageEnd = Math.min(safeRolesPage * ROLES_PER_PAGE, filtered.length);
+
+  useEffect(() => {
+    setRolesPage(1);
+  }, [search, roleTypeFilter, commitmentFilter, clubCategoryFilter, listTab, sortBy]);
+
+  useEffect(() => {
+    if (rolesPage > totalRolePages) {
+      setRolesPage(totalRolePages);
+    }
+  }, [rolesPage, totalRolePages]);
 
   useEffect(() => {
     if (filtered.length === 0) {
@@ -2545,10 +2536,10 @@ export default function HiringBoardPage() {
       return;
     }
     setSelectedId((current) => {
-      if (current && filtered.some((p) => p.id === current)) return current;
-      return filtered[0].id;
+      if (current && paginatedPositions.some((p) => p.id === current)) return current;
+      return paginatedPositions[0]?.id ?? filtered[0].id;
     });
-  }, [filtered]);
+  }, [filtered, paginatedPositions]);
 
   useEffect(() => {
     if (loading) return;
@@ -2700,8 +2691,8 @@ export default function HiringBoardPage() {
           </div>
           <div
             style={{
-              display: "flex",
-              flexWrap: "wrap",
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
               gap: "8px",
               marginBottom: "12px",
             }}
@@ -2748,24 +2739,12 @@ export default function HiringBoardPage() {
               </select>
             ) : null}
             <select
-              value={deadlineFilter}
-              onChange={(e) => setDeadlineFilter(e.target.value)}
-              aria-label="Filter by deadline"
-              style={filterSelectStyle}
-            >
-              {DEADLINE_FILTER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <select
               value={sortBy}
               onChange={(e) =>
                 setSortBy(e.target.value as "newest" | "closing_soon" | "a-z")
               }
               aria-label="Sort positions"
-              style={{ ...filterSelectStyle, flex: "0 1 auto", minWidth: "110px" }}
+              style={filterSelectStyle}
             >
               <option value="newest">Newest</option>
               <option value="closing_soon">Closing soon</option>
@@ -2826,9 +2805,10 @@ export default function HiringBoardPage() {
                   marginTop: 0,
                 }}
               >
-                {filtered.length} open position{filtered.length === 1 ? "" : "s"}
+                Showing {pageStart}-{pageEnd} of {filtered.length} open position
+                {filtered.length === 1 ? "" : "s"}
               </p>
-              {filtered.map((position) => (
+              {paginatedPositions.map((position) => (
                 <HiringListingCard
                   key={position.id}
                   position={position}
@@ -2843,6 +2823,84 @@ export default function HiringBoardPage() {
                   onToggleSave={() => void toggleSaveRole(position.id)}
                 />
               ))}
+              {totalRolePages > 1 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    flexWrap: "wrap",
+                    padding: "8px 0 18px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-label="Previous roles page"
+                    disabled={safeRolesPage <= 1}
+                    onClick={() => setRolesPage((page) => Math.max(1, page - 1))}
+                    style={{
+                      width: "34px",
+                      height: "34px",
+                      borderRadius: "8px",
+                      border: "1px solid #2a2a2a",
+                      background: "#111111",
+                      color: "#cccccc",
+                      cursor: safeRolesPage <= 1 ? "not-allowed" : "pointer",
+                      opacity: safeRolesPage <= 1 ? 0.45 : 1,
+                    }}
+                  >
+                    ‹
+                  </button>
+                  {Array.from({ length: totalRolePages }, (_, index) => {
+                    const page = index + 1;
+                    const active = page === safeRolesPage;
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        aria-label={`Roles page ${page}`}
+                        aria-current={active ? "page" : undefined}
+                        onClick={() => setRolesPage(page)}
+                        style={{
+                          minWidth: "34px",
+                          height: "34px",
+                          borderRadius: "8px",
+                          border: `1px solid ${active ? "#E51937" : "#2a2a2a"}`,
+                          background: active ? "#E51937" : "#111111",
+                          color: active ? "#ffffff" : "#cccccc",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: active ? "default" : "pointer",
+                        }}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    aria-label="Next roles page"
+                    disabled={safeRolesPage >= totalRolePages}
+                    onClick={() =>
+                      setRolesPage((page) => Math.min(totalRolePages, page + 1))
+                    }
+                    style={{
+                      width: "34px",
+                      height: "34px",
+                      borderRadius: "8px",
+                      border: "1px solid #2a2a2a",
+                      background: "#111111",
+                      color: "#cccccc",
+                      cursor:
+                        safeRolesPage >= totalRolePages ? "not-allowed" : "pointer",
+                      opacity: safeRolesPage >= totalRolePages ? 0.45 : 1,
+                    }}
+                  >
+                    ›
+                  </button>
+                </div>
+              ) : null}
             </>
           )}
         </div>
