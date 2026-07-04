@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
@@ -9,12 +9,15 @@ import {
   isSystemRsvpQuestion,
 } from "../../lib/eventRsvpUtils";
 import { normalizeVisibility } from "../../lib/contentVisibility";
+import { resolveEventDetailPath } from "../../lib/eventNavigation";
 import { supabase } from "../../lib/supabaseClient";
 import {
   notifyEventSignupPendingReview,
   resolveStudentDisplayName,
 } from "../../lib/notifications";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
+import Spinner from "../../components/ui/Spinner";
+import { useIsMobile } from "../../hooks/useWindowWidth";
 import type { MembershipType, Visibility } from "../../types";
 
 type QuestionType = "text" | "multiple_choice" | "yes_no";
@@ -52,15 +55,34 @@ const EVENT_CATEGORIES: { value: string; label: string }[] = [
   { value: "fundraiser", label: "Fundraiser" },
 ];
 
+const PAGE_MAX_WIDTH = "1080px";
+const ACCENT_RED = "#E51937";
+const GOLD = "#FFC429";
+
+const cardStyle: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #242424",
+  borderRadius: "12px",
+  padding: "24px",
+};
+
 const inputStyle: CSSProperties = {
   background: "#111111",
   border: "1px solid #2a2a2a",
-  borderRadius: "6px",
-  padding: "10px 14px",
+  borderRadius: "8px",
+  padding: "12px 14px",
   color: "#ffffff",
   fontSize: "14px",
   width: "100%",
   boxSizing: "border-box",
+  lineHeight: 1.5,
+  transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+};
+
+const inputFocusStyle: CSSProperties = {
+  borderColor: ACCENT_RED,
+  boxShadow: "0 0 0 2px rgba(229, 25, 55, 0.2)",
+  outline: "none",
 };
 
 const labelStyle: CSSProperties = {
@@ -126,6 +148,37 @@ function formatEventDateTime(date: string, time: string): string {
   return timePart ? `${datePart} · ${timePart}` : datePart;
 }
 
+function friendlySubmitError(message: string | undefined): string {
+  if (!message?.trim()) {
+    return "Something went wrong while saving your sign-up. Please try again.";
+  }
+  if (
+    message.toLowerCase().includes("duplicate") ||
+    message.toLowerCase().includes("already registered")
+  ) {
+    return "You're already registered for this event.";
+  }
+  if (message.startsWith("Could not") || message.startsWith("Failed to")) {
+    return message;
+  }
+  return "Something went wrong while saving your sign-up. Please try again.";
+}
+
+function mergeFieldStyle(
+  base: CSSProperties,
+  focused: boolean,
+  hasError?: boolean,
+): CSSProperties {
+  if (hasError) {
+    return {
+      ...base,
+      borderColor: ACCENT_RED,
+      boxShadow: "0 0 0 2px rgba(229, 25, 55, 0.15)",
+    };
+  }
+  return focused ? { ...base, ...inputFocusStyle } : base;
+}
+
 function PillChoice({
   label,
   selected,
@@ -135,23 +188,101 @@ function PillChoice({
   selected: boolean;
   onClick: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+
   return (
     <button
       type="button"
+      aria-pressed={selected}
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       style={{
-        background: selected ? "#E51937" : "#1a1a1a",
-        border: selected ? "1px solid #E51937" : "1px solid #333333",
-        color: selected ? "#ffffff" : "#777777",
+        background: selected ? ACCENT_RED : hovered ? "#242424" : "#1a1a1a",
+        border: selected
+          ? `1px solid ${ACCENT_RED}`
+          : focused
+            ? `1px solid ${ACCENT_RED}`
+            : hovered
+              ? "1px solid #555555"
+              : "1px solid #333333",
+        color: selected ? "#ffffff" : hovered ? "#cccccc" : "#888888",
         borderRadius: "20px",
-        padding: "6px 16px",
-        fontSize: "12px",
-        fontWeight: 500,
+        padding: "8px 16px",
+        fontSize: "13px",
+        fontWeight: selected ? 600 : 500,
         cursor: "pointer",
+        transition: "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+        boxShadow: focused && !selected ? "0 0 0 2px rgba(229, 25, 55, 0.2)" : undefined,
       }}
     >
       {label}
     </button>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <svg
+      width={14}
+      height={14}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      style={{ marginRight: "6px", verticalAlign: "-2px" }}
+      aria-hidden
+    >
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function PageShell({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
+      <div
+        style={{
+          maxWidth: PAGE_MAX_WIDTH,
+          margin: "0 auto",
+          padding: "32px 20px 48px",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function BrandedHeader({ clubName }: { clubName?: string }) {
+  return (
+    <header style={{ textAlign: "center", marginBottom: "28px" }}>
+      <p
+        style={{
+          fontWeight: 800,
+          fontSize: "20px",
+          color: "#ffffff",
+          margin: 0,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        Gryph
+        <span style={{ color: ACCENT_RED }}>·</span>
+        ClubConnect
+      </p>
+      <p style={{ fontSize: "12px", color: "#666666", margin: "6px 0 0", lineHeight: 1.4 }}>
+        Helping Guelph students discover clubs and events.
+      </p>
+      {clubName ? (
+        <p style={{ fontSize: "13px", color: "#888888", margin: "10px 0 0" }}>{clubName}</p>
+      ) : null}
+    </header>
   );
 }
 
@@ -212,6 +343,7 @@ function CheckIcon() {
 export default function EventRSVPPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const { isJoined, isPending, isSaved, toggleSaveClub } = useClubContext();
   const [loading, setLoading] = useState(true);
@@ -220,6 +352,7 @@ export default function EventRSVPPage() {
   const [event, setEvent] = useState<PublicEvent | null>(null);
   const [clubName, setClubName] = useState("");
   const [clubSlug, setClubSlug] = useState("");
+  const [goingCount, setGoingCount] = useState<number | null>(null);
   const [membershipType, setMembershipType] = useState<MembershipType>("open");
   const [isActiveMember, setIsActiveMember] = useState(false);
   const [isPrivileged, setIsPrivileged] = useState(false);
@@ -234,6 +367,7 @@ export default function EventRSVPPage() {
   const [showPostRsvpCta, setShowPostRsvpCta] = useState(false);
   const [changingResponse, setChangingResponse] = useState(false);
   const [cancellingSignup, setCancellingSignup] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const customQuestions = useMemo(() => {
     if (user?.id) {
@@ -342,6 +476,20 @@ export default function EventRSVPPage() {
         .eq("event_id", eventId)
         .order("order_index", { ascending: true });
 
+      const [{ data: rsvpRows }, { count: externalCount }] = await Promise.all([
+        supabase.from("event_rsvps").select("status").eq("event_id", eventId),
+        supabase
+          .from("event_external_rsvps")
+          .select("id", { count: "exact", head: true })
+          .eq("event_id", eventId),
+      ]);
+
+      if (!cancelled) {
+        const goingFromMembers =
+          (rsvpRows ?? []).filter((row) => (row.status as string) === "going").length;
+        setGoingCount(goingFromMembers + (externalCount ?? 0));
+      }
+
       if (!cancelled) {
         setQuestions(
           (questionRows ?? []).map((row) => ({
@@ -425,7 +573,7 @@ export default function EventRSVPPage() {
     return true;
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!event || !eventId || !validate()) return;
 
@@ -453,7 +601,7 @@ export default function EventRSVPPage() {
       const responsesSaved = await saveCustomResponses(eventId, user.id);
       if (!responsesSaved) {
         setSubmitting(false);
-        setErrors({ form: "Failed to save your responses. Please try again." });
+        setErrors({ form: friendlySubmitError("Failed to save your responses. Please try again.") });
         return;
       }
 
@@ -468,7 +616,9 @@ export default function EventRSVPPage() {
         if (rsvpError) {
           setSubmitting(false);
           setErrors({
-            form: rsvpError.message || "Could not submit signup. Please try again.",
+            form: friendlySubmitError(
+              rsvpError.message || "Could not submit signup. Please try again.",
+            ),
           });
           return;
         }
@@ -513,7 +663,7 @@ export default function EventRSVPPage() {
 
     if (existingExternal) {
       setSubmitting(false);
-      setErrors({ form: "You're already registered for this event." });
+      setErrors({ form: friendlySubmitError("You're already registered for this event.") });
       return;
     }
 
@@ -526,7 +676,9 @@ export default function EventRSVPPage() {
 
     setSubmitting(false);
     if (error) {
-      setErrors({ form: error.message || "Could not submit signup. Please try again." });
+      setErrors({
+        form: friendlySubmitError(error.message || "Could not submit signup. Please try again."),
+      });
       return;
     }
 
@@ -562,40 +714,67 @@ export default function EventRSVPPage() {
   function renderSignupConfirmation() {
     if (!event) return null;
 
+    const eventDetailPath = resolveEventDetailPath(
+      event.id,
+      event.clubId,
+      isActiveMember,
+    );
+
     return (
-      <div style={{ padding: "8px 0" }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
+      <div style={{ padding: "4px 0" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
           <CheckIcon />
         </div>
         <p
           style={{
             fontWeight: 700,
-            fontSize: "18px",
+            fontSize: "20px",
             color: "#ffffff",
-            margin: "0 0 20px",
+            margin: "0 0 10px",
             textAlign: "center",
+            lineHeight: 1.3,
           }}
         >
-          You&apos;re signed up for this event.
+          You&apos;re signed up for this event
         </p>
+        <p
+          style={{
+            fontSize: "14px",
+            color: "#aaaaaa",
+            margin: "0 0 6px",
+            textAlign: "center",
+            lineHeight: 1.5,
+          }}
+        >
+          <strong style={{ color: "#ffffff" }}>{event.title}</strong>
+        </p>
+        <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 4px", textAlign: "center" }}>
+          {formatEventDateTime(event.date, event.time)}
+        </p>
+        {clubName ? (
+          <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 20px", textAlign: "center" }}>
+            Hosted by {clubName}
+          </p>
+        ) : (
+          <div style={{ marginBottom: "20px" }} />
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <button
             type="button"
-            disabled={cancellingSignup}
-            onClick={() => void handleCancelSignup()}
+            onClick={() => navigate(eventDetailPath)}
             style={{
               width: "100%",
-              background: "transparent",
-              color: "#cccccc",
-              border: "1px solid #333333",
-              borderRadius: "6px",
-              padding: "11px 20px",
+              background: ACCENT_RED,
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "12px 20px",
               fontSize: "14px",
-              fontWeight: 500,
-              cursor: cancellingSignup ? "wait" : "pointer",
+              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
-            {cancellingSignup ? "Cancelling…" : "Cancel Signup"}
+            View Event
           </button>
           {customQuestions.length > 0 ? (
             <button
@@ -609,7 +788,7 @@ export default function EventRSVPPage() {
                 background: "transparent",
                 color: "#ffffff",
                 border: "1px solid #333333",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 padding: "11px 20px",
                 fontSize: "14px",
                 fontWeight: 500,
@@ -619,19 +798,37 @@ export default function EventRSVPPage() {
               Change Response
             </button>
           ) : null}
-          {clubJoined ? (
+          <button
+            type="button"
+            disabled={cancellingSignup}
+            onClick={() => void handleCancelSignup()}
+            style={{
+              width: "100%",
+              background: "transparent",
+              color: "#cccccc",
+              border: "1px solid #333333",
+              borderRadius: "8px",
+              padding: "11px 20px",
+              fontSize: "14px",
+              fontWeight: 500,
+              cursor: cancellingSignup ? "wait" : "pointer",
+            }}
+          >
+            {cancellingSignup ? "Cancelling…" : "Cancel Sign-Up"}
+          </button>
+          {isActiveMember ? (
             <button
               type="button"
               onClick={() => navigate(`/app/clubs/${event.clubId}`)}
               style={{
                 width: "100%",
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "6px",
+                background: "transparent",
+                color: "#aaaaaa",
+                border: "1px solid #2a2a2a",
+                borderRadius: "8px",
                 padding: "11px 20px",
                 fontSize: "14px",
-                fontWeight: 600,
+                fontWeight: 500,
                 cursor: "pointer",
               }}
             >
@@ -649,22 +846,45 @@ export default function EventRSVPPage() {
               }}
               style={{
                 width: "100%",
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "6px",
+                background: "transparent",
+                color: "#aaaaaa",
+                border: "1px solid #2a2a2a",
+                borderRadius: "8px",
                 padding: "11px 20px",
                 fontSize: "14px",
-                fontWeight: 600,
+                fontWeight: 500,
                 cursor: "pointer",
               }}
             >
               View Club Profile
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => navigate("/events")}
+            style={{
+              width: "100%",
+              background: "transparent",
+              color: "#777777",
+              border: "none",
+              padding: "8px",
+              fontSize: "13px",
+              cursor: "pointer",
+              textDecoration: "underline",
+            }}
+          >
+            Back to Events
+          </button>
         </div>
         {showPostRsvpCta && !clubJoined && !clubJoinPending ? (
-          <div style={{ marginTop: "20px", textAlign: "center" }}>
+          <div
+            style={{
+              marginTop: "20px",
+              paddingTop: "20px",
+              borderTop: "1px solid #242424",
+              textAlign: "center",
+            }}
+          >
             <p style={{ fontSize: "14px", color: "#cccccc", margin: "0 0 12px" }}>
               Want to stay connected with {clubName}?
             </p>
@@ -678,7 +898,7 @@ export default function EventRSVPPage() {
                   background: "transparent",
                   color: "#ffffff",
                   border: "1px solid #333333",
-                  borderRadius: "6px",
+                  borderRadius: "8px",
                   padding: "11px 20px",
                   fontSize: "14px",
                   fontWeight: 500,
@@ -713,17 +933,17 @@ export default function EventRSVPPage() {
   function renderMembershipPrimaryAction(disabled = false) {
     if (!event) return null;
 
-    if (clubJoined) {
+    if (isActiveMember) {
       return (
         <button
           type="button"
           onClick={() => navigate(`/app/clubs/${event.clubId}`)}
           style={{
             width: "100%",
-            background: "#E51937",
+            background: ACCENT_RED,
             color: "#ffffff",
             border: "none",
-            borderRadius: "6px",
+            borderRadius: "8px",
             padding: "11px 20px",
             fontSize: "14px",
             fontWeight: 600,
@@ -789,80 +1009,101 @@ export default function EventRSVPPage() {
 
   if (loading) {
     return (
-      <div
-        style={{
-          background: "#0f0f0f",
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#747676",
-          fontSize: "14px",
-        }}
-      >
-        Loading…
-      </div>
+      <PageShell>
+        <PublicDetailBackButton fallbackTo="/events" label="Back to Events" />
+        <BrandedHeader />
+        <div
+          style={{
+            ...cardStyle,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "14px",
+            minHeight: "220px",
+          }}
+        >
+          <Spinner label="Loading event details…" />
+          <p style={{ margin: 0, fontSize: "14px", color: "#777777" }}>Loading event details…</p>
+        </div>
+      </PageShell>
     );
   }
 
   if (notFound || !event) {
     return (
-      <div
-        style={{
-          background: "#0f0f0f",
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#ffffff",
-          fontSize: "16px",
-          fontWeight: 600,
-        }}
-      >
-        Event not found
-      </div>
+      <PageShell>
+        <PublicDetailBackButton fallbackTo="/events" label="Back to Events" />
+        <BrandedHeader />
+        <div style={{ ...cardStyle, textAlign: "center", padding: "40px 24px" }}>
+          <p
+            style={{
+              margin: "0 0 8px",
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "#ffffff",
+            }}
+          >
+            Event not found
+          </p>
+          <p style={{ margin: "0 0 20px", fontSize: "14px", color: "#777777", lineHeight: 1.5 }}>
+            This event may have been removed or the link is no longer valid.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/events")}
+            style={{
+              background: ACCENT_RED,
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              padding: "11px 20px",
+              fontSize: "14px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Back to Events
+          </button>
+        </div>
+      </PageShell>
     );
   }
 
+  const showSuccessState = submitted || (alreadyRegistered && !changingResponse);
+  const hasCustomQuestions = customQuestions.length > 0;
+
   return (
-    <div style={{ background: "#0f0f0f", minHeight: "100vh" }}>
+    <PageShell>
+      <PublicDetailBackButton fallbackTo="/events" label="Back to Events" />
+      <BrandedHeader />
+
       <div
         style={{
-          maxWidth: "520px",
-          margin: "0 auto",
-          padding: "40px 20px",
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          gap: isMobile ? "20px" : "24px",
+          alignItems: "start",
         }}
       >
-        <PublicDetailBackButton fallbackTo="/events" label="Back to Events" />
-        <header style={{ textAlign: "center", marginBottom: "28px" }}>
-          <p
-            style={{
-              fontWeight: 800,
-              fontSize: "20px",
-              color: "#ffffff",
-              margin: 0,
-            }}
-          >
-            Gryph
-            <span style={{ color: "#E51937" }}>·</span>
-            ClubConnect
-          </p>
+        <div style={cardStyle}>
           {clubName ? (
-            <p style={{ fontSize: "13px", color: "#747676", margin: "8px 0 0" }}>
-              {clubName}
+            <p
+              style={{
+                margin: "0 0 12px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#555555",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+              }}
+            >
+              Hosted by{" "}
+              <span style={{ color: "#cccccc", textTransform: "none", letterSpacing: 0 }}>
+                {clubName}
+              </span>
             </p>
           ) : null}
-        </header>
-
-        <div
-          style={{
-            background: "#1a1a1a",
-            border: "1px solid #242424",
-            borderRadius: "12px",
-            padding: "24px",
-            marginBottom: "24px",
-          }}
-        >
           {event.bannerUrl ? (
             <img
               src={event.bannerUrl}
@@ -880,30 +1121,39 @@ export default function EventRSVPPage() {
           <h1
             style={{
               fontWeight: 700,
-              fontSize: "22px",
+              fontSize: "24px",
               color: "#ffffff",
               margin: 0,
+              lineHeight: 1.25,
             }}
           >
             {event.title}
           </h1>
-          <p style={{ fontSize: "13px", color: "#747676", marginTop: "6px" }}>
-            <CalendarIcon />
-            {formatEventDateTime(event.date, event.time)}
-          </p>
-          {event.location ? (
-            <p style={{ fontSize: "13px", color: "#747676", marginTop: "4px" }}>
-              <MapPinIcon />
-              {event.location}
+          <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <p style={{ fontSize: "13px", color: "#888888", margin: 0 }}>
+              <CalendarIcon />
+              {formatEventDateTime(event.date, event.time)}
             </p>
-          ) : null}
+            {event.location ? (
+              <p style={{ fontSize: "13px", color: "#888888", margin: 0 }}>
+                <MapPinIcon />
+                {event.location}
+              </p>
+            ) : null}
+            {goingCount != null && goingCount > 0 ? (
+              <p style={{ fontSize: "13px", color: GOLD, margin: 0, fontWeight: 600 }}>
+                <UsersIcon />
+                {goingCount} going
+              </p>
+            ) : null}
+          </div>
           {event.description ? (
             <p
               style={{
                 fontSize: "14px",
                 color: "#aaaaaa",
-                marginTop: "12px",
-                lineHeight: 1.5,
+                marginTop: "14px",
+                lineHeight: 1.55,
                 marginBottom: 0,
               }}
             >
@@ -915,19 +1165,12 @@ export default function EventRSVPPage() {
           </span>
         </div>
 
-        <div
-          style={{
-            background: "#1a1a1a",
-            border: "1px solid #242424",
-            borderRadius: "12px",
-            padding: "24px",
-          }}
-        >
-          {submitted || (alreadyRegistered && !changingResponse) ? (
+        <div style={cardStyle}>
+          {showSuccessState ? (
             renderSignupConfirmation()
           ) : !rsvpAccess.canRsvp ? (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <p style={{ fontSize: "15px", color: "#cccccc", margin: 0 }}>
+            <div style={{ textAlign: "center", padding: "24px 8px" }}>
+              <p style={{ fontSize: "15px", color: "#cccccc", margin: 0, lineHeight: 1.5 }}>
                 {rsvpAccess.blockedMessage ??
                   "You do not have access to sign up for this event."}
               </p>
@@ -937,23 +1180,42 @@ export default function EventRSVPPage() {
               <h2
                 style={{
                   fontWeight: 700,
-                  fontSize: "18px",
+                  fontSize: "20px",
                   color: "#ffffff",
                   margin: "0 0 8px",
+                  lineHeight: 1.3,
                 }}
               >
                 Sign up for {event.title}
               </h2>
-              <p
-                style={{
-                  fontSize: "14px",
-                  color: "#777777",
-                  margin: "0 0 20px",
-                  lineHeight: 1.5,
-                }}
-              >
-                Answer a few quick questions before confirming your spot.
-              </p>
+              {hasCustomQuestions ? (
+                <p
+                  style={{
+                    fontSize: "14px",
+                    color: "#777777",
+                    margin: "0 0 20px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Answer a few quick questions before confirming your spot.
+                </p>
+              ) : null}
+
+              {!hasCustomQuestions ? (
+                <div
+                  style={{
+                    background: "#111111",
+                    border: "1px solid #242424",
+                    borderRadius: "8px",
+                    padding: "14px 16px",
+                    marginBottom: "20px",
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: "13px", color: "#aaaaaa", lineHeight: 1.5 }}>
+                    No questions are required for this event. Confirm below to save your spot.
+                  </p>
+                </div>
+              ) : null}
 
               <form onSubmit={(e) => void handleSubmit(e)}>
                 {!user?.id ? (
@@ -967,7 +1229,13 @@ export default function EventRSVPPage() {
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        style={inputStyle}
+                        onFocus={() => setFocusedField("name")}
+                        onBlur={() => setFocusedField(null)}
+                        style={mergeFieldStyle(
+                          inputStyle,
+                          focusedField === "name",
+                          Boolean(errors.name),
+                        )}
                         autoComplete="name"
                       />
                       {errors.name ? (
@@ -986,7 +1254,13 @@ export default function EventRSVPPage() {
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        style={inputStyle}
+                        onFocus={() => setFocusedField("email")}
+                        onBlur={() => setFocusedField(null)}
+                        style={mergeFieldStyle(
+                          inputStyle,
+                          focusedField === "email",
+                          Boolean(errors.email),
+                        )}
                         autoComplete="email"
                       />
                       {errors.email ? (
@@ -1011,7 +1285,9 @@ export default function EventRSVPPage() {
                     >
                       {q.question}
                       {q.required ? (
-                        <span style={{ color: "#E51937", marginLeft: "4px" }}>*</span>
+                        <span style={{ color: "#c45a68", marginLeft: "3px" }} aria-hidden>
+                          *
+                        </span>
                       ) : null}
                     </label>
 
@@ -1021,10 +1297,18 @@ export default function EventRSVPPage() {
                         onChange={(e) =>
                           setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
                         }
+                        onFocus={() => setFocusedField(q.id)}
+                        onBlur={() => setFocusedField(null)}
+                        aria-invalid={Boolean(errors[q.id])}
                         style={{
-                          ...inputStyle,
-                          minHeight: "80px",
+                          ...mergeFieldStyle(
+                            inputStyle,
+                            focusedField === q.id,
+                            Boolean(errors[q.id]),
+                          ),
+                          minHeight: "96px",
                           resize: "vertical",
+                          fontFamily: "inherit",
                         }}
                       />
                     ) : null}
@@ -1072,9 +1356,35 @@ export default function EventRSVPPage() {
                 ))}
 
                 {errors.form ? (
-                  <p style={{ color: "#E51937", fontSize: "13px", marginBottom: "12px" }}>
-                    {errors.form}
-                  </p>
+                  <div
+                    style={{
+                      background: "rgba(229, 25, 55, 0.08)",
+                      border: "1px solid rgba(229, 25, 55, 0.25)",
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    <p style={{ color: "#f2a0aa", fontSize: "13px", margin: "0 0 8px", lineHeight: 1.45 }}>
+                      {errors.form}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setErrors((prev) => ({ ...prev, form: "" }))}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#ffffff",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        padding: 0,
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Try again
+                    </button>
+                  </div>
                 ) : null}
 
                 <div
@@ -1087,13 +1397,13 @@ export default function EventRSVPPage() {
                 >
                   <button
                     type="button"
-                    onClick={() => navigate(-1)}
+                    onClick={() => navigate("/events")}
                     style={{
                       flex: 1,
                       background: "transparent",
                       border: "1px solid #333333",
                       color: "#888888",
-                      borderRadius: "6px",
+                      borderRadius: "8px",
                       padding: "12px 16px",
                       fontSize: "14px",
                       fontWeight: 500,
@@ -1105,17 +1415,18 @@ export default function EventRSVPPage() {
                   <button
                     type="submit"
                     disabled={submitting}
+                    aria-busy={submitting}
                     style={{
                       flex: 1,
-                      background: "#E51937",
+                      background: ACCENT_RED,
                       color: "#ffffff",
                       border: "none",
-                      borderRadius: "6px",
+                      borderRadius: "8px",
                       padding: "12px 16px",
                       fontWeight: 600,
                       fontSize: "14px",
                       cursor: submitting ? "not-allowed" : "pointer",
-                      opacity: submitting ? 0.7 : 1,
+                      opacity: submitting ? 0.75 : 1,
                     }}
                   >
                     {submitting ? "Submitting…" : "Confirm Sign Up"}
@@ -1124,20 +1435,21 @@ export default function EventRSVPPage() {
 
                 <p
                   style={{
-                    fontSize: "11px",
-                    color: "#333333",
+                    fontSize: "12px",
+                    color: "#666666",
                     textAlign: "center",
                     marginTop: "12px",
                     marginBottom: 0,
+                    lineHeight: 1.45,
                   }}
                 >
-                  Powered by GryphClubConnect
+                  You can update or cancel your sign-up later if the club allows it.
                 </p>
               </form>
             </>
           )}
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
