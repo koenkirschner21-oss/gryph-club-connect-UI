@@ -2003,6 +2003,11 @@ function ThisMonthTab({
     : calendarView === "week"
       ? "No events this week."
       : "No events this month.";
+  const plannerPeriodLabel = calendarView === "week" ? "This Week" : "This Month";
+  const plannerDescription =
+    calendarView === "week"
+      ? "Your tasks, events, meetings, and club activity for the week."
+      : "Your tasks, events, meetings, and club activity for the month.";
 
   function handleDayClick(dateKey: string) {
     setSelectedDayKey((prev) => (prev === dateKey ? null : dateKey));
@@ -2045,10 +2050,10 @@ function ThisMonthTab({
             color: "#ffffff",
           }}
         >
-          This Month
+          {plannerPeriodLabel}
         </h2>
         <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#777777" }}>
-          Your tasks, events, meetings, and club activity for the month.
+          {plannerDescription}
         </p>
       </div>
 
@@ -2098,7 +2103,7 @@ function ThisMonthTab({
             margin: "0 0 10px",
           }}
         >
-          Tasks This Month
+          Tasks {plannerPeriodLabel}
         </h3>
         {filteredTasks.length === 0 ? (
           <TasksWeekEmptyState onViewAllTasks={onViewAllTasks} message={tasksEmptyMessage} />
@@ -2129,7 +2134,7 @@ function ThisMonthTab({
             margin: "0 0 10px",
           }}
         >
-          Events This Month
+          Events {plannerPeriodLabel}
         </h3>
         {filteredEvents.length === 0 ? (
           <p style={{ color: "#444444", fontSize: "13px", margin: 0 }}>
@@ -2281,7 +2286,6 @@ function MyClubsTab({
   isMobile: boolean;
 }) {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClubFilterOption>("all");
   const [sort, setSort] = useState<ClubSortOption>("recent");
   const [page, setPage] = useState(1);
@@ -2289,8 +2293,8 @@ function MyClubsTab({
   const sourceClubs = filter === "saved" ? mySavedClubs : myClubs;
 
   const filteredClubs = useMemo(
-    () => filterMyClubs(sourceClubs, search, filter, getUserRole),
-    [sourceClubs, search, filter, getUserRole],
+    () => filterMyClubs(sourceClubs, "", filter, getUserRole),
+    [sourceClubs, filter, getUserRole],
   );
   const sortedClubs = useMemo(
     () => sortMyClubs(filteredClubs, sort, getUserRole),
@@ -2303,7 +2307,7 @@ function MyClubsTab({
 
   useEffect(() => {
     setPage(1);
-  }, [search, filter, sort]);
+  }, [filter, sort]);
 
   useEffect(() => {
     if (page > pagination.totalPages) {
@@ -2333,13 +2337,10 @@ function MyClubsTab({
     <>
       <MyClubsHeader />
       <MyClubsFilterBar
-        search={search}
-        onSearchChange={setSearch}
         filter={filter}
         onFilterChange={setFilter}
         sort={sort}
         onSortChange={setSort}
-        showSearch={myClubs.length >= 8}
       />
 
       {sortedClubs.length === 0 ? (

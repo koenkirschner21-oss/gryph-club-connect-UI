@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Grid3x3,
-  Search,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Club, MemberRole } from "../../types";
@@ -218,21 +217,15 @@ const FILTER_OPTIONS: {
 ];
 
 export function MyClubsFilterBar({
-  search,
-  onSearchChange,
   filter,
   onFilterChange,
   sort,
   onSortChange,
-  showSearch,
 }: {
-  search: string;
-  onSearchChange: (value: string) => void;
   filter: ClubFilterOption;
   onFilterChange: (value: ClubFilterOption) => void;
   sort: ClubSortOption;
   onSortChange: (value: ClubSortOption) => void;
-  showSearch: boolean;
 }) {
   return (
     <div style={{ marginBottom: "16px" }}>
@@ -243,7 +236,6 @@ export function MyClubsFilterBar({
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
-          marginBottom: showSearch ? "12px" : 0,
         }}
       >
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -283,38 +275,6 @@ export function MyClubsFilterBar({
           <option value="members">Member Count</option>
         </select>
       </div>
-
-      {showSearch ? (
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            width: "100%",
-            maxWidth: "420px",
-            background: "#1a1a1a",
-            border: "1px solid #2a2a2a",
-            borderRadius: "8px",
-            padding: "10px 14px",
-          }}
-        >
-          <Search size={16} color="#555555" aria-hidden />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search clubs..."
-            style={{
-              flex: 1,
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "#ffffff",
-              fontSize: "13px",
-            }}
-          />
-        </label>
-      ) : null}
     </div>
   );
 }
@@ -345,11 +305,10 @@ function MyClubsTabCard({
         background: "#141414",
         border: "1px solid #2a2a2a",
         borderRadius: "12px",
-        padding: "20px 18px 16px",
+        padding: "18px 16px 16px",
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        minHeight: "260px",
+        height: "284px",
         boxSizing: "border-box",
       }}
     >
@@ -367,17 +326,18 @@ function MyClubsTabCard({
           name={club.name}
           abbreviation={club.abbreviation}
           logoUrl={logoUrl}
-          size={76}
+          size={70}
         />
 
         <h3
           style={{
-            margin: "14px 0 0",
-            fontSize: "20px",
+            margin: "13px 0 0",
+            fontSize: "18px",
             fontWeight: 800,
             color: "#ffffff",
             lineHeight: 1.25,
             width: "100%",
+            minHeight: "46px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             display: "-webkit-box",
@@ -388,13 +348,13 @@ function MyClubsTabCard({
           {club.name}
         </h3>
 
-        <div style={{ marginTop: "10px" }}>
+        <div style={{ marginTop: "9px", minHeight: "23px" }}>
           <span
             style={{
               display: "inline-block",
               borderRadius: "20px",
-              padding: "3px 9px",
-              fontSize: "10px",
+              padding: "3px 10px",
+              fontSize: "10.5px",
               fontWeight: 600,
               color: roleDisplay.color,
               border: `1px solid ${roleBorderColor}`,
@@ -408,35 +368,35 @@ function MyClubsTabCard({
 
         <p
           style={{
-            margin: "10px 0 0",
+            margin: "11px 0 0",
             fontSize: "11px",
             color: "#666666",
             lineHeight: 1.4,
+            minHeight: "17px",
           }}
         >
           {metadataParts.join(" · ")}
         </p>
 
-        {statusLabel ? (
-          <p
-            style={{
-              margin: "6px 0 0",
-              fontSize: "11px",
-              color: "#888888",
-              fontWeight: 500,
-            }}
-          >
-            {statusLabel}
-          </p>
-        ) : null}
+        <p
+          style={{
+            margin: "6px 0 0",
+            fontSize: "11px",
+            color: "#888888",
+            fontWeight: 500,
+            minHeight: "16px",
+          }}
+        >
+          {statusLabel ?? ""}
+        </p>
       </div>
 
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: "8px",
-          marginTop: "18px",
+          gap: "7px",
+          marginTop: "16px",
         }}
       >
         <button
@@ -447,8 +407,8 @@ function MyClubsTabCard({
             background: "#E51937",
             color: "#ffffff",
             borderRadius: "8px",
-            padding: "11px 14px",
-            fontSize: "14px",
+            padding: "10px 13px",
+            fontSize: "13.5px",
             fontWeight: 600,
             textAlign: "center",
             cursor: "pointer",
@@ -501,9 +461,10 @@ export function MyClubsGrid({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))",
+        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, 236px)",
         gap: "16px",
         alignItems: "stretch",
+        justifyContent: isMobile ? "stretch" : "start",
       }}
     >
       {clubs.map((club) => (
