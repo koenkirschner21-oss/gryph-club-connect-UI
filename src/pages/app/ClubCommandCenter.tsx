@@ -32,17 +32,24 @@ import {
   resolveClubSetupSettingsPath,
 } from "../../lib/clubProfileCompletion";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
+import { formatTaskDate } from "../../lib/taskDueUrgency";
+import {
+  executiveTaskUrgencyBadgeStyle,
+  executiveTaskUrgencyLabel,
+  getExecutiveTaskUrgency,
+} from "../../lib/executiveTaskUrgency";
+import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import {
   deduplicateMonthlyEventsByTitle,
   deduplicateUpcomingEventsByTitle,
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { supabase } from "../../lib/supabaseClient";
-import type { Club, ClubEvent, Post, RsvpCounts, Task } from "../../types";
+import type { Club, ClubEvent, Post, RsvpCounts, Task, TaskStatus } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 import { meetingNeedsRecap } from "./meetings/meetingDisplayHelpers";
 import type { ClubMeeting } from "./meetings/meetingTypes";
-import { isMeetingPast, mapMeetingRow } from "./meetings/meetingUtils";
+import { isMeetingPast, mapMeetingRow, splitDateTime } from "./meetings/meetingUtils";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
@@ -210,6 +217,438 @@ type PendingActionItem = {
   actionLabel?: string;
   onAction?: () => void;
 };
+
+type UpcomingActivityRow =
+  | {
+      kind: "event";
+      key: string;
+      sortDate: string;
+      title: string;
+      dateStr: string;
+      time?: string;
+      location?: string;
+      going: number;
+      eventId: string;
+    }
+  | {
+      kind: "meeting";
+      key: string;
+      sortDate: string;
+      title: string;
+      dateStr: string;
+      timeLabel: string;
+      locationLabel: string;
+      meetingId: string;
+    };
+
+function taskStatusPillStyle(status: TaskStatus): CSSProperties {
+  if (status === "in_progress") {
+    return {
+      background: "#2a1f00",
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+      borderRadius: "999px",
+      padding: "2px 8px",
+      fontSize: "10px",
+      fontWeight: 600,
+      flexShrink: 0,
+    };
+  }
+  if (status === "pending_review") {
+    return {
+      background: "#1a1500",
+      border: "1px solid #FFC429",
+      color: "#FFC429",
+      borderRadius: "999px",
+      padding: "2px 8px",
+      fontSize: "10px",
+      fontWeight: 600,
+      flexShrink: 0,
+    };
+  }
+  if (status === "done") {
+    return {
+      background: "#1a0a0a",
+      border: "1px solid #E51937",
+      color: "#E51937",
+      borderRadius: "999px",
+      padding: "2px 8px",
+      fontSize: "10px",
+      fontWeight: 600,
+      flexShrink: 0,
+    };
+  }
+  return {
+    background: "#222222",
+    border: "1px solid #444444",
+    color: "#888888",
+    borderRadius: "999px",
+    padding: "2px 8px",
+    fontSize: "10px",
+    fontWeight: 600,
+    flexShrink: 0,
+  };
+}
+
+function taskSourceLabel(task: Task, clubName: string): string {
+  if (task.linkedEventTitle?.trim()) return task.linkedEventTitle.trim();
+  if (task.linkedMeetingTitle?.trim()) return task.linkedMeetingTitle.trim();
+  if (task.linkedHiringTitle?.trim()) return task.linkedHiringTitle.trim();
+  return clubName;
+}
+
+function formatTaskDueLabel(task: Task): string {
+  if (!task.dueDate?.trim()) return "No due date";
+  return formatTaskDate(task.dueDate);
+}
+
+function sortTasksByUrgency(tasks: Task[]): Task[] {
+  return [...tasks].sort((left, right) => {
+    const leftUrgency = getExecutiveTaskUrgency(left.dueDate, left.status);
+    const rightUrgency = getExecutiveTaskUrgency(right.dueDate, right.status);
+    const rank = (value: ReturnType<typeof getExecutiveTaskUrgency>) => {
+      if (value === "overdue") return 0;
+      if (value === "due_today") return 1;
+      if (value === "due_this_week") return 2;
+      if (value === "upcoming") return 3;
+      return 4;
+    };
+    const urgencyDiff = rank(leftUrgency) - rank(rightUrgency);
+    if (urgencyDiff !== 0) return urgencyDiff;
+    return (left.dueDate ?? "").localeCompare(right.dueDate ?? "");
+  });
+}
+
+function ActivityTypeBadge({ label }: { label: "Event" | "Meeting" }) {
+  const isEvent = label === "Event";
+  return (
+    <span
+      style={{
+        fontSize: "9px",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        color: isEvent ? GOLD : "#aaaaaa",
+        background: isEvent ? "rgba(255, 196, 41, 0.1)" : "#1f1f1f",
+        border: `1px solid ${isEvent ? "rgba(255, 196, 41, 0.25)" : CARD_BORDER}`,
+        borderRadius: "999px",
+        padding: "2px 7px",
+        flexShrink: 0,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function CompactTaskOverviewRow({
+  task,
+  meta,
+  onClick,
+}: {
+  task: Task;
+  meta: string;
+  onClick: () => void;
+}) {
+  const urgency = getExecutiveTaskUrgency(task.dueDate, task.status);
+  const urgencyLabel = executiveTaskUrgencyLabel(urgency);
+  const urgencyStyle = executiveTaskUrgencyBadgeStyle(urgency);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "10px",
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: "8px",
+        background: "#1a1a1a",
+        border: `1px solid ${CARD_BORDER}`,
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            marginBottom: "4px",
+            minWidth: 0,
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "#ffffff",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            {task.title}
+          </p>
+          {urgencyLabel && urgencyStyle ? (
+            <span style={urgencyStyle}>{urgencyLabel}</span>
+          ) : null}
+        </div>
+        <p style={{ margin: 0, fontSize: "11px", color: "#777777", lineHeight: 1.35 }}>{meta}</p>
+      </div>
+      <span style={taskStatusPillStyle(task.status)}>
+        {TASK_STATUS_LABELS[task.status] ?? task.status}
+      </span>
+    </button>
+  );
+}
+
+function TaskOverviewColumn({
+  title,
+  emptyMessage,
+  footerLabel,
+  onFooterClick,
+  isEmpty,
+  children,
+}: {
+  title: string;
+  emptyMessage: string;
+  footerLabel: string;
+  onFooterClick: () => void;
+  isEmpty: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        background: "#111111",
+        border: `1px solid ${CARD_BORDER}`,
+        borderRadius: "8px",
+        padding: "12px",
+        minWidth: 0,
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 10px",
+          fontSize: "12px",
+          fontWeight: 700,
+          color: "#cccccc",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {title}
+      </h3>
+      {isEmpty ? (
+        <p style={{ margin: 0, fontSize: "12px", color: "#666666", lineHeight: 1.45 }}>
+          {emptyMessage}
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>{children}</div>
+      )}
+      <button
+        type="button"
+        onClick={onFooterClick}
+        style={{
+          ...textLinkStyle,
+          marginTop: "10px",
+          fontSize: "12px",
+          color: "#aaaaaa",
+        }}
+      >
+        {footerLabel} →
+      </button>
+    </div>
+  );
+}
+
+function UpcomingClubActivityRow({
+  row,
+  onManage,
+}: {
+  row: UpcomingActivityRow;
+  onManage: () => void;
+}) {
+  if (row.kind === "event") {
+    const timeLabel =
+      row.time && row.time.trim() && row.time.toUpperCase() !== "TBD"
+        ? formatEventTime12h(row.time)
+        : "Time TBD";
+    const locationLabel =
+      row.location && !isHiddenLocation(row.location) ? row.location.trim() : "Location TBD";
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "10px 12px",
+          borderRadius: "8px",
+          background: "#1a1a1a",
+          border: `1px solid ${CARD_BORDER}`,
+        }}
+      >
+        <CompactEventDateBadge dateStr={row.dateStr} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "4px",
+              minWidth: 0,
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: "14px",
+                fontWeight: 600,
+                color: "#ffffff",
+                lineHeight: 1.25,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              {row.title}
+            </p>
+            <ActivityTypeBadge label="Event" />
+          </div>
+          <p style={{ margin: 0, fontSize: "12px", color: "#777777", lineHeight: 1.35 }}>
+            {timeLabel} · {locationLabel}
+          </p>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: "6px",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: row.going > 0 ? GOLD : "#666666",
+              background: row.going > 0 ? "rgba(255, 196, 41, 0.1)" : "#111111",
+              border: `1px solid ${row.going > 0 ? "rgba(255, 196, 41, 0.25)" : CARD_BORDER}`,
+              borderRadius: "999px",
+              padding: "3px 8px",
+            }}
+          >
+            {row.going} going
+          </span>
+          <button
+            type="button"
+            onClick={onManage}
+            style={{
+              ...textLinkStyle,
+              fontSize: "12px",
+              color: "#aaaaaa",
+            }}
+          >
+            Manage →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "10px 12px",
+        borderRadius: "8px",
+        background: "#1a1a1a",
+        border: `1px solid ${CARD_BORDER}`,
+      }}
+    >
+      <CompactEventDateBadge dateStr={row.dateStr} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "4px",
+            minWidth: 0,
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "#ffffff",
+              lineHeight: 1.25,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            {row.title}
+          </p>
+          <ActivityTypeBadge label="Meeting" />
+        </div>
+        <p style={{ margin: 0, fontSize: "12px", color: "#777777", lineHeight: 1.35 }}>
+          {row.timeLabel} · {row.locationLabel}
+        </p>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          gap: "6px",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "#888888",
+            background: "#111111",
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: "999px",
+            padding: "3px 8px",
+          }}
+        >
+          Scheduled
+        </span>
+        <button
+          type="button"
+          onClick={onManage}
+          style={{
+            ...textLinkStyle,
+            fontSize: "12px",
+            color: "#aaaaaa",
+          }}
+        >
+          Manage →
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const GOLD_OUTLINED_BUTTON_STYLE: CSSProperties = {
   ...urgentOutlinedButtonStyle,
@@ -906,8 +1345,8 @@ export default function ClubCommandCenter({
   });
   const [activityItems, setActivityItems] = useState<ActivityFeedItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
-  const [needsRecapMeetings, setNeedsRecapMeetings] = useState<ClubMeeting[]>([]);
-  const [meetingsRecapLoading, setMeetingsRecapLoading] = useState(true);
+  const [clubMeetings, setClubMeetings] = useState<ClubMeeting[]>([]);
+  const [meetingsLoading, setMeetingsLoading] = useState(true);
 
   const basePath = `/app/clubs/${clubId}`;
   const eventsPath = `${basePath}/events`;
@@ -947,14 +1386,8 @@ export default function ClubCommandCenter({
   useEffect(() => {
     let cancelled = false;
 
-    async function loadMeetingsNeedingRecap() {
-      if (!canManageMeetings) {
-        setNeedsRecapMeetings([]);
-        setMeetingsRecapLoading(false);
-        return;
-      }
-
-      setMeetingsRecapLoading(true);
+    async function loadClubMeetings() {
+      setMeetingsLoading(true);
 
       const { data, error } = await supabase
         .from("club_meetings")
@@ -965,25 +1398,42 @@ export default function ClubCommandCenter({
       if (cancelled) return;
 
       if (error) {
-        console.error("Failed to load meetings for recap check:", error.message);
-        setNeedsRecapMeetings([]);
-        setMeetingsRecapLoading(false);
+        console.error("Failed to load club meetings:", error.message);
+        setClubMeetings([]);
+        setMeetingsLoading(false);
         return;
       }
 
-      const needingRecap = (data ?? [])
-        .map((row) => mapMeetingRow(row))
-        .filter((meeting) => isMeetingPast(meeting) && meetingNeedsRecap(meeting));
-
-      setNeedsRecapMeetings(needingRecap);
-      setMeetingsRecapLoading(false);
+      setClubMeetings((data ?? []).map((row) => mapMeetingRow(row)));
+      setMeetingsLoading(false);
     }
 
-    void loadMeetingsNeedingRecap();
+    void loadClubMeetings();
     return () => {
       cancelled = true;
     };
-  }, [canManageMeetings, clubId]);
+  }, [clubId]);
+
+  const needsRecapMeetings = useMemo(
+    () =>
+      canManageMeetings
+        ? clubMeetings.filter(
+            (meeting) => isMeetingPast(meeting) && meetingNeedsRecap(meeting),
+          )
+        : [],
+    [canManageMeetings, clubMeetings],
+  );
+
+  const upcomingMeetings = useMemo(
+    () =>
+      [...clubMeetings]
+        .filter((meeting) => !isMeetingPast(meeting))
+        .sort(
+          (left, right) =>
+            new Date(left.date).getTime() - new Date(right.date).getTime(),
+        ),
+    [clubMeetings],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1278,8 +1728,51 @@ export default function ClubCommandCenter({
     const sorted = [...upcomingOccurrences].sort((left, right) =>
       left.occurrenceDate.localeCompare(right.occurrenceDate),
     );
-    return deduplicateUpcomingEventsByTitle(sorted, 3);
+    return deduplicateUpcomingEventsByTitle(sorted, 5);
   }, [upcomingOccurrences]);
+
+  const previewUpcomingActivity = useMemo(() => {
+    const rows: UpcomingActivityRow[] = [];
+
+    for (const event of previewUpcomingEvents) {
+      rows.push({
+        kind: "event",
+        key: `${event.id}-${event.occurrenceDate}`,
+        sortDate: event.occurrenceDate,
+        title: event.title,
+        dateStr: event.occurrenceDate,
+        time: event.time,
+        location: event.location,
+        going: eventRsvpCounts[event.id]?.going ?? 0,
+        eventId: event.id,
+      });
+    }
+
+    for (const meeting of upcomingMeetings) {
+      const { time } = splitDateTime(meeting.date);
+      const timeLabel = time?.trim() ? formatEventTime12h(time) : "Time TBD";
+      const locationLabel = meeting.location?.trim()
+        ? meeting.location.trim()
+        : meeting.meetingLink?.trim()
+          ? "Online"
+          : "Location TBD";
+
+      rows.push({
+        kind: "meeting",
+        key: `meeting-${meeting.id}`,
+        sortDate: meeting.date,
+        title: meeting.title,
+        dateStr: meeting.date.slice(0, 10),
+        timeLabel,
+        locationLabel,
+        meetingId: meeting.id,
+      });
+    }
+
+    return rows
+      .sort((left, right) => left.sortDate.localeCompare(right.sortDate))
+      .slice(0, 3);
+  }, [previewUpcomingEvents, upcomingMeetings, eventRsvpCounts]);
 
   const profileCompletion = useMemo(
     () => computeClubProfileCompletionPercent(club, posts.length > 0, upcomingOccurrences.length > 0),
@@ -1460,8 +1953,23 @@ export default function ClubCommandCenter({
     };
   }, [upcomingOccurrences, today]);
 
+  const myTasksOverviewPreview = useMemo(
+    () => sortTasksByUrgency(myOpenAssignedTasks).slice(0, 3),
+    [myOpenAssignedTasks],
+  );
+
+  const delegatedTasksOverviewPreview = useMemo(
+    () =>
+      [...delegatedOpenTasks]
+        .sort((left, right) => (left.dueDate ?? "").localeCompare(right.dueDate ?? ""))
+        .slice(0, 3),
+    [delegatedOpenTasks],
+  );
+
+  const upcomingActivityLoading = eventsLoading || meetingsLoading;
+
   const pendingActionsLoading =
-    tasksLoading || membersLoading || hiringSnapshot.loading || meetingsRecapLoading;
+    tasksLoading || membersLoading || hiringSnapshot.loading || meetingsLoading;
 
   const delegatedTasksSublabel = useMemo(() => {
     if (delegatedOpenTasks.length === 0) {
@@ -1576,95 +2084,80 @@ export default function ClubCommandCenter({
       />
 
       <section style={sectionCardStyle}>
-        <h2 style={sectionHeading}>Upcoming Events</h2>
-        {eventsLoading ? (
+        <h2 style={sectionHeading}>Upcoming Club Activity</h2>
+        {upcomingActivityLoading ? (
           <div className="flex justify-center py-3">
-            <Spinner label="Loading upcoming events…" />
+            <Spinner label="Loading upcoming activity…" />
           </div>
-        ) : previewUpcomingEvents.length === 0 ? (
+        ) : previewUpcomingActivity.length === 0 ? (
           <p style={{ margin: 0, fontSize: "13px", color: "#666666" }}>
-            No upcoming events scheduled.
+            No upcoming club activity scheduled.
           </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {previewUpcomingEvents.map((event) => {
-              const going = eventRsvpCounts[event.id]?.going ?? 0;
-              const timeLabel =
-                event.time && event.time.trim() && event.time.toUpperCase() !== "TBD"
-                  ? formatEventTime12h(event.time)
-                  : "Time TBD";
-              const locationLabel =
-                event.location && !isHiddenLocation(event.location)
-                  ? event.location.trim()
-                  : "Location TBD";
+            {previewUpcomingActivity.map((row) => (
+              <UpcomingClubActivityRow
+                key={row.key}
+                row={row}
+                onManage={() =>
+                  navigate(
+                    row.kind === "event"
+                      ? `${eventsPath}?manageEvent=${row.eventId}`
+                      : `${meetingsPath}/${row.meetingId}`,
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-              return (
-                <div
-                  key={`${event.id}-${event.occurrenceDate}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    background: "#1a1a1a",
-                    border: `1px solid ${CARD_BORDER}`,
-                  }}
-                >
-                  <CompactEventDateBadge dateStr={event.occurrenceDate} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p
-                      style={{
-                        margin: "0 0 4px",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                        color: "#ffffff",
-                        lineHeight: 1.25,
-                      }}
-                    >
-                      {event.title}
-                    </p>
-                    <p style={{ margin: 0, fontSize: "12px", color: "#777777", lineHeight: 1.35 }}>
-                      {timeLabel} · {locationLabel}
-                    </p>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      gap: "6px",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        color: going > 0 ? GOLD : "#666666",
-                        background: going > 0 ? "rgba(255, 196, 41, 0.1)" : "#111111",
-                        border: `1px solid ${going > 0 ? "rgba(255, 196, 41, 0.25)" : CARD_BORDER}`,
-                        borderRadius: "999px",
-                        padding: "3px 8px",
-                      }}
-                    >
-                      {going} going
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`${eventsPath}?manageEvent=${event.id}`)}
-                      style={{
-                        ...textLinkStyle,
-                        fontSize: "12px",
-                        color: "#aaaaaa",
-                      }}
-                    >
-                      Manage →
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+      <section style={sectionCardStyle}>
+        <h2 style={sectionHeading}>Task Overview</h2>
+        {tasksLoading ? (
+          <div className="flex justify-center py-3">
+            <Spinner label="Loading tasks…" />
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
+              gap: "12px",
+            }}
+          >
+            <TaskOverviewColumn
+              title="Tasks Assigned to Me"
+              emptyMessage="No tasks assigned to you right now."
+              footerLabel="View My Tasks"
+              isEmpty={myTasksOverviewPreview.length === 0}
+              onFooterClick={() => navigate(`${tasksPath}?tab=assigned_to_me`)}
+            >
+              {myTasksOverviewPreview.map((task) => (
+                <CompactTaskOverviewRow
+                  key={task.id}
+                  task={task}
+                  meta={`${taskSourceLabel(task, club.name)} · ${formatTaskDueLabel(task)}`}
+                  onClick={() => onOpenTask(task)}
+                />
+              ))}
+            </TaskOverviewColumn>
+            <TaskOverviewColumn
+              title="Tasks I Assigned"
+              emptyMessage="You haven't assigned any tasks yet."
+              footerLabel="Track Tasks"
+              isEmpty={delegatedTasksOverviewPreview.length === 0}
+              onFooterClick={() => navigate(`${tasksPath}?tab=assigned_by_me`)}
+            >
+              {delegatedTasksOverviewPreview.map((task) => (
+                <CompactTaskOverviewRow
+                  key={task.id}
+                  task={task}
+                  meta={`${task.assigneeName ?? "Unassigned"} · ${formatTaskDueLabel(task)}`}
+                  onClick={() => onOpenTask(task)}
+                />
+              ))}
+            </TaskOverviewColumn>
           </div>
         )}
       </section>
