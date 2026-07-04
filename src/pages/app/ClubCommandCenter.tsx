@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -14,11 +15,15 @@ import {
   ClipboardList,
   Megaphone,
   UserPlus,
-  Users,
 } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
-import { isTaskAwaitingReviewFromUser } from "../../lib/taskCompletion";
+import {
+  isOpenAssigneeTask,
+  isOpenDelegatedTask,
+  isTaskAwaitingReviewFromUser,
+} from "../../lib/taskCompletion";
 import { getClubInitials } from "../../lib/clubUtils";
+import { formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import {
@@ -35,6 +40,9 @@ import {
 import { supabase } from "../../lib/supabaseClient";
 import type { Club, ClubEvent, Post, RsvpCounts, Task } from "../../types";
 import Spinner from "../../components/ui/Spinner";
+import { meetingNeedsRecap } from "./meetings/meetingDisplayHelpers";
+import type { ClubMeeting } from "./meetings/meetingTypes";
+import { isMeetingPast, mapMeetingRow } from "./meetings/meetingUtils";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
@@ -234,10 +242,57 @@ function CompactEventDateBadge({ dateStr }: { dateStr: string }) {
   );
 }
 
+function ProfileSetupBanner({
+  completion,
+  missingLabels,
+  onComplete,
+}: {
+  completion: number;
+  missingLabels: string[];
+  onComplete: () => void;
+}) {
+  return (
+    <div
+      style={{
+        ...sectionCardStyle,
+        background: "rgba(255, 196, 41, 0.08)",
+        border: "1px solid rgba(255, 196, 41, 0.28)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p
+          style={{
+            margin: "0 0 4px",
+            fontSize: "13px",
+            fontWeight: 700,
+            color: GOLD,
+          }}
+        >
+          Profile setup incomplete ({completion}%)
+        </p>
+        <p style={{ margin: 0, fontSize: "12px", color: "#cccccc", lineHeight: 1.45 }}>
+          {missingLabels.length > 0
+            ? `Still needed: ${missingLabels.join(", ")}`
+            : "Finish your club profile so members can find and trust your page."}
+        </p>
+      </div>
+      <button type="button" style={noteActionButtonStyle} onClick={onComplete}>
+        Complete Setup
+      </button>
+    </div>
+  );
+}
+
 function CommandCenterStatCard({
   label,
   value,
   sublabel,
+  actionLabel,
   icon,
   accentColor,
   iconColor,
@@ -246,6 +301,7 @@ function CommandCenterStatCard({
   label: string;
   value: string | number;
   sublabel: string;
+  actionLabel?: string;
   icon: ReactNode;
   accentColor: string;
   iconColor?: string;
@@ -314,6 +370,19 @@ function CommandCenterStatCard({
         {value}
       </p>
       <p style={{ fontSize: "12px", color: "#555555", margin: 0, lineHeight: 1.35 }}>{sublabel}</p>
+      {actionLabel ? (
+        <p
+          style={{
+            fontSize: "12px",
+            color: accentColor,
+            margin: "6px 0 0",
+            lineHeight: 1.35,
+            fontWeight: 600,
+          }}
+        >
+          {actionLabel} →
+        </p>
+      ) : null}
     </>
   );
 
@@ -334,7 +403,13 @@ function CommandCenterStatCard({
   return <div style={style}>{content}</div>;
 }
 
-function ClubIdentityHeader({ club }: { club: Club }) {
+function ClubIdentityHeader({
+  club,
+  roleContextLabel,
+}: {
+  club: Club;
+  roleContextLabel?: string;
+}) {
   const university = club.university?.trim() || "University of Guelph";
 
   return (
@@ -384,18 +459,44 @@ function ClubIdentityHeader({ club }: { club: Club }) {
         </div>
       )}
       <div style={{ minWidth: 0, flex: 1 }}>
-        <p
+        <div
           style={{
-            margin: "0 0 6px",
-            fontSize: "10px",
-            fontWeight: 700,
-            color: ACCENT_RED,
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginBottom: "6px",
           }}
         >
-          Club Command Center
-        </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "10px",
+              fontWeight: 700,
+              color: ACCENT_RED,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+            }}
+          >
+            Club Command Center
+          </p>
+          {roleContextLabel ? (
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 600,
+                color: "#888888",
+                background: "#1f1f1f",
+                border: `1px solid ${CARD_BORDER}`,
+                borderRadius: "999px",
+                padding: "2px 8px",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {roleContextLabel}
+            </span>
+          ) : null}
+        </div>
         <h1
           style={{
             margin: 0,
@@ -577,12 +678,14 @@ function needsAttentionButtonStyle(itemId: string): CSSProperties {
 function PendingActionsSection({
   items,
   loading,
+  sectionRef,
 }: {
   items: PendingActionItem[];
   loading: boolean;
+  sectionRef?: React.RefObject<HTMLElement | null>;
 }) {
   return (
-    <section style={sectionCardStyle}>
+    <section ref={sectionRef} id="pending-actions" style={sectionCardStyle}>
       <h2
         style={{
           ...sectionHeading,
@@ -792,6 +895,7 @@ export default function ClubCommandCenter({
   const { user } = useAuthContext();
   const memberAccess = useClubMemberAccess(clubId);
   const { pendingMembers, loading: membersLoading } = useClubMembers(clubId);
+  const pendingActionsRef = useRef<HTMLElement | null>(null);
 
   const [hiringSnapshot, setHiringSnapshot] = useState<HiringSnapshot>({
     openRolesCount: 0,
@@ -802,9 +906,12 @@ export default function ClubCommandCenter({
   });
   const [activityItems, setActivityItems] = useState<ActivityFeedItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
+  const [needsRecapMeetings, setNeedsRecapMeetings] = useState<ClubMeeting[]>([]);
+  const [meetingsRecapLoading, setMeetingsRecapLoading] = useState(true);
 
   const basePath = `/app/clubs/${clubId}`;
   const eventsPath = `${basePath}/events`;
+  const meetingsPath = `${basePath}/meetings`;
   const announcementsPath = `${basePath}/announcements`;
   const tasksPath = `${basePath}/tasks`;
   const membersPath = `${basePath}/members`;
@@ -813,7 +920,70 @@ export default function ClubCommandCenter({
   const analyticsPath = `${basePath}/analytics`;
   const setupSettingsPath = resolveClubSetupSettingsPath(settingsPath, club);
 
+  const canManageMeetings =
+    memberAccess.isPresident || memberAccess.can("manage_meetings");
+
   const openSetupSettings = () => navigate(setupSettingsPath);
+
+  const scrollToPendingActions = () => {
+    pendingActionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const roleContextLabel = useMemo(() => {
+    if (memberAccess.loading) return undefined;
+    const label = formatAccessLevelWithMemberTitle(
+      memberAccess.accessLevel,
+      memberAccess.role,
+      memberAccess.memberTitle,
+    );
+    return `${label} View`;
+  }, [
+    memberAccess.accessLevel,
+    memberAccess.loading,
+    memberAccess.memberTitle,
+    memberAccess.role,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMeetingsNeedingRecap() {
+      if (!canManageMeetings) {
+        setNeedsRecapMeetings([]);
+        setMeetingsRecapLoading(false);
+        return;
+      }
+
+      setMeetingsRecapLoading(true);
+
+      const { data, error } = await supabase
+        .from("club_meetings")
+        .select("*")
+        .eq("club_id", clubId)
+        .neq("status", "cancelled");
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Failed to load meetings for recap check:", error.message);
+        setNeedsRecapMeetings([]);
+        setMeetingsRecapLoading(false);
+        return;
+      }
+
+      const needingRecap = (data ?? [])
+        .map((row) => mapMeetingRow(row))
+        .filter((meeting) => isMeetingPast(meeting) && meetingNeedsRecap(meeting));
+
+      setNeedsRecapMeetings(needingRecap);
+      setMeetingsRecapLoading(false);
+    }
+
+    void loadMeetingsNeedingRecap();
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageMeetings, clubId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1123,12 +1293,49 @@ export default function ClubCommandCenter({
 
   const pendingJoinCount = pendingMembers.length;
   const pendingApplicationCount = hiringSnapshot.pendingApplicationsCount;
-  const pendingRequestsTotal = pendingJoinCount + pendingApplicationCount;
 
   const needsReviewTasks = useMemo(() => {
     if (!user?.id) return [];
     return tasks.filter((task) => isTaskAwaitingReviewFromUser(task, user.id));
   }, [tasks, user?.id]);
+
+  const myOpenAssignedTasks = useMemo(() => {
+    if (!user?.id) return [];
+    return openTasks.filter((task) => isOpenAssigneeTask(task, user.id));
+  }, [openTasks, user?.id]);
+
+  const myOverdueAssignedTasks = useMemo(
+    () =>
+      myOpenAssignedTasks.filter((task) => {
+        const due = parseTaskDueDate(task.dueDate);
+        return due != null && due.getTime() < today.getTime();
+      }),
+    [myOpenAssignedTasks, today],
+  );
+
+  const delegatedOpenTasks = useMemo(() => {
+    if (!user?.id) return [];
+    return openTasks.filter((task) => isOpenDelegatedTask(task, user.id));
+  }, [openTasks, user?.id]);
+
+  const delegatedOverdueTasks = useMemo(
+    () =>
+      delegatedOpenTasks.filter((task) => {
+        const due = parseTaskDueDate(task.dueDate);
+        return due != null && due.getTime() < today.getTime();
+      }),
+    [delegatedOpenTasks, today],
+  );
+
+  const unassignedDelegatedTasks = useMemo(() => {
+    if (!user?.id) return [];
+    return openTasks.filter(
+      (task) =>
+        task.createdBy === user.id &&
+        !task.assignedTo &&
+        (task.status === "todo" || task.status === "in_progress"),
+    );
+  }, [openTasks, user?.id]);
 
   const overdueTasks = useMemo(
     () =>
@@ -1139,7 +1346,7 @@ export default function ClubCommandCenter({
     [openTasks, today],
   );
 
-  const pendingActionsItems = useMemo(() => {
+  const pendingActionsAll = useMemo(() => {
     const items: PendingActionItem[] = [];
 
     if (memberAccess.canApproveMembers && pendingJoinCount > 0) {
@@ -1157,18 +1364,6 @@ export default function ClubCommandCenter({
         label: `${pendingApplicationCount} pending application${pendingApplicationCount === 1 ? "" : "s"}`,
         actionLabel: "Review",
         onAction: () => navigate(`${recruitingPath}?tab=applications`),
-      });
-    }
-
-    if (memberAccess.canManageClubSettings && profileCompletion < 100) {
-      items.push({
-        id: "profile-setup",
-        label:
-          profileMissingLabels.length > 0
-            ? `Profile ${profileCompletion}% complete — missing ${profileMissingLabels.join(", ")}`
-            : `Profile ${profileCompletion}% complete`,
-        actionLabel: "Complete Setup",
-        onAction: openSetupSettings,
       });
     }
 
@@ -1190,6 +1385,15 @@ export default function ClubCommandCenter({
       });
     }
 
+    if (canManageMeetings && needsRecapMeetings.length > 0) {
+      items.push({
+        id: "meeting-recaps",
+        label: `${needsRecapMeetings.length} meeting${needsRecapMeetings.length === 1 ? "" : "s"} need recap`,
+        actionLabel: "Add Recap",
+        onAction: () => navigate(meetingsPath),
+      });
+    }
+
     for (const event of previewUpcomingEvents) {
       const going = eventRsvpCounts[event.id]?.going ?? 0;
       const eventDate = startOfDay(new Date(`${event.occurrenceDate}T12:00:00`));
@@ -1206,16 +1410,15 @@ export default function ClubCommandCenter({
       }
     }
 
-    return items.slice(0, 8);
+    return items;
   }, [
-    memberAccess.canManageClubSettings,
     memberAccess.canApproveMembers,
     pendingJoinCount,
     pendingApplicationCount,
-    profileCompletion,
-    profileMissingLabels,
     overdueTasks.length,
     needsReviewTasks,
+    canManageMeetings,
+    needsRecapMeetings.length,
     previewUpcomingEvents,
     eventRsvpCounts,
     today,
@@ -1223,10 +1426,22 @@ export default function ClubCommandCenter({
     membersPath,
     recruitingPath,
     tasksPath,
+    meetingsPath,
     eventsPath,
-    openSetupSettings,
     onOpenTask,
   ]);
+
+  const pendingActionsItems = useMemo(
+    () => pendingActionsAll.slice(0, 8),
+    [pendingActionsAll],
+  );
+
+  const pendingActionsCount = pendingActionsAll.length;
+
+  const nextUpcomingEvent = previewUpcomingEvents[0] ?? null;
+
+  const showProfileSetupBanner =
+    memberAccess.canManageClubSettings && profileCompletion < 100;
 
   const upcomingReminderEvent = useMemo(() => {
     const eventInThreeDays = upcomingOccurrences.find((event) => {
@@ -1245,11 +1460,38 @@ export default function ClubCommandCenter({
     };
   }, [upcomingOccurrences, today]);
 
-  const pendingActionsLoading = tasksLoading || membersLoading || hiringSnapshot.loading;
+  const pendingActionsLoading =
+    tasksLoading || membersLoading || hiringSnapshot.loading || meetingsRecapLoading;
+
+  const delegatedTasksSublabel = useMemo(() => {
+    if (delegatedOpenTasks.length === 0) {
+      return "No delegated tasks yet";
+    }
+    const parts: string[] = [];
+    if (delegatedOverdueTasks.length > 0) {
+      parts.push(`${delegatedOverdueTasks.length} overdue`);
+    }
+    if (unassignedDelegatedTasks.length > 0) {
+      parts.push(`${unassignedDelegatedTasks.length} unassigned`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : "Open delegated tasks";
+  }, [
+    delegatedOpenTasks.length,
+    delegatedOverdueTasks.length,
+    unassignedDelegatedTasks.length,
+  ]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <ClubIdentityHeader club={club} />
+      <ClubIdentityHeader club={club} roleContextLabel={roleContextLabel} />
+
+      {showProfileSetupBanner ? (
+        <ProfileSetupBanner
+          completion={profileCompletion}
+          missingLabels={profileMissingLabels}
+          onComplete={openSetupSettings}
+        />
+      ) : null}
 
       <section>
         {pendingActionsLoading ? (
@@ -1266,54 +1508,72 @@ export default function ClubCommandCenter({
             }}
           >
             <CommandCenterStatCard
-              label="Profile"
-              value={`${profileCompletion}%`}
-              sublabel={profileCompletion >= 100 ? "Setup complete" : "Complete your club profile"}
-              icon={<Users size={18} aria-hidden />}
-              accentColor={profileCompletion >= 100 ? "#4ade80" : GOLD}
-              iconColor={profileCompletion >= 100 ? "#4ade80" : GOLD}
-              onClick={openSetupSettings}
+              label="Pending Actions"
+              value={pendingActionsCount}
+              sublabel={
+                pendingActionsCount > 0
+                  ? `${pendingActionsCount} need${pendingActionsCount === 1 ? "s" : ""} review`
+                  : "All caught up"
+              }
+              actionLabel="Review"
+              icon={<ClipboardList size={18} aria-hidden />}
+              accentColor={pendingActionsCount > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
+              iconColor={pendingActionsCount > 0 ? ACCENT_RED : "#888888"}
+              onClick={scrollToPendingActions}
             />
             <CommandCenterStatCard
-              label="Events"
+              label="Upcoming Activity"
               value={eventsThisMonthCount}
-              sublabel="Scheduled this month"
+              sublabel={
+                nextUpcomingEvent
+                  ? `Next: ${nextUpcomingEvent.title}`
+                  : "Nothing scheduled this month"
+              }
+              actionLabel={nextUpcomingEvent ? "Manage Events" : "View Calendar"}
               icon={<Calendar size={18} aria-hidden />}
               accentColor={GOLD}
               iconColor={GOLD}
               onClick={() => navigate(eventsPath)}
             />
             <CommandCenterStatCard
-              label="Tasks"
-              value={openTasks.length}
-              sublabel={overdueTasks.length > 0 ? `${overdueTasks.length} overdue` : "Open tasks"}
+              label="Tasks Assigned to Me"
+              value={myOpenAssignedTasks.length}
+              sublabel={
+                myOverdueAssignedTasks.length > 0
+                  ? `${myOverdueAssignedTasks.length} overdue`
+                  : myOpenAssignedTasks.length > 0
+                    ? "Open assigned tasks"
+                    : "No open tasks"
+              }
+              actionLabel="View My Tasks"
               icon={<CheckSquare size={18} aria-hidden />}
-              accentColor={overdueTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
-              iconColor={overdueTasks.length > 0 ? ACCENT_RED : "#888888"}
-              onClick={() => navigate(tasksPath)}
+              accentColor={
+                myOverdueAssignedTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER
+              }
+              iconColor={myOverdueAssignedTasks.length > 0 ? ACCENT_RED : "#888888"}
+              onClick={() => navigate(`${tasksPath}?tab=assigned_to_me`)}
             />
             <CommandCenterStatCard
-              label="Pending"
-              value={pendingRequestsTotal}
-              sublabel={
-                pendingRequestsTotal > 0 ? "Needs your review" : "Requests & applications"
+              label="Tasks I Assigned"
+              value={delegatedOpenTasks.length}
+              sublabel={delegatedTasksSublabel}
+              actionLabel="Track Tasks"
+              icon={<CheckSquare size={18} aria-hidden />}
+              accentColor={
+                delegatedOverdueTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER
               }
-              icon={<ClipboardList size={18} aria-hidden />}
-              accentColor={pendingRequestsTotal > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER}
-              iconColor={pendingRequestsTotal > 0 ? ACCENT_RED : "#888888"}
-              onClick={() =>
-                navigate(
-                  pendingJoinCount > 0
-                    ? `${membersPath}?tab=pending`
-                    : `${recruitingPath}?tab=applications`,
-                )
-              }
+              iconColor={delegatedOverdueTasks.length > 0 ? ACCENT_RED : "#888888"}
+              onClick={() => navigate(`${tasksPath}?tab=assigned_by_me`)}
             />
           </div>
         )}
       </section>
 
-      <PendingActionsSection items={pendingActionsItems} loading={pendingActionsLoading} />
+      <PendingActionsSection
+        items={pendingActionsItems}
+        loading={pendingActionsLoading}
+        sectionRef={pendingActionsRef}
+      />
 
       <section style={sectionCardStyle}>
         <h2 style={sectionHeading}>Upcoming Events</h2>

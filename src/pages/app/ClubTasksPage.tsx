@@ -787,6 +787,17 @@ export default function ClubTasksPage() {
   }, [canManageTasks, assignmentTab]);
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "assigned_by_me" && canManageTasks) {
+      setAssignmentTab("assigned_by_me");
+      return;
+    }
+    if (tab === "assigned_to_me") {
+      setAssignmentTab("assigned_to_me");
+    }
+  }, [searchParams, canManageTasks]);
+
+  useEffect(() => {
     setActiveQuickFilter("all");
   }, [assignmentTab]);
 
