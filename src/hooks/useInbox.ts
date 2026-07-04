@@ -8,6 +8,7 @@ import {
   type InboxFilter,
   type InboxMessage,
 } from "../lib/inboxUtils";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 export interface UseInboxReturn {
   messages: InboxMessage[];
@@ -64,25 +65,28 @@ export function useInbox(): UseInboxReturn {
   useEffect(() => {
     if (!userId) return;
 
-    let channel: RealtimeChannel | null = supabase
-      .channel(`inbox:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inbox_messages",
-          filter: `recipient_id=eq.${userId}`,
-        },
-        () => {
-          void fetchMessages();
-        },
-      )
-      .subscribe();
+    let channel: RealtimeChannel | null = supabase.channel(
+      uniqueRealtimeTopic(`inbox:${userId}`),
+    );
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "inbox_messages",
+        filter: `recipient_id=eq.${userId}`,
+      },
+      () => {
+        void fetchMessages();
+      },
+    );
+
+    channel.subscribe();
 
     return () => {
       if (channel) {
-        supabase.removeChannel(channel);
+        removeRealtimeChannel(supabase, channel);
         channel = null;
       }
     };

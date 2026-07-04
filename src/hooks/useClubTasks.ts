@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTaskType } from "../lib/taskTypes";
 import type { Task, TaskStatus, TaskPriority, TaskType } from "../types";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 const TASK_SELECT = `
   id,
@@ -237,33 +238,39 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
     if (!clubId) return;
 
     if (realtimeChannelRef.current) {
-      supabase.removeChannel(realtimeChannelRef.current);
+      removeRealtimeChannel(supabase, realtimeChannelRef.current);
       realtimeChannelRef.current = null;
     }
 
-    const channel = supabase
-      .channel(`tasks:club:${clubId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tasks",
-          filter: `club_id=eq.${clubId}`,
-        },
-        () => {
-          refresh();
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel(uniqueRealtimeTopic(`tasks:club:${clubId}`));
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "tasks",
+        filter: `club_id=eq.${clubId}`,
+      },
+      () => {
+        refresh();
+      },
+    );
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.error("Tasks realtime channel error for club:", clubId);
+        refresh();
+      }
+    });
 
     realtimeChannelRef.current = channel;
 
     return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
+      if (realtimeChannelRef.current === channel) {
         realtimeChannelRef.current = null;
       }
+      removeRealtimeChannel(supabase, channel);
     };
   }, [clubId, refresh]);
 

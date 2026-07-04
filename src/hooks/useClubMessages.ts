@@ -3,6 +3,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { Message } from "../types";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 /** Map a Supabase `messages` row (joined with profiles) to our Message type. */
 function mapMessageRow(row: Record<string, unknown>): Message {
@@ -98,40 +99,46 @@ export function useClubMessages(
   useEffect(() => {
     if (!clubId) {
       if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
+        removeRealtimeChannel(supabase, realtimeChannelRef.current);
         realtimeChannelRef.current = null;
       }
       return;
     }
 
     if (realtimeChannelRef.current) {
-      supabase.removeChannel(realtimeChannelRef.current);
+      removeRealtimeChannel(supabase, realtimeChannelRef.current);
       realtimeChannelRef.current = null;
     }
 
-    const channel = supabase
-      .channel(`messages:club:${clubId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "messages",
-          filter: `club_id=eq.${clubId}`,
-        },
-        () => {
-          refresh();
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel(uniqueRealtimeTopic(`messages:club:${clubId}`));
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "messages",
+        filter: `club_id=eq.${clubId}`,
+      },
+      () => {
+        refresh();
+      },
+    );
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.error("Messages realtime channel error for club:", clubId);
+        refresh();
+      }
+    });
 
     realtimeChannelRef.current = channel;
 
     return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
+      if (realtimeChannelRef.current === channel) {
         realtimeChannelRef.current = null;
       }
+      removeRealtimeChannel(supabase, channel);
     };
   }, [clubId, refresh]);
 

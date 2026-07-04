@@ -20,6 +20,7 @@ import {
   hasSelectedVisibilityTargets,
   selectedVisibilityPayload,
 } from "../../lib/selectedVisibility";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../../lib/realtimeChannels";
 import {
   fetchPostViewCountsForClub,
   recordAnnouncementView,
@@ -537,19 +538,20 @@ export default function ClubAnnouncementsPage() {
     if (!clubId || posts.length === 0) return;
 
     const postIds = posts.map((post) => post.id);
-    const channel = supabase
-      .channel(`club-post-reactions:${clubId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "post_reactions" },
-        () => {
-          void reloadReactionMeta(postIds);
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel(uniqueRealtimeTopic(`club-post-reactions:${clubId}`));
+
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "post_reactions" },
+      () => {
+        void reloadReactionMeta(postIds);
+      },
+    );
+
+    channel.subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      removeRealtimeChannel(supabase, channel);
     };
   }, [clubId, posts, reloadReactionMeta]);
 

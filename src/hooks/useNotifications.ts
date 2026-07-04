@@ -3,6 +3,7 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
 import type { Notification } from "../types";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 const notificationsRealtimeOwnersByUserId = new Map<string, number>();
 const notificationsRealtimeByUserId = new Map<
@@ -18,7 +19,7 @@ function teardownNotificationsRealtimeForUser(userId: string): void {
   entry.timeoutId = null;
 
   if (entry.channel) {
-    supabase.removeChannel(entry.channel);
+    removeRealtimeChannel(supabase, entry.channel);
     entry.channel = null;
   }
 }
@@ -170,12 +171,12 @@ export function useNotificationsSubscription(): UseNotificationsReturn {
       entry.timeoutId = null;
 
       if (entry.channel) {
-        supabase.removeChannel(entry.channel);
+        removeRealtimeChannel(supabase, entry.channel);
         entry.channel = null;
       }
 
       const channel = supabase
-        .channel(`notifications:${userId}`)
+        .channel(uniqueRealtimeTopic(`notifications:${userId}`))
         .on(
           "postgres_changes",
           {

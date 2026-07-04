@@ -42,6 +42,7 @@ import {
 import { loadWorkspaceBadgeCounts } from "../../lib/workspaceBadgeCounts";
 import type { WorkspaceNavKey } from "../../lib/workspaceNavVisibility";
 import { formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../../lib/realtimeChannels";
 import Spinner from "../ui/Spinner";
 
 const workspaceLinks: {
@@ -345,8 +346,11 @@ export default function WorkspaceLayout() {
   useEffect(() => {
     if (!user?.id || !resolvedClubId) return;
 
-    const channel: RealtimeChannel = supabase
-      .channel(`workspace-badges:${resolvedClubId}:${user.id}`)
+    const channel: RealtimeChannel = supabase.channel(
+      uniqueRealtimeTopic(`workspace-badges:${resolvedClubId}:${user.id}`),
+    );
+
+    channel
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "direct_messages" },
@@ -424,11 +428,17 @@ export default function WorkspaceLayout() {
         () => {
           void loadBadgeCounts();
         },
-      )
-      .subscribe();
+      );
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.error("Workspace badges realtime channel error for club:", resolvedClubId);
+        void loadBadgeCounts();
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      removeRealtimeChannel(supabase, channel);
     };
   }, [loadBadgeCounts, resolvedClubId, user?.id]);
 

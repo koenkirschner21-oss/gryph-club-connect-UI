@@ -7,6 +7,7 @@ import { useAuthContext } from "../../context/useAuthContext";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { parseNotificationDisplay } from "../../lib/parseNotificationDisplay";
 import type { Notification, NotificationType } from "../../types";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../../lib/realtimeChannels";
 
 const openListeners = new Set<() => void>();
 const unreadRefreshListeners = new Set<() => void>();
@@ -477,8 +478,11 @@ export default function NotificationsDropdown() {
       }
     };
 
-    const channel = supabase
-      .channel(`notifications-dropdown:${userId}`)
+    const channel = supabase.channel(
+      uniqueRealtimeTopic(`notifications-dropdown:${userId}`),
+    );
+
+    channel
       .on(
         "postgres_changes",
         {
@@ -519,10 +523,10 @@ export default function NotificationsDropdown() {
     realtimeChannelRef.current = channel;
 
     return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
+      if (realtimeChannelRef.current === channel) {
         realtimeChannelRef.current = null;
       }
+      removeRealtimeChannel(supabase, channel);
     };
   }, [fetchNotifications, syncUnreadCount, userId]);
 

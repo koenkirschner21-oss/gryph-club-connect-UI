@@ -25,6 +25,7 @@ import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
 import { normalizeInboxUiType } from "../../components/inbox/inboxMessageUi";
 import { supabase } from "../../lib/supabaseClient";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../../lib/realtimeChannels";
 import Card from "../../components/ui/Card";
 import Spinner from "../../components/ui/Spinner";
 import { useDashboardEvents, type DashboardEvent } from "../../hooks/useDashboardEvents";
@@ -507,28 +508,31 @@ export default function DashboardPage() {
   useEffect(() => {
     if (authLoading || !user?.id) return;
 
-    const channel = supabase
-      .channel(`dashboard-notifications-count:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          void fetchUnreadNotificationCount();
-        },
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          void fetchUnreadNotificationCount();
-        }
-      });
+    const channel = supabase.channel(
+      uniqueRealtimeTopic(`dashboard-notifications-count:${user.id}`),
+    );
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      },
+      () => {
+        void fetchUnreadNotificationCount();
+      },
+    );
+
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        void fetchUnreadNotificationCount();
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      removeRealtimeChannel(supabase, channel);
     };
   }, [authLoading, fetchUnreadNotificationCount, user?.id]);
 

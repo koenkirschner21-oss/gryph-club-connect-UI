@@ -7,6 +7,7 @@ import { uploadImage } from "../lib/uploadImage";
 import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import { useAuthContext } from "../context/useAuthContext";
 import type { MemberRole, NotificationType } from "../types";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 const STORAGE_BUCKET = "announcement-attachments";
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -726,48 +727,52 @@ export function useConversations(
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = supabase
-      .channel(`new-conversations:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "conversation_members",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          void loadConversations();
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel(uniqueRealtimeTopic(`new-conversations:${user.id}`));
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "conversation_members",
+        filter: `user_id=eq.${user.id}`,
+      },
+      () => {
+        void loadConversations();
+      },
+    );
+
+    channel.subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      removeRealtimeChannel(supabase, channel);
     };
   }, [loadConversations, user?.id]);
 
   useEffect(() => {
     if (!clubId || !user?.id) return;
 
-    const channel = supabase
-      .channel(`conversations-refresh:${clubId}:${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "conversations",
-          filter: `club_id=eq.${clubId}`,
-        },
-        () => {
-          void loadConversations();
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel(
+      uniqueRealtimeTopic(`conversations-refresh:${clubId}:${user.id}`),
+    );
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "conversations",
+        filter: `club_id=eq.${clubId}`,
+      },
+      () => {
+        void loadConversations();
+      },
+    );
+
+    channel.subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      removeRealtimeChannel(supabase, channel);
     };
   }, [clubId, loadConversations, user?.id]);
 
@@ -859,12 +864,15 @@ export function useConversations(
     if (!activeConversationId) return;
 
     if (messagesChannelRef.current) {
-      supabase.removeChannel(messagesChannelRef.current);
+      removeRealtimeChannel(supabase, messagesChannelRef.current);
       messagesChannelRef.current = null;
     }
 
-    const channel = supabase
-      .channel(`direct_messages:${activeConversationId}`)
+    const channel = supabase.channel(
+      uniqueRealtimeTopic(`direct_messages:${activeConversationId}`),
+    );
+
+    channel
       .on(
         "postgres_changes",
         {
@@ -914,16 +922,17 @@ export function useConversations(
           );
           void loadConversations();
         },
-      )
-      .subscribe();
+      );
+
+    channel.subscribe();
 
     messagesChannelRef.current = channel;
 
     return () => {
-      if (messagesChannelRef.current) {
-        supabase.removeChannel(messagesChannelRef.current);
+      if (messagesChannelRef.current === channel) {
         messagesChannelRef.current = null;
       }
+      removeRealtimeChannel(supabase, channel);
     };
   }, [activeConversationId, loadConversations, user?.id]);
 
@@ -931,33 +940,36 @@ export function useConversations(
     if (!activeConversationId) return;
 
     if (pollsChannelRef.current) {
-      supabase.removeChannel(pollsChannelRef.current);
+      removeRealtimeChannel(supabase, pollsChannelRef.current);
       pollsChannelRef.current = null;
     }
 
-    const channel = supabase
-      .channel(`chat_polls:${activeConversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "chat_polls",
-          filter: `conversation_id=eq.${activeConversationId}`,
-        },
-        () => {
-          void loadPolls(activeConversationId);
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel(
+      uniqueRealtimeTopic(`chat_polls:${activeConversationId}`),
+    );
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "chat_polls",
+        filter: `conversation_id=eq.${activeConversationId}`,
+      },
+      () => {
+        void loadPolls(activeConversationId);
+      },
+    );
+
+    channel.subscribe();
 
     pollsChannelRef.current = channel;
 
     return () => {
-      if (pollsChannelRef.current) {
-        supabase.removeChannel(pollsChannelRef.current);
+      if (pollsChannelRef.current === channel) {
         pollsChannelRef.current = null;
       }
+      removeRealtimeChannel(supabase, channel);
     };
   }, [activeConversationId, loadPolls]);
 

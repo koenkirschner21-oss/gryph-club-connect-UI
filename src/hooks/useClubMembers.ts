@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { normalizeMembershipType } from "../lib/clubJoinUtils";
 import type { ClubMember, MemberRole, MembershipType, AccessLevel } from "../types";
 import { parseJoinAnswers } from "../lib/clubJoinUtils";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 /** Map a joined club_members + profiles row to our ClubMember type. */
 function mapMemberRow(row: Record<string, unknown>): ClubMember {
@@ -64,6 +66,7 @@ export function useClubMembers(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -155,26 +158,44 @@ export function useClubMembers(
   }, [clubId, refreshKey]);
 
   useEffect(() => {
-    if (!clubId) return;
+    if (!clubId) {
+      removeRealtimeChannel(supabase, realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+      return;
+    }
 
-    const channel = supabase
-      .channel(`club-members:${clubId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "club_members",
-          filter: `club_id=eq.${clubId}`,
-        },
-        () => {
-          refresh();
-        },
-      )
-      .subscribe();
+    removeRealtimeChannel(supabase, realtimeChannelRef.current);
+    realtimeChannelRef.current = null;
+
+    const channel = supabase.channel(uniqueRealtimeTopic(`club-members:${clubId}`));
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "club_members",
+        filter: `club_id=eq.${clubId}`,
+      },
+      () => {
+        refresh();
+      },
+    );
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.error("Club members realtime channel error for club:", clubId);
+        refresh();
+      }
+    });
+
+    realtimeChannelRef.current = channel;
 
     return () => {
-      void supabase.removeChannel(channel);
+      if (realtimeChannelRef.current === channel) {
+        realtimeChannelRef.current = null;
+      }
+      removeRealtimeChannel(supabase, channel);
     };
   }, [clubId, refresh]);
 

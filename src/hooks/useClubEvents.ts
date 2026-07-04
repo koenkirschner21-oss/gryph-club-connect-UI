@@ -5,6 +5,7 @@ import { useAuthContext } from "../context/useAuthContext";
 import type { ClubEvent } from "../types";
 import { normalizeVisibility } from "../lib/contentVisibility";
 import { normalizeAccessLevelArray, normalizeUuidArray } from "../lib/selectedVisibility";
+import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 /** Map a Supabase `events` row to our ClubEvent type. */
 function mapEventRow(row: Record<string, unknown>): ClubEvent {
@@ -126,33 +127,39 @@ export function useClubEvents(clubId: string | undefined): UseClubEventsReturn {
     if (!clubId) return;
 
     if (realtimeChannelRef.current) {
-      supabase.removeChannel(realtimeChannelRef.current);
+      removeRealtimeChannel(supabase, realtimeChannelRef.current);
       realtimeChannelRef.current = null;
     }
 
-    const channel = supabase
-      .channel(`events:club:${clubId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "events",
-          filter: `club_id=eq.${clubId}`,
-        },
-        () => {
-          refresh();
-        },
-      )
-      .subscribe();
+    const channel = supabase.channel(uniqueRealtimeTopic(`events:club:${clubId}`));
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "events",
+        filter: `club_id=eq.${clubId}`,
+      },
+      () => {
+        refresh();
+      },
+    );
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.error("Events realtime channel error for club:", clubId);
+        refresh();
+      }
+    });
 
     realtimeChannelRef.current = channel;
 
     return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
+      if (realtimeChannelRef.current === channel) {
         realtimeChannelRef.current = null;
       }
+      removeRealtimeChannel(supabase, channel);
     };
   }, [clubId, refresh]);
 
