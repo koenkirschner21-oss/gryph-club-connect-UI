@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Calendar, CheckCircle2, Megaphone, Users, Briefcase, Bell } from "lucide-react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuthContext } from "../../context/useAuthContext";
@@ -121,94 +121,6 @@ function resolveNotificationLink(notification: Notification): string | null {
   }
 }
 
-type NotificationGroupId =
-  | "messages"
-  | "membership"
-  | "events"
-  | "work"
-  | "announcements"
-  | "claims"
-  | "other";
-
-const GROUP_ORDER: NotificationGroupId[] = [
-  "messages",
-  "membership",
-  "events",
-  "work",
-  "announcements",
-  "claims",
-  "other",
-];
-
-const GROUP_LABELS: Record<NotificationGroupId, string> = {
-  messages: "Messages",
-  membership: "Membership",
-  events: "Events",
-  work: "Tasks",
-  announcements: "Announcements",
-  claims: "Claims & requests",
-  other: "Updates",
-};
-
-function notificationGroupId(type: string): NotificationGroupId {
-  switch (type) {
-    case "direct_message":
-    case "mention":
-      return "messages";
-    case "new_join_request":
-    case "join_approved":
-    case "join_rejected":
-    case "join_request_submitted":
-    case "member_joined":
-      return "membership";
-    case "new_event":
-    case "event":
-    case "event_cancelled":
-      return "events";
-    case "event_signup_pending":
-      return "events";
-    case "meeting_invite":
-    case "meeting_updated":
-    case "meeting_cancelled":
-      return "events";
-    case "task_assigned":
-    case "task":
-      return "work";
-    case "announcement":
-      return "announcements";
-    case "new_claim_request":
-    case "claim_submitted":
-    case "claim_approved":
-    case "claim_rejected":
-    case "claim_more_info":
-    case "new_club_request":
-    case "club_request_submitted":
-    case "club_request_approved":
-    case "club_request_rejected":
-    case "club_request_more_info":
-      return "claims";
-    default:
-      return "other";
-  }
-}
-
-function groupNotifications(items: Notification[]) {
-  const buckets = new Map<NotificationGroupId, Notification[]>();
-  for (const item of items) {
-    const key = notificationGroupId(item.type);
-    const list = buckets.get(key) ?? [];
-    list.push(item);
-    buckets.set(key, list);
-  }
-  return GROUP_ORDER.filter((id) => (buckets.get(id)?.length ?? 0) > 0).map(
-    (id) => ({
-      id,
-      label: GROUP_LABELS[id],
-      items: buckets.get(id)!,
-    }),
-  );
-}
-
 function openDashboardInbox() {
   sessionStorage.setItem("dashboardTab", "inbox");
 }
@@ -257,30 +169,52 @@ function notificationIconColor(type: string): string {
   }
 }
 
-function NotificationTypeIcon({ type }: { type: NotificationType | string }) {
-  if (type === "direct_message" || type === "mention") {
-    return (
-      <MessageSquare
-        size={16}
-        color="#6b7cff"
-        strokeWidth={2}
-        aria-hidden
-        style={{ flexShrink: 0, marginTop: 2 }}
-      />
-    );
+function notificationTypeIconConfig(type: NotificationType | string): {
+  Icon: typeof MessageSquare;
+  color: string;
+} {
+  switch (type) {
+    case "direct_message":
+    case "mention":
+      return { Icon: MessageSquare, color: "#6b7cff" };
+    case "new_event":
+    case "event":
+    case "event_cancelled":
+    case "event_signup_pending":
+    case "meeting_invite":
+    case "meeting_updated":
+    case "meeting_cancelled":
+      return { Icon: Calendar, color: "#FFC429" };
+    case "task_assigned":
+    case "task":
+      return { Icon: CheckCircle2, color: notificationIconColor(type) };
+    case "new_join_request":
+    case "join_approved":
+    case "join_rejected":
+    case "join_request_submitted":
+    case "member_joined":
+    case "role_updated":
+    case "member_removed":
+      return { Icon: Users, color: notificationIconColor(type) };
+    case "announcement":
+      return { Icon: Megaphone, color: "#E51937" };
+    case "new_hiring_role":
+      return { Icon: Briefcase, color: "#747676" };
+    default:
+      return { Icon: Bell, color: notificationIconColor(type) };
   }
+}
+
+function NotificationTypeIcon({ type }: { type: NotificationType | string }) {
+  const { Icon, color } = notificationTypeIconConfig(type);
 
   return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: 8,
-        height: 8,
-        borderRadius: 2,
-        backgroundColor: notificationIconColor(type),
-        flexShrink: 0,
-        marginTop: 4,
-      }}
+    <Icon
+      size={16}
+      color={color}
+      strokeWidth={2}
+      aria-hidden
+      style={{ flexShrink: 0, marginTop: 2 }}
     />
   );
 }
@@ -324,8 +258,12 @@ export default function NotificationsDropdown() {
     syncUnreadCount(mapped);
   }, [syncUnreadCount, userId]);
 
-  const groupedNotifications = useMemo(
-    () => groupNotifications(notifications),
+  const sortedNotifications = useMemo(
+    () =>
+      [...notifications].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
     [notifications],
   );
 
@@ -689,7 +627,7 @@ export default function NotificationsDropdown() {
               padding: "8px 0",
             }}
           >
-            {notifications.length === 0 ? (
+            {sortedNotifications.length === 0 ? (
               <p
                 style={{
                   color: "#555555",
@@ -700,129 +638,115 @@ export default function NotificationsDropdown() {
                   lineHeight: 1.5,
                 }}
               >
-                No notifications yet
+                No alerts right now.
               </p>
             ) : (
-              groupedNotifications.map((group) => (
-                <div key={group.id} style={{ marginBottom: "4px" }}>
-                  <p
+              sortedNotifications.map((notification) => {
+                const { title, body } = parseNotificationDisplay(
+                  notification.type,
+                  notification.message,
+                );
+                const isUnread = !notification.read;
+                return (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleNotificationClick(notification)}
                     style={{
-                      margin: "8px 18px 6px",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                      color: "#555555",
+                      display: "flex",
+                      width: "100%",
+                      gap: 12,
+                      padding: "12px 18px",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      background: isUnread ? "#1f1f1f" : "transparent",
+                      borderTop: "none",
+                      borderRight: "none",
+                      borderBottom: "none",
+                      borderLeft: isUnread
+                        ? "3px solid #E51937"
+                        : "3px solid transparent",
                     }}
                   >
-                    {group.label}
-                  </p>
-                  {group.items.map((notification) => {
-                    const { title, body } = parseNotificationDisplay(
-                      notification.type,
-                      notification.message,
-                    );
-                    const isUnread = !notification.read;
-                    return (
-                      <button
-                        key={notification.id}
-                        type="button"
-                        role="menuitem"
-                        onClick={() => void handleNotificationClick(notification)}
+                    <NotificationTypeIcon type={notification.type} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
                         style={{
                           display: "flex",
-                          width: "100%",
-                          gap: 12,
-                          padding: "12px 18px",
-                          cursor: "pointer",
-                          textAlign: "left",
-                          background: isUnread ? "#1f1f1f" : "transparent",
-                          border: "none",
-                          borderLeft: isUnread
-                            ? "3px solid #E51937"
-                            : "3px solid transparent",
+                          alignItems: "flex-start",
+                          justifyContent: "space-between",
+                          gap: "10px",
                         }}
                       >
-                        <NotificationTypeIcon type={notification.type} />
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                              justifyContent: "space-between",
-                              gap: "10px",
-                            }}
-                          >
-                            <p
-                              style={{
-                                fontSize: 13,
-                                fontWeight: isUnread ? 700 : 500,
-                                color: isUnread ? "#ffffff" : "#999999",
-                                margin: 0,
-                                lineHeight: 1.45,
-                                flex: 1,
-                                minWidth: 0,
-                              }}
-                            >
-                              {title}
-                            </p>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "#555555",
-                                flexShrink: 0,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {formatRelativeTime(notification.createdAt)}
-                            </span>
-                          </div>
-                          {body ? (
-                            <p
-                              style={{
-                                fontSize: 12,
-                                color: isUnread ? "#888888" : "#666666",
-                                margin: "6px 0 0",
-                                lineHeight: 1.45,
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
-                              }}
-                            >
-                              {body}
-                            </p>
-                          ) : null}
-                          {notification.clubName ? (
-                            <p
-                              style={{
-                                fontSize: 11,
-                                color: "#555555",
-                                margin: "6px 0 0",
-                              }}
-                            >
-                              {notification.clubName}
-                            </p>
-                          ) : null}
-                        </div>
-                        {isUnread ? (
-                          <span
-                            aria-hidden
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: "50%",
-                              background: "#E51937",
-                              flexShrink: 0,
-                              marginTop: 6,
-                            }}
-                          />
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))
+                        <p
+                          style={{
+                            fontSize: 13,
+                            fontWeight: isUnread ? 700 : 500,
+                            color: isUnread ? "#ffffff" : "#999999",
+                            margin: 0,
+                            lineHeight: 1.45,
+                            flex: 1,
+                            minWidth: 0,
+                          }}
+                        >
+                          {title}
+                        </p>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "#555555",
+                            flexShrink: 0,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {formatRelativeTime(notification.createdAt)}
+                        </span>
+                      </div>
+                      {body ? (
+                        <p
+                          style={{
+                            fontSize: 12,
+                            color: isUnread ? "#888888" : "#666666",
+                            margin: "6px 0 0",
+                            lineHeight: 1.45,
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {body}
+                        </p>
+                      ) : null}
+                      {notification.clubName ? (
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: "#555555",
+                            margin: "6px 0 0",
+                          }}
+                        >
+                          {notification.clubName}
+                        </p>
+                      ) : null}
+                    </div>
+                    {isUnread ? (
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#E51937",
+                          flexShrink: 0,
+                          marginTop: 6,
+                        }}
+                      />
+                    ) : null}
+                  </button>
+                );
+              })
             )}
           </div>
 
