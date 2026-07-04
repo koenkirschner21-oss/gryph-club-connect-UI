@@ -17,6 +17,7 @@ import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
 import {
   InboxMessageAvatar,
+  INBOX_ACTION_REQUIRED_BADGE_STYLE,
   InboxStatusBadgePill,
   OUTLINED_BUTTON_STYLE,
   SOLID_RED_BUTTON_STYLE,
@@ -435,21 +436,7 @@ export function InboxMessageDetailView({
           </p>
           {statusBadge ? <InboxStatusBadgePill badge={statusBadge} /> : null}
           {message.actionRequired && !message.actionCompleted ? (
-            <span
-              style={{
-                fontSize: "10px",
-                fontWeight: 600,
-                color: "#FFC429",
-                border: "1px solid #3a2f00",
-                background: "#1a1500",
-                borderRadius: "4px",
-                padding: "2px 6px",
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-              }}
-            >
-              Action Required
-            </span>
+            <span style={INBOX_ACTION_REQUIRED_BADGE_STYLE}>Action Required</span>
           ) : null}
         </div>
 
@@ -571,21 +558,7 @@ export default function InboxMessageCard({
             </p>
             {statusBadge ? <InboxStatusBadgePill badge={statusBadge} /> : null}
             {message.actionRequired && !message.actionCompleted ? (
-              <span
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 600,
-                  color: "#FFC429",
-                  border: "1px solid #3a2f00",
-                  background: "#1a1500",
-                  borderRadius: "4px",
-                  padding: "2px 6px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                Action Required
-              </span>
+              <span style={INBOX_ACTION_REQUIRED_BADGE_STYLE}>Action Required</span>
             ) : null}
           </div>
           <div

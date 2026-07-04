@@ -26,12 +26,30 @@ export const OUTLINED_BUTTON_STYLE = {
 export const SOLID_RED_BUTTON_STYLE = {
   background: RED,
   color: "#ffffff",
-  border: `1px solid ${RED}`,
+  borderTop: `1px solid ${RED}`,
+  borderRight: `1px solid ${RED}`,
+  borderBottom: `1px solid ${RED}`,
+  borderLeft: `1px solid ${RED}`,
   borderRadius: "8px",
   padding: "8px 16px",
   fontSize: "13px",
   fontWeight: 600,
   cursor: "pointer",
+} as const;
+
+export const INBOX_ACTION_REQUIRED_BADGE_STYLE = {
+  fontSize: "10px",
+  fontWeight: 600,
+  color: GOLD,
+  borderTop: "1px solid #3a2f00",
+  borderRight: "1px solid #3a2f00",
+  borderBottom: "1px solid #3a2f00",
+  borderLeft: `3px solid ${GOLD}`,
+  background: "#1a1500",
+  borderRadius: "4px",
+  padding: "2px 6px",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
 } as const;
 
 function deriveAbbreviation(name: string, maxLen = 3): string {
@@ -401,7 +419,10 @@ export function InboxStatusBadgePill({ badge }: { badge: InboxStatusBadge }) {
         fontWeight: 600,
         color: badge.color,
         background: badge.background,
-        border: badge.border,
+        borderTop: badge.border,
+        borderRight: badge.border,
+        borderBottom: badge.border,
+        borderLeft: badge.border,
         borderRadius: "4px",
         padding: "2px 8px",
         whiteSpace: "nowrap",
