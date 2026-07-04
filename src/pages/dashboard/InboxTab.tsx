@@ -142,6 +142,11 @@ export default function InboxTab({
     setCategoryFilter(target);
   }
 
+  const detailMessage = useMemo(() => {
+    if (!selectedMessage) return null;
+    return messages.find((message) => message.id === selectedMessage.id) ?? selectedMessage;
+  }, [messages, selectedMessage]);
+
   return (
     <div>
       <div
@@ -314,11 +319,11 @@ export default function InboxTab({
         ) : null}
       </div>
 
-      {selectedMessage ? (
+      {detailMessage ? (
         <InboxMessageDetailModal
-          message={selectedMessage}
+          message={detailMessage}
           clubLogoUrl={
-            selectedMessage.clubId ? clubLogos[selectedMessage.clubId] : undefined
+            detailMessage.clubId ? clubLogos[detailMessage.clubId] : undefined
           }
           onMarkAsRead={markAsRead}
           onRefresh={refresh}

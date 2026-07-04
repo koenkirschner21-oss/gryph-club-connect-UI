@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { InboxMessageDetailView } from "./InboxMessageCard";
@@ -17,10 +17,15 @@ export default function InboxMessageDetailModal({
   onRefresh: () => void;
   onClose: () => void;
 }) {
+  const markedReadRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!message.read) {
-      void onMarkAsRead(message.id);
+    if (message.read || markedReadRef.current === message.id) {
+      return;
     }
+
+    markedReadRef.current = message.id;
+    void onMarkAsRead(message.id);
   }, [message.id, message.read, onMarkAsRead]);
 
   useEffect(() => {
