@@ -39,6 +39,7 @@ export interface DocumentListItem {
   name: string;
   description: string | null;
   file_url: string;
+  access_url?: string | null;
   file_type: string | null;
   file_size: number | null;
   category: string;
@@ -567,7 +568,7 @@ export function DocumentCard({
 
       {showThumbnail ? (
         <img
-          src={doc.file_url}
+          src={doc.access_url ?? doc.file_url}
           alt=""
           style={{
             width: "100%",

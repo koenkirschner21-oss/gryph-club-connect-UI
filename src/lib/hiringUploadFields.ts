@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  CLUB_DOCUMENTS_BUCKET,
+  downloadClubDocumentsFile,
+} from "./clubDocumentsStorage";
 
 export type HiringUploadSlot = "resume" | "portfolio" | "other";
 export type HiringUploadSetting = "required" | "optional" | "not_included";
@@ -38,7 +42,7 @@ export const HIRING_UPLOAD_SETTING_OPTIONS: {
   { value: "required", label: "Required" },
 ];
 
-export const CLUB_DOCUMENTS_BUCKET = "club-documents";
+export { CLUB_DOCUMENTS_BUCKET } from "./clubDocumentsStorage";
 export const MAX_HIRING_FILE_BYTES = 52_428_800;
 
 const VALID_SETTINGS = new Set<HiringUploadSetting>([
@@ -126,12 +130,8 @@ export async function uploadHiringApplicationFile(
     return null;
   }
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(CLUB_DOCUMENTS_BUCKET).getPublicUrl(path);
-
   return {
-    url: publicUrl,
+    url: path,
     name: file.name,
     type: file.type || undefined,
     size: file.size,
@@ -139,23 +139,9 @@ export async function uploadHiringApplicationFile(
 }
 
 export async function downloadHiringApplicationFile(
-  url: string,
+  supabase: SupabaseClient,
+  fileReference: string,
   fileName: string,
 ): Promise<boolean> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Download failed");
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(objectUrl);
-    return true;
-  } catch {
-    return false;
-  }
+  return downloadClubDocumentsFile(supabase, fileReference, fileName);
 }

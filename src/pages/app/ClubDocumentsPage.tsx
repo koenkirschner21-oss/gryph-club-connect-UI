@@ -47,8 +47,14 @@ import {
   sortDocuments,
   type SortOption,
 } from "./documents/DocumentsListUI";
+import {
+  CLUB_DOCUMENTS_BUCKET,
+  downloadClubDocumentsFile,
+  resolveClubDocumentsAccessUrl,
+  storagePathFromClubDocumentsReference,
+} from "../../lib/clubDocumentsStorage";
 
-const STORAGE_BUCKET = "club-documents";
+const STORAGE_BUCKET = CLUB_DOCUMENTS_BUCKET;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 const DOCUMENT_CATEGORIES = [
@@ -78,6 +84,7 @@ interface ClubDocument {
   visibilityRoles?: AccessLevel[];
   visibilityUserIds?: string[];
   uploaderName?: string;
+  access_url?: string | null;
 }
 
 interface ResourceLink {
@@ -315,23 +322,10 @@ function categoryEmptySubtext(category: string): string {
   return messages[category] ?? "No files in this category yet.";
 }
 
-async function downloadClubDocument(doc: ClubDocument): Promise<boolean> {
-  try {
-    const response = await fetch(doc.file_url);
-    if (!response.ok) throw new Error("Download failed");
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = doc.name;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-    return true;
-  } catch {
-    return false;
-  }
+async function downloadClubDocument(
+  doc: ClubDocument,
+): Promise<boolean> {
+  return downloadClubDocumentsFile(supabase, doc.file_url, doc.name);
 }
 
 function SkeletonCard() {
@@ -512,6 +506,7 @@ export default function ClubDocumentsPage() {
   } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<ClubDocument | null>(null);
+  const [previewAccessUrl, setPreviewAccessUrl] = useState<string | null>(null);
   const [editingDocument, setEditingDocument] = useState<ClubDocument | null>(null);
   const [editDocName, setEditDocName] = useState("");
   const [editDocVisibility, setEditDocVisibility] =
@@ -639,15 +634,24 @@ export default function ClubDocumentsPage() {
     }
 
     setDocuments(
-      rows.map((row) => ({
-        ...row,
-        visibility: normalizeVisibility(row.visibility, "members_only"),
-        visibilityRoles: normalizeAccessLevelArray(row.visibility_roles),
-        visibilityUserIds: normalizeUuidArray(row.visibility_user_ids),
-        uploaderName: row.uploaded_by
-          ? profileMap[row.uploaded_by] ?? "Unknown"
-          : "Unknown",
-      })),
+      await Promise.all(
+        rows.map(async (row) => {
+          const accessUrl = await resolveClubDocumentsAccessUrl(
+            supabase,
+            row.file_url,
+          );
+          return {
+            ...row,
+            visibility: normalizeVisibility(row.visibility, "members_only"),
+            visibilityRoles: normalizeAccessLevelArray(row.visibility_roles),
+            visibilityUserIds: normalizeUuidArray(row.visibility_user_ids),
+            uploaderName: row.uploaded_by
+              ? profileMap[row.uploaded_by] ?? "Unknown"
+              : "Unknown",
+            access_url: accessUrl,
+          };
+        }),
+      ),
     );
     setLoading(false);
   }, [clubId]);
@@ -655,6 +659,22 @@ export default function ClubDocumentsPage() {
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    if (!previewDoc) {
+      setPreviewAccessUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    void resolveClubDocumentsAccessUrl(supabase, previewDoc.file_url).then((url) => {
+      if (!cancelled) setPreviewAccessUrl(url);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewDoc]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -855,20 +875,12 @@ export default function ClubDocumentsPage() {
     }
 
     setUploadProgress(80);
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-
     setUploadProgress(100);
-    return publicUrl;
+    return path;
   }
 
   function storagePathFromUrl(url: string): string | null {
-    const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
-    const idx = url.indexOf(marker);
-    if (idx === -1) return null;
-    return decodeURIComponent(url.slice(idx + marker.length));
+    return storagePathFromClubDocumentsReference(url);
   }
 
   async function handleUpload() {
@@ -1820,17 +1832,26 @@ export default function ClubDocumentsPage() {
           onClick={() => setPreviewDoc(null)}
         >
           {previewKindForDocument(previewDoc) === "image" ? (
-            <img
-              src={previewDoc.file_url}
-              alt={previewDoc.name}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                maxWidth: "min(90vw, 1200px)",
-                maxHeight: "90vh",
-                objectFit: "contain",
-                borderRadius: "8px",
-              }}
-            />
+            previewAccessUrl ? (
+              <img
+                src={previewAccessUrl}
+                alt={previewDoc.name}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  maxWidth: "min(90vw, 1200px)",
+                  maxHeight: "90vh",
+                  objectFit: "contain",
+                  borderRadius: "8px",
+                }}
+              />
+            ) : (
+              <p
+                onClick={(e) => e.stopPropagation()}
+                style={{ color: "#cccccc", fontSize: "14px" }}
+              >
+                Loading preview…
+              </p>
+            )
           ) : (
             <div
               style={{
@@ -1880,11 +1901,26 @@ export default function ClubDocumentsPage() {
                   <X size={18} aria-hidden />
                 </button>
               </div>
-              <iframe
-                title={previewDoc.name}
-                src={previewDoc.file_url}
-                style={{ flex: 1, width: "100%", border: "none", background: "#111" }}
-              />
+              {previewAccessUrl ? (
+                <iframe
+                  title={previewDoc.name}
+                  src={previewAccessUrl}
+                  style={{ flex: 1, width: "100%", border: "none", background: "#111" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#777777",
+                    fontSize: "14px",
+                  }}
+                >
+                  Loading preview…
+                </div>
+              )}
             </div>
           )}
         </div>

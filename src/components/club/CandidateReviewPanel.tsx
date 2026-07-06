@@ -383,6 +383,7 @@ export default function CandidateReviewPanel({
                     type="button"
                     onClick={() =>
                       void downloadHiringApplicationFile(
+                        supabase,
                         ans.answer,
                         ans.file_name ?? hiringFileQuestionLabel(ans.question_id),
                       )
