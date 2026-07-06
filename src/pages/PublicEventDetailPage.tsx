@@ -268,9 +268,7 @@ export default function PublicEventDetailPage() {
       ? "Going"
       : myRsvpStatus === "maybe"
         ? "Maybe"
-        : myRsvpStatus === "not_going"
-          ? "Not Going"
-          : "RSVP for this Event";
+        : "Sign Up";
 
   const primaryVariant =
     myRsvpStatus === "going"
@@ -311,7 +309,7 @@ export default function PublicEventDetailPage() {
               main={<EventDetailDescription description={event.description} />}
               sidebar={
                 <>
-                  <EventDetailMyRsvp status={myRsvpStatus} />
+                  <EventDetailMyRsvp status={myRsvpStatus} sectionTitle="Your sign-up" />
                   <EventDetailRsvpSummary counts={rsvpCounts} />
                   <EventDetailPrimaryAction
                     label={primaryLabel}

@@ -331,8 +331,10 @@ export function EventDetailDescription({ description }: { description: string })
 
 export function EventDetailMyRsvp({
   status,
+  sectionTitle = "Your RSVP",
 }: {
   status: RsvpStatus | null | undefined;
+  sectionTitle?: string;
 }) {
   return (
     <section style={{ ...CARD_STYLE, marginBottom: "16px" }}>
@@ -346,7 +348,7 @@ export function EventDetailMyRsvp({
           letterSpacing: "0.06em",
         }}
       >
-        Your RSVP
+        {sectionTitle}
       </h2>
       <span
         style={{

@@ -1726,7 +1726,7 @@ function EventsSection({
                   whiteSpace: "nowrap",
                 }}
               >
-                RSVP
+                Sign Up
               </Link>
             </div>
           ))}
@@ -2262,7 +2262,7 @@ function EventDetailModal({
               cursor: "pointer",
             }}
           >
-            {!user ? "Sign Up to RSVP" : "Join Club to RSVP"}
+            {!user ? "Sign Up" : "Join Club to Sign Up"}
           </button>
         ) : null}
       </div>

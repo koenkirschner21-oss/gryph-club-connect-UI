@@ -408,11 +408,13 @@ function EventRsvpMenu({
   currentStatus,
   onSetRsvp,
   onRemoveRsvp,
+  allowNotGoing,
 }: {
   eventId: string;
   currentStatus?: RsvpStatus | string;
   onSetRsvp: (eventId: string, status: RsvpStatus) => Promise<boolean>;
   onRemoveRsvp: (eventId: string) => Promise<boolean>;
+  allowNotGoing: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -452,6 +454,10 @@ function EventRsvpMenu({
     cursor: busy ? "wait" : "pointer",
   };
 
+  const statusOptions: RsvpStatus[] = allowNotGoing
+    ? ["going", "maybe", "not_going"]
+    : ["going", "maybe"];
+
   return (
     <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
       <button
@@ -490,7 +496,7 @@ function EventRsvpMenu({
             boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
           }}
         >
-          {(["going", "maybe", "not_going"] as RsvpStatus[]).map((status) => (
+          {statusOptions.map((status) => (
             <button
               key={status}
               type="button"
@@ -673,6 +679,7 @@ function EventsTabEventRow({
           currentStatus={rsvpStatus}
           onSetRsvp={onSetRsvp}
           onRemoveRsvp={onRemoveRsvp}
+          allowNotGoing={isClubMember}
         />
       ) : null}
     </div>
