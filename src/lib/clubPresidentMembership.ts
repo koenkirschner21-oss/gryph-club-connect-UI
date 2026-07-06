@@ -127,3 +127,54 @@ export async function approveClubClaimRequest(
     result: mapApproveClubClaimResult(data as Record<string, unknown>),
   };
 }
+
+export type CancelClubClaimOutcome = "canceled" | "already_canceled";
+
+export interface CancelClubClaimResult {
+  outcome: CancelClubClaimOutcome;
+  claimRequestId: string;
+  clubId: string;
+  requestStatus: string;
+  claimStatus: string;
+  openClaimsRemaining: number;
+}
+
+function mapCancelClubClaimResult(
+  data: Record<string, unknown>,
+): CancelClubClaimResult {
+  return {
+    outcome:
+      data.outcome === "already_canceled" ? "already_canceled" : "canceled",
+    claimRequestId: data.claim_request_id as string,
+    clubId: data.club_id as string,
+    requestStatus: (data.request_status as string) ?? "canceled",
+    claimStatus: (data.claim_status as string) ?? "unclaimed",
+    openClaimsRemaining: Number(data.open_claims_remaining ?? 0),
+  };
+}
+
+/** Cancel own claim request and reconcile club claim_status when appropriate. */
+export async function cancelClubClaimRequest(
+  supabase: SupabaseClient,
+  claimRequestId: string,
+): Promise<
+  { ok: true; result: CancelClubClaimResult } | { ok: false; error: string }
+> {
+  const { data, error } = await supabase.rpc("cancel_club_claim_request", {
+    p_request_id: claimRequestId,
+  });
+
+  if (error) {
+    console.error("Failed to cancel club claim request:", error.message);
+    return { ok: false, error: error.message };
+  }
+
+  if (!data || typeof data !== "object") {
+    return { ok: false, error: "Claim cancellation returned no result." };
+  }
+
+  return {
+    ok: true,
+    result: mapCancelClubClaimResult(data as Record<string, unknown>),
+  };
+}

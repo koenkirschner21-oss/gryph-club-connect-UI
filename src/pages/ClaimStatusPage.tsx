@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
+import { cancelClubClaimRequest } from "../lib/clubPresidentMembership";
 import { supabase } from "../lib/supabaseClient";
 import { resolveStudentDisplayName } from "../lib/notifications";
 import Spinner from "../components/ui/Spinner";
@@ -169,16 +170,11 @@ export default function ClaimStatusPage() {
     setCanceling(true);
     setCancelError(null);
 
-    const { error } = await supabase
-      .from("club_claim_requests")
-      .update({ status: "canceled" })
-      .eq("id", claim.id)
-      .eq("status", "pending");
+    const cancellation = await cancelClubClaimRequest(supabase, claim.id);
 
     setCanceling(false);
 
-    if (error) {
-      console.error("Failed to cancel claim request:", error.message);
+    if (!cancellation.ok) {
       setCancelError("Could not cancel this claim request. Please try again.");
       return;
     }
