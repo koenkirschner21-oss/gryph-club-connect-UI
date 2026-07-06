@@ -1367,6 +1367,42 @@ export default function ClubHomePage() {
   const { tasks, loading: tasksLoading, updateTask, deleteTask, createTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
+  const [documentsCount, setDocumentsCount] = useState(0);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
+  const [setupCountsLoading, setSetupCountsLoading] = useState(false);
+
+  const activeMemberCount = useMemo(
+    () => members.filter((member) => member.status === "active").length,
+    [members],
+  );
+
+  const loadSetupSupplementalCounts = useCallback(async () => {
+    if (!clubId) return;
+
+    setSetupCountsLoading(true);
+    const [documentsRes, executiveInvitesRes, clubInvitesRes] = await Promise.all([
+      supabase
+        .from("club_documents")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", clubId),
+      supabase
+        .from("executive_invites")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .eq("status", "pending"),
+      supabase
+        .from("club_invites")
+        .select("id", { count: "exact", head: true })
+        .eq("club_id", clubId)
+        .eq("status", "pending"),
+    ]);
+
+    setDocumentsCount(documentsRes.count ?? 0);
+    setPendingInviteCount(
+      (executiveInvitesRes.count ?? 0) + (clubInvitesRes.count ?? 0),
+    );
+    setSetupCountsLoading(false);
+  }, [clubId]);
 
   useEffect(() => {
     if (!selectedAnnouncement?.id || !user?.id) return;
@@ -1377,7 +1413,25 @@ export default function ClubHomePage() {
     if (!clubId) return;
     refreshPosts();
     refreshEvents();
-  }, [clubId, refreshEvents, refreshPosts]);
+    void loadSetupSupplementalCounts();
+  }, [clubId, refreshEvents, refreshPosts, loadSetupSupplementalCounts]);
+
+  useEffect(() => {
+    if (!clubId || !club) return;
+    if (
+      !memberAccess.canManageClubSettings ||
+      club.claimStatus !== "claimed" ||
+      club.setupCompleted
+    ) {
+      return;
+    }
+    void loadSetupSupplementalCounts();
+  }, [
+    clubId,
+    club,
+    memberAccess.canManageClubSettings,
+    loadSetupSupplementalCounts,
+  ]);
 
   useEffect(() => {
     if (!clubId) return;
@@ -1926,7 +1980,12 @@ export default function ClubHomePage() {
           club={club}
           postsCount={posts.length}
           eventsCount={events.length}
-          contentLoading={postsLoading || eventsLoading}
+          documentsCount={documentsCount}
+          activeMemberCount={activeMemberCount}
+          pendingInviteCount={pendingInviteCount}
+          contentLoading={
+            postsLoading || eventsLoading || setupCountsLoading
+          }
           onPublish={handlePublishClub}
           onRefetch={refetchClubData}
         />
@@ -1937,7 +1996,12 @@ export default function ClubHomePage() {
           club={club}
           postsCount={posts.length}
           eventsCount={events.length}
-          contentLoading={postsLoading || eventsLoading}
+          documentsCount={documentsCount}
+          activeMemberCount={activeMemberCount}
+          pendingInviteCount={pendingInviteCount}
+          contentLoading={
+            postsLoading || eventsLoading || setupCountsLoading
+          }
           onPublish={handlePublishClub}
           onRefetch={refetchClubData}
           onClose={() => setSetupModalOpen(false)}

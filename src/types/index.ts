@@ -77,6 +77,10 @@ export interface Club {
   contactEmailConfirmed?: boolean;
   socialLinksConfirmed?: boolean;
   meetingScheduleConfirmed?: boolean;
+  categoryConfirmed?: boolean;
+  meetingLocationConfirmed?: boolean;
+  contentVisibilityDefaultsConfirmed?: boolean;
+  setupSkippedItems?: string[];
   claimStatus?: ClaimStatus;
   setupCompleted?: boolean;
   university?: string;

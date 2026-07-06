@@ -4,8 +4,10 @@ import { Check, X } from "lucide-react";
 import {
   computeClubSetupProgress,
   resolveClubSetupSettingsPath,
+  type ClubSetupProgressCounts,
   type ClubSetupProgressItem,
 } from "../../lib/clubProfileCompletion";
+import { useClubContext } from "../../context/useClubContext";
 import { PublishClubValidationError } from "../../lib/clubPublishUtils";
 import type { Club } from "../../types";
 
@@ -13,16 +15,23 @@ const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
 const GOLD = "#FFC429";
 const ACCENT_RED = "#E51937";
+const MUTED_GOLD = "#8a7428";
 
-type SectionKey = "profile" | "launch" | "live";
+type SectionKey = "profile" | "launch" | "recommended" | "live";
 type TemplateLaunchType = "announcement" | "event";
 
 type ChecklistItem = ClubSetupProgressItem;
 
 const SECTION_LABELS: Record<SectionKey, string> = {
-  profile: "Profile Setup",
-  launch: "Launch Content",
+  profile: "Required — Profile Setup",
+  launch: "Required — Launch Content",
+  recommended: "Optional — Recommended",
   live: "Go Live",
+};
+
+const SECTION_HINTS: Partial<Record<SectionKey, string>> = {
+  recommended:
+    "These steps help your club look polished but do not block publishing.",
 };
 
 const checkRowStyle: CSSProperties = {
@@ -47,16 +56,34 @@ const fixButtonStyle: CSSProperties = {
   flexShrink: 0,
 };
 
+const skipButtonStyle: CSSProperties = {
+  background: "transparent",
+  border: "1px solid #444444",
+  borderRadius: "6px",
+  padding: "6px 10px",
+  color: "#888888",
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+};
+
 function ChecklistRow({
   item,
   onUseTemplate,
+  onSkip,
+  skipping,
 }: {
   item: ChecklistItem;
   onUseTemplate: (type: TemplateLaunchType) => void;
+  onSkip?: (itemId: string) => void;
+  skipping?: boolean;
 }) {
   const navigate = useNavigate();
-  const canDeepLink = !item.complete && Boolean(item.fixPath);
+  const canDeepLink = !item.complete && Boolean(item.fixPath) && !item.skipped;
   const actionLabel = item.actionLabel ?? "Fix this →";
+  const displayLabel = item.skipped ? `${item.label} (skipped for now)` : item.label;
 
   return (
     <div>
@@ -81,7 +108,7 @@ function ChecklistRow({
               : undefined
           }
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
             {item.complete ? (
               <Check size={16} color={GOLD} strokeWidth={2.5} aria-hidden />
             ) : (
@@ -98,13 +125,33 @@ function ChecklistRow({
                 }}
               />
             )}
-            <span
-              style={{
-                color: item.complete ? "#666666" : "#cccccc",
-              }}
-            >
-              {item.label}
-            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                <span
+                  style={{
+                    color: item.complete ? "#666666" : "#cccccc",
+                  }}
+                >
+                  {displayLabel}
+                </span>
+                {item.optional ? (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      color: MUTED_GOLD,
+                      border: `1px solid ${MUTED_GOLD}`,
+                      borderRadius: "999px",
+                      padding: "2px 8px",
+                    }}
+                  >
+                    Optional
+                  </span>
+                ) : null}
+              </div>
+            </div>
           </div>
           {!item.complete && item.instruction ? (
             <p
@@ -119,15 +166,39 @@ function ChecklistRow({
             </p>
           ) : null}
         </div>
-        {!item.complete && item.fixPath ? (
-          <button
-            type="button"
-            onClick={() => navigate(item.fixPath!)}
-            style={{ ...fixButtonStyle, marginTop: "2px" }}
-          >
-            {actionLabel}
-          </button>
-        ) : null}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+            marginTop: "2px",
+            flexShrink: 0,
+          }}
+        >
+          {!item.complete && item.fixPath && !item.skipped ? (
+            <button
+              type="button"
+              onClick={() => navigate(item.fixPath!)}
+              style={fixButtonStyle}
+            >
+              {actionLabel}
+            </button>
+          ) : null}
+          {!item.complete && item.canSkip && onSkip ? (
+            <button
+              type="button"
+              onClick={() => onSkip(item.id)}
+              disabled={skipping}
+              style={{
+                ...skipButtonStyle,
+                opacity: skipping ? 0.6 : 1,
+                cursor: skipping ? "not-allowed" : "pointer",
+              }}
+            >
+              Skip for now
+            </button>
+          ) : null}
+        </div>
       </div>
       {!item.complete && item.templateType ? (
         <div style={{ marginTop: "6px", marginLeft: "26px" }}>
@@ -156,6 +227,9 @@ export interface SetupChecklistProps {
   club: Club;
   postsCount: number;
   eventsCount: number;
+  documentsCount?: number;
+  activeMemberCount?: number;
+  pendingInviteCount?: number;
   contentLoading?: boolean;
   onPublish: () => Promise<void>;
   onRefetch?: () => void;
@@ -167,6 +241,9 @@ export default function SetupChecklist({
   club,
   postsCount,
   eventsCount,
+  documentsCount = 0,
+  activeMemberCount = 1,
+  pendingInviteCount = 0,
   contentLoading = false,
   onPublish,
   onRefetch,
@@ -174,8 +251,21 @@ export default function SetupChecklist({
   onClose,
 }: SetupChecklistProps) {
   const navigate = useNavigate();
+  const { updateClub } = useClubContext();
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [skippingItemId, setSkippingItemId] = useState<string | null>(null);
+
+  const progressCounts = useMemo<ClubSetupProgressCounts>(
+    () => ({
+      postsCount,
+      eventsCount,
+      documentsCount,
+      activeMemberCount,
+      pendingInviteCount,
+    }),
+    [postsCount, eventsCount, documentsCount, activeMemberCount, pendingInviteCount],
+  );
 
   useEffect(() => {
     if (!onRefetch) return;
@@ -194,8 +284,8 @@ export default function SetupChecklist({
   }, [onRefetch]);
 
   const setupProgress = useMemo(
-    () => computeClubSetupProgress(club, postsCount, eventsCount),
-    [club, postsCount, eventsCount],
+    () => computeClubSetupProgress(club, progressCounts),
+    [club, progressCounts],
   );
   const {
     items,
@@ -208,10 +298,23 @@ export default function SetupChecklist({
   const settingsPath = resolveClubSetupSettingsPath(
     `/app/clubs/${club.id}/settings`,
     club,
-    postsCount,
-    eventsCount,
+    progressCounts,
   );
   const publicProfilePath = `/clubs/${club.slug}`;
+
+  async function handleSkipItem(itemId: string) {
+    setSkippingItemId(itemId);
+    const nextSkipped = Array.from(
+      new Set([...(club.setupSkippedItems ?? []), itemId]),
+    );
+    const ok = await updateClub(club.id, { setupSkippedItems: nextSkipped });
+    setSkippingItemId(null);
+    if (ok) {
+      window.dispatchEvent(
+        new CustomEvent("club-setup-progress-changed", { detail: { clubId: club.id } }),
+      );
+    }
+  }
 
   async function handlePublish() {
     setPublishing(true);
@@ -239,8 +342,11 @@ export default function SetupChecklist({
     navigate(`/app/clubs/${club.id}/events?openTemplate=true`);
   }
 
-  const sections: SectionKey[] = ["profile", "launch", "live"];
+  const sections: SectionKey[] = ["profile", "launch", "recommended", "live"];
   const isModal = variant === "modal";
+  const progressLabel = contentLoading
+    ? "Checking your progress…"
+    : `${completedCount} of ${totalCount} required complete · ${progressPercent}%`;
 
   return (
     <div
@@ -275,16 +381,12 @@ export default function SetupChecklist({
           </h2>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#777777" }}>
             {isModal
-              ? "Complete the remaining setup steps to make your club profile ready for members."
-              : contentLoading
-                ? "Checking your progress…"
-                : `${completedCount} of ${totalCount} complete · ${progressPercent}%`}
+              ? "Complete the required steps to publish your club on Explore."
+              : progressLabel}
           </p>
           {isModal ? (
             <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#555555" }}>
-              {contentLoading
-                ? "Checking your progress…"
-                : `${completedCount} of ${totalCount} complete · ${progressPercent}%`}
+              {progressLabel}
             </p>
           ) : null}
         </div>
@@ -343,6 +445,18 @@ export default function SetupChecklist({
             >
               {SECTION_LABELS[section]}
             </h3>
+            {SECTION_HINTS[section] ? (
+              <p
+                style={{
+                  margin: "0 0 12px",
+                  fontSize: "12px",
+                  color: "#666666",
+                  lineHeight: 1.45,
+                }}
+              >
+                {SECTION_HINTS[section]}
+              </p>
+            ) : null}
             {section === "live" ? (
               <p
                 style={{
@@ -353,8 +467,8 @@ export default function SetupChecklist({
                 }}
               >
                 {allComplete
-                  ? "Your profile is ready. Publish to make it live on Explore."
-                  : "Complete the checklist above to unlock publishing."}
+                  ? "Your required setup is complete. Publish to make your club live on Explore."
+                  : "Complete all required steps above to unlock publishing."}
               </p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -365,6 +479,8 @@ export default function SetupChecklist({
                       key={item.id}
                       item={item}
                       onUseTemplate={handleUseTemplate}
+                      onSkip={item.canSkip ? handleSkipItem : undefined}
+                      skipping={skippingItemId === item.id}
                     />
                   ))}
               </div>

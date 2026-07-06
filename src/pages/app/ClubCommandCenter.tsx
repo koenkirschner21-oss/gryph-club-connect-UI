@@ -1411,12 +1411,10 @@ export default function ClubCommandCenter({
   const recruitingPath = `${basePath}/recruiting`;
   const settingsPath = `${basePath}/settings`;
   const analyticsPath = `${basePath}/analytics`;
-  const setupSettingsPath = resolveClubSetupSettingsPath(
-    settingsPath,
-    club,
-    posts.length,
+  const setupSettingsPath = resolveClubSetupSettingsPath(settingsPath, club, {
+    postsCount: posts.length,
     eventsCount,
-  );
+  });
 
   const canManageMeetings =
     memberAccess.isPresident || memberAccess.can("manage_meetings");
@@ -1856,7 +1854,11 @@ export default function ClubCommandCenter({
   }, [previewUpcomingEvents, upcomingMeetings, eventRsvpCounts]);
 
   const setupProgress = useMemo(
-    () => computeClubSetupProgress(club, posts.length, eventsCount),
+    () =>
+      computeClubSetupProgress(club, {
+        postsCount: posts.length,
+        eventsCount,
+      }),
     [club, posts.length, eventsCount],
   );
   const profileCompletion = setupProgress.percent;

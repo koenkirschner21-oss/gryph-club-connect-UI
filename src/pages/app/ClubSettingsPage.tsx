@@ -213,6 +213,7 @@ interface FormSnapshot {
   bannerUrl: string;
   contactEmail: string;
   meetingSchedule: string;
+  meetingLocation: string;
   instagramUrl: string;
   linkedinUrl: string;
   twitterUrl: string;
@@ -960,6 +961,9 @@ export default function ClubSettingsPage() {
   const [meetingSchedule, setMeetingSchedule] = useState(
     club?.meetingSchedule ?? "",
   );
+  const [meetingLocation, setMeetingLocation] = useState(
+    club?.meetingLocation ?? "",
+  );
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [logoCropFile, setLogoCropFile] = useState<File | null>(null);
@@ -1031,6 +1035,7 @@ export default function ClubSettingsPage() {
       bannerUrl: club?.bannerUrl ?? "",
       contactEmail: club?.contactEmail ?? "",
       meetingSchedule: club?.meetingSchedule ?? "",
+      meetingLocation: club?.meetingLocation ?? "",
       instagramUrl: "",
       linkedinUrl: "",
       twitterUrl: "",
@@ -1055,6 +1060,7 @@ export default function ClubSettingsPage() {
     setBannerUrl(snapshot.bannerUrl);
     setContactEmail(snapshot.contactEmail);
     setMeetingSchedule(snapshot.meetingSchedule);
+    setMeetingLocation(snapshot.meetingLocation);
     setInstagramUrl(snapshot.instagramUrl);
     setLinkedinUrl(snapshot.linkedinUrl);
     setTwitterUrl(snapshot.twitterUrl);
@@ -1101,6 +1107,9 @@ export default function ClubSettingsPage() {
       "short-description": "short-description",
       "contact-email": "contact-email",
       "meeting-schedule": "meeting-schedule",
+      "meeting-location": "meeting-location",
+      category: "manage-category",
+      "visibility-defaults": "visibility-defaults",
       "social-links": "social-links",
       "membership-type": "membership",
     };
@@ -1313,6 +1322,7 @@ export default function ClubSettingsPage() {
       bannerUrl: bannerUrl.trim() || undefined,
       contactEmail: contactEmail.trim() || undefined,
       meetingSchedule: meetingSchedule.trim() || undefined,
+      meetingLocation: meetingLocation.trim() || undefined,
       membershipType,
     };
 
@@ -1358,6 +1368,22 @@ export default function ClubSettingsPage() {
           meetingSchedule.trim() !== savedSnapshot.meetingSchedule)
       ) {
         ownerUpdate.meetingScheduleConfirmed = true;
+      }
+      if (
+        meetingLocation.trim() &&
+        (wantsConfirm("meeting-location") ||
+          meetingLocation.trim() !== savedSnapshot.meetingLocation)
+      ) {
+        ownerUpdate.meetingLocationConfirmed = true;
+      }
+      if (
+        category.trim() &&
+        (wantsConfirm("category") || category.trim() !== savedSnapshot.category)
+      ) {
+        ownerUpdate.categoryConfirmed = true;
+      }
+      if (wantsConfirm("visibility-defaults")) {
+        ownerUpdate.contentVisibilityDefaultsConfirmed = true;
       }
     }
 
@@ -1442,6 +1468,7 @@ export default function ClubSettingsPage() {
         bannerUrl: bannerUrl.trim(),
         contactEmail: contactEmail.trim(),
         meetingSchedule: meetingSchedule.trim(),
+        meetingLocation: meetingLocation.trim(),
         instagramUrl: instagramUrl.trim(),
         linkedinUrl: linkedinUrl.trim(),
         twitterUrl: twitterUrl.trim(),
@@ -1771,7 +1798,10 @@ export default function ClubSettingsPage() {
             highlightedSection === "profile" ||
             highlightedSection === "short-description" ||
             highlightedSection === "contact-email" ||
-            highlightedSection === "meeting-schedule"
+            highlightedSection === "meeting-schedule" ||
+            highlightedSection === "meeting-location" ||
+            highlightedSection === "category" ||
+            highlightedSection === "visibility-defaults"
           }
         >
           <SettingsField id="club-name" label="Club Name" required>
@@ -1813,6 +1843,16 @@ export default function ClubSettingsPage() {
               onChange={setMeetingSchedule}
               onDirty={markDirty}
               placeholder="e.g. Wednesdays at 6pm in UC 442"
+            />
+          </SettingsField>
+
+          <SettingsField id="meeting-location" label="Meeting Location">
+            <SettingsTextInput
+              id="meeting-location"
+              value={meetingLocation}
+              onChange={setMeetingLocation}
+              onDirty={markDirty}
+              placeholder="e.g. Thornbrough Building, Room 1307"
             />
           </SettingsField>
 
@@ -1867,6 +1907,38 @@ export default function ClubSettingsPage() {
             </SettingsField>
           ) : null}
         </SettingsSection>
+
+        {isOwner ? (
+          <SettingsSection
+            title="Content visibility defaults"
+            subtitle="Who can see club content by default when you create it."
+            sectionId="visibility-defaults"
+            highlighted={highlightedSection === "visibility-defaults"}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: "13px",
+                color: "#888888",
+                lineHeight: 1.55,
+              }}
+            >
+              Announcements default to members only. Events default to public.
+              Documents default to members only. You can change visibility on each
+              announcement, event, or document when you create it.
+            </p>
+            <p
+              style={{
+                margin: "12px 0 0",
+                fontSize: "12px",
+                color: "#666666",
+                lineHeight: 1.45,
+              }}
+            >
+              Save settings below to confirm you have reviewed these defaults.
+            </p>
+          </SettingsSection>
+        ) : null}
 
         {isOwner ? (
           <SettingsSection

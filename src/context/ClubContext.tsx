@@ -14,6 +14,7 @@ import {
 } from "../lib/clubJoinUtils";
 import { normalizeClaimStatus } from "../lib/clubClaimUtils";
 import { parseClubPermissions } from "../lib/clubPermissions";
+import { parseSetupSkippedItems } from "../lib/clubProfileCompletion";
 import {
   extractEmbeddedRequestMetadata,
   readClubContactEmailFromRow,
@@ -90,6 +91,11 @@ function mapRow(row: Record<string, unknown>): Club {
     contactEmailConfirmed: (row.contact_email_confirmed as boolean) ?? false,
     socialLinksConfirmed: (row.social_links_confirmed as boolean) ?? false,
     meetingScheduleConfirmed: (row.meeting_schedule_confirmed as boolean) ?? false,
+    categoryConfirmed: (row.category_confirmed as boolean) ?? false,
+    meetingLocationConfirmed: (row.meeting_location_confirmed as boolean) ?? false,
+    contentVisibilityDefaultsConfirmed:
+      (row.content_visibility_defaults_confirmed as boolean) ?? false,
+    setupSkippedItems: parseSetupSkippedItems(row.setup_skipped_items),
     claimStatus: normalizeClaimStatus(row.claim_status),
     setupCompleted: (row.setup_completed as boolean) ?? false,
     isPublished: (row.is_published as boolean) ?? false,
@@ -524,6 +530,19 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         row.social_links_confirmed = fields.socialLinksConfirmed;
       if (fields.meetingScheduleConfirmed !== undefined)
         row.meeting_schedule_confirmed = fields.meetingScheduleConfirmed;
+      if (fields.categoryConfirmed !== undefined)
+        row.category_confirmed = fields.categoryConfirmed;
+      if (fields.meetingLocationConfirmed !== undefined)
+        row.meeting_location_confirmed = fields.meetingLocationConfirmed;
+      if (fields.contentVisibilityDefaultsConfirmed !== undefined) {
+        row.content_visibility_defaults_confirmed =
+          fields.contentVisibilityDefaultsConfirmed;
+      }
+      if (fields.setupSkippedItems !== undefined) {
+        row.setup_skipped_items = fields.setupSkippedItems;
+      }
+      if (fields.meetingLocation !== undefined)
+        row.meeting_location = fields.meetingLocation;
       if (fields.joinCode !== undefined) row.join_code = fields.joinCode;
       if (fields.contactEmail !== undefined) row.contact_email = fields.contactEmail;
       if (fields.meetingSchedule !== undefined)
