@@ -1113,7 +1113,7 @@ export default function PublicEventsPage() {
               category
             )
           `)
-            .in("visibility", ["public"])
+            .in("visibility", ["public", "featured"])
             .gte("date", todayStr)
             .order("date", { ascending: true })
         : await supabase
@@ -1134,7 +1134,7 @@ export default function PublicEventsPage() {
               category
             )
           `)
-            .in("visibility", ["public"])
+            .in("visibility", ["public", "featured"])
             .gte("date", todayStr)
             .order("date", { ascending: true });
 
