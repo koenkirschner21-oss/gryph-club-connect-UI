@@ -28,8 +28,7 @@ import { formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import {
-  computeClubProfileCompletionPercent,
-  getClubProfileMissingLabels,
+  computeClubSetupProgress,
   resolveClubSetupSettingsPath,
 } from "../../lib/clubProfileCompletion";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
@@ -1361,6 +1360,7 @@ export interface ClubCommandCenterProps {
   tasksLoading: boolean;
   posts: Post[];
   postsLoading: boolean;
+  eventsCount: number;
   upcomingOccurrences: (ClubEvent & { occurrenceDate: string })[];
   eventsLoading: boolean;
   eventRsvpCounts: Record<string, RsvpCounts>;
@@ -1375,6 +1375,7 @@ export default function ClubCommandCenter({
   tasks,
   tasksLoading,
   posts,
+  eventsCount,
   upcomingOccurrences,
   eventsLoading,
   eventRsvpCounts,
@@ -1409,7 +1410,12 @@ export default function ClubCommandCenter({
   const recruitingPath = `${basePath}/recruiting`;
   const settingsPath = `${basePath}/settings`;
   const analyticsPath = `${basePath}/analytics`;
-  const setupSettingsPath = resolveClubSetupSettingsPath(settingsPath, club);
+  const setupSettingsPath = resolveClubSetupSettingsPath(
+    settingsPath,
+    club,
+    posts.length,
+    eventsCount,
+  );
 
   const canManageMeetings =
     memberAccess.isPresident || memberAccess.can("manage_meetings");
@@ -1848,15 +1854,12 @@ export default function ClubCommandCenter({
       .slice(0, 3);
   }, [previewUpcomingEvents, upcomingMeetings, eventRsvpCounts]);
 
-  const profileCompletion = useMemo(
-    () => computeClubProfileCompletionPercent(club, posts.length > 0, upcomingOccurrences.length > 0),
-    [club, posts.length, upcomingOccurrences.length],
+  const setupProgress = useMemo(
+    () => computeClubSetupProgress(club, posts.length, eventsCount),
+    [club, posts.length, eventsCount],
   );
-
-  const profileMissingLabels = useMemo(
-    () => getClubProfileMissingLabels(club, posts.length > 0, upcomingOccurrences.length > 0),
-    [club, posts.length, upcomingOccurrences.length],
-  );
+  const profileCompletion = setupProgress.percent;
+  const profileMissingLabels = setupProgress.missingLabels;
 
   const pendingJoinCount = pendingMembers.length;
   const pendingApplicationCount = hiringSnapshot.pendingApplicationsCount;

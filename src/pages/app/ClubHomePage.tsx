@@ -1952,6 +1952,7 @@ export default function ClubHomePage() {
           tasksLoading={tasksLoading}
           posts={posts}
           postsLoading={postsLoading}
+          eventsCount={events.length}
           upcomingOccurrences={upcomingOccurrences}
           eventsLoading={eventsLoading}
           eventRsvpCounts={eventRsvpCounts}
