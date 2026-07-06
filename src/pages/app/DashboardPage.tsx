@@ -94,6 +94,7 @@ import {
   resolveOnboardingIntent,
   type OnboardingIntent,
 } from "../../lib/onboardingIntent";
+import type { Club, MemberRole } from "../../types";
 
 // ---------------------------------------------------------------------------
 // Tab types
@@ -286,6 +287,76 @@ function NewUserGuideSection({
   );
 }
 
+function clubNeedsSetupNudge(club: Club, role: MemberRole | null): boolean {
+  return (
+    club.claimStatus === "claimed" &&
+    club.setupCompleted !== true &&
+    (role === "owner" || role === "executive")
+  );
+}
+
+function IncompleteClubSetupNudges({ clubs }: { clubs: Club[] }) {
+  if (clubs.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginBottom: "24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+      }}
+    >
+      {clubs.map((club) => (
+        <Link
+          key={club.id}
+          to={`/app/clubs/${club.id}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: "16px 20px",
+            background: "rgba(255, 196, 41, 0.08)",
+            border: "1px solid rgba(255, 196, 41, 0.28)",
+            borderRadius: "12px",
+            textDecoration: "none",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p
+              style={{
+                margin: 0,
+                fontWeight: 700,
+                color: "#FFC429",
+                fontSize: "14px",
+              }}
+            >
+              Finish setup for {club.name}
+            </p>
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: "12px",
+                color: "#cccccc",
+                lineHeight: 1.45,
+              }}
+            >
+              Complete your club profile checklist to publish on Explore.
+            </p>
+          </div>
+          <ChevronRight
+            size={18}
+            color="#FFC429"
+            style={{ flexShrink: 0 }}
+            aria-hidden
+          />
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function NewUserDashboardGuide({ intent }: { intent: OnboardingIntent | null }) {
   const isMobileGuide = useIsMobile();
 
@@ -428,6 +499,16 @@ export default function DashboardPage() {
     () => clubs.filter((c) => savedClubs.includes(c.id)),
     [clubs, savedClubs],
   );
+
+  const incompleteManagedClubs = useMemo(() => {
+    return clubs
+      .filter((club) => clubNeedsSetupNudge(club, getUserRole(club.id)))
+      .sort((left, right) => {
+        const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
+        const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+        return rightTime - leftTime;
+      });
+  }, [clubs, getUserRole]);
 
   const { events: upcomingEvents, loading: eventsLoading, refresh: refreshEvents } =
     useDashboardEvents(joinedClubs, user?.id);
@@ -727,6 +808,10 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {incompleteManagedClubs.length > 0 ? (
+        <IncompleteClubSetupNudges clubs={incompleteManagedClubs} />
+      ) : null}
 
       {joinedClubs.length === 0 ? (
         <NewUserDashboardGuide intent={onboardingIntent} />
