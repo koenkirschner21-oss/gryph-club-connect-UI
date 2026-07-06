@@ -36,6 +36,10 @@ import {
   type PublicClubSocialLinks,
 } from "../lib/publicClubProfileDisplay";
 import { recordPublicProfileEvent } from "../lib/publicProfileAnalytics";
+import {
+  canBypassPublicClubVisibility,
+  isClubPubliclyDiscoverableRow,
+} from "../lib/clubPublicVisibility";
 import type {
   ClaimStatus,
   Club,
@@ -556,6 +560,7 @@ export default function ClubPublicProfilePage() {
   const contextClub = getClubBySlug(slug ?? "") ?? getClubById(slug ?? "");
 
   const [profile, setProfile] = useState<PublicClubProfile | null>(null);
+  const [profileUnavailable, setProfileUnavailable] = useState(false);
   const [memberCount, setMemberCount] = useState(0);
   const [openPositionsCount, setOpenPositionsCount] = useState(0);
   const [events, setEvents] = useState<ClubEvent[]>([]);
@@ -633,6 +638,7 @@ export default function ClubPublicProfilePage() {
       }
 
       setPageLoading(true);
+      setProfileUnavailable(false);
 
       let query = supabase
         .from("clubs")
@@ -650,6 +656,32 @@ export default function ClubPublicProfilePage() {
 
       if (error || !clubRow) {
         setProfile(null);
+        setProfileUnavailable(false);
+        setOwners([]);
+        setPageLoading(false);
+        return;
+      }
+
+      const publiclyLive = isClubPubliclyDiscoverableRow(
+        clubRow as Record<string, unknown>,
+      );
+
+      let membershipForVisibility: { status?: string | null } | null = null;
+      if (user?.id) {
+        const { data: membership } = await supabase
+          .from("club_members")
+          .select("status, role")
+          .eq("club_id", clubRow.id as string)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (cancelled) return;
+        membershipForVisibility = membership;
+      }
+
+      if (!publiclyLive && !canBypassPublicClubVisibility(membershipForVisibility)) {
+        setProfile(null);
+        setProfileUnavailable(true);
         setOwners([]);
         setPageLoading(false);
         return;
@@ -696,13 +728,8 @@ export default function ClubPublicProfilePage() {
       let userApplicationStatus: JoinApplicationStatus = null;
       let userHasOpenClaimRequest = false;
       if (user?.id) {
-        const [{ data: membership }, { data: pendingClaim }] = await Promise.all([
-          supabase
-            .from("club_members")
-            .select("status")
-            .eq("club_id", loaded.id)
-            .eq("user_id", user.id)
-            .maybeSingle(),
+        const membership = membershipForVisibility;
+        const [{ data: pendingClaim }] = await Promise.all([
           supabase
             .from("club_claim_requests")
             .select("id, status")
@@ -713,6 +740,8 @@ export default function ClubPublicProfilePage() {
             .limit(1)
             .maybeSingle(),
         ]);
+
+        if (cancelled) return;
 
         isMember = membership?.status === "active";
         if (membership?.status === "pending") {
@@ -940,6 +969,22 @@ export default function ClubPublicProfilePage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Spinner label="Loading club profile…" />
+      </div>
+    );
+  }
+
+  if (profileUnavailable) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-20 text-center sm:px-6 lg:px-8">
+        <h1 className="mt-5 text-3xl font-bold text-white">
+          This club isn&apos;t available yet
+        </h1>
+        <p className="mt-3 text-muted">
+          This club profile isn&apos;t published yet. Check back later or explore other clubs.
+        </p>
+        <Link to="/explore" className="mt-6 inline-block">
+          <Button>Back to Explore</Button>
+        </Link>
       </div>
     );
   }

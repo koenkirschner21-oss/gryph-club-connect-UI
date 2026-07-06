@@ -16,6 +16,7 @@ import { useClubContext } from "../context/useClubContext";
 import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTags } from "../lib/normalizeTags";
 import { sortClubsByMemberActivity } from "../lib/clubUtils";
+import { isClubPubliclyDiscoverable } from "../lib/clubPublicVisibility";
 import { clubCategoryFilterOptions } from "../lib/clubCategories";
 import {
   extractEmbeddedRequestMetadata,
@@ -326,6 +327,8 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
     joinType: normalizeJoinType(row.join_type),
     membershipType: normalizeMembershipType(row.membership_type),
     claimStatus: normalizeClaimStatus(row.claim_status),
+    setupCompleted: (row.setup_completed as boolean) ?? false,
+    isPublished: (row.is_published as boolean) ?? false,
     joinQuestions: parseJoinQuestions(row.join_questions),
     createdBy: (row.created_by as string) ?? undefined,
     createdAt: (row.created_at as string) ?? undefined,
@@ -338,8 +341,14 @@ export default function Explore() {
   const [searchParams] = useSearchParams();
   const claimMode = searchParams.get("claim") === "true";
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { clubs: contextClubs, loading: contextLoading, error: contextError, isJoined, getUserRole } =
-    useClubContext();
+  const {
+    clubs: contextClubs,
+    loading: contextLoading,
+    error: contextError,
+    isJoined,
+    isPending,
+    getUserRole,
+  } = useClubContext();
   const { user } = useAuthContext();
   const [guestClubs, setGuestClubs] = useState<Club[]>([]);
   const [guestLoading, setGuestLoading] = useState(true);
@@ -392,6 +401,9 @@ export default function Explore() {
         .from("clubs")
         .select("*")
         .eq("is_public", true)
+        .eq("is_published", true)
+        .eq("setup_completed", true)
+        .eq("claim_status", "active")
         .order("name");
 
       if (cancelled) return;
@@ -417,6 +429,18 @@ export default function Explore() {
   const clubs = user ? contextClubs : guestClubs;
   const loading = user ? contextLoading : guestLoading;
   const error = user ? contextError : guestError;
+
+  const discoverableClubs = useMemo(() => {
+    if (isClaimFocusedExplore) return clubs;
+
+    return clubs.filter((club) => {
+      if (isClubPubliclyDiscoverable(club)) return true;
+      if (!user?.id) return false;
+      if (isJoined(club.id) || isPending(club.id)) return true;
+      const role = getUserRole(club.id);
+      return role === "owner" || role === "executive";
+    });
+  }, [clubs, isClaimFocusedExplore, user?.id, isJoined, isPending, getUserRole]);
 
   const [claimMetaReady, setClaimMetaReady] = useState(false);
   const [activeOwnerCountByClubId, setActiveOwnerCountByClubId] = useState<
@@ -522,10 +546,12 @@ export default function Explore() {
     return [
       "All",
       ...clubCategoryFilterOptions(
-        clubs.map((club) => club.category).filter((value) => value.length > 0),
+        discoverableClubs
+          .map((club) => club.category)
+          .filter((value) => value.length > 0),
       ),
     ];
-  }, [clubs]);
+  }, [discoverableClubs]);
 
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
@@ -543,8 +569,8 @@ export default function Explore() {
   );
 
   const mostActiveClubs = useMemo(
-    () => sortClubsByMemberActivity(clubs).slice(0, 6),
-    [clubs],
+    () => sortClubsByMemberActivity(discoverableClubs).slice(0, 6),
+    [discoverableClubs],
   );
 
   const featuredCategoryRows = useMemo(() => {
@@ -553,16 +579,18 @@ export default function Explore() {
       .map((category) => ({
         category,
         clubs: sortClubsByMemberActivity(
-          clubs.filter((club) => club.category.toLowerCase() === category.toLowerCase()),
+          discoverableClubs.filter(
+            (club) => club.category.toLowerCase() === category.toLowerCase(),
+          ),
         ).slice(0, 6),
       }))
       .filter((row) => row.clubs.length > 0)
       .slice(0, 2);
-  }, [clubs]);
+  }, [discoverableClubs]);
 
   const filteredClubs = useMemo(() => {
     const query = search.toLowerCase();
-    const filtered = clubs.filter((club) => {
+    const filtered = discoverableClubs.filter((club) => {
       const matchesCategory =
         activeCategory === "All" || club.category === activeCategory;
 
@@ -576,7 +604,7 @@ export default function Explore() {
       return matchesCategory && matchesSearch;
     });
     return sortClubsByMemberActivity(filtered);
-  }, [clubs, search, activeCategory]);
+  }, [discoverableClubs, search, activeCategory]);
 
   const displayClubs = useMemo(() => {
     if (!claimMode || !claimMetaReady) return filteredClubs;
@@ -599,7 +627,11 @@ export default function Explore() {
 
   const categoryCount = Math.max(categories.length - 1, 0);
   const clubCountLabel =
-    clubs.length >= 260 ? "260+" : clubs.length > 0 ? String(clubs.length) : "0";
+    discoverableClubs.length >= 260
+      ? "260+"
+      : discoverableClubs.length > 0
+        ? String(discoverableClubs.length)
+        : "0";
 
   const emptyStateMessage = useMemo(() => {
     if (isClaimFocusedExplore && (search || activeCategory !== "All")) {
