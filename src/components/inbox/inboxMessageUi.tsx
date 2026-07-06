@@ -260,6 +260,12 @@ export function resolveInboxRowActionLabel(message: InboxMessage): string {
     if (message.actionType === "executive_invite_response") {
       return "Accept / Decline";
     }
+    if (message.actionType === "offer_response") {
+      return "Accept / Decline";
+    }
+    if (message.actionType === "select_interview_time") {
+      return "Pick a Time →";
+    }
     if (message.actionType === "ownership_transfer_response") {
       return "Review →";
     }
@@ -322,6 +328,11 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
       return [{ label: "Review Request", variant: "outlined" }];
     case "executive_invite":
       return [{ label: "Review Invite", variant: "outlined" }];
+    case "interview_invite":
+      if (message.actionType === "select_interview_time") {
+        return [{ label: "Pick Interview Time", variant: "solid" }];
+      }
+      return [{ label: "View Invite", variant: "outlined" }];
     case "role_offer":
       return [{ label: "Respond to Offer", variant: "solid" }];
     case "application_update":

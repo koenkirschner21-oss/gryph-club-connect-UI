@@ -563,6 +563,7 @@ export default function CandidateReviewPanel({
                 applicationId: application.id,
                 listingId: application.listingId,
                 mode: payload.mode,
+                interviewTimes: payload.interviewTimes,
                 path: `/app/clubs/${clubId}/recruiting`,
               },
               clubId,

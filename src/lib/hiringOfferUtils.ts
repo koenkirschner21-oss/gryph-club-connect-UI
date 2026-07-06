@@ -59,6 +59,14 @@ export async function acceptHiringOffer(
     params.recipientUserId,
   );
 
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("hiring-application-updated", {
+        detail: { applicationId: params.applicationId },
+      }),
+    );
+  }
+
   return { ok: true, clubId: payload.club_id };
 }
 
@@ -84,6 +92,14 @@ export async function declineHiringOffer(
     params.inboxMessageId,
     params.recipientUserId,
   );
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("hiring-application-updated", {
+        detail: { applicationId: params.applicationId },
+      }),
+    );
+  }
 
   return { ok: true };
 }

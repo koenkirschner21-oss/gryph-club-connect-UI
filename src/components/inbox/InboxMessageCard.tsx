@@ -18,6 +18,10 @@ import {
   acceptHiringOffer,
   declineHiringOffer,
 } from "../../lib/hiringOfferUtils";
+import {
+  InterviewTimeInboxActions,
+  OfferResponseInboxActions,
+} from "./HiringInboxActions";
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
 import {
@@ -73,14 +77,17 @@ function useInboxMessageActions(
   const navigate = useNavigate();
   const [acting, setActing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const hasPendingActions =
     message.actionRequired &&
     !message.actionCompleted &&
+    !actionSuccess &&
     (message.actionType === "ownership_transfer_response" ||
       message.actionType === "former_owner_role_choice" ||
       message.actionType === "executive_invite_response" ||
-      message.actionType === "offer_response");
+      message.actionType === "offer_response" ||
+      message.actionType === "select_interview_time");
 
   const transferId =
     typeof message.actionData.transferId === "string"
@@ -104,6 +111,11 @@ function useInboxMessageActions(
     (typeof message.actionData.applicationId === "string" &&
       message.actionData.applicationId.trim()) ||
     (message.referenceType === "hiring_application" ? message.referenceId : "");
+
+  const interviewInviteMode =
+    typeof message.actionData.mode === "string" ? message.actionData.mode : undefined;
+
+  const interviewInviteTimes = message.actionData.interviewTimes;
 
   useEffect(() => {
     if (
@@ -220,6 +232,7 @@ function useInboxMessageActions(
     if (!user?.id || !hiringApplicationId) return;
     setActing(true);
     setActionError(null);
+    setActionSuccess(null);
 
     const result = await acceptHiringOffer(supabase, {
       applicationId: hiringApplicationId,
@@ -233,18 +246,25 @@ function useInboxMessageActions(
       return;
     }
 
-    if (result.clubId) {
-      window.location.assign(`/app/clubs/${result.clubId}`);
-      return;
+    if (!message.read) {
+      await onMarkAsRead(message.id);
     }
 
+    setActionSuccess("Offer accepted — welcome to the team!");
     onRefresh();
+
+    if (result.clubId) {
+      window.setTimeout(() => {
+        window.location.assign(`/app/clubs/${result.clubId}`);
+      }, 1500);
+    }
   }
 
   async function handleDeclineHiringOffer() {
     if (!user?.id || !hiringApplicationId) return;
     setActing(true);
     setActionError(null);
+    setActionSuccess(null);
 
     const result = await declineHiringOffer(supabase, {
       applicationId: hiringApplicationId,
@@ -258,6 +278,11 @@ function useInboxMessageActions(
       return;
     }
 
+    if (!message.read) {
+      await onMarkAsRead(message.id);
+    }
+
+    setActionSuccess("Offer declined.");
     onRefresh();
   }
 
@@ -380,32 +405,26 @@ function useInboxMessageActions(
 
     if (message.actionType === "offer_response") {
       return (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            flexWrap: "wrap",
-            gap: "8px",
-            marginTop: "14px",
-          }}
-        >
-          <button
-            type="button"
-            disabled={acting}
-            style={SOLID_RED_BUTTON_STYLE}
-            onClick={() => void handleAcceptHiringOffer()}
-          >
-            {acting ? "Working…" : "Accept Offer"}
-          </button>
-          <button
-            type="button"
-            disabled={acting}
-            style={OUTLINED_BUTTON_STYLE}
-            onClick={() => void handleDeclineHiringOffer()}
-          >
-            Decline Offer
-          </button>
-        </div>
+        <OfferResponseInboxActions
+          acting={acting}
+          actionError={actionError}
+          actionSuccess={actionSuccess}
+          onAccept={() => void handleAcceptHiringOffer()}
+          onDecline={() => void handleDeclineHiringOffer()}
+        />
+      );
+    }
+
+    if (message.actionType === "select_interview_time" && user?.id && hiringApplicationId) {
+      return (
+        <InterviewTimeInboxActions
+          applicationId={hiringApplicationId}
+          inboxMessageId={message.id}
+          recipientUserId={user.id}
+          inviteMode={interviewInviteMode}
+          inviteInterviewTimes={interviewInviteTimes}
+          onRefresh={onRefresh}
+        />
       );
     }
 
@@ -506,6 +525,7 @@ function useInboxMessageActions(
 
   return {
     actionError,
+    actionSuccess,
     hasPendingActions,
     renderDefaultActions,
     renderPendingActions,
@@ -526,7 +546,7 @@ export function InboxMessageDetailView({
   const statusBadge = inboxStatusBadge(message);
   const categoryLabel = inboxCategoryLabel(message);
   const clubLabel = message.clubName?.trim() || "Gryph Club Connect";
-  const { actionError, hasPendingActions, renderDefaultActions, renderPendingActions } =
+  const { actionError, actionSuccess, hasPendingActions, renderDefaultActions, renderPendingActions } =
     useInboxMessageActions(message, onMarkAsRead, onRefresh);
 
   return (
@@ -584,6 +604,12 @@ export function InboxMessageDetailView({
 
         {actionError ? (
           <p style={{ margin: "12px 0 0", fontSize: "12px", color: "#E51937" }}>{actionError}</p>
+        ) : null}
+
+        {actionSuccess ? (
+          <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#4ade80", lineHeight: 1.5 }}>
+            {actionSuccess}
+          </p>
         ) : null}
 
         {hasPendingActions ? renderPendingActions() : renderDefaultActions()}
