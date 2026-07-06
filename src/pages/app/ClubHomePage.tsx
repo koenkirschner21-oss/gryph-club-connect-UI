@@ -73,6 +73,12 @@ import {
   useMeetingPrepChecklist,
 } from "../../hooks/useMeetingPrepChecklist";
 
+const SETUP_CHECKLIST_MODAL_SEEN_PREFIX = "club-setup-checklist-modal-seen:";
+
+function setupChecklistModalStorageKey(clubId: string): string {
+  return `${SETUP_CHECKLIST_MODAL_SEEN_PREFIX}${clubId}`;
+}
+
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
 
@@ -1376,6 +1382,34 @@ export default function ClubHomePage() {
     [members],
   );
 
+  const shouldPromptSetupChecklist = useMemo(() => {
+    if (!club || memberAccess.loading) return false;
+    return (
+      memberAccess.canManageClubSettings &&
+      club.claimStatus === "claimed" &&
+      !club.setupCompleted
+    );
+  }, [club, memberAccess.loading, memberAccess.canManageClubSettings]);
+
+  const dismissSetupChecklistModal = useCallback(() => {
+    if (clubId) {
+      localStorage.setItem(setupChecklistModalStorageKey(clubId), "1");
+    }
+    setSetupModalOpen(false);
+  }, [clubId]);
+
+  useEffect(() => {
+    if (!clubId || !shouldPromptSetupChecklist) {
+      setSetupModalOpen(false);
+      return;
+    }
+
+    const seen = localStorage.getItem(setupChecklistModalStorageKey(clubId));
+    if (!seen) {
+      setSetupModalOpen(true);
+    }
+  }, [clubId, shouldPromptSetupChecklist]);
+
   const loadSetupSupplementalCounts = useCallback(async () => {
     if (!clubId) return;
 
@@ -1842,10 +1876,7 @@ export default function ClubHomePage() {
     );
   }
 
-  const showSetupChecklist =
-    memberAccess.canManageClubSettings &&
-    club.claimStatus === "claimed" &&
-    !club.setupCompleted;
+  const showSetupChecklist = shouldPromptSetupChecklist;
 
   async function handlePublishClub() {
     if (!clubId) return;
@@ -2004,7 +2035,7 @@ export default function ClubHomePage() {
           }
           onPublish={handlePublishClub}
           onRefetch={refetchClubData}
-          onClose={() => setSetupModalOpen(false)}
+          onClose={dismissSetupChecklistModal}
         />
       ) : null}
 
