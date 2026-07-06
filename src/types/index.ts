@@ -18,7 +18,8 @@ export type ClaimRequestStatus =
   | "pending"
   | "approved"
   | "rejected"
-  | "more_info";
+  | "more_info"
+  | "canceled";
 
 export type JoinQuestionType = "short" | "long" | "multiple_choice";
 

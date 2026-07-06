@@ -179,7 +179,21 @@ export function resolveInboxLink(message: InboxMessage): string {
   }
 
   if (message.actionType === "review_claim_request") {
-    return "/app/admin?tab=claims";
+    const claimId =
+      (typeof message.actionData.claimId === "string" &&
+        message.actionData.claimId.trim()) ||
+      message.referenceId;
+    return claimId
+      ? `/app/admin?tab=claims&claim=${claimId}`
+      : "/app/admin?tab=claims";
+  }
+
+  if (message.actionType === "view_club_profile") {
+    const clubSlug =
+      typeof message.actionData.clubSlug === "string"
+        ? message.actionData.clubSlug.trim()
+        : "";
+    if (clubSlug) return `/clubs/${clubSlug}`;
   }
 
   if (message.actionType === "claim_more_info") {
@@ -199,8 +213,19 @@ export function resolveInboxLink(message: InboxMessage): string {
   switch (message.type) {
     case "join_rejected":
       return "/explore";
-    case "club_claim_rejected":
+    case "club_claim_rejected": {
+      const claimId =
+        (typeof message.actionData.claimId === "string" &&
+          message.actionData.claimId.trim()) ||
+        message.referenceId;
+      if (claimId) return `/claim-status/${claimId}`;
+      const clubSlug =
+        typeof message.actionData.clubSlug === "string"
+          ? message.actionData.clubSlug.trim()
+          : "";
+      if (clubSlug) return `/clubs/${clubSlug}`;
       return "/explore";
+    }
     case "club_request_rejected":
       return "/explore";
     case "club_claim_approved":

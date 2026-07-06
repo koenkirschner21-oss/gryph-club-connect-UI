@@ -66,16 +66,22 @@ function resolveNotificationLink(notification: Notification): string | null {
         : "/app/admin?tab=claims";
     case "club_request_submitted":
     case "claim_submitted":
-      return "/app";
+      return notification.referenceId
+        ? `/claim-status/${notification.referenceId}`
+        : "/app";
     case "club_request_rejected":
     case "claim_rejected":
-      return "/explore";
+      return notification.referenceId
+        ? `/claim-status/${notification.referenceId}`
+        : "/explore";
     case "club_request_approved":
     case "claim_approved":
       return notification.clubId ? `/app/clubs/${notification.clubId}` : "/app";
     case "club_request_more_info":
     case "claim_more_info":
-      return "/app";
+      return notification.referenceId
+        ? `/claim-status/${notification.referenceId}`
+        : "/app";
     default:
       break;
   }

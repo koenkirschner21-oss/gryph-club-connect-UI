@@ -507,7 +507,7 @@ export async function notifyClaimRequestSubmitted(
       message: adminMessage,
       actionRequired: true,
       actionType: "review_claim_request",
-      actionData: { path: "/app/admin?tab=claims" },
+      actionData: { path: `/app/admin?tab=claims&claim=${params.claimRequestId}` },
       clubId: params.clubId,
       referenceId: params.claimRequestId,
       referenceType: "club_claim_request",
@@ -571,9 +571,7 @@ export async function notifyClaimRequestRejected(
   },
 ): Promise<void> {
   const message = `Your claim for ${params.clubName} was not approved at this time.`;
-  const profilePath = params.clubSlug
-    ? `/clubs/${params.clubSlug}`
-    : "/explore";
+  const claimStatusPath = `/claim-status/${params.claimRequestId}`;
 
   const bellOk = await createNotification(supabase, {
     userId: params.submitterUserId,
@@ -594,8 +592,10 @@ export async function notifyClaimRequestRejected(
     actionRequired: false,
     actionType: "view_club_profile",
     actionData: {
-      path: profilePath,
-      actionLabel: "View Club Profile",
+      claimId: params.claimRequestId,
+      clubSlug: params.clubSlug,
+      path: claimStatusPath,
+      actionLabel: "View Claim Status",
     },
     clubId: params.clubId,
     referenceId: params.claimRequestId,

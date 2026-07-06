@@ -31,6 +31,7 @@ import {
 } from "../../lib/clubReportUtils";
 import Spinner from "../../components/ui/Spinner";
 import { useIsMobile } from "../../hooks/useWindowWidth";
+import type { ClaimRequestStatus } from "../../types";
 
 type AdminTab = "requests" | "claims" | "users" | "moderation" | "stats" | "bugs";
 type RequestStatusFilter = "all" | "pending" | "approved" | "rejected";
@@ -74,7 +75,7 @@ interface ClubClaimRequestRow {
   message: string | null;
   proof_url: string | null;
   contact_email: string | null;
-  status: "pending" | "approved" | "rejected" | "more_info";
+  status: ClaimRequestStatus;
   review_note: string | null;
   created_at: string;
   clubName: string;
@@ -488,6 +489,7 @@ export default function AdminPage() {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const highlightedClaimId = searchParams.get("claim")?.trim() || null;
   const [activeTab, setActiveTab] = useState<AdminTab>("requests");
 
   const [requests, setRequests] = useState<ClubRequestRow[]>([]);
@@ -997,6 +999,11 @@ export default function AdminPage() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
+    const claimId = searchParams.get("claim")?.trim();
+    if (claimId) {
+      setActiveTab("claims");
+      return;
+    }
     if (
       tab === "requests" ||
       tab === "claims" ||
@@ -1108,6 +1115,32 @@ export default function AdminPage() {
       ),
     [claimRequests],
   );
+
+  const displayClaimRequests = useMemo(() => {
+    if (!highlightedClaimId) return activeClaimRequests;
+
+    const targeted = claimRequests.find((request) => request.id === highlightedClaimId);
+    if (!targeted) return activeClaimRequests;
+
+    if (activeClaimRequests.some((request) => request.id === highlightedClaimId)) {
+      return activeClaimRequests;
+    }
+
+    return [targeted, ...activeClaimRequests];
+  }, [activeClaimRequests, claimRequests, highlightedClaimId]);
+
+  useEffect(() => {
+    if (!highlightedClaimId || claimRequestsLoading || activeTab !== "claims") {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const element = document.getElementById(`admin-claim-${highlightedClaimId}`);
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [highlightedClaimId, claimRequestsLoading, activeTab, displayClaimRequests]);
 
   async function handleApproveClaim(request: ClubClaimRequestRow) {
     if (!user?.id) return;
@@ -2876,23 +2909,27 @@ export default function AdminPage() {
             <div className="flex justify-center py-16">
               <Spinner label="Loading club claims…" />
             </div>
-          ) : activeClaimRequests.length === 0 ? (
+          ) : displayClaimRequests.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 16px" }}>
               <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
                 No active club claims
               </p>
             </div>
           ) : (
-            activeClaimRequests.map((request) => (
+            displayClaimRequests.map((request) => {
+              const isHighlighted = request.id === highlightedClaimId;
+              return (
               <article
                 key={request.id}
+                id={`admin-claim-${request.id}`}
                 style={{
-                  background: "#1a1a1a",
-                  border: "1px solid #242424",
-                  borderLeft: "3px solid #FFC429",
+                  background: isHighlighted ? "#221a00" : "#1a1a1a",
+                  border: isHighlighted ? "1px solid #FFC429" : "1px solid #242424",
+                  borderLeft: `3px solid ${isHighlighted ? "#E51937" : "#FFC429"}`,
                   borderRadius: "10px",
                   padding: "20px",
                   marginBottom: "12px",
+                  boxShadow: isHighlighted ? "0 0 0 1px rgba(255, 196, 41, 0.25)" : undefined,
                 }}
               >
                 <div
@@ -3048,7 +3085,8 @@ export default function AdminPage() {
                   </div>
                 </div>
               </article>
-            ))
+            );
+            })
           )}
         </section>
       ) : null}
