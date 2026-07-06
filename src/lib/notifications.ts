@@ -892,7 +892,7 @@ export async function fetchEventRsvpRecipientUserIds(
     .from("event_rsvps")
     .select("user_id")
     .eq("event_id", eventId)
-    .in("status", ["going", "maybe"]);
+    .in("status", ["going", "maybe", "pending"]);
 
   if (error) {
     console.error("Failed to load event RSVP recipients:", error.message);
