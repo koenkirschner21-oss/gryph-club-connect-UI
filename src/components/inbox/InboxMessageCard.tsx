@@ -14,6 +14,10 @@ import {
   acceptExecutiveInvite,
   declineExecutiveInvite,
 } from "../../lib/executiveInviteUtils";
+import {
+  acceptHiringOffer,
+  declineHiringOffer,
+} from "../../lib/hiringOfferUtils";
 import type { InboxMessage } from "../../lib/inboxUtils";
 import { resolveInboxLink } from "../../lib/inboxUtils";
 import {
@@ -75,7 +79,8 @@ function useInboxMessageActions(
     !message.actionCompleted &&
     (message.actionType === "ownership_transfer_response" ||
       message.actionType === "former_owner_role_choice" ||
-      message.actionType === "executive_invite_response");
+      message.actionType === "executive_invite_response" ||
+      message.actionType === "offer_response");
 
   const transferId =
     typeof message.actionData.transferId === "string"
@@ -94,6 +99,11 @@ function useInboxMessageActions(
     typeof message.actionData.invitedBy === "string"
       ? message.actionData.invitedBy
       : message.senderId;
+
+  const hiringApplicationId =
+    (typeof message.actionData.applicationId === "string" &&
+      message.actionData.applicationId.trim()) ||
+    (message.referenceType === "hiring_application" ? message.referenceId : "");
 
   useEffect(() => {
     if (
@@ -200,6 +210,51 @@ function useInboxMessageActions(
 
     if (result.clubId) {
       window.location.assign(`/app/clubs/${result.clubId}`);
+      return;
+    }
+
+    onRefresh();
+  }
+
+  async function handleAcceptHiringOffer() {
+    if (!user?.id || !hiringApplicationId) return;
+    setActing(true);
+    setActionError(null);
+
+    const result = await acceptHiringOffer(supabase, {
+      applicationId: hiringApplicationId,
+      recipientUserId: user.id,
+      inboxMessageId: message.id,
+    });
+
+    setActing(false);
+    if (!result.ok) {
+      setActionError(result.error ?? "Failed to accept offer.");
+      return;
+    }
+
+    if (result.clubId) {
+      window.location.assign(`/app/clubs/${result.clubId}`);
+      return;
+    }
+
+    onRefresh();
+  }
+
+  async function handleDeclineHiringOffer() {
+    if (!user?.id || !hiringApplicationId) return;
+    setActing(true);
+    setActionError(null);
+
+    const result = await declineHiringOffer(supabase, {
+      applicationId: hiringApplicationId,
+      recipientUserId: user.id,
+      inboxMessageId: message.id,
+    });
+
+    setActing(false);
+    if (!result.ok) {
+      setActionError(result.error ?? "Failed to decline offer.");
       return;
     }
 
@@ -322,6 +377,37 @@ function useInboxMessageActions(
 
   function renderPendingActions() {
     if (!hasPendingActions) return null;
+
+    if (message.actionType === "offer_response") {
+      return (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginTop: "14px",
+          }}
+        >
+          <button
+            type="button"
+            disabled={acting}
+            style={SOLID_RED_BUTTON_STYLE}
+            onClick={() => void handleAcceptHiringOffer()}
+          >
+            {acting ? "Working…" : "Accept Offer"}
+          </button>
+          <button
+            type="button"
+            disabled={acting}
+            style={OUTLINED_BUTTON_STYLE}
+            onClick={() => void handleDeclineHiringOffer()}
+          >
+            Decline Offer
+          </button>
+        </div>
+      );
+    }
 
     if (message.actionType === "executive_invite_response") {
       return (

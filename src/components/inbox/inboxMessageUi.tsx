@@ -322,6 +322,8 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
       return [{ label: "Review Request", variant: "outlined" }];
     case "executive_invite":
       return [{ label: "Review Invite", variant: "outlined" }];
+    case "role_offer":
+      return [{ label: "Respond to Offer", variant: "solid" }];
     case "application_update":
       if (message.actionType === "review_hiring_application") {
         return [{ label: "Review Applicant", variant: "solid" }];
@@ -331,6 +333,9 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
     case "new_club_request":
       return [{ label: "Review in Admin", variant: "outlined" }];
     default:
+      if (message.actionType === "offer_response") {
+        return [{ label: "Respond to Offer", variant: "solid" }];
+      }
       if (message.actionType === "review_hiring_application") {
         return [{ label: "Review Applicant", variant: "solid" }];
       }
