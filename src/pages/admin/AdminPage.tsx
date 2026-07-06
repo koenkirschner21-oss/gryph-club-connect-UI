@@ -18,7 +18,10 @@ import {
   notifyClubRequestRejected,
   notifyReportStatusUpdated,
 } from "../../lib/notifications";
-import { ensurePresidentMembership } from "../../lib/clubPresidentMembership";
+import {
+  approveClubClaimRequest,
+  ensurePresidentMembership,
+} from "../../lib/clubPresidentMembership";
 import { applySocialLinksToClubPayload } from "../../lib/clubSocialLinks";
 import {
   clubReportReasonLabel,
@@ -1112,54 +1115,22 @@ export default function AdminPage() {
     setClaimActionLoadingId(request.id);
     setFeedback(null);
 
-    const memberError = await ensurePresidentMembership(
-      supabase,
-      request.club_id,
-      request.submitted_by,
-      request.role_in_club?.trim() || undefined,
-    );
+    const approval = await approveClubClaimRequest(supabase, request.id);
 
-    if (memberError) {
-      console.error("Failed to create owner membership:", memberError);
-      setFeedback("Failed to approve claim — could not add owner membership.");
+    if (!approval.ok) {
+      setFeedback("Failed to approve claim — please try again.");
       setClaimActionLoadingId(null);
       return;
     }
 
-    const { error: clubError } = await supabase
-      .from("clubs")
-      .update({ claim_status: "claimed" })
-      .eq("id", request.club_id);
-
-    if (clubError) {
-      console.error("Failed to update club claim status:", clubError.message);
-      setFeedback("Owner added but club status could not be updated.");
-      setClaimActionLoadingId(null);
-      return;
+    if (approval.result.outcome === "approved") {
+      await notifyClaimRequestApproved(supabase, {
+        clubId: request.club_id,
+        clubName: request.clubName,
+        submitterUserId: request.submitted_by,
+        claimRequestId: request.id,
+      });
     }
-
-    const { error: requestError } = await supabase
-      .from("club_claim_requests")
-      .update({
-        status: "approved",
-        reviewed_by: user.id,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq("id", request.id);
-
-    if (requestError) {
-      console.error("Failed to update claim request:", requestError.message);
-      setFeedback("Claim approved but request status could not be saved.");
-      setClaimActionLoadingId(null);
-      return;
-    }
-
-    await notifyClaimRequestApproved(supabase, {
-      clubId: request.club_id,
-      clubName: request.clubName,
-      submitterUserId: request.submitted_by,
-      claimRequestId: request.id,
-    });
 
     setClaimActionLoadingId(null);
     await loadClaimRequests();

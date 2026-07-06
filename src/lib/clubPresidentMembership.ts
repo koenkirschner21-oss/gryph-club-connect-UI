@@ -78,3 +78,52 @@ export async function ensurePresidentMembership(
 
   return "President membership could not be confirmed for this club.";
 }
+
+export type ApproveClubClaimOutcome = "approved" | "already_approved";
+
+export interface ApproveClubClaimResult {
+  outcome: ApproveClubClaimOutcome;
+  claimRequestId: string;
+  clubId: string;
+  submittedBy: string;
+  claimStatus: string;
+  siblingRequestsClosed: number;
+}
+
+function mapApproveClubClaimResult(
+  data: Record<string, unknown>,
+): ApproveClubClaimResult {
+  return {
+    outcome:
+      data.outcome === "already_approved" ? "already_approved" : "approved",
+    claimRequestId: data.claim_request_id as string,
+    clubId: data.club_id as string,
+    submittedBy: data.submitted_by as string,
+    claimStatus: (data.claim_status as string) ?? "claimed",
+    siblingRequestsClosed: Number(data.sibling_requests_closed ?? 0),
+  };
+}
+
+/** Atomically approve a club claim request (platform admins only). */
+export async function approveClubClaimRequest(
+  supabase: SupabaseClient,
+  claimRequestId: string,
+): Promise<{ ok: true; result: ApproveClubClaimResult } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("approve_club_claim_request", {
+    p_request_id: claimRequestId,
+  });
+
+  if (error) {
+    console.error("Failed to approve club claim request:", error.message);
+    return { ok: false, error: error.message };
+  }
+
+  if (!data || typeof data !== "object") {
+    return { ok: false, error: "Claim approval returned no result." };
+  }
+
+  return {
+    ok: true,
+    result: mapApproveClubClaimResult(data as Record<string, unknown>),
+  };
+}
