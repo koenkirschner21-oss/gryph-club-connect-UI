@@ -49,17 +49,36 @@ export type EventOccurrence<T extends { id: string; date: string }> = T & {
   occurrenceDate: string;
 };
 
-/** Upcoming instances including the next date for recurring parent events. */
+/** Upcoming instances using materialized event rows (child instances) when present. */
 export function getUpcomingEventOccurrences<T extends { id: string; date: string }>(
   events: T[],
   recurringById: Record<string, EventRecurringMeta>,
   referenceDate: Date = new Date(),
 ): EventOccurrence<T>[] {
   const todayYmd = formatDateYmd(referenceDate);
+  const parentIdsWithChildren = new Set<string>();
+
+  for (const event of events) {
+    const parentId = recurringById[event.id]?.parentEventId;
+    if (parentId) parentIdsWithChildren.add(parentId);
+  }
+
   const occurrences: EventOccurrence<T>[] = [];
 
   for (const event of events) {
     const meta = recurringById[event.id];
+    const isChildInstance = Boolean(meta?.parentEventId);
+    const isParentWithChildren = parentIdsWithChildren.has(event.id);
+
+    // Child rows and parents with generated instances are routable by events.id.
+    if (isChildInstance || isParentWithChildren) {
+      if (event.date >= todayYmd) {
+        occurrences.push({ ...event, occurrenceDate: event.date });
+      }
+      continue;
+    }
+
+    // Legacy parent-only recurring series without materialized children.
     if (meta?.isRecurring && meta.frequency) {
       const next = computeNextOccurrenceDate(
         event.date,
@@ -68,7 +87,10 @@ export function getUpcomingEventOccurrences<T extends { id: string; date: string
         referenceDate,
       );
       if (next) occurrences.push({ ...event, occurrenceDate: next });
-    } else if (event.date >= todayYmd) {
+      continue;
+    }
+
+    if (event.date >= todayYmd) {
       occurrences.push({ ...event, occurrenceDate: event.date });
     }
   }

@@ -25,6 +25,7 @@ import {
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { filterByVisibility } from "../../lib/contentVisibility";
+import { resolveEventDetailPath } from "../../lib/eventNavigation";
 import { formatNameWithRoleTitle, accessLevelFromMember, formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
@@ -1047,10 +1048,16 @@ function NextEventCard({
   event,
   eventsPath,
   rsvpStatus,
+  eventId,
+  clubId,
+  canManageEvents,
 }: {
   event: { title: string; date: string; time?: string; location?: string };
   eventsPath: string;
   rsvpStatus?: RsvpStatus | null;
+  eventId?: string;
+  clubId?: string;
+  canManageEvents?: boolean;
 }) {
   const timeLabel =
     event.time && event.time.trim() !== "" && event.time.toUpperCase() !== "TBD"
@@ -1060,6 +1067,12 @@ function NextEventCard({
     event.location && !isHiddenLocation(event.location)
       ? event.location.trim()
       : null;
+  const detailPath =
+    eventId && clubId
+      ? canManageEvents
+        ? `${eventsPath}?manageEvent=${eventId}`
+        : resolveEventDetailPath(eventId, clubId, true)
+      : eventsPath;
 
   return (
     <div
@@ -1131,7 +1144,7 @@ function NextEventCard({
         </span>
       ) : (
         <Link
-          to={eventsPath}
+          to={detailPath}
           style={{
             ...viewAllLink,
             flexShrink: 0,
@@ -2282,6 +2295,9 @@ export default function ClubHomePage() {
                   time: nextEvent.time,
                   location: nextEvent.location,
                 }}
+                eventId={nextEvent.id}
+                clubId={clubId}
+                canManageEvents={canManageEvents}
                 eventsPath={eventsPath}
                 rsvpStatus={myRsvps[nextEvent.id]}
               />
@@ -2407,9 +2423,14 @@ export default function ClubHomePage() {
         <DashboardItemModal
           onClose={() => setSelectedEvent(null)}
           footerLink={
-            isPrivileged
-              ? { label: "View All Events →", to: eventsPath }
-              : undefined
+            clubId
+              ? {
+                  label: "View Event →",
+                  to: resolveEventDetailPath(selectedEvent.id, clubId, true),
+                }
+              : isPrivileged
+                ? { label: "View All Events →", to: eventsPath }
+                : undefined
           }
         >
           <h2
