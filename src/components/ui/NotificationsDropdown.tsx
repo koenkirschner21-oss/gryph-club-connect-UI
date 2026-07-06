@@ -95,6 +95,7 @@ function resolveNotificationLink(notification: Notification): string | null {
     case "new_event":
     case "event":
     case "event_cancelled":
+    case "event_updated":
       return `${base}/events`;
     case "event_signup_pending":
       return `${base}/events`;
@@ -186,6 +187,7 @@ function notificationTypeIconConfig(type: NotificationType | string): {
     case "new_event":
     case "event":
     case "event_cancelled":
+    case "event_updated":
     case "event_signup_pending":
     case "meeting_invite":
     case "meeting_updated":

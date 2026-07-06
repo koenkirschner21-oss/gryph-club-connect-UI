@@ -956,6 +956,49 @@ export async function notifyEventCancelled(
   }
 }
 
+export async function notifyEventUpdated(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    eventId: string;
+    eventTitle: string;
+    eventDate: string;
+    eventTime: string;
+    location: string;
+    recipientUserIds: string[];
+    excludeUserId?: string;
+    changedFields: Array<"date" | "time" | "location">;
+  },
+): Promise<void> {
+  const recipients = params.recipientUserIds.filter(
+    (id) => id && id !== params.excludeUserId,
+  );
+  if (recipients.length === 0 || params.changedFields.length === 0) return;
+
+  const fieldLabels = params.changedFields.map((field) => {
+    if (field === "date") return "date";
+    if (field === "time") return "time";
+    return "location";
+  });
+  const schedule = formatEventScheduleLabel(params.eventDate, params.eventTime);
+  const locationLabel = params.location.trim() || "TBD";
+  const message = `[Event Updated] ${params.eventTitle} has a new ${fieldLabels.join(" and ")}. Now scheduled for ${schedule} at ${locationLabel}.`;
+
+  const ok = await createNotifications(
+    supabase,
+    recipients.map((userId) => ({
+      userId,
+      type: "event_updated",
+      message,
+      clubId: params.clubId,
+      referenceId: params.eventId,
+    })),
+  );
+  if (!ok) {
+    console.error("Failed to send event update notifications.");
+  }
+}
+
 function formatMeetingSchedule(iso: string): string {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return iso;

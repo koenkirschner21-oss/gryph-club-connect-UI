@@ -21,6 +21,7 @@ const NOTIFICATION_ICONS: Record<NotificationType, string> = {
   club_request_rejected: "✕",
   club_request_more_info: "❓",
   event_cancelled: "📅",
+  event_updated: "📅",
   meeting_invite: "📆",
   meeting_updated: "📆",
   meeting_cancelled: "📆",

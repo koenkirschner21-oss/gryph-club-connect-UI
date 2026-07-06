@@ -49,6 +49,7 @@ import {
 import {
   fetchEventRsvpRecipientUserIds,
   notifyEventCancelled,
+  notifyEventUpdated,
   resolveStudentDisplayName,
 } from "../../lib/notifications";
 import {
@@ -418,6 +419,38 @@ function generateRecurringInstanceDates(
   }
 
   return dates;
+}
+
+function normalizeEventScheduleField(value: string): string {
+  const trimmed = value.trim();
+  return trimmed || "TBD";
+}
+
+function eventScheduleDateChanged(
+  before: ClubEvent,
+  after: { date: string },
+): boolean {
+  return before.date !== after.date;
+}
+
+function eventScheduleTimeChanged(
+  before: ClubEvent,
+  after: { time: string },
+): boolean {
+  return (
+    normalizeEventScheduleField(before.time) !==
+    normalizeEventScheduleField(after.time)
+  );
+}
+
+function eventLocationFieldChanged(
+  before: ClubEvent,
+  after: { location: string },
+): boolean {
+  return (
+    normalizeEventScheduleField(before.location) !==
+    normalizeEventScheduleField(after.location)
+  );
 }
 
 function RecurringToggle({
@@ -2765,6 +2798,7 @@ export default function ClubEventsPage() {
     let savedEventId = editingId;
 
     if (editingId) {
+      const previousEvent = events.find((entry) => entry.id === editingId);
       ok = !!(await updateEvent(editingId, fields));
       if (ok) {
         const categorySaved = await saveEventCategory(editingId, category);
@@ -2778,6 +2812,32 @@ export default function ClubEventsPage() {
           parentEventId: eventRecurring[editingId]?.parentEventId ?? null,
         });
         ok = recurringSaved;
+      }
+      if (ok && previousEvent && clubId) {
+        const changedFields: Array<"date" | "time" | "location"> = [];
+        if (eventScheduleDateChanged(previousEvent, fields)) changedFields.push("date");
+        if (eventScheduleTimeChanged(previousEvent, fields)) changedFields.push("time");
+        if (eventLocationFieldChanged(previousEvent, fields)) {
+          changedFields.push("location");
+        }
+
+        if (changedFields.length > 0) {
+          const recipientUserIds = await fetchEventRsvpRecipientUserIds(
+            supabase,
+            editingId,
+          );
+          void notifyEventUpdated(supabase, {
+            clubId,
+            eventId: editingId,
+            eventTitle: fields.title,
+            eventDate: fields.date,
+            eventTime: fields.time,
+            location: fields.location,
+            recipientUserIds,
+            excludeUserId: user?.id,
+            changedFields,
+          });
+        }
       }
     } else {
       ok = !!(await createEvent(fields));
