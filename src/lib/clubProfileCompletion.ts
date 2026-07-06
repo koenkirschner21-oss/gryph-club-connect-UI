@@ -336,6 +336,21 @@ export function computeClubSetupProgress(
   };
 }
 
+/**
+ * Whether the Command Center profile setup banner should appear.
+ * Published clubs never show it — live checklist math must not resurrect it
+ * if launch content is deleted after publish.
+ */
+export function shouldShowProfileSetupBanner(
+  club: Pick<Club, "setupCompleted" | "isPublished" | "claimStatus">,
+): boolean {
+  if (club.setupCompleted === true && club.isPublished === true) {
+    return false;
+  }
+
+  return club.claimStatus === "claimed" && club.setupCompleted !== true;
+}
+
 /** Deep-link to the first incomplete setup step (profile or launch). */
 export function resolveClubSetupSettingsPath(
   settingsPath: string,

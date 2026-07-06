@@ -30,6 +30,7 @@ import { useClubMembers } from "../../hooks/useClubMembers";
 import {
   computeClubSetupProgress,
   resolveClubSetupSettingsPath,
+  shouldShowProfileSetupBanner,
 } from "../../lib/clubProfileCompletion";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
@@ -2012,7 +2013,7 @@ export default function ClubCommandCenter({
   const nextUpcomingEvent = previewUpcomingEvents[0] ?? null;
 
   const showProfileSetupBanner =
-    memberAccess.canManageClubSettings && profileCompletion < 100;
+    memberAccess.canManageClubSettings && shouldShowProfileSetupBanner(club);
 
   const upcomingReminderEvent = useMemo(() => {
     const eventInThreeDays = upcomingOccurrences.find((event) => {
