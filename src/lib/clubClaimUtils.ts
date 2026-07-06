@@ -50,6 +50,29 @@ export function resolveEffectiveClaimStatus(
   return claimStatus;
 }
 
+/** Align claim_status with open club_claim_requests (public profile / claim page). */
+export function resolveElevatedClaimStatus(
+  claimStatus: ClaimStatus,
+  hasOpenClubClaimRequests: boolean,
+  userHasOpenClaimRequest: boolean,
+): ClaimStatus {
+  let status = claimStatus;
+
+  if (status === "unclaimed" && hasOpenClubClaimRequests) {
+    status = "claim_pending";
+  }
+
+  if (
+    userHasOpenClaimRequest &&
+    status !== "claimed" &&
+    status !== "active"
+  ) {
+    status = "claim_pending";
+  }
+
+  return status;
+}
+
 export type ExploreClubClaimState =
   | "claimable"
   | "claimed"

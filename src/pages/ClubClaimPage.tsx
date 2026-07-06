@@ -8,6 +8,8 @@ import {
   canSubmitClubClaim,
   isClubClaimable,
   normalizeClaimStatus,
+  resolveElevatedClaimStatus,
+  resolveExploreClubClaimState,
   type ClaimRoleOption,
 } from "../lib/clubClaimUtils";
 import {
@@ -77,6 +79,7 @@ export default function ClubClaimPage() {
   const [submitted, setSubmitted] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeOwnerCount, setActiveOwnerCount] = useState(0);
+  const [userPendingClaimId, setUserPendingClaimId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) {
@@ -100,27 +103,66 @@ export default function ClubClaimPage() {
         setNotFound(true);
         setClub(null);
         setActiveOwnerCount(0);
+        setUserPendingClaimId(null);
         setPageLoading(false);
         return;
       }
 
-      const { count: ownerCount } = await supabase
-        .from("club_members")
-        .select("id", { count: "exact", head: true })
-        .eq("club_id", data.id as string)
-        .eq("role", "owner")
-        .eq("status", "active");
+      const clubId = data.id as string;
+      const baseClaimStatus = normalizeClaimStatus(data.claim_status);
+
+      const [
+        { count: ownerCount },
+        pendingClaimCountResult,
+        userPendingClaimResult,
+      ] = await Promise.all([
+        supabase
+          .from("club_members")
+          .select("id", { count: "exact", head: true })
+          .eq("club_id", clubId)
+          .eq("role", "owner")
+          .eq("status", "active"),
+        baseClaimStatus === "unclaimed"
+          ? supabase
+              .from("club_claim_requests")
+              .select("id", { count: "exact", head: true })
+              .eq("club_id", clubId)
+              .in("status", ["pending", "more_info"])
+          : Promise.resolve({ count: null }),
+        user?.id
+          ? supabase
+              .from("club_claim_requests")
+              .select("id")
+              .eq("club_id", clubId)
+              .eq("submitted_by", user.id)
+              .in("status", ["pending", "more_info"])
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
 
       if (cancelled) return;
 
+      const hasOpenClubClaimRequests =
+        baseClaimStatus === "claim_pending" ||
+        (baseClaimStatus === "unclaimed" && (pendingClaimCountResult.count ?? 0) > 0);
+      const userHasOpenClaimRequest = Boolean(userPendingClaimResult.data?.id);
+      const elevatedClaimStatus = resolveElevatedClaimStatus(
+        baseClaimStatus,
+        hasOpenClubClaimRequests,
+        userHasOpenClaimRequest,
+      );
+
       setClub({
-        id: data.id as string,
+        id: clubId,
         name: (data.name as string) ?? "",
         slug: (data.slug as string) ?? slug,
         joinCode: (data.join_code as string) ?? undefined,
-        claimStatus: normalizeClaimStatus(data.claim_status),
+        claimStatus: elevatedClaimStatus,
       });
       setActiveOwnerCount(ownerCount ?? 0);
+      setUserPendingClaimId((userPendingClaimResult.data?.id as string | undefined) ?? null);
       setNotFound(false);
       setPageLoading(false);
     }
@@ -130,7 +172,7 @@ export default function ClubClaimPage() {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, user?.id]);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -211,10 +253,60 @@ export default function ClubClaimPage() {
     });
 
     setSubmitted(true);
+    setUserPendingClaimId((insertedClaim?.id as string | undefined) ?? null);
     setClub((prev) =>
       prev ? { ...prev, claimStatus: "claim_pending" } : prev,
     );
     setSubmitting(false);
+  }
+
+  function renderBlockedClaimState(
+    title: string,
+    body: string,
+    action?: { label: string; to: string },
+  ) {
+    return (
+      <div
+        style={{
+          background: PAGE_BG,
+          minHeight: "calc(100vh - 64px)",
+          padding: "32px 16px",
+        }}
+      >
+        <div style={{ maxWidth: "640px", margin: "0 auto" }}>
+          <PublicDetailBackButton fallbackTo={`/clubs/${club!.slug}`} />
+          <h1
+            style={{
+              fontSize: "28px",
+              fontWeight: 800,
+              color: "#ffffff",
+              margin: "0 0 8px",
+            }}
+          >
+            {title}
+          </h1>
+          <div style={cardStyle}>
+            <p style={{ fontSize: "15px", color: "#cccccc", margin: 0, lineHeight: 1.6 }}>
+              {body}
+            </p>
+            {action ? (
+              <Link
+                to={action.to}
+                className="inline-block rounded-lg px-5 py-2 text-sm font-semibold text-white"
+                style={{
+                  ...primaryButtonStyle,
+                  display: "inline-block",
+                  textDecoration: "none",
+                  marginTop: "16px",
+                }}
+              >
+                {action.label}
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (authLoading || pageLoading) {
@@ -251,40 +343,39 @@ export default function ClubClaimPage() {
 
   const loginRedirect = `/login?redirect=${encodeURIComponent(`/clubs/${club.slug}/claim`)}`;
   const claimable = isClubClaimable(club.claimStatus, activeOwnerCount);
+  const claimState = resolveExploreClubClaimState(
+    club.claimStatus,
+    activeOwnerCount,
+    club.claimStatus === "claim_pending",
+    Boolean(userPendingClaimId) || submitted,
+  );
+  const pendingClaimId = userPendingClaimId;
 
-  if (!claimable) {
-    return (
-      <div
-        style={{
-          background: PAGE_BG,
-          minHeight: "calc(100vh - 64px)",
-          padding: "32px 16px",
-        }}
-      >
-        <div style={{ maxWidth: "640px", margin: "0 auto" }}>
-          <PublicDetailBackButton fallbackTo={`/clubs/${club.slug}`} />
-          <h1
-            style={{
-              fontSize: "28px",
-              fontWeight: 800,
-              color: "#ffffff",
-              margin: "0 0 8px",
-            }}
-          >
-            {club.name}
-          </h1>
-          <p style={{ fontSize: "14px", color: "#777777", margin: "0 0 24px" }}>
-            This club has already been claimed and is managed by its executive team.
-          </p>
-          <Link
-            to={`/clubs/${club.slug}`}
-            className="inline-block rounded-lg px-5 py-2 text-sm font-semibold text-white"
-            style={{ background: ACCENT_RED, textDecoration: "none" }}
-          >
-            View Club Profile
-          </Link>
-        </div>
-      </div>
+  if (claimState === "user_pending") {
+    return renderBlockedClaimState(
+      club.name,
+      submitted
+        ? "Claim request submitted. We'll review your request and notify you once approved."
+        : "Your claim request is under review. You can check its status anytime.",
+      pendingClaimId
+        ? { label: "View Claim Status", to: `/claim-status/${pendingClaimId}` }
+        : undefined,
+    );
+  }
+
+  if (claimState === "pending") {
+    return renderBlockedClaimState(
+      club.name,
+      "A claim request is pending review for this club. Check back later if you believe you should manage this club.",
+      { label: "View Club Profile", to: `/clubs/${club.slug}` },
+    );
+  }
+
+  if (claimState === "claimed" || !claimable) {
+    return renderBlockedClaimState(
+      club.name,
+      "This club has already been claimed and is managed by its executive team.",
+      { label: "View Club Profile", to: `/clubs/${club.slug}` },
     );
   }
 
@@ -321,18 +412,6 @@ export default function ClubClaimPage() {
             <Link to={loginRedirect} style={{ ...primaryButtonStyle, display: "inline-block", textDecoration: "none" }}>
               Sign In
             </Link>
-          </div>
-        ) : submitted || club.claimStatus === "claim_pending" ? (
-          <div style={cardStyle}>
-            <p style={{ fontSize: "15px", color: "#cccccc", margin: 0, lineHeight: 1.6 }}>
-              Claim request submitted. We&apos;ll review your request and notify you once approved.
-            </p>
-          </div>
-        ) : club.claimStatus !== "unclaimed" ? (
-          <div style={cardStyle}>
-            <p style={{ fontSize: "15px", color: "#cccccc", margin: 0, lineHeight: 1.6 }}>
-              This club is already claimed or active. Contact support if you believe this is an error.
-            </p>
           </div>
         ) : ineligibleRole ? (
           <div style={cardStyle}>

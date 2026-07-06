@@ -12,7 +12,11 @@ import {
 import JoinRequestForm from "../components/club/JoinRequestForm";
 import ReportClubModal from "../components/club/ReportClubModal";
 import { normalizeVisibility } from "../lib/contentVisibility";
-import { normalizeClaimStatus, isClubClaimable } from "../lib/clubClaimUtils";
+import {
+  normalizeClaimStatus,
+  isClubClaimable,
+  resolveElevatedClaimStatus,
+} from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
@@ -677,6 +681,7 @@ export default function ClubPublicProfilePage() {
         allowJoinFileUpload: Boolean(clubRow.allow_join_file_upload),
       };
 
+      let hasOpenClubClaimRequests = loaded.claimStatus === "claim_pending";
       if (loaded.claimStatus === "unclaimed") {
         const { count: pendingClaimCount } = await supabase
           .from("club_claim_requests")
@@ -684,13 +689,12 @@ export default function ClubPublicProfilePage() {
           .eq("club_id", loaded.id)
           .in("status", ["pending", "more_info"]);
 
-        if ((pendingClaimCount ?? 0) > 0) {
-          loaded = { ...loaded, claimStatus: "claim_pending" };
-        }
+        hasOpenClubClaimRequests = (pendingClaimCount ?? 0) > 0;
       }
 
       let isMember = false;
       let userApplicationStatus: JoinApplicationStatus = null;
+      let userHasOpenClaimRequest = false;
       if (user?.id) {
         const [{ data: membership }, { data: pendingClaim }] = await Promise.all([
           supabase
@@ -715,14 +719,17 @@ export default function ClubPublicProfilePage() {
           userApplicationStatus = "pending";
         }
 
-        if (
-          pendingClaim &&
-          loaded.claimStatus !== "claimed" &&
-          loaded.claimStatus !== "active"
-        ) {
-          loaded = { ...loaded, claimStatus: "claim_pending" };
-        }
+        userHasOpenClaimRequest = Boolean(pendingClaim);
       }
+
+      loaded = {
+        ...loaded,
+        claimStatus: resolveElevatedClaimStatus(
+          loaded.claimStatus,
+          hasOpenClubClaimRequests,
+          userHasOpenClaimRequest,
+        ),
+      };
 
       setProfile(loaded);
       setApplicationStatus(userApplicationStatus);
