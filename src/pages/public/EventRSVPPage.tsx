@@ -11,10 +11,8 @@ import {
 import { normalizeVisibility } from "../../lib/contentVisibility";
 import { resolveEventDetailPath } from "../../lib/eventNavigation";
 import { supabase } from "../../lib/supabaseClient";
-import {
-  notifyEventSignupPendingReview,
-  resolveStudentDisplayName,
-} from "../../lib/notifications";
+import { submitEventSignup, clubEventToSignupContext } from "../../lib/eventRsvpActions";
+import { resolveStudentDisplayName } from "../../lib/notifications";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import Spinner from "../../components/ui/Spinner";
 import { useIsMobile } from "../../hooks/useWindowWidth";
@@ -598,49 +596,51 @@ export default function EventRSVPPage() {
         return;
       }
 
-      const responsesSaved = await saveCustomResponses(eventId, user.id);
-      if (!responsesSaved) {
-        setSubmitting(false);
-        setErrors({ form: friendlySubmitError("Failed to save your responses. Please try again.") });
-        return;
-      }
-
       if (!existing) {
-        const signupStatus = event.signupRequiresApproval ? "pending" : "going";
-        const { error: rsvpError } = await supabase.from("event_rsvps").insert({
-          event_id: eventId,
-          user_id: user.id,
-          status: signupStatus,
+        const result = await submitEventSignup(supabase, {
+          eventId,
+          userId: user.id,
+          requestedStatus: "going",
+          skipQuestionnaireCheck: true,
+          userEmail: user.email,
+          registrantName: resolveStudentDisplayName(name, user.email),
+          context: clubEventToSignupContext(
+            {
+              id: event.id,
+              clubId: event.clubId,
+              title: event.title,
+              date: event.date,
+              time: event.time,
+              location: event.location ?? "",
+              signupRequiresApproval: event.signupRequiresApproval,
+            },
+            clubName || "Club",
+          ),
+          formResponses: customQuestions.map((question) => ({
+            questionId: question.id,
+            answer: answers[question.id] ?? "",
+          })),
         });
 
-        if (rsvpError) {
+        if (!result.ok) {
           setSubmitting(false);
           setErrors({
             form: friendlySubmitError(
-              rsvpError.message || "Could not submit signup. Please try again.",
+              result.outcome === "error"
+                ? result.error
+                : "Could not submit signup. Please try again.",
             ),
           });
           return;
         }
-
-        if (signupStatus === "going") {
-          const dateLabel = formatEventDateTime(event.date, event.time);
-          await supabase.from("notifications").insert({
-            user_id: user.id,
-            type: "club_update",
-            message: `[Event Registration Confirmed] You're registered for ${event.title} on ${dateLabel}. Location: ${event.location?.trim() || "TBD"}`,
-            club_id: event.clubId,
-            reference_id: event.id,
+      } else if (changingResponse) {
+        const responsesSaved = await saveCustomResponses(eventId, user.id);
+        if (!responsesSaved) {
+          setSubmitting(false);
+          setErrors({
+            form: friendlySubmitError("Failed to save your responses. Please try again."),
           });
-        } else {
-          void notifyEventSignupPendingReview(supabase, {
-            clubId: event.clubId,
-            clubName: clubName || "Club",
-            eventId: event.id,
-            eventTitle: event.title,
-            registrantUserId: user.id,
-            registrantName: resolveStudentDisplayName(name, user.email),
-          });
+          return;
         }
       }
 

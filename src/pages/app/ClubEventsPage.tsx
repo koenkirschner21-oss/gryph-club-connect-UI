@@ -42,9 +42,13 @@ import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
 import { summarizeFeedbackRows, type EventReviewStatus } from "../../lib/eventReview";
 import {
+  clubEventToSignupContext,
+  submitEventSignup,
+  type EventSignupRequestedStatus,
+} from "../../lib/eventRsvpActions";
+import {
   fetchEventRsvpRecipientUserIds,
   notifyEventCancelled,
-  notifyEventSignupPendingReview,
   resolveStudentDisplayName,
 } from "../../lib/notifications";
 import {
@@ -1087,47 +1091,6 @@ function EventCalendarSidebar({
   );
 }
 
-async function fetchExistingRsvp(
-  eventId: string,
-  userId: string,
-): Promise<{ id: string } | null> {
-  const { data } = await supabase
-    .from("event_rsvps")
-    .select("id")
-    .eq("event_id", eventId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data ? { id: data.id as string } : null;
-}
-
-function formatEventRegistrationDate(date: string, time: string): string {
-  const parsed = new Date(date);
-  const datePart = Number.isNaN(parsed.getTime())
-    ? date
-    : parsed.toLocaleDateString("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      });
-  const timePart = formatEventTime(time);
-  return timePart ? `${datePart} · ${timePart}` : datePart;
-}
-
-async function sendEventRegistrationNotification(
-  event: ClubEvent,
-  userId: string,
-): Promise<void> {
-  const { error } = await supabase.from("notifications").insert({
-    user_id: userId,
-    type: "club_update",
-    message: `[Event Registration Confirmed] You're registered for ${event.title} on ${formatEventRegistrationDate(event.date, event.time)}. Location: ${cleanEventLocation(event.location) ?? "TBD"}`,
-    club_id: event.clubId ?? null,
-    reference_id: event.id,
-  });
-  if (error) {
-    console.error("Failed to send RSVP notification:", error.message);
-  }
-}
 
 function formatEventTime(value: string): string | null {
   const raw = value.trim();
@@ -2926,7 +2889,41 @@ export default function ClubEventsPage() {
 
     if (!user?.id) return;
 
-    if (status === "going" && myRsvps[eventId]) {
+    const member = members.find((entry) => entry.userId === user.id);
+    const requestedStatus: EventSignupRequestedStatus =
+      status === "maybe" || status === "not_going" ? status : "going";
+    const signupParams = {
+      eventId,
+      userId: user.id,
+      requestedStatus,
+      userEmail: user.email,
+      existingStatus: myRsvps[eventId],
+      context: event ? clubEventToSignupContext(event, club?.name ?? "Club") : undefined,
+      registrantName: resolveStudentDisplayName(member?.fullName, user.email),
+      persistRsvp: setRsvp,
+    };
+
+    if (status !== "going") {
+      const result = await submitEventSignup(supabase, signupParams);
+      if (!result.ok && result.outcome === "error") {
+        setFeedback({
+          type: "error",
+          text: result.error ?? "Failed to update RSVP.",
+        });
+      }
+      return;
+    }
+
+    const result = await submitEventSignup(supabase, signupParams);
+
+    if (result.outcome === "needs_questionnaire") {
+      const matchedEvent = events.find((e) => e.id === eventId) ?? null;
+      setRsvpModalEvent(matchedEvent);
+      setRsvpAnswers({});
+      return;
+    }
+
+    if (result.outcome === "already_registered") {
       setFeedback({
         type: "error",
         text: "You're already registered for this event.",
@@ -2934,74 +2931,16 @@ export default function ClubEventsPage() {
       return;
     }
 
-    const existing = await fetchExistingRsvp(eventId, user.id);
-    if (existing && status === "going") {
+    if (!result.ok && result.outcome === "error") {
       setFeedback({
         type: "error",
-        text: "You're already registered for this event.",
-      });
-      return;
-    }
-
-    if (status === "going") {
-      const questions = filterRsvpQuestionsForLoggedInUser(
-        eventQuestionsMap[eventId] ?? [],
-      );
-      if (questions.length > 0) {
-        const matchedEvent = events.find((e) => e.id === eventId) ?? null;
-        setRsvpModalEvent(matchedEvent);
-        setRsvpAnswers({});
-        return;
-      }
-    }
-
-    const hadRsvp = Boolean(myRsvps[eventId]);
-    const eventForSignup = events.find((entry) => entry.id === eventId);
-    const signupStatus: RsvpStatus =
-      status === "going" && eventForSignup?.signupRequiresApproval
-        ? "pending"
-        : status;
-
-    const ok = await setRsvp(eventId, signupStatus);
-    if (ok && signupStatus === "going" && !hadRsvp && !existing) {
-      const event = events.find((e) => e.id === eventId);
-      if (event) {
-        await sendEventRegistrationNotification(event, user.id);
-      }
-    } else if (
-      ok &&
-      signupStatus === "pending" &&
-      !hadRsvp &&
-      !existing &&
-      eventForSignup &&
-      clubId
-    ) {
-      const member = members.find((entry) => entry.userId === user.id);
-      void notifyEventSignupPendingReview(supabase, {
-        clubId,
-        clubName: club?.name ?? "Club",
-        eventId: eventForSignup.id,
-        eventTitle: eventForSignup.title,
-        registrantUserId: user.id,
-        registrantName: resolveStudentDisplayName(
-          member?.fullName,
-          user.email,
-        ),
+        text: result.error ?? "Failed to confirm RSVP.",
       });
     }
   }
 
   async function submitRsvpWithForm() {
     if (!rsvpModalEvent || !user?.id) return;
-
-    const existing = await fetchExistingRsvp(rsvpModalEvent.id, user.id);
-    if (existing || myRsvps[rsvpModalEvent.id]) {
-      setFeedback({
-        type: "error",
-        text: "You're already registered for this event.",
-      });
-      return;
-    }
 
     const questions = filterRsvpQuestionsForLoggedInUser(
       eventQuestionsMap[rsvpModalEvent.id] ?? [],
@@ -3019,57 +2958,44 @@ export default function ClubEventsPage() {
     setRsvpSubmitting(true);
     setFeedback(null);
 
-    const rows = questions.map((q) => ({
-      event_id: rsvpModalEvent.id,
-      user_id: user.id,
-      question_id: q.id,
-      answer: rsvpAnswers[q.id]?.trim() ?? "",
-    }));
+    const member = members.find((entry) => entry.userId === user.id);
+    const result = await submitEventSignup(supabase, {
+      eventId: rsvpModalEvent.id,
+      userId: user.id,
+      requestedStatus: "going",
+      skipQuestionnaireCheck: true,
+      userEmail: user.email,
+      existingStatus: myRsvps[rsvpModalEvent.id],
+      context: clubEventToSignupContext(rsvpModalEvent, club?.name ?? "Club"),
+      registrantName: resolveStudentDisplayName(member?.fullName, user.email),
+      formResponses: questions.map((q) => ({
+        questionId: q.id,
+        answer: rsvpAnswers[q.id] ?? "",
+      })),
+      persistRsvp: setRsvp,
+    });
 
-    await supabase
-      .from("event_form_responses")
-      .delete()
-      .eq("event_id", rsvpModalEvent.id)
-      .eq("user_id", user.id);
+    setRsvpSubmitting(false);
 
-    const { error: responseError } = await supabase
-      .from("event_form_responses")
-      .insert(rows);
-
-    if (responseError) {
-      console.error("Failed to save RSVP responses:", responseError.message);
-      setFeedback({ type: "error", text: "Failed to save your responses." });
-      setRsvpSubmitting(false);
+    if (result.outcome === "already_registered") {
+      setFeedback({
+        type: "error",
+        text: "You're already registered for this event.",
+      });
       return;
     }
 
-    const signupStatus: RsvpStatus = rsvpModalEvent.signupRequiresApproval
-      ? "pending"
-      : "going";
-    const ok = await setRsvp(rsvpModalEvent.id, signupStatus);
-    setRsvpSubmitting(false);
-
-    if (ok) {
-      if (signupStatus === "going") {
-        await sendEventRegistrationNotification(rsvpModalEvent, user.id);
-      } else if (clubId) {
-        const member = members.find((entry) => entry.userId === user.id);
-        void notifyEventSignupPendingReview(supabase, {
-          clubId,
-          clubName: club?.name ?? "Club",
-          eventId: rsvpModalEvent.id,
-          eventTitle: rsvpModalEvent.title,
-          registrantUserId: user.id,
-          registrantName: resolveStudentDisplayName(
-            member?.fullName,
-            user.email,
-          ),
-        });
-      }
+    if (result.ok) {
       setRsvpModalEvent(null);
       setRsvpAnswers({});
-    } else {
-      setFeedback({ type: "error", text: "Failed to confirm RSVP." });
+      return;
+    }
+
+    if (result.outcome === "error") {
+      setFeedback({
+        type: "error",
+        text: result.error ?? "Failed to confirm RSVP.",
+      });
     }
   }
 

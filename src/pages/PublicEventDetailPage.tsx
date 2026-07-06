@@ -21,7 +21,7 @@ import {
 } from "../components/events/EventDetailLayout";
 import { normalizeVisibility } from "../lib/contentVisibility";
 import { eventCategoryLabel } from "../lib/eventCategories";
-import { eventRequiresRsvpQuestionnaire } from "../lib/eventRsvpActions";
+import { submitEventSignup } from "../lib/eventRsvpActions";
 import { getEventRsvpPath, getWorkspaceEventDetailPath } from "../lib/eventNavigation";
 import type { RsvpStatus, Visibility } from "../types";
 
@@ -195,24 +195,30 @@ export default function PublicEventDetailPage() {
 
     setRsvpBusy(true);
     try {
-      const needsQuestionnaire = await eventRequiresRsvpQuestionnaire(eventId, true);
-      if (needsQuestionnaire) {
+      const result = await submitEventSignup(supabase, {
+        eventId,
+        userId: user.id,
+        requestedStatus: "going",
+        userEmail: user.email,
+        existingStatus: myRsvpStatus,
+      });
+
+      if (result.outcome === "needs_questionnaire") {
         navigate(target);
         return;
       }
 
-      const { error } = await supabase.from("event_rsvps").upsert(
-        { event_id: eventId, user_id: user.id, status: "going" },
-        { onConflict: "event_id,user_id" },
-      );
-
-      if (error) {
-        console.error("Failed to record RSVP:", error.message);
+      if (result.ok && result.outcome === "recorded") {
+        setMyRsvpStatus(result.status);
+        if (result.status === "going") {
+          setRsvpCounts((prev) => ({ ...prev, going: prev.going + 1 }));
+        }
         return;
       }
 
-      setMyRsvpStatus("going");
-      setRsvpCounts((prev) => ({ ...prev, going: prev.going + 1 }));
+      if (!result.ok && result.outcome === "error") {
+        console.error("Failed to record RSVP:", result.error);
+      }
     } finally {
       setRsvpBusy(false);
     }

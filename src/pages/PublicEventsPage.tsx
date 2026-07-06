@@ -30,7 +30,7 @@ import {
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
 import { clubCategoryFilterOptions } from "../lib/clubCategories";
-import { eventRequiresRsvpQuestionnaire } from "../lib/eventRsvpActions";
+import { submitEventSignup } from "../lib/eventRsvpActions";
 import type { RsvpStatus } from "../types";
 
 type TimeFilter = "week" | "month" | "all" | "custom";
@@ -1345,14 +1345,15 @@ export default function PublicEventsPage() {
       return;
     }
 
-    const needsQuestionnaire = await eventRequiresRsvpQuestionnaire(eventId, true);
-    if (needsQuestionnaire) {
-      navigate(target);
-      return;
-    }
+    const result = await submitEventSignup(supabase, {
+      eventId,
+      userId: user.id,
+      requestedStatus: "going",
+      userEmail: user.email,
+      persistRsvp: setRsvp,
+    });
 
-    const ok = await setRsvp(eventId, "going");
-    if (!ok) {
+    if (result.outcome === "needs_questionnaire" || !result.ok) {
       navigate(target);
     }
   }

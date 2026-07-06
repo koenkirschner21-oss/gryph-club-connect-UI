@@ -32,7 +32,7 @@ import { useDashboardEvents, type DashboardEvent } from "../../hooks/useDashboar
 import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { useDashboardTasks } from "../../hooks/useDashboardTasks";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
-import { eventRequiresRsvpQuestionnaire } from "../../lib/eventRsvpActions";
+import { submitEventSignup } from "../../lib/eventRsvpActions";
 import { getEventRsvpPath, getPublicEventDetailPath, resolveEventDetailPath } from "../../lib/eventNavigation";
 import {
   registerUnreadCountRefresh,
@@ -630,18 +630,23 @@ export default function DashboardPage() {
 
       setRsvpBusyEventId(eventId);
       try {
-        const needsQuestionnaire = await eventRequiresRsvpQuestionnaire(eventId, true);
-        if (needsQuestionnaire) {
-          navigate(target);
-          return;
-        }
+        const result = await submitEventSignup(supabase, {
+          eventId,
+          userId: user.id,
+          requestedStatus: "going",
+          userEmail: user.email,
+          existingStatus: myRsvps[eventId],
+          persistRsvp: handleDashboardSetRsvp,
+        });
 
-        await handleDashboardSetRsvp(eventId, "going");
+        if (result.outcome === "needs_questionnaire") {
+          navigate(target);
+        }
       } finally {
         setRsvpBusyEventId(null);
       }
     },
-    [handleDashboardSetRsvp, navigate, user],
+    [handleDashboardSetRsvp, myRsvps, navigate, user],
   );
 
   const handleDashboardRemoveRsvp = useCallback(
