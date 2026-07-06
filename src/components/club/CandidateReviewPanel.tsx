@@ -9,7 +9,7 @@ import {
 } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { createInboxMessage } from "../../lib/inboxUtils";
-import { createNotifications } from "../../lib/notifications";
+import { notifyHiringManagerBells } from "../../lib/hiringNotificationRecipients";
 import {
   ACCESS_LEVEL_OPTIONS,
   POSITION_HANDLING_OPTIONS,
@@ -147,50 +147,6 @@ const rejectDecisionStyle: CSSProperties = {
   background: "#1a0a0a",
   border: "2px solid #E51937",
 };
-
-async function fetchExecutiveUserIds(clubId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("club_members")
-    .select("user_id")
-    .eq("club_id", clubId)
-    .in("role", ["owner", "executive"])
-    .eq("status", "active");
-
-  if (error) {
-    console.error("Failed to load executives for notifications:", error.message);
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      (data ?? [])
-        .map((row) => row.user_id as string)
-        .filter(Boolean),
-    ),
-  );
-}
-
-async function notifyReviewers(
-  clubId: string,
-  referenceId: string,
-  message: string,
-  excludeUserId?: string,
-): Promise<void> {
-  const executiveIds = await fetchExecutiveUserIds(clubId);
-  const notifications = executiveIds
-    .filter((id) => id !== excludeUserId)
-    .map((userId) => ({
-      userId,
-      type: "club_update" as const,
-      message,
-      clubId,
-      referenceId,
-    }));
-
-  if (notifications.length > 0) {
-    await createNotifications(supabase, notifications);
-  }
-}
 
 export default function CandidateReviewPanel({
   application,
@@ -594,12 +550,13 @@ export default function CandidateReviewPanel({
               referenceType: "hiring_application",
             });
 
-            await notifyReviewers(
+            await notifyHiringManagerBells(supabase, {
               clubId,
-              application.id,
-              `Interview invite sent to ${applicantName} for ${positionTitle}.`,
-              userId,
-            );
+              listingId: positionId,
+              referenceId: application.id,
+              message: `Interview invite sent to ${applicantName} for ${positionTitle}.`,
+              excludeUserIds: [userId],
+            });
 
             onApplicationUpdated({
               subStatus: "interview_invite_sent",
@@ -698,12 +655,13 @@ export default function CandidateReviewPanel({
               referenceType: "hiring_application",
             });
 
-            await notifyReviewers(
+            await notifyHiringManagerBells(supabase, {
               clubId,
-              application.id,
-              `Role offer sent to ${applicantName} for ${payload.roleTitle}.`,
-              userId,
-            );
+              listingId: positionId,
+              referenceId: application.id,
+              message: `Role offer sent to ${applicantName} for ${payload.roleTitle}.`,
+              excludeUserIds: [userId],
+            });
 
             onApplicationUpdated({
               subStatus: "offer_sent",
@@ -746,6 +704,14 @@ export default function CandidateReviewPanel({
               referenceId: application.id,
               referenceType: "hiring_application",
               actionData: { path: `/explore` },
+            });
+
+            await notifyHiringManagerBells(supabase, {
+              clubId,
+              listingId: positionId,
+              referenceId: application.id,
+              message: `${applicantName}'s application for ${positionTitle} was rejected.`,
+              excludeUserIds: [userId, application.applicantId],
             });
 
             onApplicationUpdated({ subStatus: "rejected", status: "rejected" });

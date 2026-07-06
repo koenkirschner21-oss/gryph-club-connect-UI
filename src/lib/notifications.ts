@@ -5,6 +5,7 @@ import { accessLevelBadgeLabel } from "./memberRoleTitle";
 import type { AccessLevel, NotificationType, Visibility } from "../types";
 import { canViewContent } from "./contentVisibility";
 import { isExecutiveAccessLevel } from "./clubPermissions";
+import { fetchHiringNotificationRecipients } from "./hiringNotificationRecipients";
 
 export interface CreateNotificationInput {
   userId: string;
@@ -252,58 +253,6 @@ export async function notifyExecutiveInviteRequest(
   }
 }
 
-async function fetchClubPresidentUserIds(
-  supabase: SupabaseClient,
-  clubId: string,
-): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("club_members")
-    .select("user_id")
-    .eq("club_id", clubId)
-    .eq("status", "active")
-    .or("role.eq.owner,access_level.eq.president");
-
-  if (error) {
-    console.error("Failed to load club presidents for notifications:", error.message);
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      (data ?? [])
-        .map((row) => row.user_id as string)
-        .filter((id) => Boolean(id)),
-    ),
-  );
-}
-
-async function fetchHiringListingReviewerUserIds(
-  supabase: SupabaseClient,
-  clubId: string,
-  listingId: string,
-): Promise<string[]> {
-  const { data: listing, error: listingError } = await supabase
-    .from("hiring_listings")
-    .select("reviewer_ids")
-    .eq("id", listingId)
-    .maybeSingle();
-
-  if (listingError) {
-    console.error(
-      "Failed to load hiring listing reviewers for notifications:",
-      listingError.message,
-    );
-    return fetchClubPresidentUserIds(supabase, clubId);
-  }
-
-  const designated = Array.isArray(listing?.reviewer_ids)
-    ? (listing.reviewer_ids as string[]).filter(Boolean)
-    : [];
-
-  const presidentIds = await fetchClubPresidentUserIds(supabase, clubId);
-  return Array.from(new Set([...presidentIds, ...designated]));
-}
-
 export async function notifyHiringApplicationSubmitted(
   supabase: SupabaseClient,
   params: {
@@ -344,7 +293,7 @@ export async function notifyHiringApplicationSubmitted(
   }
 
   const reviewerMessage = `${params.applicantName} applied for ${params.roleTitle}.`;
-  const reviewerIds = await fetchHiringListingReviewerUserIds(
+  const reviewerIds = await fetchHiringNotificationRecipients(
     supabase,
     params.clubId,
     params.listingId,

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseInterviewTimes } from "./hiringPipelineUtils";
+import { notifyHiringManagerBells } from "./hiringNotificationRecipients";
 
 const NOT_APPLICANT_ERROR =
   "You can only respond to interview invites on your own applications.";
@@ -93,6 +94,43 @@ export async function selectHiringInterviewTime(
   if (error) {
     console.error("Failed to select hiring interview time:", error.message);
     return { ok: false, error: mapInterviewTimeRpcError(error.message) };
+  }
+
+  const { data: applicationRow } = await supabase
+    .from("hiring_applications")
+    .select("listing_id, applicant_id, hiring_listings(title, club_id)")
+    .eq("id", params.applicationId)
+    .maybeSingle();
+
+  if (applicationRow) {
+    const listing = applicationRow.hiring_listings as
+      | { title?: string | null; club_id?: string | null }
+      | null
+      | undefined;
+    const clubId = listing?.club_id ?? null;
+    const listingId = applicationRow.listing_id as string | null;
+    const roleTitle = (listing?.title as string | null) ?? "this role";
+    const applicantId = applicationRow.applicant_id as string | null;
+
+    if (clubId && listingId) {
+      let applicantName = "An applicant";
+      if (applicantId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", applicantId)
+          .maybeSingle();
+        applicantName = (profile?.full_name as string | null)?.trim() || applicantName;
+      }
+
+      await notifyHiringManagerBells(supabase, {
+        clubId,
+        listingId,
+        referenceId: params.applicationId,
+        message: `${applicantName} scheduled an interview for ${roleTitle} (${params.selectedTime}).`,
+        excludeUserIds: [params.recipientUserId],
+      });
+    }
   }
 
   if (params.inboxMessageId) {
