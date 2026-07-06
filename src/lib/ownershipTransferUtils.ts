@@ -27,6 +27,8 @@ export interface OwnershipTransferRow {
   createdAt: string;
   expiresAt: string;
   respondedAt: string | null;
+  formerOwnerChoiceAt: string | null;
+  formerOwnerChoice: FormerOwnerChoice | null;
 }
 
 export function ownershipRoleLabel(role: OwnershipTransferRole | string): string {
@@ -47,7 +49,33 @@ export function mapOwnershipTransferRow(
     createdAt: row.created_at as string,
     expiresAt: row.expires_at as string,
     respondedAt: (row.responded_at as string | null) ?? null,
+    formerOwnerChoiceAt: (row.former_owner_choice_at as string | null) ?? null,
+    formerOwnerChoice: (row.former_owner_choice as FormerOwnerChoice | null) ?? null,
   };
+}
+
+function isFormerOwnerChoiceAlreadyAppliedError(message: string | undefined): boolean {
+  return Boolean(message?.includes("former_owner_choice_already_applied"));
+}
+
+function initiateTransferRpcErrorMessage(message: string | undefined): string {
+  if (!message) return "Failed to send transfer request. Please try again.";
+  if (message.includes("not_club_president")) {
+    return "Only the club president can initiate an ownership transfer.";
+  }
+  if (message.includes("recipient_not_active_member")) {
+    return "The selected member is not an active club member.";
+  }
+  if (message.includes("pending_transfer_exists")) {
+    return "A pending ownership transfer already exists for this club.";
+  }
+  if (message.includes("cannot_transfer_to_self")) {
+    return "You cannot transfer ownership to yourself.";
+  }
+  if (message.includes("invalid_new_role")) {
+    return "Invalid role selected for the transfer.";
+  }
+  return "Failed to send transfer request. Please try again.";
 }
 
 export function isPresidentMember(member: {
@@ -79,36 +107,18 @@ export async function sendOwnershipTransferInvite(
     newRole: OwnershipTransferRole;
     optionalMessage?: string;
   },
-): Promise<OwnershipTransferRow | null> {
-  const { data: existingPending } = await supabase
-    .from("ownership_transfers")
-    .select("id")
-    .eq("club_id", params.clubId)
-    .eq("from_user_id", params.fromUserId)
-    .eq("status", "pending")
-    .maybeSingle();
-
-  if (existingPending) {
-    console.error("A pending ownership transfer already exists for this club.");
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("ownership_transfers")
-    .insert({
-      club_id: params.clubId,
-      from_user_id: params.fromUserId,
-      to_user_id: params.toUserId,
-      new_role: params.newRole,
-      optional_message: params.optionalMessage?.trim() || null,
-      status: "pending",
-    })
-    .select("*")
-    .single();
+): Promise<{ transfer: OwnershipTransferRow | null; error?: string }> {
+  const { data, error } = await supabase.rpc("initiate_ownership_transfer", {
+    p_club_id: params.clubId,
+    p_to_user_id: params.toUserId,
+    p_new_role: params.newRole,
+    p_optional_message: params.optionalMessage?.trim() || null,
+  });
 
   if (error || !data) {
-    console.error("Failed to create ownership transfer:", error?.message);
-    return null;
+    const message = initiateTransferRpcErrorMessage(error?.message);
+    console.error("Failed to create ownership transfer:", error?.message ?? message);
+    return { transfer: null, error: message };
   }
 
   const transfer = mapOwnershipTransferRow(data as Record<string, unknown>);
@@ -148,7 +158,31 @@ export async function sendOwnershipTransferInvite(
     referenceId: transfer.id,
   });
 
-  return transfer;
+  return { transfer };
+}
+
+export async function syncFormerOwnerChoiceInboxIfCompleted(
+  supabase: SupabaseClient,
+  params: {
+    transferId: string;
+    inboxMessageId: string;
+    userId: string;
+  },
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("ownership_transfers")
+    .select("former_owner_choice_at")
+    .eq("id", params.transferId)
+    .eq("from_user_id", params.userId)
+    .eq("status", "accepted")
+    .maybeSingle();
+
+  if (!data?.former_owner_choice_at) {
+    return false;
+  }
+
+  await markInboxActionCompleted(supabase, params.inboxMessageId, params.userId);
+  return true;
 }
 
 export async function resendOwnershipTransferReminder(
@@ -388,12 +422,25 @@ export async function applyFormerOwnerChoice(
 
   const transfer = mapOwnershipTransferRow(transferRow as Record<string, unknown>);
 
+  if (transfer.formerOwnerChoiceAt) {
+    if (params.inboxMessageId) {
+      await markInboxActionCompleted(supabase, params.inboxMessageId, params.userId);
+    }
+    return { ok: true };
+  }
+
   const { error: rpcError } = await supabase.rpc("apply_former_owner_role_choice", {
     p_transfer_id: transfer.id,
     p_choice: params.choice,
   });
 
   if (rpcError) {
+    if (isFormerOwnerChoiceAlreadyAppliedError(rpcError.message)) {
+      if (params.inboxMessageId) {
+        await markInboxActionCompleted(supabase, params.inboxMessageId, params.userId);
+      }
+      return { ok: true };
+    }
     console.error("Failed to apply former owner role choice:", rpcError.message);
     return { ok: false, error: "Failed to update your role." };
   }

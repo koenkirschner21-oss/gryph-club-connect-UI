@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
@@ -7,6 +7,7 @@ import {
   applyFormerOwnerChoice,
   declineOwnershipTransfer,
   FORMER_OWNER_CHOICE_OPTIONS,
+  syncFormerOwnerChoiceInboxIfCompleted,
   type FormerOwnerChoice,
 } from "../../lib/ownershipTransferUtils";
 import {
@@ -93,6 +94,40 @@ function useInboxMessageActions(
     typeof message.actionData.invitedBy === "string"
       ? message.actionData.invitedBy
       : message.senderId;
+
+  useEffect(() => {
+    if (
+      message.actionType !== "former_owner_role_choice" ||
+      message.actionCompleted ||
+      !transferId ||
+      !user?.id
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void syncFormerOwnerChoiceInboxIfCompleted(supabase, {
+      transferId,
+      inboxMessageId: message.id,
+      userId: user.id,
+    }).then((completed) => {
+      if (!cancelled && completed) {
+        onRefresh();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    message.actionCompleted,
+    message.actionType,
+    message.id,
+    onRefresh,
+    transferId,
+    user?.id,
+  ]);
 
   async function handleNavigate() {
     if (!message.read) {

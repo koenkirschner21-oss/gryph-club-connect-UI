@@ -1510,7 +1510,7 @@ export default function ClubSettingsPage() {
     setTransferring(true);
     setError(null);
 
-    const transfer = await sendOwnershipTransferInvite(supabase, {
+    const { transfer, error: transferError } = await sendOwnershipTransferInvite(supabase, {
       clubId,
       clubName: club.name,
       fromUserId: user.id,
@@ -1523,7 +1523,7 @@ export default function ClubSettingsPage() {
     setShowTransferModal(false);
 
     if (!transfer) {
-      setError("Failed to send transfer request. Please try again.");
+      setError(transferError ?? "Failed to send transfer request. Please try again.");
       return;
     }
 
