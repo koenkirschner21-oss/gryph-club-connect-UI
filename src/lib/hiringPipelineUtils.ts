@@ -61,10 +61,17 @@ const INTERVIEW_SUB_STATUSES = new Set<HiringSubStatus>([
   "interview_completed",
 ]);
 
-const ACCEPTED_SUB_STATUSES = new Set<HiringSubStatus>([
-  "offer_sent",
-  "offer_accepted",
-]);
+const OFFER_SENT_SUB_STATUSES = new Set<HiringSubStatus>(["offer_sent"]);
+
+const ACCEPTED_SUB_STATUSES = new Set<HiringSubStatus>(["offer_accepted"]);
+
+export function isApplicantPipelineAccepted(
+  status: string,
+  subStatus: string,
+): boolean {
+  const normalized = normalizeSubStatus(subStatus);
+  return status === "accepted" || normalized === "offer_accepted";
+}
 
 const REJECTED_SUB_STATUSES = new Set<HiringSubStatus>([
   "rejected",
@@ -110,6 +117,7 @@ export function subStatusLabel(subStatus: string): string {
 
 export function subStatusColor(subStatus: string): string {
   if (ACCEPTED_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#FFC429";
+  if (OFFER_SENT_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#d4a017";
   if (REJECTED_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#E51937";
   if (INTERVIEW_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#6b7cff";
   if (REVIEWED_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#FFC429";
@@ -127,9 +135,11 @@ export function subStatusPillStyle(subStatus: string): CSSProperties {
     background:
       ACCEPTED_SUB_STATUSES.has(subStatus as HiringSubStatus)
         ? "#1a1200"
-        : REJECTED_SUB_STATUSES.has(subStatus as HiringSubStatus)
-          ? "#1a0505"
-          : "#1a1a1a",
+        : OFFER_SENT_SUB_STATUSES.has(subStatus as HiringSubStatus)
+          ? "#1a1500"
+          : REJECTED_SUB_STATUSES.has(subStatus as HiringSubStatus)
+            ? "#1a0505"
+            : "#1a1a1a",
     color,
     border: `1px solid ${color}`,
     display: "inline-block",
@@ -194,10 +204,7 @@ export function matchesApplicantPipelineFilter(
     case "interview":
       return INTERVIEW_SUB_STATUSES.has(normalizedSubStatus);
     case "accepted":
-      return (
-        status === "accepted" ||
-        ACCEPTED_SUB_STATUSES.has(normalizedSubStatus)
-      );
+      return isApplicantPipelineAccepted(status, subStatus);
     case "rejected":
       return (
         status === "rejected" ||

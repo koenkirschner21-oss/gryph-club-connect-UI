@@ -497,7 +497,7 @@ export default function CandidateReviewPanel({
               style={acceptDecisionStyle}
               onClick={() => setActiveModal("accept")}
             >
-              Accept Candidate
+              Send Offer
             </button>
             <button
               type="button"
@@ -619,7 +619,7 @@ export default function CandidateReviewPanel({
       ) : null}
 
       {activeModal === "accept" ? (
-        <AcceptCandidateModal
+        <SendOfferModal
           positionTitle={positionTitle}
           submitting={submitting}
           onClose={() => setActiveModal(null)}
@@ -1122,7 +1122,7 @@ function SendUpdateModal({
   );
 }
 
-function AcceptCandidateModal({
+function SendOfferModal({
   positionTitle,
   submitting,
   onClose,
@@ -1145,7 +1145,11 @@ function AcceptCandidateModal({
   const [message, setMessage] = useState("");
 
   return (
-    <ModalShell title="Accept Candidate" onClose={onClose}>
+    <ModalShell title="Send Offer" onClose={onClose}>
+      <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#888888", lineHeight: 1.5 }}>
+        The candidate will receive a role offer they can accept or decline. Membership is
+        not added until they accept.
+      </p>
       <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
         Access level
       </label>

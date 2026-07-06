@@ -27,6 +27,7 @@ import CandidateReviewPanel, {
 import {
   APPLICANT_PIPELINE_FILTER_OPTIONS,
   applicantMoveStatusActions,
+  isApplicantPipelineAccepted,
   matchesApplicantPipelineFilter,
   normalizeSubStatus,
   parseInterviewTimes,
@@ -544,7 +545,7 @@ function moveStatusActionLabel(action: ApplicantMoveStatusAction): string {
     case "schedule":
       return "Schedule Interview";
     case "accept":
-      return "Accept Candidate";
+      return "Send Offer";
     case "reject":
       return "Reject Candidate";
     case "send_update":
@@ -1047,17 +1048,18 @@ export default function ClubRecruitingPage() {
     if (reviewableIds.length > 0) {
       const { data: apps } = await supabase
         .from("hiring_applications")
-        .select("listing_id, status")
+        .select("listing_id, status, sub_status")
         .in("listing_id", reviewableIds);
 
       (apps ?? []).forEach((a) => {
         const lid = a.listing_id as string;
         const appStatus = (a.status as string) ?? "pending";
+        const appSubStatus = (a.sub_status as string) ?? "submitted";
         counts[lid] = (counts[lid] ?? 0) + 1;
         if (appStatus === "pending") {
           pendingCounts[lid] = (pendingCounts[lid] ?? 0) + 1;
         }
-        if (appStatus === "accepted") {
+        if (isApplicantPipelineAccepted(appStatus, appSubStatus)) {
           acceptedCounts[lid] = (acceptedCounts[lid] ?? 0) + 1;
         }
       });
