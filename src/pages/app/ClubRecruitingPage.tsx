@@ -27,7 +27,7 @@ import CandidateReviewPanel, {
 import {
   APPLICANT_PIPELINE_FILTER_OPTIONS,
   applicantMoveStatusActions,
-  isApplicantPipelineAccepted,
+  isApplicantHireConverted,
   matchesApplicantPipelineFilter,
   normalizeSubStatus,
   parseInterviewTimes,
@@ -1046,20 +1046,36 @@ export default function ClubRecruitingPage() {
       .map((row) => row.id as string);
 
     if (reviewableIds.length > 0) {
-      const { data: apps } = await supabase
-        .from("hiring_applications")
-        .select("listing_id, status, sub_status")
-        .in("listing_id", reviewableIds);
+      const [{ data: apps }, { data: memberRows }] = await Promise.all([
+        supabase
+          .from("hiring_applications")
+          .select("listing_id, applicant_id, sub_status")
+          .in("listing_id", reviewableIds),
+        supabase
+          .from("club_members")
+          .select("user_id")
+          .eq("club_id", clubId)
+          .eq("status", "active"),
+      ]);
+
+      const activeClubMemberIds = new Set(
+        (memberRows ?? []).map((row) => row.user_id as string),
+      );
 
       (apps ?? []).forEach((a) => {
         const lid = a.listing_id as string;
-        const appStatus = (a.status as string) ?? "pending";
         const appSubStatus = (a.sub_status as string) ?? "submitted";
         counts[lid] = (counts[lid] ?? 0) + 1;
-        if (appStatus === "pending") {
+        if (matchesApplicantPipelineFilter(appSubStatus, "pending")) {
           pendingCounts[lid] = (pendingCounts[lid] ?? 0) + 1;
         }
-        if (isApplicantPipelineAccepted(appStatus, appSubStatus)) {
+        if (
+          isApplicantHireConverted(
+            appSubStatus,
+            a.applicant_id as string,
+            activeClubMemberIds,
+          )
+        ) {
           acceptedCounts[lid] = (acceptedCounts[lid] ?? 0) + 1;
         }
       });
@@ -1129,11 +1145,7 @@ export default function ClubRecruitingPage() {
     let list = applications;
     if (applicantStatusFilter !== "all") {
       list = list.filter((app) =>
-        matchesApplicantPipelineFilter(
-          app.status,
-          app.subStatus,
-          applicantStatusFilter,
-        ),
+        matchesApplicantPipelineFilter(app.subStatus, applicantStatusFilter),
       );
     }
     const query = applicantSearch.trim().toLowerCase();
@@ -2478,10 +2490,7 @@ export default function ClubRecruitingPage() {
                   ) : (
                     <div>
                       {filteredApplications.map((app) => {
-                        const moveActions = applicantMoveStatusActions(
-                          app.status,
-                          app.subStatus,
-                        );
+                        const moveActions = applicantMoveStatusActions(app.subStatus);
                         const noteCount = applicationNoteCounts[app.id] ?? 0;
                         const menuOpen = openApplicantMenuId === app.id;
                         const profileLine = applicantProfileLine(app.profile);

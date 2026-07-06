@@ -65,12 +65,55 @@ const OFFER_SENT_SUB_STATUSES = new Set<HiringSubStatus>(["offer_sent"]);
 
 const ACCEPTED_SUB_STATUSES = new Set<HiringSubStatus>(["offer_accepted"]);
 
-export function isApplicantPipelineAccepted(
-  status: string,
+export type ApplicantPipelineStage =
+  | "pending"
+  | "reviewed"
+  | "interview"
+  | "offer_sent"
+  | "accepted"
+  | "rejected";
+
+export function isApplicantPipelineAccepted(subStatus: string): boolean {
+  return normalizeSubStatus(subStatus) === "offer_accepted";
+}
+
+/** True when an offer was accepted and the applicant is an active club member. */
+export function isApplicantHireConverted(
   subStatus: string,
+  applicantId: string | null | undefined,
+  activeClubMemberIds: ReadonlySet<string>,
 ): boolean {
+  if (!applicantId) return false;
+  return (
+    isApplicantPipelineAccepted(subStatus) && activeClubMemberIds.has(applicantId)
+  );
+}
+
+export function resolveApplicantPipelineStage(
+  subStatus: string,
+  options?: {
+    applicantId?: string | null;
+    activeClubMemberIds?: ReadonlySet<string>;
+  },
+): ApplicantPipelineStage {
   const normalized = normalizeSubStatus(subStatus);
-  return status === "accepted" || normalized === "offer_accepted";
+
+  if (REJECTED_SUB_STATUSES.has(normalized)) return "rejected";
+
+  const memberIds = options?.activeClubMemberIds;
+  if (isApplicantPipelineAccepted(normalized)) {
+    if (memberIds && options?.applicantId) {
+      return isApplicantHireConverted(normalized, options.applicantId, memberIds)
+        ? "accepted"
+        : "offer_sent";
+    }
+    return "accepted";
+  }
+
+  if (OFFER_SENT_SUB_STATUSES.has(normalized)) return "offer_sent";
+  if (INTERVIEW_SUB_STATUSES.has(normalized)) return "interview";
+  if (REVIEWED_SUB_STATUSES.has(normalized)) return "reviewed";
+  return "pending";
 }
 
 const REJECTED_SUB_STATUSES = new Set<HiringSubStatus>([
@@ -154,17 +197,11 @@ export type ApplicantMoveStatusAction =
   | "send_update";
 
 export function applicantMoveStatusActions(
-  status: string,
   subStatus: string,
 ): ApplicantMoveStatusAction[] {
   const normalized = normalizeSubStatus(subStatus);
 
-  if (
-    status === "rejected" ||
-    status === "accepted" ||
-    REJECTED_SUB_STATUSES.has(normalized) ||
-    normalized === "offer_accepted"
-  ) {
+  if (REJECTED_SUB_STATUSES.has(normalized) || normalized === "offer_accepted") {
     return [];
   }
 
@@ -176,7 +213,7 @@ export function applicantMoveStatusActions(
     return ["accept", "reject", "send_update"];
   }
 
-  if (REVIEWED_SUB_STATUSES.has(normalized) || status === "reviewed") {
+  if (REVIEWED_SUB_STATUSES.has(normalized)) {
     return ["schedule", "accept", "reject"];
   }
 
@@ -184,7 +221,6 @@ export function applicantMoveStatusActions(
 }
 
 export function matchesApplicantPipelineFilter(
-  status: string,
   subStatus: string,
   filter: ApplicantPipelineFilter,
 ): boolean {
@@ -192,26 +228,51 @@ export function matchesApplicantPipelineFilter(
 
   switch (filter) {
     case "pending":
-      return (
-        status === "pending" ||
-        PENDING_SUB_STATUSES.has(normalizedSubStatus)
-      );
+      return PENDING_SUB_STATUSES.has(normalizedSubStatus);
     case "reviewed":
-      return (
-        status === "reviewed" ||
-        REVIEWED_SUB_STATUSES.has(normalizedSubStatus)
-      );
+      return REVIEWED_SUB_STATUSES.has(normalizedSubStatus);
     case "interview":
       return INTERVIEW_SUB_STATUSES.has(normalizedSubStatus);
     case "accepted":
-      return isApplicantPipelineAccepted(status, subStatus);
+      return isApplicantPipelineAccepted(subStatus);
     case "rejected":
-      return (
-        status === "rejected" ||
-        REJECTED_SUB_STATUSES.has(normalizedSubStatus)
-      );
+      return REJECTED_SUB_STATUSES.has(normalizedSubStatus);
     default:
       return true;
+  }
+}
+
+export function applicantPipelineStageLabel(stage: ApplicantPipelineStage): string {
+  switch (stage) {
+    case "pending":
+      return "Applied";
+    case "reviewed":
+      return "Reviewed";
+    case "interview":
+      return "Interview";
+    case "offer_sent":
+      return "Offer Sent";
+    case "accepted":
+      return "Accepted";
+    case "rejected":
+      return "Rejected";
+  }
+}
+
+export function applicantPipelineStageColor(stage: ApplicantPipelineStage): string {
+  switch (stage) {
+    case "pending":
+      return "#747676";
+    case "reviewed":
+      return "#FFC429";
+    case "interview":
+      return "#6b7cff";
+    case "offer_sent":
+      return "#d4a017";
+    case "accepted":
+      return "#FFC429";
+    case "rejected":
+      return "#E51937";
   }
 }
 

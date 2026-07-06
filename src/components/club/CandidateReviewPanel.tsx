@@ -286,6 +286,29 @@ export default function CandidateReviewPanel({
     void loadNotes();
   }, [loadNotes]);
 
+  useEffect(() => {
+    if (application.subStatus !== "submitted") return;
+
+    let cancelled = false;
+
+    async function markViewed() {
+      const { error } = await supabase
+        .from("hiring_applications")
+        .update({ sub_status: "viewed" })
+        .eq("id", application.id)
+        .eq("sub_status", "submitted");
+
+      if (!cancelled && !error) {
+        onApplicationUpdated({ subStatus: "viewed" });
+      }
+    }
+
+    void markViewed();
+    return () => {
+      cancelled = true;
+    };
+  }, [application.id, application.subStatus, onApplicationUpdated]);
+
   async function markReviewed() {
     const { error } = await supabase
       .from("hiring_applications")

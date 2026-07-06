@@ -1,7 +1,9 @@
 import { isExecutiveAccessLevel } from "./clubPermissions";
 import {
-  matchesApplicantPipelineFilter,
-  type ApplicantPipelineFilter,
+  applicantPipelineStageColor,
+  applicantPipelineStageLabel,
+  resolveApplicantPipelineStage,
+  type ApplicantPipelineStage,
 } from "./hiringPipelineUtils";
 
 const ACCENT_RED = "#E51937";
@@ -9,6 +11,7 @@ const ACCENT_GOLD = "#FFC429";
 const MUTED = "#555555";
 
 export interface MemberRow {
+  user_id: string;
   created_at: string;
   role: string;
   access_level?: string | null;
@@ -49,9 +52,24 @@ export interface RsvpRow {
 export interface HiringApplicationRow {
   id: string;
   listing_id: string;
+  applicant_id?: string | null;
   status: string;
   sub_status: string | null;
   created_at: string;
+}
+
+export interface HiringAnalyticsOptions {
+  activeClubMemberIds?: ReadonlySet<string>;
+}
+
+function hiringPipelineStage(
+  app: HiringApplicationRow,
+  options?: HiringAnalyticsOptions,
+): ApplicantPipelineStage {
+  return resolveApplicantPipelineStage(app.sub_status ?? "submitted", {
+    applicantId: app.applicant_id,
+    activeClubMemberIds: options?.activeClubMemberIds,
+  });
 }
 
 export interface HiringListingRow {
@@ -426,54 +444,20 @@ export function buildTaskSectionInsight(tasks: TaskRow[]): SectionInsight {
   };
 }
 
-function applicantPipelineStage(
-  status: string,
-  subStatus: string | null,
-): ApplicantPipelineFilter {
-  if (matchesApplicantPipelineFilter(status, subStatus ?? "submitted", "accepted")) {
-    return "accepted";
-  }
-  if (matchesApplicantPipelineFilter(status, subStatus ?? "submitted", "rejected")) {
-    return "rejected";
-  }
-  if (matchesApplicantPipelineFilter(status, subStatus ?? "submitted", "interview")) {
-    return "interview";
-  }
-  if (matchesApplicantPipelineFilter(status, subStatus ?? "submitted", "reviewed")) {
-    return "reviewed";
-  }
-  return "pending";
-}
-
-export function buildHiringByStatus(applications: HiringApplicationRow[]): ChartSegment[] {
-  const counts = new Map<string, number>();
+export function buildHiringByStatus(
+  applications: HiringApplicationRow[],
+  options?: HiringAnalyticsOptions,
+): ChartSegment[] {
+  const counts = new Map<ApplicantPipelineStage, number>();
   for (const app of applications) {
-    const stage = applicantPipelineStage(app.status, app.sub_status);
-    const label =
-      stage === "pending"
-        ? "Applied"
-        : stage === "reviewed"
-          ? "Reviewed"
-          : stage === "interview"
-            ? "Interview"
-            : stage === "accepted"
-              ? "Accepted"
-              : "Rejected";
-    counts.set(label, (counts.get(label) ?? 0) + 1);
+    const stage = hiringPipelineStage(app, options);
+    counts.set(stage, (counts.get(stage) ?? 0) + 1);
   }
 
-  const colorByLabel: Record<string, string> = {
-    Applied: MUTED,
-    Reviewed: ACCENT_GOLD,
-    Interview: "#6b7cff",
-    Accepted: ACCENT_GOLD,
-    Rejected: ACCENT_RED,
-  };
-
-  return Array.from(counts.entries()).map(([name, value]) => ({
-    name,
+  return Array.from(counts.entries()).map(([stage, value]) => ({
+    name: applicantPipelineStageLabel(stage),
     value,
-    color: colorByLabel[name] ?? MUTED,
+    color: applicantPipelineStageColor(stage),
   }));
 }
 
@@ -495,37 +479,50 @@ export function buildHiringByRole(
     .slice(0, 8);
 }
 
-export function buildHiringFunnel(applications: HiringApplicationRow[]): FunnelStage[] {
-  const stages: FunnelStage[] = [
-    { stage: "Applied", count: 0, color: MUTED },
-    { stage: "Reviewed", count: 0, color: ACCENT_GOLD },
-    { stage: "Interview", count: 0, color: "#6b7cff" },
-    { stage: "Accepted", count: 0, color: ACCENT_GOLD },
-    { stage: "Rejected", count: 0, color: ACCENT_RED },
+export function buildHiringFunnel(
+  applications: HiringApplicationRow[],
+  options?: HiringAnalyticsOptions,
+): FunnelStage[] {
+  const stageOrder: ApplicantPipelineStage[] = [
+    "pending",
+    "reviewed",
+    "interview",
+    "offer_sent",
+    "accepted",
+    "rejected",
   ];
+  const counts = new Map<ApplicantPipelineStage, number>(
+    stageOrder.map((stage) => [stage, 0]),
+  );
 
   for (const app of applications) {
-    const pipeline = applicantPipelineStage(app.status, app.sub_status);
-    if (pipeline === "accepted") stages[3].count += 1;
-    else if (pipeline === "rejected") stages[4].count += 1;
-    else if (pipeline === "interview") stages[2].count += 1;
-    else if (pipeline === "reviewed") stages[1].count += 1;
-    else stages[0].count += 1;
+    const stage = hiringPipelineStage(app, options);
+    counts.set(stage, (counts.get(stage) ?? 0) + 1);
   }
 
-  return stages.filter((stage) => stage.count > 0);
+  return stageOrder
+    .map((stage) => ({
+      stage: applicantPipelineStageLabel(stage),
+      count: counts.get(stage) ?? 0,
+      color: applicantPipelineStageColor(stage),
+    }))
+    .filter((entry) => entry.count > 0);
 }
 
 export function buildHiringSectionInsight(
   applications: HiringApplicationRow[],
   openListings: number,
+  options?: HiringAnalyticsOptions,
 ): SectionInsight {
   const total = applications.length;
   const accepted = applications.filter(
-    (app) => applicantPipelineStage(app.status, app.sub_status) === "accepted",
+    (app) => hiringPipelineStage(app, options) === "accepted",
+  ).length;
+  const offerSent = applications.filter(
+    (app) => hiringPipelineStage(app, options) === "offer_sent",
   ).length;
   const interview = applications.filter(
-    (app) => applicantPipelineStage(app.status, app.sub_status) === "interview",
+    (app) => hiringPipelineStage(app, options) === "interview",
   ).length;
 
   if (total === 0 && openListings === 0) {
@@ -542,7 +539,7 @@ export function buildHiringSectionInsight(
   }
   return {
     sentiment: accepted > 0 ? "positive" : "neutral",
-    text: `${total} applicant${total === 1 ? "" : "s"} across open roles — ${interview} in interview, ${accepted} accepted.`,
+    text: `${total} applicant${total === 1 ? "" : "s"} across open roles — ${interview} in interview, ${offerSent} with offers sent, ${accepted} hired.`,
   };
 }
 

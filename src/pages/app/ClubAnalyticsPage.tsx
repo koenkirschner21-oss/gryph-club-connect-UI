@@ -834,7 +834,7 @@ export default function ClubAnalyticsPage() {
       ] = await Promise.all([
         supabase
           .from("club_members")
-          .select("created_at, role, access_level")
+          .select("user_id, created_at, role, access_level")
           .eq("club_id", clubId)
           .eq("status", "active"),
         supabase
@@ -896,7 +896,7 @@ export default function ClubAnalyticsPage() {
         listingIds.length > 0
           ? supabase
               .from("hiring_applications")
-              .select("id, listing_id, status, sub_status, created_at")
+              .select("id, listing_id, applicant_id, status, sub_status, created_at")
               .in("listing_id", listingIds)
           : Promise.resolve({ data: [], error: null }),
         assigneeIds.length > 0
@@ -982,6 +982,14 @@ export default function ClubAnalyticsPage() {
     () => filterRowsSince(hiringApplications, (row) => row.created_at, rangeStart),
     [hiringApplications, rangeStart],
   );
+  const activeClubMemberIds = useMemo(
+    () => new Set(members.map((member) => member.user_id)),
+    [members],
+  );
+  const hiringAnalyticsOptions = useMemo(
+    () => ({ activeClubMemberIds }),
+    [activeClubMemberIds],
+  );
   const scopedProfileEvents = useMemo(
     () => filterRowsSince(profileEvents, (row) => row.created_at, rangeStart),
     [profileEvents, rangeStart],
@@ -1066,24 +1074,25 @@ export default function ClubAnalyticsPage() {
   const taskInsight = useMemo(() => buildTaskSectionInsight(scopedTasks), [scopedTasks]);
 
   const hiringByStatus = useMemo(
-    () => buildHiringByStatus(scopedApplications),
-    [scopedApplications],
+    () => buildHiringByStatus(scopedApplications, hiringAnalyticsOptions),
+    [scopedApplications, hiringAnalyticsOptions],
   );
   const hiringByRole = useMemo(
     () => buildHiringByRole(scopedApplications, hiringListings),
     [scopedApplications, hiringListings],
   );
   const hiringFunnel = useMemo(
-    () => buildHiringFunnel(scopedApplications),
-    [scopedApplications],
+    () => buildHiringFunnel(scopedApplications, hiringAnalyticsOptions),
+    [scopedApplications, hiringAnalyticsOptions],
   );
   const hiringInsight = useMemo(
     () =>
       buildHiringSectionInsight(
         scopedApplications,
         openHiringListingsCount,
+        hiringAnalyticsOptions,
       ),
-    [scopedApplications, openHiringListingsCount],
+    [scopedApplications, openHiringListingsCount, hiringAnalyticsOptions],
   );
 
   const announcementViewsTrend = useMemo(
