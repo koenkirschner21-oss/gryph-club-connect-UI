@@ -66,6 +66,10 @@ import {
 } from "../../lib/eventCategories";
 import EventPlanningTasksSection from "../../components/club/EventPlanningTasksSection";
 import { EventManageView } from "./events/EventManageView";
+import {
+  approveEventSignup,
+  rejectEventSignup,
+} from "../../lib/eventSignupReview";
 import { getPublicEventDetailPath } from "../../lib/eventNavigation";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import {
@@ -2150,6 +2154,7 @@ export default function ClubEventsPage() {
     null,
   );
   const [focusRsvpPanel, setFocusRsvpPanel] = useState(false);
+  const [reviewBusyRsvpId, setReviewBusyRsvpId] = useState<string | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const routerLocation = useLocation();
@@ -3374,11 +3379,54 @@ export default function ClubEventsPage() {
       );
     }
 
-    const manageCounts = counts[manageEvent.id] ?? {
+    const activeManageEventId: string = manageEvent.id;
+    const manageCounts = counts[activeManageEventId] ?? {
       going: 0,
       maybe: 0,
       not_going: 0,
     };
+
+    async function handleApproveSignup(rsvpId: string) {
+      setReviewBusyRsvpId(rsvpId);
+      try {
+        const result = await approveEventSignup(supabase, rsvpId);
+        if (!result.ok) {
+          setFeedback({
+            type: "error",
+            text: result.error ?? "Failed to approve sign-up.",
+          });
+          return;
+        }
+        setFeedback({
+          type: "success",
+          text: `Approved sign-up for ${result.eventTitle ?? "this event"}.`,
+        });
+        await loadAttendees(activeManageEventId);
+      } finally {
+        setReviewBusyRsvpId(null);
+      }
+    }
+
+    async function handleRejectSignup(rsvpId: string) {
+      setReviewBusyRsvpId(rsvpId);
+      try {
+        const result = await rejectEventSignup(supabase, rsvpId);
+        if (!result.ok) {
+          setFeedback({
+            type: "error",
+            text: result.error ?? "Failed to reject sign-up.",
+          });
+          return;
+        }
+        setFeedback({
+          type: "success",
+          text: `Declined sign-up for ${result.eventTitle ?? "this event"}.`,
+        });
+        await loadAttendees(activeManageEventId);
+      } finally {
+        setReviewBusyRsvpId(null);
+      }
+    }
 
     return (
       <div
@@ -3432,6 +3480,9 @@ export default function ClubEventsPage() {
           initialPlanningQuickAdd={planningQuickAddEventId === manageEvent.id}
           onPlanningQuickAddOpened={() => setPlanningQuickAddEventId(null)}
           loadAttendees={loadAttendees}
+          onApproveSignup={handleApproveSignup}
+          onRejectSignup={handleRejectSignup}
+          reviewBusyRsvpId={reviewBusyRsvpId}
         />
       </div>
     );

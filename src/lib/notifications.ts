@@ -1563,3 +1563,101 @@ export async function notifyEventSignupPendingReview(
     }
   }
 }
+
+export async function notifyEventSignupApproved(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    eventId: string;
+    eventTitle: string;
+    recipientUserId: string;
+  },
+): Promise<void> {
+  const scheduleLabel = await (async () => {
+    const { data } = await supabase
+      .from("events")
+      .select("date, time, location")
+      .eq("id", params.eventId)
+      .maybeSingle();
+    if (!data) return params.eventTitle;
+    const location = ((data.location as string) ?? "").trim() || "TBD";
+    return `${params.eventTitle} on ${formatEventScheduleLabel(
+      (data.date as string) ?? "",
+      (data.time as string) ?? "",
+    )}. Location: ${location}`;
+  })();
+
+  const message = `Your sign-up for ${scheduleLabel} was approved. You're registered to attend.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.recipientUserId,
+    type: "club_update",
+    message: `[Event Sign-up Approved] ${message}`,
+    clubId: params.clubId,
+    referenceId: params.eventId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send event sign-up approval notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.recipientUserId,
+    type: "system_message",
+    title: `Sign-up approved — ${params.eventTitle}`,
+    message,
+    actionRequired: false,
+    actionType: "view_event",
+    actionData: {
+      path: `/events/${params.eventId}`,
+      eventId: params.eventId,
+    },
+    clubId: params.clubId,
+    referenceId: params.eventId,
+    referenceType: "event_rsvp",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create event sign-up approval inbox message.");
+  }
+}
+
+export async function notifyEventSignupRejected(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    eventId: string;
+    eventTitle: string;
+    recipientUserId: string;
+  },
+): Promise<void> {
+  const message = `Your sign-up request for ${params.eventTitle} was not approved at this time.`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.recipientUserId,
+    type: "club_update",
+    message: `[Event Sign-up Declined] ${message}`,
+    clubId: params.clubId,
+    referenceId: params.eventId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send event sign-up rejection notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.recipientUserId,
+    type: "system_message",
+    title: `Sign-up declined — ${params.eventTitle}`,
+    message,
+    actionRequired: false,
+    actionType: "view_event",
+    actionData: {
+      path: `/events/${params.eventId}`,
+      eventId: params.eventId,
+    },
+    clubId: params.clubId,
+    referenceId: params.eventId,
+    referenceType: "event_rsvp",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create event sign-up rejection inbox message.");
+  }
+}

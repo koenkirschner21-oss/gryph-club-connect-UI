@@ -139,10 +139,11 @@ function RsvpStatusBar({
   );
 }
 
-type AttendeeFilterTab = "all" | "going" | "maybe" | "not_going" | "no_response";
+type AttendeeFilterTab = "all" | "pending" | "going" | "maybe" | "not_going" | "no_response";
 
 const ATTENDEE_FILTER_TABS: { id: AttendeeFilterTab; label: string }[] = [
   { id: "all", label: "All" },
+  { id: "pending", label: "Pending" },
   { id: "going", label: "Going" },
   { id: "maybe", label: "Maybe" },
   { id: "not_going", label: "Not Going" },
@@ -155,8 +156,16 @@ type AttendeeListItem =
 
 function AttendeeRow({
   item,
+  canReview,
+  reviewBusy,
+  onApprove,
+  onReject,
 }: {
   item: AttendeeListItem;
+  canReview: boolean;
+  reviewBusy: boolean;
+  onApprove?: (rsvpId: string) => void;
+  onReject?: (rsvpId: string) => void;
 }) {
   const statusColors: Record<RsvpStatus, { bg: string; color: string; border: string }> = {
     going: { bg: "#1a1200", color: "#FFC429", border: "1px solid #FFC429" },
@@ -260,20 +269,71 @@ function AttendeeRow({
           </p>
         ) : null}
       </div>
-      <span
+      <div
         style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          gap: "6px",
           flexShrink: 0,
-          borderRadius: "20px",
-          padding: "3px 10px",
-          fontSize: "10px",
-          fontWeight: 600,
-          background: statusStyle.bg,
-          color: statusStyle.color,
-          border: statusStyle.border,
         }}
       >
-        {statusLabel}
-      </span>
+        <span
+          style={{
+            borderRadius: "20px",
+            padding: "3px 10px",
+            fontSize: "10px",
+            fontWeight: 600,
+            background: statusStyle.bg,
+            color: statusStyle.color,
+            border: statusStyle.border,
+          }}
+        >
+          {statusLabel}
+        </span>
+        {canReview &&
+        item.kind === "rsvp" &&
+        item.attendee.status === "pending" &&
+        onApprove &&
+        onReject ? (
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              type="button"
+              disabled={reviewBusy}
+              onClick={() => onApprove(item.attendee.id)}
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "4px 10px",
+                fontSize: "10px",
+                fontWeight: 600,
+                cursor: reviewBusy ? "wait" : "pointer",
+              }}
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              disabled={reviewBusy}
+              onClick={() => onReject(item.attendee.id)}
+              style={{
+                background: "transparent",
+                color: "#cccccc",
+                border: "1px solid #333333",
+                borderRadius: "6px",
+                padding: "4px 10px",
+                fontSize: "10px",
+                fontWeight: 600,
+                cursor: reviewBusy ? "wait" : "pointer",
+              }}
+            >
+              Reject
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -308,6 +368,9 @@ export function EventManageView({
   initialPlanningQuickAdd,
   onPlanningQuickAddOpened,
   loadAttendees,
+  onApproveSignup,
+  onRejectSignup,
+  reviewBusyRsvpId,
 }: {
   event: ClubEvent;
   category: string;
@@ -338,6 +401,9 @@ export function EventManageView({
   initialPlanningQuickAdd?: boolean;
   onPlanningQuickAddOpened?: () => void;
   loadAttendees: (eventId: string) => Promise<void>;
+  onApproveSignup?: (rsvpId: string) => Promise<void>;
+  onRejectSignup?: (rsvpId: string) => Promise<void>;
+  reviewBusyRsvpId?: string | null;
 }) {
   const rsvpPanelRef = useRef<HTMLElement>(null);
   const [notesDraft, setNotesDraft] = useState("");
@@ -346,7 +412,27 @@ export function EventManageView({
 
   const locationLabel = cleanEventLocation(event.location);
   const categoryLabel = eventCategoryLabel(category);
-  const totalRsvps = counts.going + counts.maybe + counts.not_going;
+  const attendeeStatusCounts = useMemo(() => {
+    const derived = { going: 0, maybe: 0, not_going: 0, pending: 0 };
+    if (attendeeList?.length) {
+      for (const attendee of attendeeList) {
+        if (attendee.status === "pending") derived.pending += 1;
+        else if (attendee.status in derived) derived[attendee.status] += 1;
+      }
+      return derived;
+    }
+    return {
+      going: counts.going,
+      maybe: counts.maybe,
+      not_going: counts.not_going,
+      pending: 0,
+    };
+  }, [attendeeList, counts.going, counts.maybe, counts.not_going]);
+  const totalRsvps =
+    attendeeStatusCounts.going +
+    attendeeStatusCounts.maybe +
+    attendeeStatusCounts.not_going +
+    attendeeStatusCounts.pending;
   const openPlanningCount = planningTasks.filter(
     (task) => task.status !== "done" && task.status !== "cancelled",
   ).length;
@@ -449,6 +535,11 @@ export function EventManageView({
     });
 
     switch (attendeeFilter) {
+      case "pending":
+        return rsvpRows.filter(
+          (row): row is Extract<AttendeeListItem, { kind: "rsvp" }> =>
+            row.kind === "rsvp" && row.attendee.status === "pending",
+        );
       case "going":
         return rsvpRows.filter(
           (row): row is Extract<AttendeeListItem, { kind: "rsvp" }> =>
@@ -551,24 +642,35 @@ export function EventManageView({
       </h2>
       <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#555555" }}>
         {totalRsvps} responded · {noResponseCount} no response
+        {attendeeStatusCounts.pending > 0
+          ? ` · ${attendeeStatusCounts.pending} pending approval`
+          : ""}
         {openPlanningCount > 0 ? ` · ${openPlanningCount} open planning tasks` : ""}
       </p>
 
+      {attendeeStatusCounts.pending > 0 ? (
+        <RsvpStatusBar
+          label="Pending Approval"
+          count={attendeeStatusCounts.pending}
+          total={Math.max(totalRsvps, 1)}
+          color="#FFC429"
+        />
+      ) : null}
       <RsvpStatusBar
         label="Going"
-        count={counts.going}
+        count={attendeeStatusCounts.going}
         total={Math.max(totalRsvps, 1)}
         color="#E51937"
       />
       <RsvpStatusBar
         label="Maybe"
-        count={counts.maybe}
+        count={attendeeStatusCounts.maybe}
         total={Math.max(totalRsvps, 1)}
         color="#FFC429"
       />
       <RsvpStatusBar
         label="Not Going"
-        count={counts.not_going}
+        count={attendeeStatusCounts.not_going}
         total={Math.max(totalRsvps, 1)}
         color="#777777"
       />
@@ -619,6 +721,10 @@ export function EventManageView({
                 : `no-response-${row.member.userId}`
             }
             item={row}
+            canReview={isPrivileged}
+            reviewBusy={reviewBusyRsvpId === (row.kind === "rsvp" ? row.attendee.id : "")}
+            onApprove={onApproveSignup}
+            onReject={onRejectSignup}
           />
         ))
       )}
