@@ -15,10 +15,12 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyNewHiringRolePosted } from "../../lib/notifications";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
+import { useClubMembers } from "../../hooks/useClubMembers";
 import Spinner from "../../components/ui/Spinner";
 import ProfileAvatarCircle from "../../components/ui/ProfileAvatarCircle";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
+import HiringReviewerIdsPicker from "../../components/club/HiringReviewerIdsPicker";
 import CandidateReviewPanel, {
   type CandidateReviewApplication,
   type CandidateReviewPatch,
@@ -193,8 +195,26 @@ function parseHiringAnswers(raw: unknown): HiringApplicationAnswer[] {
 
 function normalizeReviewerIds(raw: unknown): string[] {
   return Array.isArray(raw)
-    ? raw.filter((value): value is string => typeof value === "string")
+    ? Array.from(
+        new Set(
+          raw.filter((value): value is string => typeof value === "string" && Boolean(value)),
+        ),
+      )
     : [];
+}
+
+function sanitizeReviewerIds(
+  reviewerIds: string[],
+  activeMemberUserIds: ReadonlySet<string>,
+): string[] {
+  return reviewerIds.filter((id) => activeMemberUserIds.has(id));
+}
+
+function mapHiringListingSaveError(message: string): string {
+  if (message.includes("hiring_listing_reviewer_not_active_member")) {
+    return "Each assigned reviewer must be an active club member.";
+  }
+  return message;
 }
 
 function answerLabel(
@@ -870,6 +890,16 @@ export default function ClubRecruitingPage() {
   const memberAccess = useClubMemberAccess(clubId);
   const canManageHiring =
     memberAccess.isPresident || memberAccess.can("manage_hiring");
+  const { members: clubMembers } = useClubMembers(canManageHiring ? clubId : undefined);
+  const activeMemberUserIds = useMemo(
+    () =>
+      new Set(
+        clubMembers
+          .filter((member) => member.status === "active")
+          .map((member) => member.userId),
+      ),
+    [clubMembers],
+  );
   const canDeleteHiring =
     memberAccess.isPresident || memberAccess.can("manage_hiring");
   const isPrivileged = canManageHiring;
@@ -893,6 +923,7 @@ export default function ClubRecruitingPage() {
   const [uploadFields, setUploadFields] = useState<HiringUploadFields>(
     DEFAULT_HIRING_UPLOAD_FIELDS,
   );
+  const [formReviewerIds, setFormReviewerIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [savePositionError, setSavePositionError] = useState<string | null>(null);
 
@@ -1248,6 +1279,7 @@ export default function ClubRecruitingPage() {
     setDeadline("");
     setFormQuestions([]);
     setUploadFields(DEFAULT_HIRING_UPLOAD_FIELDS);
+    setFormReviewerIds([]);
     setEditingPosition(null);
   }
 
@@ -1283,6 +1315,7 @@ export default function ClubRecruitingPage() {
 
     setFormQuestions(formQuestionsFromJson(listingRow?.questions));
     setUploadFields(position.uploadFields);
+    setFormReviewerIds(position.reviewerIds);
     setSavePositionError(null);
     setShowPostModal(true);
     setOpenMenuId(null);
@@ -1299,6 +1332,7 @@ export default function ClubRecruitingPage() {
         : null;
 
     const deadlineValue = deadline.trim() || null;
+    const reviewerIds = sanitizeReviewerIds(formReviewerIds, activeMemberUserIds);
 
     const listingFields = {
       title: title.trim(),
@@ -1311,6 +1345,7 @@ export default function ClubRecruitingPage() {
       commitment_level: commitmentLevel,
       weekly_hours:
         commitmentLevel === "weekly_hours" ? parsedWeeklyHours : null,
+      reviewer_ids: reviewerIds,
     };
 
     if (editingPosition) {
@@ -1322,7 +1357,9 @@ export default function ClubRecruitingPage() {
       if (error) {
         console.error("Failed to update hiring listing:", error.message, error);
         setSavePositionError(
-          error.message || "Failed to save position. Please try again.",
+          mapHiringListingSaveError(
+            error.message || "Failed to save position. Please try again.",
+          ),
         );
         setSaving(false);
         return;
@@ -1342,8 +1379,10 @@ export default function ClubRecruitingPage() {
       if (error || !inserted?.id) {
         console.error("Failed to create hiring listing:", error?.message, error);
         setSavePositionError(
-          error?.message ||
-            "Failed to save position. Check that hiring_listings is set up correctly.",
+          mapHiringListingSaveError(
+            error?.message ||
+              "Failed to save position. Check that hiring_listings is set up correctly.",
+          ),
         );
         setSaving(false);
         return;
@@ -2860,6 +2899,15 @@ export default function ClubRecruitingPage() {
               onChange={(e) => setDeadline(e.target.value)}
               style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
             />
+
+            <div style={{ marginBottom: "16px" }}>
+              <HiringReviewerIdsPicker
+                members={clubMembers}
+                reviewerIds={formReviewerIds}
+                onChange={setFormReviewerIds}
+                disabled={saving}
+              />
+            </div>
 
             <PositionUploadFieldsEditor
               value={uploadFields}
