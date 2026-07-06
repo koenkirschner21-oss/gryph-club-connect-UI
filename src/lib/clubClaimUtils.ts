@@ -77,7 +77,21 @@ export type ExploreClubClaimState =
   | "claimable"
   | "claimed"
   | "pending"
-  | "user_pending";
+  | "user_pending"
+  | "loading";
+
+/** Definitive states from club.claim_status only; otherwise neutral loading. */
+export function resolveExploreClubClaimStatePreMeta(
+  claimStatus: ClaimStatus,
+): ExploreClubClaimState {
+  if (claimStatus === "claimed" || claimStatus === "active") {
+    return "claimed";
+  }
+  if (claimStatus === "claim_pending") {
+    return "pending";
+  }
+  return "loading";
+}
 
 export function resolveExploreClubClaimState(
   claimStatus: ClaimStatus,

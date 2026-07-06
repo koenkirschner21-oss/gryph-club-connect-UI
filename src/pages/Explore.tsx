@@ -9,6 +9,7 @@ import {
 import {
   normalizeClaimStatus,
   resolveExploreClubClaimState,
+  resolveExploreClubClaimStatePreMeta,
   type ExploreClubClaimState,
 } from "../lib/clubClaimUtils";
 import { useClubContext } from "../context/useClubContext";
@@ -491,10 +492,7 @@ export default function Explore() {
   const claimStateForClub = useCallback(
     (club: Club): ExploreClubClaimState => {
       if (!claimMetaReady) {
-        const status = club.claimStatus ?? "unclaimed";
-        if (status === "claimed" || status === "active") return "claimed";
-        if (status === "claim_pending") return "pending";
-        return "claimed";
+        return resolveExploreClubClaimStatePreMeta(club.claimStatus ?? "unclaimed");
       }
 
       return resolveExploreClubClaimState(
@@ -581,7 +579,7 @@ export default function Explore() {
   }, [clubs, search, activeCategory]);
 
   const displayClubs = useMemo(() => {
-    if (!claimMode) return filteredClubs;
+    if (!claimMode || !claimMetaReady) return filteredClubs;
     const unclaimed = filteredClubs.filter(
       (club) => claimStateForClub(club) === "claimable",
     );
@@ -589,7 +587,7 @@ export default function Explore() {
       (club) => claimStateForClub(club) !== "claimable",
     );
     return [...unclaimed, ...claimed];
-  }, [filteredClubs, claimMode, claimStateForClub]);
+  }, [filteredClubs, claimMode, claimMetaReady, claimStateForClub]);
 
   const claimableClubs = useMemo(
     () =>
@@ -1249,7 +1247,21 @@ export default function Explore() {
                   ← Back to options
                 </button>
 
-                {claimableClubs.length === 0 ? (
+                {!claimMetaReady ? (
+                  <div style={{ display: "grid", gap: "10px" }} aria-busy="true" aria-label="Loading claimable clubs">
+                    {[0, 1, 2].map((index) => (
+                      <div
+                        key={index}
+                        style={{
+                          height: "52px",
+                          borderRadius: "10px",
+                          background: "#1f1f1f",
+                          border: "1px solid #2a2a2a",
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : claimableClubs.length === 0 ? (
                   <div
                     style={{
                       border: "1px solid #2a2a2a",

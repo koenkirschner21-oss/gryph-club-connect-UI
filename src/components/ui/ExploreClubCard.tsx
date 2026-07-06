@@ -85,6 +85,37 @@ function ExploreCardFooter({
   claimState: ExploreClubClaimState;
   userManagesClub: boolean;
 }) {
+  if (claimFocused && claimState === "loading") {
+    return (
+      <div
+        style={{
+          marginTop: "auto",
+          paddingTop: "10px",
+          borderTop: "1px solid #1e1e1e",
+        }}
+        aria-hidden="true"
+      >
+        <div
+          style={{
+            height: "10px",
+            width: "72%",
+            borderRadius: "4px",
+            background: "#2a2a2a",
+            marginBottom: "10px",
+          }}
+        />
+        <div
+          style={{
+            height: "34px",
+            width: "100%",
+            borderRadius: "6px",
+            background: "#222222",
+          }}
+        />
+      </div>
+    );
+  }
+
   if (claimFocused && claimState === "claimable") {
     return (
       <div
@@ -258,12 +289,14 @@ export default function ExploreClubCard({
   const bannerUrl = club.bannerUrl?.trim();
   const showBannerImage = isUploadedClubBanner(bannerUrl);
   const isClaimable = claimState === "claimable";
+  const isClaimLoading = claimState === "loading";
   const useClaimActions = claimFocused && (isClaimable || claimState === "user_pending");
   const showClaimBadge =
     claimFocused &&
     (claimState === "claimable" ||
       claimState === "pending" ||
       claimState === "user_pending");
+  const showClaimLoadingBadge = claimFocused && isClaimLoading;
   const cardHeight = claimFocused && isClaimable ? "340px" : "320px";
   const contentHeight = claimFocused && isClaimable ? "200px" : "180px";
   const workspaceHref = `/app/clubs/${club.id}`;
@@ -440,7 +473,19 @@ export default function ExploreClubCard({
           </p>
         )}
 
-        {showClaimBadge ? (
+        {showClaimLoadingBadge ? (
+          <div style={{ marginTop: "8px" }} aria-hidden="true">
+            <span
+              style={{
+                display: "inline-block",
+                width: "112px",
+                height: "18px",
+                borderRadius: "4px",
+                background: "#2a2a2a",
+              }}
+            />
+          </div>
+        ) : showClaimBadge ? (
           <div style={{ marginTop: "8px" }}>
             <span
               style={claimBadgeStyle(
@@ -455,7 +500,7 @@ export default function ExploreClubCard({
         ) : null}
 
         {club.category ? (
-          <div style={{ marginTop: showClaimBadge ? "6px" : "8px" }}>
+          <div style={{ marginTop: showClaimBadge || showClaimLoadingBadge ? "6px" : "8px" }}>
             <span
               style={{
                 background: "#1a1a1a",
