@@ -20,6 +20,7 @@ import {
   notifyHiringApplicationSubmitted,
   resolveStudentDisplayName,
 } from "../../lib/notifications";
+import { applyToHiringListing } from "../../lib/hiringApplicationSubmit";
 import {
   activeUploadSlots,
   HIRING_UPLOAD_SLOT_LABELS,
@@ -1725,6 +1726,7 @@ export function ApplicationModal({
   const [submitting, setSubmitting] = useState(false);
   const [alreadyApplied, setAlreadyApplied] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     const userId = user?.id;
@@ -1785,7 +1787,8 @@ export function ApplicationModal({
   }
 
   async function handleSubmit() {
-    if (!user?.id || !validate()) return;
+    if (!user?.id || !validate() || submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSubmitting(true);
 
     const answersPayload: HiringApplicationAnswer[] = displayQuestions.map((q) => ({
@@ -1802,6 +1805,7 @@ export function ApplicationModal({
           form: `${HIRING_UPLOAD_SLOT_LABELS[slot]} must be 50MB or smaller.`,
         });
         setSubmitting(false);
+        submitInFlightRef.current = false;
         return;
       }
 
@@ -1818,6 +1822,7 @@ export function ApplicationModal({
           form: `Failed to upload ${HIRING_UPLOAD_SLOT_LABELS[slot].toLowerCase()}. Please try again.`,
         });
         setSubmitting(false);
+        submitInFlightRef.current = false;
         return;
       }
 
@@ -1830,49 +1835,36 @@ export function ApplicationModal({
       });
     }
 
-    const payload = {
-      listing_id: selectedListing.id,
-      applicant_id: user.id,
+    const result = await applyToHiringListing(supabase, {
+      listingId: selectedListing.id,
       answers: answersPayload,
-      status: "pending",
-    };
-
-    const { data, error } = await supabase
-      .from("hiring_applications")
-      .insert(payload)
-      .select();
+    });
 
     setSubmitting(false);
-    if (error) {
-      console.error("Full error:", JSON.stringify(error, null, 2));
-      console.error("Payload sent:", payload);
-      if (error.code === "23505") {
-        setAlreadyApplied(true);
-      } else {
-        setErrors({ form: error.message });
-      }
+    submitInFlightRef.current = false;
+
+    if (!result.ok) {
+      setErrors({ form: result.error });
       return;
     }
 
-    if (!data?.length) {
-      console.error("Insert succeeded but no row returned:", { payload, data });
+    if (result.outcome === "already_applied") {
+      setAlreadyApplied(true);
+      return;
     }
 
-    const applicationId = (data?.[0]?.id as string | undefined) ?? undefined;
-    if (applicationId && user?.id) {
-      await notifyHiringApplicationSubmitted(supabase, {
-        clubId: selectedListing.clubId,
-        clubName,
-        listingId: selectedListing.id,
-        applicationId,
-        roleTitle: selectedListing.title,
-        applicantUserId: user.id,
-        applicantName: resolveStudentDisplayName(
-          profile?.fullName,
-          user.email ?? null,
-        ),
-      });
-    }
+    await notifyHiringApplicationSubmitted(supabase, {
+      clubId: selectedListing.clubId,
+      clubName,
+      listingId: selectedListing.id,
+      applicationId: result.applicationId,
+      roleTitle: selectedListing.title,
+      applicantUserId: user.id,
+      applicantName: resolveStudentDisplayName(
+        profile?.fullName,
+        user.email ?? null,
+      ),
+    });
 
     setSubmitted(true);
     onSubmitted?.();
@@ -1939,7 +1931,7 @@ export function ApplicationModal({
         ) : alreadyApplied ? (
           <div style={{ textAlign: "center" }}>
             <p style={{ fontWeight: 600, fontSize: "16px", color: "#ffffff", margin: "0 0 16px" }}>
-              You&apos;ve already applied for this position
+              You already applied for this position
             </p>
             <button
               type="button"
