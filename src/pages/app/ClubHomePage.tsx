@@ -10,6 +10,11 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
+import { supabase } from "../../lib/supabaseClient";
+import {
+  PublishClubValidationError,
+  publishClubProfile,
+} from "../../lib/clubPublishUtils";
 import { useClubEvents } from "../../hooks/useClubEvents";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useClubTasks } from "../../hooks/useClubTasks";
@@ -46,9 +51,9 @@ import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import { addTaskComment } from "../../lib/taskComments";
 import { recordAnnouncementView } from "../../lib/postViews";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
-import { supabase } from "../../lib/supabaseClient";
 import type {
   AccessLevel,
+  Club,
   ClubEvent,
   MemberRole,
   Post,
@@ -1790,13 +1795,22 @@ export default function ClubHomePage() {
 
   async function handlePublishClub() {
     if (!clubId) return;
-    const success = await updateClub(clubId, {
-      claimStatus: "active",
-      isPublished: true,
-      setupCompleted: true,
+
+    const result = await publishClubProfile(supabase, clubId);
+    if (!result.ok) {
+      if (result.outcome === "incomplete") {
+        throw new PublishClubValidationError(result.missingItems);
+      }
+      throw new Error(result.error);
+    }
+
+    const synced = await updateClub(clubId, {
+      claimStatus: result.claimStatus as Club["claimStatus"],
+      isPublished: result.isPublished,
+      setupCompleted: result.setupCompleted,
     });
-    if (!success) {
-      throw new Error("Publish failed");
+    if (!synced) {
+      throw new Error("Club published but failed to refresh local state.");
     }
   }
 

@@ -14,6 +14,7 @@ import {
   type ClubSetupSettingsSection,
   type SetupFieldState,
 } from "../../lib/clubProfileCompletion";
+import { PublishClubValidationError } from "../../lib/clubPublishUtils";
 import type { Club } from "../../types";
 
 const CARD_BG = "#141414";
@@ -414,8 +415,14 @@ export default function SetupChecklist({
     setPublishError(null);
     try {
       await onPublish();
-    } catch {
-      setPublishError("Could not publish your club. Please try again.");
+    } catch (error) {
+      if (error instanceof PublishClubValidationError) {
+        setPublishError(error.message);
+      } else if (error instanceof Error && error.message.trim()) {
+        setPublishError(error.message);
+      } else {
+        setPublishError("Could not publish your club. Please try again.");
+      }
     } finally {
       setPublishing(false);
     }
@@ -564,7 +571,14 @@ export default function SetupChecklist({
       </div>
 
       {publishError ? (
-        <p style={{ margin: "16px 0 0", fontSize: "13px", color: ACCENT_RED }}>
+        <p
+          style={{
+            margin: "16px 0 0",
+            fontSize: "13px",
+            color: ACCENT_RED,
+            whiteSpace: "pre-line",
+          }}
+        >
           {publishError}
         </p>
       ) : null}
