@@ -2,10 +2,15 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { supabase } from "../lib/supabaseClient";
+import {
+  removeRealtimeChannel,
+  uniqueRealtimeTopic,
+} from "../lib/realtimeChannels";
 import { normalizeTags } from "../lib/normalizeTags";
 import {
   membershipRequiresApproval,
@@ -155,16 +160,23 @@ export function ClubProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /** Auth → memberships → club rows RLS-visible to this session (deterministic ordering). */
-  useEffect(() => {
-    if (authLoading) {
-      return;
-    }
+  // Monotonic token so overlapping sync runs (initial load, realtime refresh,
+  // rapid remounts) never clobber each other with stale results.
+  const syncRunIdRef = useRef(0);
 
-    let cancelled = false;
+  /**
+   * Auth → memberships → club rows RLS-visible to this session (deterministic ordering).
+   * Pass `{ silent: true }` for background refreshes (e.g. realtime membership
+   * changes) so the dashboard doesn't flash its loading spinner. Identity is
+   * stable across refreshes (only depends on `userId`), so it never re-triggers
+   * the realtime subscription effect.
+   */
+  const syncClubs = useCallback(
+    async (options?: { silent?: boolean }): Promise<void> => {
+      const runId = ++syncRunIdRef.current;
+      const isStale = () => runId !== syncRunIdRef.current;
 
-    async function syncClubs(): Promise<void> {
-      setClubsLoading(true);
+      if (!options?.silent) setClubsLoading(true);
       setClubsError(null);
 
       if (!userId) {
@@ -173,7 +185,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         setSavedClubs([]);
         setUserRoles({});
         setClubs([]);
-        if (!cancelled) setClubsLoading(false);
+        if (!isStale()) setClubsLoading(false);
         return;
       }
 
@@ -190,7 +202,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
             .eq("type", "saved"),
         ]);
 
-      if (cancelled) return;
+      if (isStale()) return;
 
       if (membersErr) {
         console.error("Failed to load club memberships:", membersErr.message);
@@ -247,7 +259,7 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         .eq("is_public", true)
         .order("name");
 
-      if (cancelled) return;
+      if (isStale()) return;
 
       const err = memberClubErr ?? publicClubsRes.error;
       if (err) {
@@ -263,15 +275,51 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         setClubs(Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name)));
       }
 
-      if (!cancelled) setClubsLoading(false);
+      if (!isStale()) setClubsLoading(false);
+    },
+    [userId],
+  );
+
+  // Initial load + re-sync whenever auth resolves or the signed-in user changes.
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    void syncClubs();
+  }, [authLoading, syncClubs]);
+
+  // Realtime: refresh membership/role state when this user's club_members rows
+  // change (approve/remove/promote/demote), so the dashboard reflects them
+  // without a full reload. `.on(...)` is registered before `.subscribe()` to
+  // avoid the postgres_changes-after-subscribe crash seen previously.
+  useEffect(() => {
+    if (authLoading || !userId) {
+      return;
     }
 
-    void syncClubs();
+    const channel = supabase.channel(
+      uniqueRealtimeTopic(`club-members:${userId}`),
+    );
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "club_members",
+        filter: `user_id=eq.${userId}`,
+      },
+      () => {
+        void syncClubs({ silent: true });
+      },
+    );
+
+    channel.subscribe();
 
     return () => {
-      cancelled = true;
+      removeRealtimeChannel(supabase, channel);
     };
-  }, [authLoading, userId]);
+  }, [authLoading, userId, syncClubs]);
 
   useEffect(() => {
     if (!userId) {
