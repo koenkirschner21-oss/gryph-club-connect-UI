@@ -358,6 +358,97 @@ function IncompleteClubSetupNudges({ clubs }: { clubs: Club[] }) {
   );
 }
 
+function PendingRequestsSection({ clubs }: { clubs: Club[] }) {
+  if (clubs.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: "24px" }}>
+      <h3
+        style={{
+          fontSize: "13px",
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "#999988",
+          margin: "0 0 12px",
+        }}
+      >
+        Pending Requests
+      </h3>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+        }}
+      >
+        {clubs.map((club) => (
+          <Link
+            key={club.id}
+            to={`/clubs/${club.slug}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "14px",
+              padding: "16px 20px",
+              background: "rgba(153, 153, 136, 0.08)",
+              border: "1px solid rgba(153, 153, 136, 0.28)",
+              borderRadius: "12px",
+              textDecoration: "none",
+            }}
+          >
+            <OverviewClubLogo
+              name={club.name}
+              abbreviation={club.abbreviation}
+              logoUrl={club.logoUrl}
+              size={40}
+            />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  fontSize: "14px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {club.name}
+              </p>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  fontSize: "12px",
+                  color: "#999988",
+                  lineHeight: 1.45,
+                }}
+              >
+                Your join request is awaiting approval.
+              </p>
+            </div>
+            <span
+              style={{
+                flexShrink: 0,
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#999988",
+                background: "#1a1a1a",
+                border: "1px solid #666655",
+                borderRadius: "12px",
+                padding: "3px 10px",
+              }}
+            >
+              Request Pending
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function NewUserDashboardGuide({ intent }: { intent: OnboardingIntent | null }) {
   const isMobileGuide = useIsMobile();
 
@@ -424,8 +515,17 @@ export default function DashboardPage() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
-  const { clubs, joinedClubs, savedClubs, loading, getUserRole, isPending, isJoined, userRoles } =
-    useClubContext();
+  const {
+    clubs,
+    joinedClubs,
+    pendingClubs,
+    savedClubs,
+    loading,
+    getUserRole,
+    isPending,
+    isJoined,
+    userRoles,
+  } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [onboardingIntent, setOnboardingIntent] = useState<OnboardingIntent | null>(null);
   const inbox = useInbox();
@@ -499,6 +599,11 @@ export default function DashboardPage() {
   const mySavedClubs = useMemo(
     () => clubs.filter((c) => savedClubs.includes(c.id)),
     [clubs, savedClubs],
+  );
+
+  const myPendingClubs = useMemo(
+    () => clubs.filter((c) => pendingClubs.includes(c.id)),
+    [clubs, pendingClubs],
   );
 
   const incompleteManagedClubs = useMemo(() => {
@@ -823,6 +928,10 @@ export default function DashboardPage() {
 
       {incompleteManagedClubs.length > 0 ? (
         <IncompleteClubSetupNudges clubs={incompleteManagedClubs} />
+      ) : null}
+
+      {myPendingClubs.length > 0 ? (
+        <PendingRequestsSection clubs={myPendingClubs} />
       ) : null}
 
       {joinedClubs.length === 0 ? (
