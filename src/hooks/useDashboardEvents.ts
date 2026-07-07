@@ -35,6 +35,7 @@ function mapEventRow(row: Record<string, unknown>): DashboardEvent {
 export function useDashboardEvents(
   joinedClubIds: string[],
   userId: string | undefined,
+  membershipAccessKey: string,
 ) {
   const [events, setEvents] = useState<DashboardEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +49,7 @@ export function useDashboardEvents(
 
   useEffect(() => {
     setLoading(true);
+    setEvents([]);
     if (!userId && joinedClubIds.length === 0) {
       queueMicrotask(() => setLoading(false));
       return;
@@ -141,7 +143,7 @@ export function useDashboardEvents(
     return () => {
       cancelled = true;
     };
-  }, [clubKey, userId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clubKey, membershipAccessKey, userId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { events, loading, refresh };
 }

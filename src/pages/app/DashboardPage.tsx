@@ -94,6 +94,7 @@ import {
   resolveOnboardingIntent,
   type OnboardingIntent,
 } from "../../lib/onboardingIntent";
+import { dashboardMembershipAccessKey } from "../../lib/dashboardMembershipKey";
 import type { Club, MemberRole } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -423,7 +424,7 @@ export default function DashboardPage() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
-  const { clubs, joinedClubs, savedClubs, loading, getUserRole, isPending, isJoined } =
+  const { clubs, joinedClubs, savedClubs, loading, getUserRole, isPending, isJoined, userRoles } =
     useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [onboardingIntent, setOnboardingIntent] = useState<OnboardingIntent | null>(null);
@@ -510,9 +511,18 @@ export default function DashboardPage() {
       });
   }, [clubs, getUserRole]);
 
+  const membershipAccessKey = useMemo(
+    () => dashboardMembershipAccessKey(joinedClubs, userRoles),
+    [joinedClubs, userRoles],
+  );
+
   const { events: upcomingEvents, loading: eventsLoading, refresh: refreshEvents } =
-    useDashboardEvents(joinedClubs, user?.id);
-  const { activeCount: taskCount } = useDashboardTasks(joinedClubs, user?.id);
+    useDashboardEvents(joinedClubs, user?.id, membershipAccessKey);
+  const { activeCount: taskCount } = useDashboardTasks(
+    joinedClubs,
+    user?.id,
+    membershipAccessKey,
+  );
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
   const [overdueTaskCount, setOverdueTaskCount] = useState(0);
@@ -625,6 +635,8 @@ export default function DashboardPage() {
     }
 
     let cancelled = false;
+    setOverdueTaskCount(0);
+    setDueSoonTaskCount(0);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -673,7 +685,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, joinedClubs]);
+  }, [user?.id, joinedClubs, membershipAccessKey]);
 
   function handleUnreadStatClick() {
     requestOpenNotificationsDropdown();
@@ -975,6 +987,7 @@ export default function DashboardPage() {
           getUserRole={getUserRole}
           userId={user?.id}
           joinedClubIds={joinedClubs}
+          membershipAccessKey={membershipAccessKey}
           clubLogos={clubLogos}
           inboxMessages={inbox.messages}
           inboxLoading={inbox.loading}
@@ -997,6 +1010,7 @@ export default function DashboardPage() {
       {activeTab === "month" && (
         <ThisMonthTab
           joinedClubIds={joinedClubs}
+          membershipAccessKey={membershipAccessKey}
           clubLogos={clubLogos}
           displayName={displayName}
           onViewAllTasks={() => setActiveTab("tasks")}
@@ -1026,7 +1040,9 @@ export default function DashboardPage() {
           rsvpBusyEventId={rsvpBusyEventId}
         />
       )}
-      {activeTab === "tasks" && <TasksTab joinedClubs={joinedClubs} />}
+      {activeTab === "tasks" && (
+        <TasksTab joinedClubs={joinedClubs} membershipAccessKey={membershipAccessKey} />
+      )}
       {activeTab === "inbox" && (
         <InboxTab
           {...inbox}
@@ -1835,11 +1851,13 @@ function WeekTaskCard({
 
 function ThisMonthTab({
   joinedClubIds,
+  membershipAccessKey,
   clubLogos,
   displayName,
   onViewAllTasks,
 }: {
   joinedClubIds: string[];
+  membershipAccessKey: string;
   clubLogos: Record<string, string>;
   displayName: string;
   onViewAllTasks: () => void;
@@ -1903,6 +1921,9 @@ function ThisMonthTab({
     }
 
     let cancelled = false;
+    setItems([]);
+    setMonthlyCompleted(0);
+    setMonthlyTotal(0);
 
     async function loadPlanner() {
       setLoading(true);
@@ -2026,7 +2047,7 @@ function ThisMonthTab({
     return () => {
       cancelled = true;
     };
-  }, [joinedClubIds, fetchStart, fetchEnd, monthRange.start, monthRange.end]);
+  }, [joinedClubIds, membershipAccessKey, fetchStart, fetchEnd, monthRange.start, monthRange.end]);
 
   const dayMeta = useMemo(() => {
     const map = new Map<
@@ -2479,6 +2500,7 @@ function OverviewTab({
   getUserRole,
   userId,
   joinedClubIds,
+  membershipAccessKey,
   clubLogos,
   inboxMessages,
   inboxLoading,
@@ -2496,6 +2518,7 @@ function OverviewTab({
   getUserRole: (clubId: string) => import("../../types").MemberRole | null;
   userId?: string;
   joinedClubIds: string[];
+  membershipAccessKey: string;
   clubLogos: Record<string, string>;
   inboxMessages: InboxMessage[];
   inboxLoading: boolean;
@@ -2536,6 +2559,8 @@ function OverviewTab({
     }
 
     let cancelled = false;
+    setMyTasks([]);
+    setTasksLoading(true);
 
     supabase
       .from("tasks")
@@ -2592,7 +2617,7 @@ function OverviewTab({
     return () => {
       cancelled = true;
     };
-  }, [userId, joinedClubIds]);
+  }, [userId, joinedClubIds, membershipAccessKey]);
 
   useEffect(() => {
     if (joinedClubIds.length === 0) {
@@ -2604,6 +2629,8 @@ function OverviewTab({
     }
 
     let cancelled = false;
+    setRecentAnnouncements([]);
+    setAnnouncementsLoading(true);
 
     supabase
       .from("posts")
@@ -2647,7 +2674,7 @@ function OverviewTab({
     return () => {
       cancelled = true;
     };
-  }, [joinedClubIds]);
+  }, [joinedClubIds, membershipAccessKey]);
 
   const tasksColumn = (
     <OverviewColumnCard
@@ -2926,7 +2953,13 @@ function EventsTab({
 // ---------------------------------------------------------------------------
 // Tasks Tab
 // ---------------------------------------------------------------------------
-function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
+function TasksTab({
+  joinedClubs,
+  membershipAccessKey,
+}: {
+  joinedClubs: string[];
+  membershipAccessKey: string;
+}) {
   const { user } = useAuthContext();
   const [tasks, setTasks] = useState<TasksTabTask[]>([]);
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
@@ -2991,6 +3024,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     }
 
     let cancelled = false;
+    setTasks([]);
     setLoadingTasks(true);
 
     let query = supabase
@@ -3049,7 +3083,7 @@ function TasksTab({ joinedClubs }: { joinedClubs: string[] }) {
     return () => {
       cancelled = true;
     };
-  }, [joinedClubs, taskScope, user]);
+  }, [joinedClubs, membershipAccessKey, taskScope, user]);
 
   useEffect(() => {
     const missingClubIds = [

@@ -8,6 +8,7 @@ import { supabase } from "../lib/supabaseClient";
 export function useDashboardTasks(
   joinedClubIds: string[],
   userId: string | undefined,
+  membershipAccessKey: string,
 ) {
   const [activeCount, setActiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,8 @@ export function useDashboardTasks(
       });
       return;
     }
+
+    setActiveCount(0);
 
     let cancelled = false;
 
@@ -49,7 +52,7 @@ export function useDashboardTasks(
     return () => {
       cancelled = true;
     };
-  }, [clubKey, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clubKey, membershipAccessKey, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { activeCount, loading };
 }
