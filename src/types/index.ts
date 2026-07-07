@@ -5,6 +5,7 @@ import type { ClubPermissions } from "../lib/clubPermissions";
 
 export type { ClubPermissions };
 export type ClubJoinType = "open" | "application" | "vote";
+/** @deprecated Legacy join_type mirror — use MembershipType / membershipType instead. */
 
 export type MembershipType =
   | "open"
@@ -68,6 +69,7 @@ export interface Club {
   };
   events: ClubEvent[];
   requiresApproval?: boolean;
+  /** @deprecated Legacy join_type mirror — not used for join behavior; see docs/LEGACY_JOIN_MODEL.md */
   joinType?: ClubJoinType;
   membershipType?: MembershipType;
   descriptionConfirmed?: boolean;

@@ -324,7 +324,7 @@ function mapPublicClubRow(row: Record<string, unknown>): Club {
     socialLinks: readSocialLinksFromClubRow(row),
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
-    joinType: normalizeJoinType(row.join_type),
+    joinType: normalizeJoinType(row.join_type), // legacy column; unused — see docs/LEGACY_JOIN_MODEL.md
     membershipType: normalizeMembershipType(row.membership_type),
     claimStatus: normalizeClaimStatus(row.claim_status),
     setupCompleted: (row.setup_completed as boolean) ?? false,

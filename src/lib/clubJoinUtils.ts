@@ -1,6 +1,14 @@
 import type { CSSProperties } from "react";
 import type { ClubJoinType, JoinAnswer, JoinQuestion, JoinQuestionType, MembershipType } from "../types";
 
+/**
+ * Club join helpers — **membership_type is the active model**.
+ *
+ * Legacy `join_type` (`open` | `application` | `vote`) and `club_join_votes` are
+ * deprecated schema only; see docs/LEGACY_JOIN_MODEL.md. Do not branch join behavior
+ * on `normalizeJoinType` or `Club.joinType`.
+ */
+
 function normalizeQuestionType(value: unknown): JoinQuestionType {
   const raw = String(value ?? "").toLowerCase();
   if (raw === "long" || raw === "long_answer" || raw === "long answer") {

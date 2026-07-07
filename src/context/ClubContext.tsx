@@ -82,7 +82,7 @@ function mapRow(row: Record<string, unknown>): Club {
     socialLinks: readSocialLinksFromClubRow(row),
     events: (row.events as Club["events"]) ?? [],
     requiresApproval: (row.requires_approval as boolean) ?? false,
-    joinType: ((row.join_type as string) ?? "open") as Club["joinType"],
+    joinType: ((row.join_type as string) ?? "open") as Club["joinType"], // legacy column; unused — see docs/LEGACY_JOIN_MODEL.md
     membershipType: normalizeMembershipType(row.membership_type),
     descriptionConfirmed: (row.description_confirmed as boolean) ?? false,
     logoConfirmed: (row.logo_confirmed as boolean) ?? false,

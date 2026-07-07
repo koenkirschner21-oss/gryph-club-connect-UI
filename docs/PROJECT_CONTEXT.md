@@ -67,6 +67,8 @@ event_rsvps         → rsvp_id, event_id, user_id, status (going | maybe | not_
 notifications       → user_id, club_id, type, content, read, created_at
 ```
 
+**Club membership join model:** `clubs.membership_type` (`open`, `approval_required`, `invite_only`, `no_membership`) is the sole active join source of truth. Legacy `clubs.join_type` and `club_join_votes` are deprecated — see [`docs/LEGACY_JOIN_MODEL.md`](./LEGACY_JOIN_MODEL.md).
+
 **Security model:** Row Level Security (RLS) is the enforcement layer. Policies control who can read and write what — a member of Club A cannot touch Club B's data. This is intentional. Trust the database, not just the frontend.
 
 **Tenant isolation:** Every club is a tenant. RLS policies are the boundary. The most recent migration work unified these policies under a single coherent system (`unified_tenant_rls_and_single_creator_trigger`). This is the current authoritative security checkpoint.
