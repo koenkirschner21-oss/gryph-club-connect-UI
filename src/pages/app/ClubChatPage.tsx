@@ -558,13 +558,14 @@ function isSystemGroupChat(name: string): boolean {
 
 function canEditGroupChat(
   convo: Conversation,
-  role: "owner" | "executive" | "member",
+  isChatExecutive: boolean,
+  isClubOwner: boolean,
 ): boolean {
   if (convo.type !== "group") return false;
   if (isSystemGroupChat(convo.name)) {
-    return role === "owner";
+    return isClubOwner;
   }
-  return role === "owner" || role === "executive";
+  return isChatExecutive;
 }
 
 const pollInputStyle: CSSProperties = {
@@ -1278,6 +1279,7 @@ export default function ClubChatPage() {
     messagesLoading,
     pollsLoading,
     userRole,
+    isChatExecutive,
     clubMembers,
     activeConversationId,
     setActiveConversationId,
@@ -1376,7 +1378,7 @@ export default function ClubChatPage() {
   const messageInputRef = useRef<HTMLInputElement>(null);
   const mentionPopupRef = useRef<HTMLDivElement>(null);
 
-  const isPrivileged = userRole === "owner" || userRole === "executive";
+  const isClubOwner = userRole === "owner";
 
   const selectedMembersForPicker = useMemo(() => {
     return selectedMemberIds
@@ -1438,9 +1440,7 @@ export default function ClubChatPage() {
   const canAddMembers =
     activeConversation?.type === "group" &&
     Boolean(user?.id) &&
-    (activeConversation.createdBy === user?.id ||
-      userRole === "owner" ||
-      userRole === "executive");
+    (activeConversation.createdBy === user?.id || isChatExecutive);
 
   const membersAvailableToAdd = useMemo(() => {
     if (!activeConversation) return [];
@@ -2492,7 +2492,7 @@ export default function ClubChatPage() {
                       {displayConversationName(activeConversation)}
                     </h3>
                     {activeConversation.type === "group" &&
-                    canEditGroupChat(activeConversation, userRole) ? (
+                    canEditGroupChat(activeConversation, isChatExecutive, isClubOwner) ? (
                       <button
                         type="button"
                         onClick={openEditGroupModal}
@@ -2573,7 +2573,7 @@ export default function ClubChatPage() {
                   label="Info"
                   onClick={
                     activeConversation.type === "group" &&
-                    canEditGroupChat(activeConversation, userRole)
+                    canEditGroupChat(activeConversation, isChatExecutive, isClubOwner)
                       ? openEditGroupModal
                       : undefined
                   }
@@ -3246,10 +3246,10 @@ export default function ClubChatPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={!isPrivileged}
-                  title={!isPrivileged ? "Executives only" : undefined}
+                  disabled={!isChatExecutive}
+                  title={!isChatExecutive ? "Executives only" : undefined}
                   onClick={() => {
-                    if (!isPrivileged) return;
+                    if (!isChatExecutive) return;
                     setChatType("group");
                     setModalStep("members");
                     setSelectedMemberIds([]);
@@ -3260,9 +3260,9 @@ export default function ClubChatPage() {
                     borderRadius: "8px",
                     border: "1px solid #2a2a2a",
                     background: "#111111",
-                    color: isPrivileged ? "#ffffff" : "#555555",
-                    cursor: isPrivileged ? "pointer" : "not-allowed",
-                    opacity: isPrivileged ? 1 : 0.6,
+                    color: isChatExecutive ? "#ffffff" : "#555555",
+                    cursor: isChatExecutive ? "pointer" : "not-allowed",
+                    opacity: isChatExecutive ? 1 : 0.6,
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
@@ -3273,7 +3273,7 @@ export default function ClubChatPage() {
                   <span style={{ fontSize: "13px", fontWeight: 600 }}>
                     Group Chat
                   </span>
-                  {!isPrivileged ? (
+                  {!isChatExecutive ? (
                     <span style={{ fontSize: "10px", color: "#555555" }}>
                       Executives only
                     </span>

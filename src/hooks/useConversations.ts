@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
-import { ensureMyClubChats } from "../lib/clubChatProvisioning";
+import { ensureMyClubChats, isClubChatExecutive } from "../lib/clubChatProvisioning";
 import { notifyClubChatRead } from "../lib/clubChatEvents";
 import { uploadImage } from "../lib/uploadImage";
 import { notifyUsers, type NotificationRequest } from "../lib/notifyUsers";
 import { useAuthContext } from "../context/useAuthContext";
-import type { MemberRole, NotificationType } from "../types";
+import type { AccessLevel, MemberRole, NotificationType } from "../types";
 import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
 
 const STORAGE_BUCKET = "announcement-attachments";
@@ -439,6 +439,8 @@ export interface UseConversationsReturn {
   messagesLoading: boolean;
   pollsLoading: boolean;
   userRole: MemberRole;
+  userAccessLevel: AccessLevel;
+  isChatExecutive: boolean;
   clubMembers: ConversationMember[];
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
@@ -520,6 +522,7 @@ export function useConversations(
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [pollsLoading, setPollsLoading] = useState(false);
   const [userRole, setUserRole] = useState<MemberRole>("member");
+  const [userAccessLevel, setUserAccessLevel] = useState<AccessLevel>("member");
   const [clubMembers, setClubMembers] = useState<ConversationMember[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
@@ -532,6 +535,11 @@ export function useConversations(
 
   const activeConversation =
     conversations.find((c) => c.id === activeConversationId) ?? null;
+
+  const isChatExecutive = useMemo(
+    () => isClubChatExecutive(userRole, userAccessLevel),
+    [userRole, userAccessLevel],
+  );
 
   const displayConversationName = useCallback(
     (convo: Conversation) =>
@@ -551,7 +559,7 @@ export function useConversations(
     const [roleRes, membersRes] = await Promise.all([
       supabase
         .from("club_members")
-        .select("role")
+        .select("role, access_level")
         .eq("club_id", clubId)
         .eq("user_id", user.id)
         .maybeSingle(),
@@ -571,6 +579,16 @@ export function useConversations(
 
     // No active membership row (e.g. removed/left): drop privileged role.
     setUserRole(roleRes.data?.role ? normalizeRole(roleRes.data.role) : "member");
+
+    const rawAccessLevel = roleRes.data?.access_level as string | null | undefined;
+    setUserAccessLevel(
+      rawAccessLevel === "president" ||
+        rawAccessLevel === "managerial_executive" ||
+        rawAccessLevel === "executive" ||
+        rawAccessLevel === "member"
+        ? rawAccessLevel
+        : "member",
+    );
 
     const members = (membersRes.data ?? [])
       .map((row) => mapMemberRow(row as Record<string, unknown>))
@@ -1539,6 +1557,8 @@ export function useConversations(
     messagesLoading,
     pollsLoading,
     userRole,
+    userAccessLevel,
+    isChatExecutive,
     clubMembers,
     activeConversationId,
     setActiveConversationId,

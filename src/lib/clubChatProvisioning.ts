@@ -1,4 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AccessLevel } from "../types";
+
+/** Mirrors public.is_club_chat_executive() — role OR access_level executive tier. */
+export function isClubChatExecutive(
+  role: string | null | undefined,
+  accessLevel: AccessLevel | string | null | undefined,
+): boolean {
+  if (
+    accessLevel === "president" ||
+    accessLevel === "managerial_executive" ||
+    accessLevel === "executive"
+  ) {
+    return true;
+  }
+  return (
+    role === "owner" ||
+    role === "executive" ||
+    role === "admin" ||
+    role === "exec"
+  );
+}
 
 /** Ensure default group chats exist and the current user is a member. */
 export async function ensureMyClubChats(
