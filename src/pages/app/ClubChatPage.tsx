@@ -1347,6 +1347,7 @@ export default function ClubChatPage() {
     Record<string, MessageReactionSummary>
   >({});
   const [dmHandled, setDmHandled] = useState(false);
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
   const [hoveredConversationId, setHoveredConversationId] = useState<string | null>(null);
   const [conversationSearch, setConversationSearch] = useState("");
   const [showMentionPopup, setShowMentionPopup] = useState(false);
@@ -1693,12 +1694,27 @@ export default function ClubChatPage() {
   useEffect(() => {
     const conversationId = searchParams.get("conversation");
     if (!conversationId || loading) return;
-    if (!conversations.some((convo) => convo.id === conversationId)) return;
 
-    selectConversation(conversationId);
+    const isAccessible = conversations.some(
+      (convo) => convo.id === conversationId,
+    );
+
+    // Clear the deep-link param regardless of outcome so a stale link doesn't
+    // linger or re-fire. If the conversation is no longer accessible (e.g. the
+    // user lost access via Batch 2-3 changes), surface a clean notice instead
+    // of erroring or silently opening nothing.
     const next = new URLSearchParams(searchParams);
     next.delete("conversation");
     setSearchParams(next, { replace: true });
+
+    if (isAccessible) {
+      selectConversation(conversationId);
+      setDeepLinkNotice(null);
+    } else {
+      setDeepLinkNotice(
+        "That conversation is no longer available to you.",
+      );
+    }
   }, [
     conversations,
     loading,
@@ -1706,6 +1722,12 @@ export default function ClubChatPage() {
     selectConversation,
     setSearchParams,
   ]);
+
+  useEffect(() => {
+    if (!deepLinkNotice) return;
+    const timer = window.setTimeout(() => setDeepLinkNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [deepLinkNotice]);
 
   function resetPollModal() {
     setShowPollModal(false);
@@ -2063,6 +2085,29 @@ export default function ClubChatPage() {
       className="flex h-[calc(100vh-4rem)] overflow-hidden"
       style={{ backgroundColor: "#0f0f0f", position: "relative" }}
     >
+      {deepLinkNotice ? (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            top: 12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 200,
+            maxWidth: "90%",
+            background: "#1e1e1e",
+            border: "1px solid #3a3a3a",
+            color: "#f5f5f5",
+            padding: "10px 16px",
+            borderRadius: 8,
+            fontSize: 14,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+          }}
+        >
+          {deepLinkNotice}
+        </div>
+      ) : null}
+
       {isMobile && sidebarOpen ? (
         <div
           role="presentation"

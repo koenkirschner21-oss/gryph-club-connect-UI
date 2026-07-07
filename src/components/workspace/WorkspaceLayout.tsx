@@ -373,6 +373,33 @@ export default function WorkspaceLayout() {
       .on(
         "postgres_changes",
         {
+          // Chat access removed (Batch 3 de-provisioning): drop unread counts
+          // for conversations the user can no longer access.
+          event: "DELETE",
+          schema: "public",
+          table: "conversation_members",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          // Own membership role/status change may alter chat access.
+          event: "*",
+          schema: "public",
+          table: "club_members",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void loadBadgeCounts();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
           event: "*",
           schema: "public",
           table: "tasks",

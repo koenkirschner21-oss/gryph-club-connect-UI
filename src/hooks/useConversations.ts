@@ -545,50 +545,43 @@ export function useConversations(
     [user],
   );
 
-  useEffect(() => {
+  const loadRoleAndMembers = useCallback(async () => {
     if (!clubId || !user?.id) return;
-    let cancelled = false;
 
-    async function loadRoleAndMembers() {
-      const [roleRes, membersRes] = await Promise.all([
-        supabase
-          .from("club_members")
-          .select("role")
-          .eq("club_id", clubId)
-          .eq("user_id", user!.id)
-          .single(),
-        supabase
-          .from("club_members")
-          .select(`
-            user_id,
-            member_profile:profiles!club_members_user_profile_fkey (
-              full_name,
-              avatar_url,
-              email
-            )
-          `)
-          .eq("club_id", clubId)
-          .eq("status", "active"),
-      ]);
+    const [roleRes, membersRes] = await Promise.all([
+      supabase
+        .from("club_members")
+        .select("role")
+        .eq("club_id", clubId)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("club_members")
+        .select(`
+          user_id,
+          member_profile:profiles!club_members_user_profile_fkey (
+            full_name,
+            avatar_url,
+            email
+          )
+        `)
+        .eq("club_id", clubId)
+        .eq("status", "active"),
+    ]);
 
-      if (cancelled) return;
+    // No active membership row (e.g. removed/left): drop privileged role.
+    setUserRole(roleRes.data?.role ? normalizeRole(roleRes.data.role) : "member");
 
-      if (roleRes.data?.role) {
-        setUserRole(normalizeRole(roleRes.data.role));
-      }
+    const members = (membersRes.data ?? [])
+      .map((row) => mapMemberRow(row as Record<string, unknown>))
+      .filter((m) => m.userId !== user.id);
 
-      const members = (membersRes.data ?? [])
-        .map((row) => mapMemberRow(row as Record<string, unknown>))
-        .filter((m) => m.userId !== user!.id);
-
-      setClubMembers(members);
-    }
-
-    loadRoleAndMembers();
-    return () => {
-      cancelled = true;
-    };
+    setClubMembers(members);
   }, [clubId, user?.id]);
+
+  useEffect(() => {
+    void loadRoleAndMembers();
+  }, [loadRoleAndMembers, refreshKey]);
 
   const loadConversations = useCallback(async () => {
     if (!clubId || !user?.id) {
@@ -729,15 +722,73 @@ export function useConversations(
 
     const channel = supabase.channel(uniqueRealtimeTopic(`new-conversations:${user.id}`));
 
+    // INSERT: newly provisioned/added conversations appear promptly.
+    // DELETE: de-provisioned rows (Batch 3 cleanup) remove the conversation
+    // from the sidebar promptly instead of lingering until a full reload.
+    channel
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "conversation_members",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void loadConversations();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "conversation_members",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const removedConversationId =
+            (payload.old as { conversation_id?: string } | null)
+              ?.conversation_id ?? null;
+          if (removedConversationId) {
+            setConversations((prev) =>
+              prev.filter((convo) => convo.id !== removedConversationId),
+            );
+            setActiveConversationId((current) =>
+              current === removedConversationId ? null : current,
+            );
+          }
+          void loadConversations();
+        },
+      );
+
+    channel.subscribe();
+
+    return () => {
+      removeRealtimeChannel(supabase, channel);
+    };
+  }, [loadConversations, user?.id]);
+
+  // Refresh role/derived flags (isPrivileged, canAddMembers, …) and the
+  // conversation list promptly when the current user's own club membership
+  // (role / access_level / status) changes — no full page reload required.
+  useEffect(() => {
+    if (!clubId || !user?.id) return;
+
+    const channel = supabase.channel(
+      uniqueRealtimeTopic(`chat-membership:${clubId}:${user.id}`),
+    );
+
     channel.on(
       "postgres_changes",
       {
-        event: "INSERT",
+        event: "*",
         schema: "public",
-        table: "conversation_members",
+        table: "club_members",
         filter: `user_id=eq.${user.id}`,
       },
       () => {
+        void loadRoleAndMembers();
         void loadConversations();
       },
     );
@@ -747,7 +798,7 @@ export function useConversations(
     return () => {
       removeRealtimeChannel(supabase, channel);
     };
-  }, [loadConversations, user?.id]);
+  }, [clubId, user?.id, loadRoleAndMembers, loadConversations]);
 
   useEffect(() => {
     if (!clubId || !user?.id) return;
