@@ -371,66 +371,6 @@ export function pickDefaultConversationId(
   return byRecentActivity(conversations)[0].id;
 }
 
-/** Find an existing 1:1 DM in this club (DB-backed; avoids duplicate threads). */
-export async function findExistingDirectConversationId(
-  clubId: string,
-  userId: string,
-  otherUserId: string,
-): Promise<string | null> {
-  if (!otherUserId || otherUserId === userId) return null;
-
-  const { data: memberships, error: membershipError } = await supabase
-    .from("conversation_members")
-    .select("conversation_id")
-    .eq("user_id", userId);
-
-  if (membershipError) {
-    console.error(
-      "Failed to load conversation memberships:",
-      membershipError.message,
-    );
-    return null;
-  }
-
-  const conversationIds = (memberships ?? []).map(
-    (row) => row.conversation_id as string,
-  );
-  if (conversationIds.length === 0) return null;
-
-  const { data: directConvos, error: convoError } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("club_id", clubId)
-    .eq("type", "direct")
-    .in("id", conversationIds);
-
-  if (convoError) {
-    console.error("Failed to load direct conversations:", convoError.message);
-    return null;
-  }
-
-  for (const convo of directConvos ?? []) {
-    const conversationId = convo.id as string;
-    const { data: members, error: membersError } = await supabase
-      .from("conversation_members")
-      .select("user_id")
-      .eq("conversation_id", conversationId);
-
-    if (membersError) continue;
-
-    const memberIds = (members ?? []).map((row) => row.user_id as string);
-    if (
-      memberIds.length === 2 &&
-      memberIds.includes(userId) &&
-      memberIds.includes(otherUserId)
-    ) {
-      return conversationId;
-    }
-  }
-
-  return null;
-}
-
 export interface UseConversationsReturn {
   conversations: Conversation[];
   messages: DirectMessage[];
@@ -1049,77 +989,23 @@ export function useConversations(
       const trimmedOtherUserId = otherUserId.trim();
       if (!trimmedOtherUserId || trimmedOtherUserId === user.id) return null;
 
-      const existing = await findExistingDirectConversationId(
-        clubId,
-        user.id,
-        trimmedOtherUserId,
+      // Atomic find-or-create — advisory-locked in the DB so concurrent DM
+      // starts between the same pair resolve to a single shared conversation.
+      const { data, error } = await supabase.rpc(
+        "find_or_create_direct_conversation",
+        {
+          p_other_user_id: trimmedOtherUserId,
+          p_club_id: clubId,
+        },
       );
-      if (existing) {
-        await loadConversations();
-        return existing;
-      }
 
-      const { data: convo, error: convoErr } = await supabase
-        .from("conversations")
-        .insert({
-          club_id: clubId,
-          type: "direct",
-          created_by: user.id,
-        })
-        .select("id")
-        .single();
-
-      if (convoErr || !convo) {
-        console.error("Failed to create DM conversation:", convoErr?.message);
-        const raced = await findExistingDirectConversationId(
-          clubId,
-          user.id,
-          trimmedOtherUserId,
-        );
-        if (raced) {
-          await loadConversations();
-          return raced;
-        }
-        return null;
-      }
-
-      const conversationId = convo.id as string;
-
-      const { error: selfMemberErr } = await supabase
-        .from("conversation_members")
-        .insert({
-          conversation_id: conversationId,
-          user_id: user.id,
-        });
-
-      if (selfMemberErr) {
-        console.error("Failed to add self to DM:", selfMemberErr.message);
-        return null;
-      }
-
-      const { error: peerMemberErr } = await supabase
-        .from("conversation_members")
-        .insert({
-          conversation_id: conversationId,
-          user_id: trimmedOtherUserId,
-        });
-
-      if (peerMemberErr) {
-        console.error("Failed to add peer to DM:", peerMemberErr.message);
-        const raced = await findExistingDirectConversationId(
-          clubId,
-          user.id,
-          trimmedOtherUserId,
-        );
-        if (raced) {
-          await loadConversations();
-          return raced;
-        }
+      if (error || !data) {
+        console.error("Failed to open direct message:", error?.message);
         return null;
       }
 
       await loadConversations();
-      return conversationId;
+      return data as string;
     },
     [clubId, user?.id, loadConversations],
   );
