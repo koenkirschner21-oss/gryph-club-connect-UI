@@ -95,6 +95,7 @@ import {
   type OnboardingIntent,
 } from "../../lib/onboardingIntent";
 import { dashboardMembershipAccessKey } from "../../lib/dashboardMembershipKey";
+import { DASHBOARD_MY_TASKS_EXCLUDED_STATUSES } from "../../lib/dashboardMyTasksScope";
 import type { Club, MemberRole } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -751,8 +752,9 @@ export default function DashboardPage() {
       .from("tasks")
       .select("id, due_date")
       .in("club_id", joinedClubs)
-      .neq("status", "done")
-      .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
+      .eq("assigned_to", user.id)
+      .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[0])
+      .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1])
       .not("due_date", "is", null)
       .then(({ data, error }) => {
         if (cancelled) return;
@@ -2689,9 +2691,9 @@ function OverviewTab({
         clubs:club_id ( name )
       `)
       .in("club_id", joinedClubIds)
-      .or(`assigned_to.eq.${userId},created_by.eq.${userId}`)
-      .neq("status", "done")
-      .neq("status", "cancelled")
+      .eq("assigned_to", userId)
+      .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[0])
+      .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1])
       .order("due_date", { ascending: true })
       .limit(3)
       .then(({ data, error }) => {
@@ -3145,7 +3147,10 @@ function TasksTab({
       .in("club_id", joinedClubs);
 
     if (taskScope === "assigned_to_me") {
-      query = query.eq("assigned_to", user.id);
+      query = query
+        .eq("assigned_to", user.id)
+        .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[0])
+        .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1]);
     } else {
       query = query
         .eq("created_by", user.id)
