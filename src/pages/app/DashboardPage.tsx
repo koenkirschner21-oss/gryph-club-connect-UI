@@ -360,6 +360,97 @@ function IncompleteClubSetupNudges({ clubs }: { clubs: Club[] }) {
   );
 }
 
+function SavedClubsSection({ clubs }: { clubs: Club[] }) {
+  if (clubs.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: "24px" }}>
+      <h3
+        style={{
+          fontSize: "13px",
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "#747676",
+          margin: "0 0 12px",
+        }}
+      >
+        Saved Clubs
+      </h3>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+        }}
+      >
+        {clubs.map((club) => (
+          <Link
+            key={club.id}
+            to={`/clubs/${club.slug}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "14px",
+              padding: "16px 20px",
+              background: "rgba(116, 118, 118, 0.08)",
+              border: "1px solid rgba(116, 118, 118, 0.28)",
+              borderRadius: "12px",
+              textDecoration: "none",
+            }}
+          >
+            <OverviewClubLogo
+              name={club.name}
+              abbreviation={club.abbreviation}
+              logoUrl={club.logoUrl}
+              size={40}
+            />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  fontSize: "14px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {club.name}
+              </p>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  fontSize: "12px",
+                  color: "#777777",
+                  lineHeight: 1.45,
+                }}
+              >
+                Saved from Explore — not a membership yet.
+              </p>
+            </div>
+            <span
+              style={{
+                flexShrink: 0,
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#747676",
+                background: "#1a1a1a",
+                border: "1px solid #555555",
+                borderRadius: "12px",
+                padding: "3px 10px",
+              }}
+            >
+              Saved
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PendingRequestsSection({ clubs }: { clubs: Club[] }) {
   if (clubs.length === 0) return null;
 
@@ -606,6 +697,13 @@ export default function DashboardPage() {
   const myPendingClubs = useMemo(
     () => clubs.filter((c) => pendingClubs.includes(c.id)),
     [clubs, pendingClubs],
+  );
+
+  // Saved clubs that aren't also awaiting approval — avoids duplicate cards when
+  // a user saved and applied to the same club.
+  const mySavedClubsExcludingPending = useMemo(
+    () => mySavedClubs.filter((club) => !pendingClubs.includes(club.id)),
+    [mySavedClubs, pendingClubs],
   );
 
   const incompleteManagedClubs = useMemo(() => {
@@ -935,6 +1033,10 @@ export default function DashboardPage() {
 
       {myPendingClubs.length > 0 ? (
         <PendingRequestsSection clubs={myPendingClubs} />
+      ) : null}
+
+      {joinedClubs.length === 0 && mySavedClubsExcludingPending.length > 0 ? (
+        <SavedClubsSection clubs={mySavedClubsExcludingPending} />
       ) : null}
 
       {joinedClubs.length === 0 ? (
