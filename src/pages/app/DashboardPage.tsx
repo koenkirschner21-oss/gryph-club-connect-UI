@@ -1108,10 +1108,9 @@ export default function DashboardPage() {
           onViewAllTasks={() => setActiveTab("tasks")}
           onViewAllClubs={() => setActiveTab("clubs")}
           onViewAllInbox={() => setActiveTab("inbox")}
-          onViewAllAnnouncements={() => {
-            const firstClubId = joinedClubs[0];
-            if (firstClubId) {
-              navigate(`/app/clubs/${firstClubId}/announcements`);
+          onViewAllAnnouncements={(clubId) => {
+            if (clubId) {
+              navigate(`/app/clubs/${clubId}/announcements`);
               return;
             }
             setActiveTab("clubs");
@@ -2649,7 +2648,7 @@ function OverviewTab({
   onViewAllTasks: () => void;
   onViewAllClubs: () => void;
   onViewAllInbox: () => void;
-  onViewAllAnnouncements: () => void;
+  onViewAllAnnouncements: (clubId?: string) => void;
 }) {
   const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
@@ -2669,6 +2668,21 @@ function OverviewTab({
     () => inboxMessages.slice(0, 3),
     [inboxMessages],
   );
+
+  // "View All Announcements" is a mixed cross-club section. Only route to a
+  // specific club when it's unambiguous (all previewed announcements belong to
+  // one club, or the user only belongs to one club). Otherwise fall back to a
+  // dashboard-level view instead of an arbitrary first-club redirect.
+  const announcementsTargetClubId = useMemo(() => {
+    const distinctClubIds = new Set(recentAnnouncements.map((a) => a.clubId));
+    if (distinctClubIds.size === 1) {
+      return recentAnnouncements[0]?.clubId;
+    }
+    if (recentAnnouncements.length === 0 && joinedClubIds.length === 1) {
+      return joinedClubIds[0];
+    }
+    return undefined;
+  }, [recentAnnouncements, joinedClubIds]);
 
   useEffect(() => {
     if (!userId || joinedClubIds.length === 0) {
@@ -2926,7 +2940,12 @@ function OverviewTab({
     <OverviewColumnCard
       title="Recent Announcements"
       icon={<Megaphone size={16} color="#555555" aria-hidden />}
-      footer={<OverviewViewAllLink label="View All Announcements →" onClick={onViewAllAnnouncements} />}
+      footer={
+        <OverviewViewAllLink
+          label="View All Announcements →"
+          onClick={() => onViewAllAnnouncements(announcementsTargetClubId)}
+        />
+      }
     >
       {announcementsLoading ? (
         <div className="flex justify-center py-6">
