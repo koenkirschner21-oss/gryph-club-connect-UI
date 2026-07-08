@@ -95,6 +95,7 @@ import {
   type OnboardingIntent,
 } from "../../lib/onboardingIntent";
 import { dashboardMembershipAccessKey } from "../../lib/dashboardMembershipKey";
+import { dashboardPlannerDescription } from "../../lib/dashboardPlannerCopy";
 import { DASHBOARD_MY_TASKS_EXCLUDED_STATUSES } from "../../lib/dashboardMyTasksScope";
 import type { Club, MemberRole } from "../../types";
 
@@ -2235,10 +2236,7 @@ function ThisMonthTab({
       ? "No events this week."
       : "No events this month.";
   const plannerPeriodLabel = calendarView === "week" ? "This Week" : "This Month";
-  const plannerDescription =
-    calendarView === "week"
-      ? "Your assigned tasks and your clubs' events for the week."
-      : "Your assigned tasks and your clubs' events for the month.";
+  const plannerDescription = dashboardPlannerDescription(calendarView);
 
   function handleDayClick(dateKey: string) {
     setSelectedDayKey((prev) => (prev === dateKey ? null : dateKey));
