@@ -1122,6 +1122,7 @@ export default function DashboardPage() {
         <ThisMonthTab
           joinedClubIds={joinedClubs}
           membershipAccessKey={membershipAccessKey}
+          userId={user?.id}
           clubLogos={clubLogos}
           displayName={displayName}
           onViewAllTasks={() => setActiveTab("tasks")}
@@ -1963,12 +1964,14 @@ function WeekTaskCard({
 function ThisMonthTab({
   joinedClubIds,
   membershipAccessKey,
+  userId,
   clubLogos,
   displayName,
   onViewAllTasks,
 }: {
   joinedClubIds: string[];
   membershipAccessKey: string;
+  userId?: string;
   clubLogos: Record<string, string>;
   displayName: string;
   onViewAllTasks: () => void;
@@ -2021,7 +2024,7 @@ function ThisMonthTab({
   );
 
   useEffect(() => {
-    if (joinedClubIds.length === 0) {
+    if (joinedClubIds.length === 0 || !userId) {
       queueMicrotask(() => {
         setItems([]);
         setMonthlyCompleted(0);
@@ -2031,6 +2034,8 @@ function ThisMonthTab({
       return;
     }
 
+    const currentUserId = userId;
+
     let cancelled = false;
     setItems([]);
     setMonthlyCompleted(0);
@@ -2039,6 +2044,9 @@ function ThisMonthTab({
     async function loadPlanner() {
       setLoading(true);
 
+      // Personal planner: only the current user's assigned tasks. General
+      // members already see only their own via RLS; this keeps it personal for
+      // executives/presidents too so the label matches the data.
       const [tasksRes, eventsRes, monthTasksRes] = await Promise.all([
         supabase
           .from("tasks")
@@ -2056,6 +2064,7 @@ function ThisMonthTab({
           `,
           )
           .in("club_id", joinedClubIds)
+          .eq("assigned_to", currentUserId)
           .gte("due_date", fetchStart)
           .lte("due_date", fetchEnd)
           .neq("status", "done")
@@ -2084,6 +2093,7 @@ function ThisMonthTab({
           .from("tasks")
           .select("id, status")
           .in("club_id", joinedClubIds)
+          .eq("assigned_to", currentUserId)
           .neq("status", "cancelled")
           .gte("due_date", monthRange.start)
           .lte("due_date", monthRange.end),
@@ -2158,7 +2168,7 @@ function ThisMonthTab({
     return () => {
       cancelled = true;
     };
-  }, [joinedClubIds, membershipAccessKey, fetchStart, fetchEnd, monthRange.start, monthRange.end]);
+  }, [joinedClubIds, membershipAccessKey, userId, fetchStart, fetchEnd, monthRange.start, monthRange.end]);
 
   const dayMeta = useMemo(() => {
     const map = new Map<
@@ -2228,8 +2238,8 @@ function ThisMonthTab({
   const plannerPeriodLabel = calendarView === "week" ? "This Week" : "This Month";
   const plannerDescription =
     calendarView === "week"
-      ? "Your tasks, events, meetings, and club activity for the week."
-      : "Your tasks, events, meetings, and club activity for the month.";
+      ? "Your assigned tasks and your clubs' events for the week."
+      : "Your assigned tasks and your clubs' events for the month.";
 
   function handleDayClick(dateKey: string) {
     setSelectedDayKey((prev) => (prev === dateKey ? null : dateKey));
