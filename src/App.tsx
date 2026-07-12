@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -64,6 +64,11 @@ import PublicEventsPage from "./pages/PublicEventsPage";
 import PublicEventDetailPage from "./pages/PublicEventDetailPage";
 import HiringBoardPage from "./pages/app/HiringBoardPage";
 import ClubRecruitingPage from "./pages/app/ClubRecruitingPage";
+
+/** DEV-only marketing mockup gallery — unused when DEV is false. */
+const DevMockupGalleryPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/dev/MockupGalleryPage"))
+  : null;
 
 function appSidebarNavClass(isActive: boolean) {
   const base =
@@ -304,6 +309,33 @@ export default function App() {
 
                 {/* Legacy route — same public profile as /clubs/:slug */}
                 <Route path="/explore/:slug" element={<ClubPublicProfilePage />} />
+
+                {import.meta.env.DEV && DevMockupGalleryPage ? (
+                  <Route
+                    path="/dev/mockups"
+                    element={
+                      <Suspense
+                        fallback={
+                          <div
+                            style={{
+                              minHeight: "100vh",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              background: "#0B0B0B",
+                              color: "#777777",
+                              fontFamily: "Inter, sans-serif",
+                            }}
+                          >
+                            Loading mockups…
+                          </div>
+                        }
+                      >
+                        <DevMockupGalleryPage />
+                      </Suspense>
+                    }
+                  />
+                ) : null}
 
                 {/* ───── Authenticated routes (/app/*) ───── */}
                 <Route
