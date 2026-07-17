@@ -1,17 +1,135 @@
 import { useState, type CSSProperties } from "react";
-import { CheckCircle, Clock, MapPin, Trophy } from "lucide-react";
+import { CheckCircle, Clock, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Visibility } from "../../types";
 import { normalizeVisibility } from "../../lib/contentVisibility";
+import { getClubEventPath } from "../../lib/deepLinks";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
+const SECONDARY = "#999999";
+const MUTED = "#888888";
 
 export type PlannerDayMeta = {
   hasEvents: boolean;
   hasTasks: boolean;
   itemCount: number;
+  taskTitles?: string[];
+  eventTitles?: string[];
 };
+
+function dayPreviewLines(meta?: PlannerDayMeta): string[] {
+  if (!meta || meta.itemCount === 0) return [];
+  const lines: string[] = [];
+  const tasks = meta.taskTitles ?? [];
+  const events = meta.eventTitles ?? [];
+  if (tasks.length > 0) {
+    const shown = tasks.slice(0, 2).join(", ");
+    lines.push(
+      `Task${tasks.length === 1 ? "" : "s"}: ${shown}${tasks.length > 2 ? "…" : ""}`,
+    );
+  }
+  if (events.length > 0) {
+    const shown = events.slice(0, 2).join(", ");
+    lines.push(
+      `Event${events.length === 1 ? "" : "s"}: ${shown}${events.length > 2 ? "…" : ""}`,
+    );
+  }
+  if (lines.length === 0) {
+    lines.push(`${meta.itemCount} item${meta.itemCount === 1 ? "" : "s"}`);
+  }
+  return lines;
+}
+
+function DayMarkerDots({
+  hasTasks,
+  hasEvents,
+}: {
+  hasTasks?: boolean;
+  hasEvents?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        gap: "3px",
+        minHeight: "8px",
+        marginTop: "3px",
+      }}
+    >
+      {hasTasks ? (
+        <span
+          style={{
+            width: "6px",
+            height: "6px",
+            background: GOLD,
+            borderRadius: "50%",
+          }}
+          aria-hidden
+        />
+      ) : null}
+      {hasEvents ? (
+        <span
+          style={{
+            width: "6px",
+            height: "6px",
+            background: ACCENT_RED,
+            borderRadius: "50%",
+          }}
+          aria-hidden
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function dayCellSurface(
+  isToday: boolean,
+  isSelected: boolean,
+  isHovered: boolean,
+): { background: string; border: string } {
+  if (isSelected) {
+    return {
+      background: isToday ? "rgba(255, 196, 41, 0.14)" : "rgba(255, 196, 41, 0.12)",
+      border: `2px solid ${GOLD}`,
+    };
+  }
+  if (isToday) {
+    return {
+      background: "rgba(229, 25, 55, 0.08)",
+      border: `2px solid ${ACCENT_RED}`,
+    };
+  }
+  return {
+    background: isHovered ? "#1a1a1a" : "transparent",
+    border: "2px solid transparent",
+  };
+}
+
+export function CalendarMarkerLegend() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "14px",
+        marginBottom: "14px",
+        flexWrap: "wrap",
+      }}
+    >
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", color: SECONDARY }}>
+        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: GOLD }} aria-hidden />
+        Task
+      </span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11px", color: SECONDARY }}>
+        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: ACCENT_RED }} aria-hidden />
+        Event
+      </span>
+    </div>
+  );
+}
 
 export type WeekCalendarDay = {
   dateKey: string;
@@ -54,7 +172,7 @@ export function MonthWeekToggle({
         border: "1px solid #2a2a2a",
         borderRadius: "8px",
         padding: "3px",
-        marginBottom: "16px",
+        marginBottom: "12px",
       }}
     >
       {(["month", "week"] as const).map((mode) => {
@@ -67,7 +185,7 @@ export function MonthWeekToggle({
             style={{
               ...pillBase,
               background: active ? "rgba(255, 196, 41, 0.15)" : "transparent",
-              color: active ? GOLD : "#777777",
+              color: active ? GOLD : MUTED,
             }}
           >
             {mode === "month" ? "Month" : "Week"}
@@ -105,8 +223,8 @@ export function MonthCalendarGrid({
     background: "#1a1a1a",
     border: "1px solid #2a2a2a",
     borderRadius: "8px",
-    padding: "8px 12px",
-    color: hovered ? "#ffffff" : "#777777",
+    padding: "6px 10px",
+    color: hovered ? "#ffffff" : MUTED,
     cursor: "pointer",
     fontSize: "16px",
     lineHeight: 1,
@@ -114,14 +232,16 @@ export function MonthCalendarGrid({
     transition: "color 0.15s ease",
   });
 
+  const previewLines = hoveredDay ? dayPreviewLines(dayMeta.get(hoveredDay)) : [];
+
   return (
-    <div style={{ marginBottom: "24px" }}>
+    <div style={{ marginBottom: "16px" }}>
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: "12px",
+          marginBottom: "8px",
           gap: "8px",
         }}
       >
@@ -158,12 +278,14 @@ export function MonthCalendarGrid({
         </button>
       </div>
 
+      <CalendarMarkerLegend />
+
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-          gap: "4px",
-          marginBottom: "4px",
+          gap: "2px",
+          marginBottom: "2px",
         }}
       >
         {CALENDAR_WEEKDAY_HEADERS.map((label) => (
@@ -172,11 +294,11 @@ export function MonthCalendarGrid({
             style={{
               fontSize: "10px",
               fontWeight: 600,
-              color: "#555555",
+              color: MUTED,
               textAlign: "center",
               textTransform: "uppercase",
               letterSpacing: "0.04em",
-              padding: "4px 0",
+              padding: "2px 0",
             }}
           >
             {label}
@@ -188,7 +310,8 @@ export function MonthCalendarGrid({
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-          gap: "4px",
+          gap: "2px",
+          position: "relative",
         }}
       >
         {monthDays.map((day) => {
@@ -196,30 +319,19 @@ export function MonthCalendarGrid({
           const isToday = day.dateKey === todayKey;
           const isSelected = selectedDayKey === day.dateKey;
           const isHovered = hoveredDay === day.dateKey;
-          const hasTaskDot = meta?.hasTasks;
-          const hasEventDot = meta?.hasEvents;
-
-          let background = isHovered ? "#1a1a1a" : "transparent";
-          let border = "2px solid transparent";
-
-          if (isToday) {
-            background = "rgba(229, 25, 55, 0.08)";
-            border = `2px solid ${ACCENT_RED}`;
-          }
-          if (isSelected) {
-            background = "rgba(229, 25, 55, 0.12)";
-            border = `2px solid ${ACCENT_RED}`;
-          }
+          const { background, border } = dayCellSurface(isToday, isSelected, isHovered);
+          const preview = dayPreviewLines(meta);
 
           return (
             <button
               key={day.dateKey}
               type="button"
+              title={preview.length > 0 ? preview.join(" · ") : undefined}
               onClick={() => onDayClick(day.dateKey)}
               onMouseEnter={() => setHoveredDay(day.dateKey)}
               onMouseLeave={() => setHoveredDay(null)}
               style={{
-                padding: "8px 2px 6px",
+                padding: "6px 2px 4px",
                 width: "100%",
                 textAlign: "center",
                 cursor: "pointer",
@@ -227,14 +339,15 @@ export function MonthCalendarGrid({
                 border,
                 borderRadius: "8px",
                 minWidth: 0,
-                minHeight: "52px",
+                minHeight: "46px",
+                position: "relative",
               }}
             >
               <div
                 style={{
-                  fontSize: "14px",
-                  fontWeight: isToday ? 700 : 500,
-                  color: day.inCurrentMonth ? "#ffffff" : "#444444",
+                  fontSize: "13px",
+                  fontWeight: isSelected || isToday ? 700 : 500,
+                  color: day.inCurrentMonth ? "#ffffff" : "#555555",
                   lineHeight: 1.2,
                 }}
               >
@@ -245,7 +358,7 @@ export function MonthCalendarGrid({
                   style={{
                     fontSize: "8px",
                     fontWeight: 700,
-                    color: ACCENT_RED,
+                    color: isSelected ? GOLD : ACCENT_RED,
                     letterSpacing: "0.04em",
                     marginTop: "1px",
                     lineHeight: 1.1,
@@ -254,42 +367,30 @@ export function MonthCalendarGrid({
                   Today
                 </div>
               ) : null}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  gap: "3px",
-                  minHeight: "8px",
-                  marginTop: "4px",
-                }}
-              >
-                {hasTaskDot ? (
-                  <span
-                    style={{
-                      width: "6px",
-                      height: "6px",
-                      background: GOLD,
-                      borderRadius: "50%",
-                    }}
-                    aria-hidden
-                  />
-                ) : null}
-                {hasEventDot ? (
-                  <span
-                    style={{
-                      width: "6px",
-                      height: "6px",
-                      background: ACCENT_RED,
-                      borderRadius: "50%",
-                    }}
-                    aria-hidden
-                  />
-                ) : null}
-              </div>
+              <DayMarkerDots hasTasks={meta?.hasTasks} hasEvents={meta?.hasEvents} />
             </button>
           );
         })}
       </div>
+
+      {previewLines.length > 0 ? (
+        <div
+          style={{
+            marginTop: "8px",
+            padding: "8px 12px",
+            background: "#1a1a1a",
+            border: "1px solid #2a2a2a",
+            borderRadius: "8px",
+            fontSize: "12px",
+            color: SECONDARY,
+            lineHeight: 1.45,
+          }}
+        >
+          {previewLines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -319,8 +420,8 @@ export function WeekCalendarStrip({
     background: "#1a1a1a",
     border: "1px solid #2a2a2a",
     borderRadius: "8px",
-    padding: "8px 12px",
-    color: hovered ? "#ffffff" : "#777777",
+    padding: "6px 10px",
+    color: hovered ? "#ffffff" : MUTED,
     cursor: "pointer",
     fontSize: "16px",
     lineHeight: 1,
@@ -328,144 +429,139 @@ export function WeekCalendarStrip({
     transition: "color 0.15s ease",
   });
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "stretch",
-        width: "100%",
-        marginBottom: "24px",
-        gap: "8px",
-      }}
-    >
-      <button
-        type="button"
-        aria-label="Previous week"
-        onClick={onPrevWeek}
-        onMouseEnter={() => setPrevHovered(true)}
-        onMouseLeave={() => setPrevHovered(false)}
-        style={arrowStyle(prevHovered)}
-      >
-        ‹
-      </button>
+  const previewLines = hoveredDay ? dayPreviewLines(dayMeta.get(hoveredDay)) : [];
 
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <CalendarMarkerLegend />
       <div
         style={{
-          flex: 1,
-          display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+          display: "flex",
+          alignItems: "stretch",
+          width: "100%",
           gap: "6px",
-          minWidth: 0,
         }}
       >
-        {weekDays.map((day) => {
-          const meta = dayMeta.get(day.dateKey);
-          const isToday = day.dateKey === todayKey;
-          const isSelected = selectedDayKey === day.dateKey;
-          const hasDot = meta?.hasEvents || meta?.hasTasks;
-          const isHovered = hoveredDay === day.dateKey;
+        <button
+          type="button"
+          aria-label="Previous week"
+          onClick={onPrevWeek}
+          onMouseEnter={() => setPrevHovered(true)}
+          onMouseLeave={() => setPrevHovered(false)}
+          style={arrowStyle(prevHovered)}
+        >
+          ‹
+        </button>
 
-          let background = isHovered ? "#1a1a1a" : "transparent";
-          let border = "2px solid transparent";
+        <div
+          style={{
+            flex: 1,
+            display: "grid",
+            gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+            gap: "2px",
+            minWidth: 0,
+          }}
+        >
+          {weekDays.map((day) => {
+            const meta = dayMeta.get(day.dateKey);
+            const isToday = day.dateKey === todayKey;
+            const isSelected = selectedDayKey === day.dateKey;
+            const isHovered = hoveredDay === day.dateKey;
+            const { background, border } = dayCellSurface(isToday, isSelected, isHovered);
+            const preview = dayPreviewLines(meta);
 
-          if (isToday) {
-            background = "rgba(229, 25, 55, 0.08)";
-            border = `2px solid ${ACCENT_RED}`;
-          }
-          if (isSelected) {
-            background = "rgba(229, 25, 55, 0.12)";
-            border = `2px solid ${ACCENT_RED}`;
-          }
-
-          return (
-            <button
-              key={day.dateKey}
-              type="button"
-              onClick={() => onDayClick(day.dateKey)}
-              onMouseEnter={() => setHoveredDay(day.dateKey)}
-              onMouseLeave={() => setHoveredDay(null)}
-              style={{
-                padding: "10px 4px",
-                width: "100%",
-                textAlign: "center",
-                cursor: "pointer",
-                background,
-                border,
-                borderRadius: "8px",
-                minWidth: 0,
-              }}
-            >
-              <div
+            return (
+              <button
+                key={day.dateKey}
+                type="button"
+                title={preview.length > 0 ? preview.join(" · ") : undefined}
+                onClick={() => onDayClick(day.dateKey)}
+                onMouseEnter={() => setHoveredDay(day.dateKey)}
+                onMouseLeave={() => setHoveredDay(null)}
                 style={{
-                  fontSize: "11px",
-                  color: "#555555",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  lineHeight: 1.2,
+                  padding: "8px 2px 6px",
+                  width: "100%",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  background,
+                  border,
+                  borderRadius: "8px",
+                  minWidth: 0,
+                  minHeight: "72px",
                 }}
               >
-                {day.label.slice(0, 3)}
-              </div>
-              {isToday ? (
                 <div
                   style={{
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    color: ACCENT_RED,
+                    fontSize: "11px",
+                    color: MUTED,
+                    textTransform: "uppercase",
                     letterSpacing: "0.04em",
-                    marginTop: "2px",
-                    lineHeight: 1.1,
+                    lineHeight: 1.2,
                   }}
                 >
-                  Today
+                  {day.label.slice(0, 3)}
                 </div>
-              ) : null}
-              <div
-                style={{
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  color: "#ffffff",
-                  lineHeight: 1.2,
-                  marginTop: isToday ? "2px" : "4px",
-                }}
-              >
-                {day.dayNum}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  minHeight: "12px",
-                  marginTop: "6px",
-                }}
-              >
-                {hasDot ? (
-                  <span
+                {isToday ? (
+                  <div
                     style={{
-                      width: "8px",
-                      height: "8px",
-                      background: ACCENT_RED,
-                      borderRadius: "50%",
-                      boxShadow: "0 0 0 2px rgba(229, 25, 55, 0.25)",
+                      fontSize: "8px",
+                      fontWeight: 700,
+                      color: isSelected ? GOLD : ACCENT_RED,
+                      letterSpacing: "0.04em",
+                      marginTop: "2px",
+                      lineHeight: 1.1,
                     }}
-                  />
+                  >
+                    Today
+                  </div>
                 ) : null}
-              </div>
-            </button>
-          );
-        })}
+                <div
+                  style={{
+                    fontSize: "17px",
+                    fontWeight: isSelected || isToday ? 700 : 600,
+                    color: "#ffffff",
+                    lineHeight: 1.2,
+                    marginTop: isToday ? "2px" : "4px",
+                  }}
+                >
+                  {day.dayNum}
+                </div>
+                <DayMarkerDots hasTasks={meta?.hasTasks} hasEvents={meta?.hasEvents} />
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          aria-label="Next week"
+          onClick={onNextWeek}
+          onMouseEnter={() => setNextHovered(true)}
+          onMouseLeave={() => setNextHovered(false)}
+          style={arrowStyle(nextHovered)}
+        >
+          ›
+        </button>
       </div>
 
-      <button
-        type="button"
-        aria-label="Next week"
-        onClick={onNextWeek}
-        onMouseEnter={() => setNextHovered(true)}
-        onMouseLeave={() => setNextHovered(false)}
-        style={arrowStyle(nextHovered)}
-      >
-        ›
-      </button>
+      {previewLines.length > 0 ? (
+        <div
+          style={{
+            marginTop: "8px",
+            padding: "8px 12px",
+            background: "#1a1a1a",
+            border: "1px solid #2a2a2a",
+            borderRadius: "8px",
+            fontSize: "12px",
+            color: SECONDARY,
+            lineHeight: 1.45,
+          }}
+        >
+          {previewLines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -533,7 +629,7 @@ export function TasksWeekEmptyState({
       <p style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700, color: "#ffffff" }}>
         You&apos;re all caught up!
       </p>
-      <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>{message}</p>
+      <p style={{ margin: 0, fontSize: "13px", color: "#888888" }}>{message}</p>
       {onViewAllTasks ? (
         <button
           type="button"
@@ -706,7 +802,7 @@ export function ThisWeekEventCard({
 
   return (
     <Link
-      to={`/app/clubs/${event.clubId}/events`}
+      to={getClubEventPath(event.clubId, event.id)}
       className="block"
       style={{ textDecoration: "none", cursor: "pointer" }}
     >
@@ -746,7 +842,7 @@ export function ThisWeekEventCard({
             style={{
               margin: "0 0 4px",
               fontSize: "12px",
-              color: "#777777",
+              color: SECONDARY,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -759,7 +855,7 @@ export function ThisWeekEventCard({
               style={{
                 margin: "0 0 2px",
                 fontSize: "12px",
-                color: "#555555",
+                color: MUTED,
                 display: "flex",
                 alignItems: "center",
                 gap: "4px",
@@ -774,7 +870,7 @@ export function ThisWeekEventCard({
               style={{
                 margin: 0,
                 fontSize: "12px",
-                color: "#555555",
+                color: MUTED,
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
@@ -793,7 +889,7 @@ export function ThisWeekEventCard({
             flexShrink: 0,
             alignSelf: "flex-start",
             fontSize: "11px",
-            color: "#777777",
+            color: SECONDARY,
             border: "1px solid #333333",
             borderRadius: "12px",
             padding: "3px 8px",
@@ -805,77 +901,5 @@ export function ThisWeekEventCard({
         </span>
       </div>
     </Link>
-  );
-}
-
-export function WeekAchievementCard({
-  displayName,
-  completedCount,
-  totalCount,
-}: {
-  displayName: string;
-  completedCount: number;
-  totalCount: number;
-}) {
-  const percent =
-    totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
-
-  return (
-    <div
-      style={{
-        marginBottom: "24px",
-        background: "linear-gradient(135deg, #1a1200 0%, #141414 100%)",
-        border: "1px solid #3a2a00",
-        borderRadius: "12px",
-        padding: "20px",
-        display: "flex",
-        alignItems: "center",
-        gap: "16px",
-      }}
-    >
-      <div
-        style={{
-          width: "56px",
-          height: "56px",
-          borderRadius: "50%",
-          background: "rgba(255, 196, 41, 0.15)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Trophy size={32} color={GOLD} aria-hidden />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 700, color: "#ffffff" }}>
-          Keep it up, {displayName}!
-        </p>
-        <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#999999" }}>
-          You&apos;ve completed {completedCount} task{completedCount === 1 ? "" : "s"} this month.
-        </p>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div
-            style={{
-              flex: 1,
-              height: "6px",
-              background: "#2a2a2a",
-              borderRadius: "3px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${percent}%`,
-                background: GOLD,
-                borderRadius: "3px",
-              }}
-            />
-          </div>
-          <span style={{ fontSize: "12px", color: GOLD, flexShrink: 0 }}>{percent}%</span>
-        </div>
-      </div>
-    </div>
   );
 }

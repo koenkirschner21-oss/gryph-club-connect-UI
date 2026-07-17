@@ -274,6 +274,10 @@ export default function PersonalSettingsPage() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [ownedClubs, setOwnedClubs] = useState<{ id: string; name: string }[]>(
+    [],
+  );
+  const [ownedClubsLoading, setOwnedClubsLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -468,11 +472,61 @@ export default function PersonalSettingsPage() {
     setPasswordMessage({ type: "success", text: "Password updated." });
   }
 
+  async function openDeleteModal() {
+    setDeleteConfirmText("");
+    setShowDeleteModal(true);
+    if (!user?.id) return;
+    setOwnedClubsLoading(true);
+    const { data, error } = await supabase
+      .from("club_members")
+      .select("club_id, role, access_level, clubs ( id, name )")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .or("role.eq.owner,access_level.eq.president");
+
+    if (error) {
+      console.error("Failed to load owned clubs:", error.message);
+      setOwnedClubs([]);
+      setOwnedClubsLoading(false);
+      return;
+    }
+
+    const owned: { id: string; name: string }[] = [];
+    for (const row of data ?? []) {
+      const clubRaw = row.clubs as unknown;
+      const club = (
+        Array.isArray(clubRaw) ? clubRaw[0] ?? null : clubRaw
+      ) as { id?: string; name?: string } | null;
+      const id = (club?.id as string | undefined) ?? (row.club_id as string);
+      const name = (club?.name as string | undefined) ?? "Untitled club";
+      if (id) owned.push({ id, name });
+    }
+    setOwnedClubs(owned);
+    setOwnedClubsLoading(false);
+  }
+
   async function handleDeleteAccount() {
     if (!user || deleteConfirmText !== "DELETE") return;
+    if (ownedClubs.length > 0) return;
 
     setDeletingAccount(true);
     setErrorMessage(null);
+
+    const { data: stillOwned } = await supabase
+      .from("club_members")
+      .select("club_id")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .or("role.eq.owner,access_level.eq.president")
+      .limit(1);
+
+    if ((stillOwned ?? []).length > 0) {
+      setDeletingAccount(false);
+      setErrorMessage(
+        "Transfer ownership of every club you own before deleting your account.",
+      );
+      return;
+    }
 
     await supabase.from("user_interests").delete().eq("user_id", user.id);
     await supabase.from("club_members").delete().eq("user_id", user.id);
@@ -855,8 +909,7 @@ export default function PersonalSettingsPage() {
           <button
             type="button"
             onClick={() => {
-              setDeleteConfirmText("");
-              setShowDeleteModal(true);
+              void openDeleteModal();
             }}
             style={{
               background: "transparent",
@@ -937,18 +990,55 @@ export default function PersonalSettingsPage() {
               Delete your account?
             </h3>
             <div style={{ fontSize: "13px", color: "#888888", margin: "0 0 16px", lineHeight: 1.6 }}>
-              <p style={{ margin: "0 0 10px" }}>If you continue:</p>
+              <p style={{ margin: "0 0 10px" }}>If you continue, this will permanently affect:</p>
               <ul style={{ margin: 0, paddingLeft: "18px" }}>
-                <li>Your profile name, photo, program, and bio are cleared</li>
-                <li>You are removed from every club you belong to</li>
-                <li>Your notification preferences are reset</li>
-                <li>You are signed out of this device</li>
+                <li>Club ownership and president roles you hold</li>
+                <li>Your memberships in every club</li>
+                <li>Hiring applications you submitted</li>
+                <li>Event sign-ups and RSVP answers</li>
+                <li>Your profile name, photo, program, bio, and preferences</li>
               </ul>
-              <p style={{ margin: "12px 0 0", color: "#cccccc" }}>
-                Your login and account record in our authentication system will
-                remain until a platform administrator removes it. You will not be
-                able to use the app with that login until then.
-              </p>
+              {ownedClubsLoading ? (
+                <p style={{ margin: "12px 0 0", color: "#cccccc" }}>
+                  Checking club ownership…
+                </p>
+              ) : ownedClubs.length > 0 ? (
+                <div
+                  style={{
+                    marginTop: "14px",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: "1px solid rgba(229, 25, 55, 0.45)",
+                    background: "rgba(229, 25, 55, 0.08)",
+                    color: "#ffb4b4",
+                  }}
+                >
+                  <p style={{ margin: "0 0 8px", fontWeight: 700, color: "#ffffff" }}>
+                    Account deletion is blocked
+                  </p>
+                  <p style={{ margin: "0 0 8px" }}>
+                    Transfer ownership of these clubs first. The last president/owner
+                    cannot delete their account until a successful transfer.
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                    {ownedClubs.map((club) => (
+                      <li key={club.id}>
+                        <a
+                          href={`/app/clubs/${club.id}/settings`}
+                          style={{ color: "#FFC429" }}
+                        >
+                          {club.name}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p style={{ margin: "12px 0 0", color: "#cccccc" }}>
+                  Your login record may remain until a platform administrator removes
+                  it. Type DELETE below only if you are sure.
+                </p>
+              )}
             </div>
             <label htmlFor="delete-confirm-input" style={fieldLabelStyle}>
               Type <span style={{ color: "#ffffff" }}>DELETE</span> to confirm
@@ -959,14 +1049,21 @@ export default function PersonalSettingsPage() {
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
               placeholder="DELETE"
-              disabled={deletingAccount}
+              disabled={
+                deletingAccount || ownedClubsLoading || ownedClubs.length > 0
+              }
               autoComplete="off"
               style={{ ...inputStyle, marginBottom: "16px" }}
             />
             <button
               type="button"
               onClick={() => void handleDeleteAccount()}
-              disabled={deletingAccount || deleteConfirmText !== "DELETE"}
+              disabled={
+                deletingAccount ||
+                ownedClubsLoading ||
+                ownedClubs.length > 0 ||
+                deleteConfirmText !== "DELETE"
+              }
               style={{
                 width: "100%",
                 background: "#E51937",
@@ -977,11 +1074,19 @@ export default function PersonalSettingsPage() {
                 fontWeight: 600,
                 fontSize: "14px",
                 cursor:
-                  deletingAccount || deleteConfirmText !== "DELETE"
+                  deletingAccount ||
+                  ownedClubsLoading ||
+                  ownedClubs.length > 0 ||
+                  deleteConfirmText !== "DELETE"
                     ? "not-allowed"
                     : "pointer",
                 opacity:
-                  deletingAccount || deleteConfirmText !== "DELETE" ? 0.5 : 1,
+                  deletingAccount ||
+                  ownedClubsLoading ||
+                  ownedClubs.length > 0 ||
+                  deleteConfirmText !== "DELETE"
+                    ? 0.5
+                    : 1,
               }}
             >
               {deletingAccount ? "Deleting…" : "Confirm Delete"}

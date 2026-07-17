@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { useClubContext } from "../context/useClubContext";
 import { supabase } from "../lib/supabaseClient";
@@ -22,7 +22,12 @@ import {
 import { normalizeVisibility } from "../lib/contentVisibility";
 import { eventCategoryLabel } from "../lib/eventCategories";
 import { submitEventSignup } from "../lib/eventRsvpActions";
-import { getEventRsvpPath, getWorkspaceEventDetailPath } from "../lib/eventNavigation";
+import {
+  getEventRsvpPath,
+  resolveEventManagePath,
+} from "../lib/eventNavigation";
+import { buildLoginPath } from "../lib/authRedirect";
+import { useClubMemberAccess } from "../hooks/useClubMemberAccess";
 import type { RsvpStatus, Visibility } from "../types";
 
 interface EventDetail {
@@ -56,6 +61,13 @@ export default function PublicEventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [rsvpBusy, setRsvpBusy] = useState(false);
+
+  const isClubMember = event ? isJoined(event.clubId) : false;
+  const memberAccess = useClubMemberAccess(event?.clubId);
+  const canManageEvents =
+    Boolean(user) &&
+    isClubMember &&
+    (memberAccess.isPresident || memberAccess.can("manage_events"));
 
   useEffect(() => {
     if (!eventId) {
@@ -107,19 +119,16 @@ export default function PublicEventDetailPage() {
       ) as Record<string, unknown>;
       const clubId = row.club_id as string;
       const visibility = normalizeVisibility(row.visibility as string | null, "public");
-      const isClubMember = isJoined(clubId);
+      const memberOfClub = isJoined(clubId);
 
-      if (visibility !== "public" && !isClubMember) {
+      if (visibility !== "public" && !memberOfClub) {
         setNotFound(true);
         setEvent(null);
         setLoading(false);
         return;
       }
 
-      if (eventId && isClubMember) {
-        navigate(getWorkspaceEventDetailPath(clubId, eventId), { replace: true });
-        return;
-      }
+      // Everyone (including members) stays on event detail first — never auto-open Manage Event.
 
       const { data: rsvpRows } = await supabase
         .from("event_rsvps")
@@ -177,14 +186,14 @@ export default function PublicEventDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId, isJoined, navigate, user?.id]);
+  }, [eventId, isJoined, user?.id]);
 
   async function handleRsvp() {
     if (!eventId) return;
 
     const target = getEventRsvpPath(eventId);
     if (!user) {
-      navigate(`/login?redirect=${encodeURIComponent(target)}`);
+      navigate(buildLoginPath(target));
       return;
     }
 
@@ -263,19 +272,30 @@ export default function PublicEventDetailPage() {
     );
   }
 
-  const primaryLabel =
-    myRsvpStatus === "going"
+  const signedOut = !user;
+  const primaryLabel = signedOut
+    ? "Sign In to Sign Up"
+    : myRsvpStatus === "going"
       ? "Going"
       : myRsvpStatus === "maybe"
         ? "Maybe"
         : "Sign Up";
 
   const primaryVariant =
-    myRsvpStatus === "going"
+    !signedOut && myRsvpStatus === "going"
       ? "going"
-      : myRsvpStatus
+      : !signedOut && myRsvpStatus
         ? "secondary"
         : "primary";
+
+  const managePath = resolveEventManagePath(
+    event.clubId,
+    event.id,
+    canManageEvents,
+  );
+  const workspacePath = isClubMember
+    ? `/app/clubs/${event.clubId}`
+    : null;
 
   return (
     <div style={{ background: "#0f0f0f", minHeight: "100vh", paddingBottom: 60 }}>
@@ -309,15 +329,75 @@ export default function PublicEventDetailPage() {
               main={<EventDetailDescription description={event.description} />}
               sidebar={
                 <>
-                  <EventDetailMyRsvp status={myRsvpStatus} sectionTitle="Your sign-up" />
-                  <EventDetailRsvpSummary counts={rsvpCounts} />
+                  {signedOut ? null : (
+                    <EventDetailMyRsvp
+                      status={myRsvpStatus}
+                      sectionTitle="Your sign-up"
+                    />
+                  )}
+                  {signedOut ? null : (
+                    <EventDetailRsvpSummary counts={rsvpCounts} />
+                  )}
                   <EventDetailPrimaryAction
                     label={primaryLabel}
                     variant={primaryVariant}
-                    showCheck={myRsvpStatus === "going"}
+                    showCheck={!signedOut && myRsvpStatus === "going"}
                     disabled={rsvpBusy}
                     onClick={() => void handleRsvp()}
                   />
+                  {event.clubSlug ? (
+                    <Link
+                      to={`/clubs/${event.clubSlug}`}
+                      style={{
+                        display: "block",
+                        textAlign: "center",
+                        marginTop: "10px",
+                        color: "#cccccc",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                      }}
+                    >
+                      View Club Profile
+                    </Link>
+                  ) : null}
+                  {managePath ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(managePath)}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        marginTop: "10px",
+                        background: "transparent",
+                        border: "1px solid #333333",
+                        color: "#ffffff",
+                        borderRadius: "8px",
+                        padding: "10px 14px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Manage Event
+                    </button>
+                  ) : null}
+                  {workspacePath ? (
+                    <Link
+                      to={workspacePath}
+                      style={{
+                        display: "block",
+                        textAlign: "center",
+                        marginTop: "10px",
+                        color: "#E51937",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Open Club Workspace
+                    </Link>
+                  ) : null}
                 </>
               }
             />

@@ -122,6 +122,14 @@ DECLARE
   v_listing public.hiring_listings%ROWTYPE;
   v_application_id uuid;
   v_answers jsonb := COALESCE(p_answers, '[]'::jsonb);
+  v_question jsonb;
+  v_question_id text;
+  v_required boolean;
+  v_upload_fields jsonb;
+  v_slot text;
+  v_setting text;
+  v_found boolean;
+  v_answer_text text;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
@@ -129,6 +137,10 @@ BEGIN
 
   IF p_listing_id IS NULL THEN
     RAISE EXCEPTION 'listing_id_required';
+  END IF;
+
+  IF jsonb_typeof(v_answers) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'invalid_answers';
   END IF;
 
   SELECT *
@@ -147,6 +159,75 @@ BEGIN
   IF v_listing.deadline IS NOT NULL AND v_listing.deadline < CURRENT_DATE THEN
     RAISE EXCEPTION 'listing_deadline_passed';
   END IF;
+
+  -- Validate required listing questions (default why-question when none configured).
+  IF v_listing.questions IS NULL
+     OR jsonb_typeof(v_listing.questions) IS DISTINCT FROM 'array'
+     OR jsonb_array_length(v_listing.questions) = 0
+  THEN
+    v_found := false;
+    FOR v_question IN
+      SELECT value FROM jsonb_array_elements(v_answers)
+    LOOP
+      IF COALESCE(v_question->>'question_id', '') = 'default-why'
+         AND NULLIF(btrim(COALESCE(v_question->>'answer', '')), '') IS NOT NULL
+      THEN
+        v_found := true;
+        EXIT;
+      END IF;
+    END LOOP;
+    IF NOT v_found THEN
+      RAISE EXCEPTION 'missing_required_answers';
+    END IF;
+  ELSE
+    FOR v_question IN
+      SELECT value FROM jsonb_array_elements(v_listing.questions)
+    LOOP
+      v_question_id := COALESCE(v_question->>'id', '');
+      IF v_question_id = '' THEN
+        CONTINUE;
+      END IF;
+      v_required := COALESCE((v_question->>'required')::boolean, true);
+      IF NOT v_required THEN
+        CONTINUE;
+      END IF;
+
+      SELECT NULLIF(btrim(COALESCE(a->>'answer', '')), '')
+      INTO v_answer_text
+      FROM jsonb_array_elements(v_answers) AS a
+      WHERE COALESCE(a->>'question_id', '') = v_question_id
+      LIMIT 1;
+
+      IF v_answer_text IS NULL THEN
+        RAISE EXCEPTION 'missing_required_answers';
+      END IF;
+    END LOOP;
+  END IF;
+
+  v_upload_fields := COALESCE(v_listing.upload_fields, '{}'::jsonb);
+  FOREACH v_slot IN ARRAY ARRAY['resume', 'portfolio', 'other']
+  LOOP
+    v_setting := COALESCE(v_upload_fields->>v_slot, 'not_included');
+    IF v_setting IS DISTINCT FROM 'required' THEN
+      CONTINUE;
+    END IF;
+
+    v_found := false;
+    FOR v_question IN
+      SELECT value FROM jsonb_array_elements(v_answers)
+    LOOP
+      IF COALESCE(v_question->>'question_id', '') = ('upload_' || v_slot)
+         AND NULLIF(btrim(COALESCE(v_question->>'answer', '')), '') IS NOT NULL
+      THEN
+        v_found := true;
+        EXIT;
+      END IF;
+    END LOOP;
+
+    IF NOT v_found THEN
+      RAISE EXCEPTION 'missing_required_upload';
+    END IF;
+  END LOOP;
 
   INSERT INTO public.hiring_applications (
     listing_id,

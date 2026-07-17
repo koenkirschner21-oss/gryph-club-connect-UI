@@ -11,9 +11,10 @@ import {
 import { normalizeVisibility } from "../../lib/contentVisibility";
 import { resolveEventDetailPath } from "../../lib/eventNavigation";
 import { supabase } from "../../lib/supabaseClient";
-import { submitEventSignup, clubEventToSignupContext } from "../../lib/eventRsvpActions";
+import { submitEventSignup, clubEventToSignupContext, clearEventFormResponses } from "../../lib/eventRsvpActions";
 import { resolveStudentDisplayName } from "../../lib/notifications";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
+import { EventDetailClubHeader } from "../../components/events/EventDetailLayout";
 import Spinner from "../../components/ui/Spinner";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import type { MembershipType, Visibility } from "../../types";
@@ -132,18 +133,92 @@ function categoryBadgeStyle(category: string): CSSProperties {
   }
 }
 
+function formatEventDate(date: string): string {
+  const parsed = new Date(`${date.trim()}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatEventTime12h(time: string): string | null {
+  const raw = time.trim();
+  if (!raw || raw.toUpperCase() === "TBD") return null;
+  const parsed = new Date(`1970-01-01T${raw}`);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function formatEventDateTime(date: string, time: string): string {
-  const parsed = new Date(date);
-  const datePart = Number.isNaN(parsed.getTime())
-    ? date
-    : parsed.toLocaleDateString("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-  const timePart = time && time !== "TBD" ? time : null;
+  const datePart = formatEventDate(date);
+  const timePart = formatEventTime12h(time);
   return timePart ? `${datePart} · ${timePart}` : datePart;
+}
+
+function displayQuestionLabel(raw: string): string {
+  let text = raw.replace(/\s+/g, " ").trim();
+  if (!text) return "Additional details";
+  // Soften incomplete trailing fragments like "If yes," / "Please explain"
+  text = text.replace(/[:：]\s*$/, "").trim();
+  if (/^(if yes|if no)\b/i.test(text) && text.length < 18) {
+    return /^if no/i.test(text)
+      ? "Please share more details"
+      : "Please share more details";
+  }
+  if (!/[.?!]$/.test(text) && text.length > 3) {
+    // Keep as-is; only capitalize first letter for clarity
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function isConditionalFollowUp(
+  question: FormQuestion,
+  previous: FormQuestion | undefined,
+): "yes" | "no" | null {
+  if (!previous || previous.question_type !== "yes_no") return null;
+  const text = question.question.trim().toLowerCase();
+  if (/^if\s+no\b/.test(text)) return "no";
+  if (/^if\s+yes\b/.test(text) || /^if\b/.test(text)) return "yes";
+  if (
+    /^(please\s+)?(explain|describe|provide|share)\b/.test(text) ||
+    /^tell us more\b/.test(text) ||
+    /^additional\b/.test(text)
+  ) {
+    return "yes";
+  }
+  if (!text.endsWith("?") && text.length < 40 && /^(why|how|what)\b/.test(text)) {
+    return "yes";
+  }
+  return null;
+}
+
+function getVisibleSignupQuestions(
+  questions: FormQuestion[],
+  answers: Record<string, string>,
+): FormQuestion[] {
+  const ordered = [...questions].sort((a, b) => a.order_index - b.order_index);
+  const visible: FormQuestion[] = [];
+  for (let i = 0; i < ordered.length; i += 1) {
+    const question = ordered[i];
+    const previous = ordered[i - 1];
+    const trigger = isConditionalFollowUp(question, previous);
+    if (!trigger) {
+      visible.push(question);
+      continue;
+    }
+    const previousAnswer = (answers[previous.id] ?? "").trim().toLowerCase();
+    const shouldShow =
+      trigger === "yes" ? previousAnswer === "yes" : previousAnswer === "no";
+    if (shouldShow) visible.push(question);
+  }
+  return visible;
 }
 
 function friendlySubmitError(message: string | undefined): string {
@@ -350,6 +425,8 @@ export default function EventRSVPPage() {
   const [event, setEvent] = useState<PublicEvent | null>(null);
   const [clubName, setClubName] = useState("");
   const [clubSlug, setClubSlug] = useState("");
+  const [clubLogoUrl, setClubLogoUrl] = useState<string | null>(null);
+  const [clubAbbreviation, setClubAbbreviation] = useState<string | undefined>(undefined);
   const [goingCount, setGoingCount] = useState<number | null>(null);
   const [membershipType, setMembershipType] = useState<MembershipType>("open");
   const [isActiveMember, setIsActiveMember] = useState(false);
@@ -360,10 +437,10 @@ export default function EventRSVPPage() {
   const [email, setEmail] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showPostRsvpCta, setShowPostRsvpCta] = useState(false);
-  const [changingResponse, setChangingResponse] = useState(false);
   const [cancellingSignup, setCancellingSignup] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
@@ -373,6 +450,11 @@ export default function EventRSVPPage() {
     }
     return questions.filter((question) => !isSystemRsvpQuestion(question.question));
   }, [questions, user?.id]);
+
+  const visibleQuestions = useMemo(
+    () => getVisibleSignupQuestions(customQuestions, answers),
+    [customQuestions, answers],
+  );
 
   const rsvpAccess = useMemo(() => {
     if (!event) {
@@ -426,13 +508,15 @@ export default function EventRSVPPage() {
 
       const { data: clubRow } = await supabase
         .from("clubs")
-        .select("name, slug, membership_type")
+        .select("name, slug, membership_type, logo_url, abbreviation")
         .eq("id", loadedEvent.clubId)
         .maybeSingle();
 
       if (!cancelled) {
         setClubName((clubRow?.name as string) ?? "");
         setClubSlug((clubRow?.slug as string) ?? "");
+        setClubLogoUrl((clubRow?.logo_url as string | null) ?? null);
+        setClubAbbreviation((clubRow?.abbreviation as string | undefined) ?? undefined);
         setMembershipType(
           (clubRow?.membership_type as MembershipType) ?? "open",
         );
@@ -523,6 +607,7 @@ export default function EventRSVPPage() {
   }, [eventId, user?.id]);
 
   function validate(): boolean {
+    setSubmitAttempted(true);
     const next: Record<string, string> = {};
 
     if (!user?.id) {
@@ -534,7 +619,7 @@ export default function EventRSVPPage() {
       }
     }
 
-    for (const q of customQuestions) {
+    for (const q of visibleQuestions) {
       if (q.required && !(answers[q.id] ?? "").trim()) {
         next[q.id] = "This question is required.";
       }
@@ -542,33 +627,6 @@ export default function EventRSVPPage() {
 
     setErrors(next);
     return Object.keys(next).length === 0;
-  }
-
-  async function saveCustomResponses(
-    targetEventId: string,
-    targetUserId: string,
-  ): Promise<boolean> {
-    if (customQuestions.length === 0) return true;
-
-    const rows = customQuestions.map((question) => ({
-      event_id: targetEventId,
-      user_id: targetUserId,
-      question_id: question.id,
-      answer: answers[question.id]?.trim() ?? "",
-    }));
-
-    await supabase
-      .from("event_form_responses")
-      .delete()
-      .eq("event_id", targetEventId)
-      .eq("user_id", targetUserId);
-
-    const { error } = await supabase.from("event_form_responses").insert(rows);
-    if (error) {
-      console.error("Failed to save RSVP responses:", error.message);
-      return false;
-    }
-    return true;
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -590,64 +648,54 @@ export default function EventRSVPPage() {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (existing && !changingResponse) {
+      if (existing) {
         setSubmitting(false);
         setAlreadyRegistered(true);
+        setSubmitted(true);
         return;
       }
 
-      if (!existing) {
-        const result = await submitEventSignup(supabase, {
-          eventId,
-          userId: user.id,
-          requestedStatus: "going",
-          skipQuestionnaireCheck: true,
-          userEmail: user.email,
-          registrantName: resolveStudentDisplayName(name, user.email),
-          context: clubEventToSignupContext(
-            {
-              id: event.id,
-              clubId: event.clubId,
-              title: event.title,
-              date: event.date,
-              time: event.time,
-              location: event.location ?? "",
-              signupRequiresApproval: event.signupRequiresApproval,
-            },
-            clubName || "Club",
-          ),
-          formResponses: customQuestions.map((question) => ({
-            questionId: question.id,
-            answer: answers[question.id] ?? "",
-          })),
-        });
+      const result = await submitEventSignup(supabase, {
+        eventId,
+        userId: user.id,
+        requestedStatus: "going",
+        skipQuestionnaireCheck: true,
+        userEmail: user.email,
+        registrantName: resolveStudentDisplayName(name, user.email),
+        context: clubEventToSignupContext(
+          {
+            id: event.id,
+            clubId: event.clubId,
+            title: event.title,
+            date: event.date,
+            time: event.time,
+            location: event.location ?? "",
+            signupRequiresApproval: event.signupRequiresApproval,
+          },
+          clubName || "Club",
+        ),
+        formResponses: visibleQuestions.map((question) => ({
+          questionId: question.id,
+          answer: answers[question.id] ?? "",
+        })),
+      });
 
-        if (!result.ok) {
-          setSubmitting(false);
-          setErrors({
-            form: friendlySubmitError(
-              result.outcome === "error"
-                ? result.error
-                : "Could not submit signup. Please try again.",
-            ),
-          });
-          return;
-        }
-      } else if (changingResponse) {
-        const responsesSaved = await saveCustomResponses(eventId, user.id);
-        if (!responsesSaved) {
-          setSubmitting(false);
-          setErrors({
-            form: friendlySubmitError("Failed to save your responses. Please try again."),
-          });
-          return;
-        }
+      if (!result.ok) {
+        setSubmitting(false);
+        setErrors({
+          form: friendlySubmitError(
+            result.outcome === "error"
+              ? result.error
+              : "Could not submit signup. Please try again.",
+          ),
+        });
+        return;
       }
 
       setSubmitting(false);
       setSubmitted(true);
-      setChangingResponse(false);
       setAlreadyRegistered(true);
+      setGoingCount((prev) => (prev == null ? 1 : prev + 1));
       if (!isActiveMember && !isJoined(event.clubId)) {
         setShowPostRsvpCta(true);
       }
@@ -688,22 +736,28 @@ export default function EventRSVPPage() {
     if (!user?.id || !eventId || cancellingSignup) return;
 
     setCancellingSignup(true);
+    setErrors({});
     const { error } = await supabase
       .from("event_rsvps")
       .delete()
       .eq("event_id", eventId)
       .eq("user_id", user.id);
 
-    setCancellingSignup(false);
     if (error) {
+      setCancellingSignup(false);
       setErrors({ form: "Could not cancel signup. Please try again." });
       return;
     }
 
+    await clearEventFormResponses(supabase, eventId, user.id);
+
+    setCancellingSignup(false);
     setSubmitted(false);
     setAlreadyRegistered(false);
-    setChangingResponse(false);
     setShowPostRsvpCta(false);
+    setSubmitAttempted(false);
+    setAnswers({});
+    setGoingCount((prev) => (prev == null || prev <= 0 ? 0 : prev - 1));
   }
 
   const clubJoined = event
@@ -719,9 +773,20 @@ export default function EventRSVPPage() {
       event.clubId,
       isActiveMember,
     );
+    const timeLabel = formatEventTime12h(event.time);
+    const locationLabel = event.location?.trim() && event.location.toUpperCase() !== "TBD"
+      ? event.location.trim()
+      : null;
 
     return (
       <div style={{ padding: "4px 0" }}>
+        <EventDetailClubHeader
+          clubName={clubName || "Club"}
+          logoUrl={clubLogoUrl ?? undefined}
+          abbreviation={clubAbbreviation}
+          clubSlug={clubSlug || undefined}
+          compact
+        />
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
           <CheckIcon />
         </div>
@@ -730,30 +795,36 @@ export default function EventRSVPPage() {
             fontWeight: 700,
             fontSize: "20px",
             color: "#ffffff",
-            margin: "0 0 10px",
+            margin: "0 0 14px",
             textAlign: "center",
             lineHeight: 1.3,
           }}
         >
-          You&apos;re signed up for this event
+          You&apos;re signed up
         </p>
         <p
           style={{
-            fontSize: "14px",
-            color: "#aaaaaa",
-            margin: "0 0 6px",
+            fontSize: "18px",
+            fontWeight: 700,
+            color: "#ffffff",
+            margin: "0 0 10px",
             textAlign: "center",
-            lineHeight: 1.5,
+            lineHeight: 1.35,
           }}
         >
-          <strong style={{ color: "#ffffff" }}>{event.title}</strong>
+          {event.title}
         </p>
-        <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 4px", textAlign: "center" }}>
-          {formatEventDateTime(event.date, event.time)}
+        <p style={{ fontSize: "14px", color: "#bbbbbb", margin: "0 0 4px", textAlign: "center" }}>
+          {formatEventDate(event.date)}
         </p>
-        {clubName ? (
-          <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 20px", textAlign: "center" }}>
-            Hosted by {clubName}
+        {timeLabel ? (
+          <p style={{ fontSize: "14px", color: "#bbbbbb", margin: "0 0 4px", textAlign: "center" }}>
+            {timeLabel}
+          </p>
+        ) : null}
+        {locationLabel ? (
+          <p style={{ fontSize: "14px", color: "#bbbbbb", margin: "0 0 20px", textAlign: "center" }}>
+            {locationLabel}
           </p>
         ) : (
           <div style={{ marginBottom: "20px" }} />
@@ -776,28 +847,6 @@ export default function EventRSVPPage() {
           >
             View Event
           </button>
-          {customQuestions.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSubmitted(false);
-                setChangingResponse(true);
-              }}
-              style={{
-                width: "100%",
-                background: "transparent",
-                color: "#ffffff",
-                border: "1px solid #333333",
-                borderRadius: "8px",
-                padding: "11px 20px",
-                fontSize: "14px",
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
-            >
-              Change Response
-            </button>
-          ) : null}
           <button
             type="button"
             disabled={cancellingSignup}
@@ -823,42 +872,18 @@ export default function EventRSVPPage() {
               style={{
                 width: "100%",
                 background: "transparent",
-                color: "#aaaaaa",
-                border: "1px solid #2a2a2a",
+                color: "#E51937",
+                border: "1px solid #333333",
                 borderRadius: "8px",
                 padding: "11px 20px",
                 fontSize: "14px",
-                fontWeight: 500,
+                fontWeight: 600,
                 cursor: "pointer",
               }}
             >
               Open Club Workspace
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                if (clubSlug) {
-                  navigate(`/clubs/${clubSlug}`);
-                  return;
-                }
-                navigate("/explore");
-              }}
-              style={{
-                width: "100%",
-                background: "transparent",
-                color: "#aaaaaa",
-                border: "1px solid #2a2a2a",
-                borderRadius: "8px",
-                padding: "11px 20px",
-                fontSize: "14px",
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
-            >
-              View Club Profile
-            </button>
-          )}
+          ) : null}
           <button
             type="button"
             onClick={() => navigate("/events")}
@@ -1070,8 +1095,8 @@ export default function EventRSVPPage() {
     );
   }
 
-  const showSuccessState = submitted || (alreadyRegistered && !changingResponse);
-  const hasCustomQuestions = customQuestions.length > 0;
+  const showSuccessState = submitted || alreadyRegistered;
+  const hasCustomQuestions = visibleQuestions.length > 0;
 
   return (
     <PageShell>
@@ -1087,23 +1112,12 @@ export default function EventRSVPPage() {
         }}
       >
         <div style={cardStyle}>
-          {clubName ? (
-            <p
-              style={{
-                margin: "0 0 12px",
-                fontSize: "11px",
-                fontWeight: 600,
-                color: "#555555",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-              }}
-            >
-              Hosted by{" "}
-              <span style={{ color: "#cccccc", textTransform: "none", letterSpacing: 0 }}>
-                {clubName}
-              </span>
-            </p>
-          ) : null}
+          <EventDetailClubHeader
+            clubName={clubName || "Club"}
+            logoUrl={clubLogoUrl ?? undefined}
+            abbreviation={clubAbbreviation}
+            clubSlug={clubSlug || undefined}
+          />
           {event.bannerUrl ? (
             <img
               src={event.bannerUrl}
@@ -1130,18 +1144,18 @@ export default function EventRSVPPage() {
             {event.title}
           </h1>
           <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
-            <p style={{ fontSize: "13px", color: "#888888", margin: 0 }}>
+            <p style={{ fontSize: "14px", color: "#bbbbbb", margin: 0 }}>
               <CalendarIcon />
               {formatEventDateTime(event.date, event.time)}
             </p>
             {event.location ? (
-              <p style={{ fontSize: "13px", color: "#888888", margin: 0 }}>
+              <p style={{ fontSize: "14px", color: "#bbbbbb", margin: 0 }}>
                 <MapPinIcon />
                 {event.location}
               </p>
             ) : null}
             {goingCount != null && goingCount > 0 ? (
-              <p style={{ fontSize: "13px", color: GOLD, margin: 0, fontWeight: 600 }}>
+              <p style={{ fontSize: "14px", color: GOLD, margin: 0, fontWeight: 600 }}>
                 <UsersIcon />
                 {goingCount} going
               </p>
@@ -1151,7 +1165,7 @@ export default function EventRSVPPage() {
             <p
               style={{
                 fontSize: "14px",
-                color: "#aaaaaa",
+                color: "#cfcfcf",
                 marginTop: "14px",
                 lineHeight: 1.55,
                 marginBottom: 0,
@@ -1234,11 +1248,11 @@ export default function EventRSVPPage() {
                         style={mergeFieldStyle(
                           inputStyle,
                           focusedField === "name",
-                          Boolean(errors.name),
+                          submitAttempted && Boolean(errors.name),
                         )}
                         autoComplete="name"
                       />
-                      {errors.name ? (
+                      {submitAttempted && errors.name ? (
                         <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
                           {errors.name}
                         </p>
@@ -1259,11 +1273,11 @@ export default function EventRSVPPage() {
                         style={mergeFieldStyle(
                           inputStyle,
                           focusedField === "email",
-                          Boolean(errors.email),
+                          submitAttempted && Boolean(errors.email),
                         )}
                         autoComplete="email"
                       />
-                      {errors.email ? (
+                      {submitAttempted && errors.email ? (
                         <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
                           {errors.email}
                         </p>
@@ -1272,7 +1286,7 @@ export default function EventRSVPPage() {
                   </>
                 ) : null}
 
-                {customQuestions.map((q) => (
+                {visibleQuestions.map((q) => (
                   <div key={q.id} style={{ marginBottom: "16px" }}>
                     <label
                       style={{
@@ -1283,7 +1297,7 @@ export default function EventRSVPPage() {
                         marginBottom: "6px",
                       }}
                     >
-                      {q.question}
+                      {displayQuestionLabel(q.question)}
                       {q.required ? (
                         <span style={{ color: "#c45a68", marginLeft: "3px" }} aria-hidden>
                           *
@@ -1294,17 +1308,24 @@ export default function EventRSVPPage() {
                     {q.question_type === "text" ? (
                       <textarea
                         value={answers[q.id] ?? ""}
-                        onChange={(e) =>
-                          setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
-                        }
+                        onChange={(e) => {
+                          setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }));
+                          if (errors[q.id]) {
+                            setErrors((prev) => {
+                              const next = { ...prev };
+                              delete next[q.id];
+                              return next;
+                            });
+                          }
+                        }}
                         onFocus={() => setFocusedField(q.id)}
                         onBlur={() => setFocusedField(null)}
-                        aria-invalid={Boolean(errors[q.id])}
+                        aria-invalid={submitAttempted && Boolean(errors[q.id])}
                         style={{
                           ...mergeFieldStyle(
                             inputStyle,
                             focusedField === q.id,
-                            Boolean(errors[q.id]),
+                            submitAttempted && Boolean(errors[q.id]),
                           ),
                           minHeight: "96px",
                           resize: "vertical",
@@ -1347,7 +1368,7 @@ export default function EventRSVPPage() {
                       </div>
                     ) : null}
 
-                    {errors[q.id] ? (
+                    {submitAttempted && errors[q.id] ? (
                       <p style={{ color: "#E51937", fontSize: "12px", marginTop: "6px" }}>
                         {errors[q.id]}
                       </p>

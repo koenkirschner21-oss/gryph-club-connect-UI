@@ -15,6 +15,10 @@ import {
   cacheOnboardingIntent,
   type OnboardingIntent,
 } from "../lib/onboardingIntent";
+import {
+  consumePendingAuthRedirect,
+  getSafeInternalRedirect,
+} from "../lib/authRedirect";
 
 type Step = 1 | 2;
 
@@ -123,7 +127,7 @@ function redirectForIntent(intent: OnboardingIntent): string {
 
 export default function OnboardingPage() {
   const isMobile = useIsMobile();
-  const { user } = useAuthContext();
+  const { user, loading: authLoading, onboardingCompleted } = useAuthContext();
   const navigate = useNavigate();
 
   const [checkingProfile, setCheckingProfile] = useState(true);
@@ -140,11 +144,30 @@ export default function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (authLoading) return;
+
+    if (!user?.id) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    // Auth context already knows onboarding is done — never flash the form.
+    if (onboardingCompleted === true) {
+      const pending = consumePendingAuthRedirect();
+      navigate(pending ?? "/app", { replace: true });
+      return;
+    }
+
+    // Still resolving profile/onboarding flag.
+    if (onboardingCompleted === null) {
+      setCheckingProfile(true);
+      return;
+    }
 
     let cancelled = false;
 
     void (async () => {
+      setCheckingProfile(true);
       const profileEnsure = await ensureMinimalProfile(user);
       if (profileEnsure.error) {
         console.error(
@@ -169,7 +192,8 @@ export default function OnboardingPage() {
 
       if (data?.onboarding_completed) {
         notifyOnboardingCompleted();
-        navigate("/app", { replace: true });
+        const pending = consumePendingAuthRedirect();
+        navigate(pending ?? "/app", { replace: true });
         return;
       }
 
@@ -183,7 +207,7 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, navigate]);
+  }, [user, authLoading, onboardingCompleted, navigate]);
 
   async function handleAvatarUpload(file: File) {
     if (!user?.id) return;
@@ -236,7 +260,9 @@ export default function OnboardingPage() {
 
       notifyOnboardingCompleted();
       await refreshUserProfile();
-      navigate(redirectForIntent(intent), { replace: true });
+      const pending = consumePendingAuthRedirect();
+      const fallback = redirectForIntent(intent);
+      navigate(getSafeInternalRedirect(pending) ?? fallback, { replace: true });
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -244,13 +270,14 @@ export default function OnboardingPage() {
     }
   }
 
-  if (checkingProfile) {
+  // Neutral loading while auth / onboarding status resolves — never flash form.
+  if (authLoading || onboardingCompleted === null || onboardingCompleted === true || checkingProfile) {
     return (
       <div
         className="flex min-h-screen items-center justify-center"
         style={{ background: "#0f0f0f" }}
       >
-        <Spinner label="Loading onboarding…" />
+        <Spinner label="Loading…" />
       </div>
     );
   }

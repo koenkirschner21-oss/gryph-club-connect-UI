@@ -625,7 +625,7 @@ export async function notifyClubRequestSubmitted(
     actionType: "view_club_request_status",
     actionData: {
       requestId: params.clubRequestId,
-      path: "/app",
+      path: `/club-request-status/${params.clubRequestId}`,
     },
     referenceId: params.clubRequestId,
     referenceType: "club_request",
@@ -801,7 +801,7 @@ export async function notifyClubRequestMoreInfo(
     actionType: "view_club_request_status",
     actionData: {
       requestId: params.clubRequestId,
-      path: "/app",
+      path: `/club-request-status/${params.clubRequestId}`,
     },
     referenceId: params.clubRequestId,
     referenceType: "club_request",

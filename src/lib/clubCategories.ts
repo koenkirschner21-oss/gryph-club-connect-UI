@@ -13,7 +13,13 @@ export const CLUB_CATEGORY_TAXONOMY = [
   "Social",
   "Technology",
   "Volunteer",
+  "Other",
 ] as const;
+
+export type ClubCategory = (typeof CLUB_CATEGORY_TAXONOMY)[number];
+
+/** Categories shown on create/edit club forms (full taxonomy). */
+export const CLUB_CATEGORY_OPTIONS: readonly ClubCategory[] = CLUB_CATEGORY_TAXONOMY;
 
 /** Build filter options in taxonomy order, then any legacy/extra values alphabetically. */
 export function clubCategoryFilterOptions(observed: Iterable<string>): string[] {

@@ -1,6 +1,6 @@
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   useCallback,
   useEffect,
@@ -33,7 +33,13 @@ import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCan
 import { useDashboardTasks } from "../../hooks/useDashboardTasks";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { submitEventSignup } from "../../lib/eventRsvpActions";
-import { getEventRsvpPath, getPublicEventDetailPath, resolveEventDetailPath } from "../../lib/eventNavigation";
+import { getEventRsvpPath } from "../../lib/eventNavigation";
+import {
+  getClubAnnouncementPath,
+  getClubEventPath,
+  getClubTaskPath,
+  getDashboardInboxMessagePath,
+} from "../../lib/deepLinks";
 import {
   registerUnreadCountRefresh,
   requestOpenNotificationsDropdown,
@@ -50,18 +56,17 @@ import { useInbox } from "../../hooks/useInbox";
 import InboxTab from "../dashboard/InboxTab";
 import {
   TasksFilterBar,
+  TasksSearchBar,
   TaskBreakdownCard,
   TaskListGroupSection,
   TasksTabFooter,
   DashboardTaskScopeToggle,
   type TasksTabTask,
   type DashboardTaskScope,
-  TaskProgressCard,
   buildTaskListGroups,
   useTaskBreakdown,
-  useTaskProgress,
+  isTaskOverdue,
   type TaskGroupByOption,
-  type TaskProgressTimeRange,
   type TaskSortOption,
 } from "../dashboard/TasksTabUI";
 import {
@@ -83,12 +88,12 @@ import {
 import {
   TasksWeekEmptyState,
   ThisWeekEventCard,
-  WeekAchievementCard,
   WeekCalendarStrip,
   WeekClubLogo,
   MonthCalendarGrid,
   MonthWeekToggle,
   type CalendarViewMode,
+  type PlannerDayMeta,
 } from "../dashboard/ThisWeekTabUI";
 import {
   resolveOnboardingIntent,
@@ -607,6 +612,7 @@ function NewUserDashboardGuide({ intent }: { intent: OnboardingIntent | null }) 
 export default function DashboardPage() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuthContext();
   const {
     clubs,
@@ -620,8 +626,10 @@ export default function DashboardPage() {
     userRoles,
   } = useClubContext();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [inboxMessageId, setInboxMessageId] = useState<string | null>(null);
   const [onboardingIntent, setOnboardingIntent] = useState<OnboardingIntent | null>(null);
   const inbox = useInbox();
+  const clearInboxMessageId = useCallback(() => setInboxMessageId(null), []);
 
   useEffect(() => {
     if (!user?.id) {
@@ -646,6 +654,34 @@ export default function DashboardPage() {
       sessionStorage.removeItem("dashboardTab");
     }
   }, []);
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    const messageParam = searchParams.get("message");
+
+    if (
+      tabParam === "overview" ||
+      tabParam === "events" ||
+      tabParam === "tasks" ||
+      tabParam === "month" ||
+      tabParam === "clubs" ||
+      tabParam === "inbox"
+    ) {
+      setActiveTab(tabParam);
+    }
+
+    if (messageParam) {
+      setActiveTab("inbox");
+      setInboxMessageId(messageParam);
+    }
+
+    if (tabParam || messageParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("tab");
+      next.delete("message");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [rsvpBusyEventId, setRsvpBusyEventId] = useState<string | null>(null);
   const [profile, setProfile] = useState<{
     fullName: string;
@@ -1211,11 +1247,7 @@ export default function DashboardPage() {
           onViewAllTasks={() => setActiveTab("tasks")}
           onViewAllClubs={() => setActiveTab("clubs")}
           onViewAllInbox={() => setActiveTab("inbox")}
-          onViewAllAnnouncements={(clubId) => {
-            if (clubId) {
-              navigate(`/app/clubs/${clubId}/announcements`);
-              return;
-            }
+          onViewAllAnnouncements={() => {
             setActiveTab("clubs");
           }}
         />
@@ -1226,7 +1258,6 @@ export default function DashboardPage() {
           membershipAccessKey={membershipAccessKey}
           userId={user?.id}
           clubLogos={clubLogos}
-          displayName={displayName}
           onViewAllTasks={() => setActiveTab("tasks")}
           onViewAllEvents={() => setActiveTab("events")}
         />
@@ -1263,6 +1294,8 @@ export default function DashboardPage() {
           clubLogos={clubLogos}
           joinedClubs={myClubs.map((club) => ({ id: club.id, name: club.name }))}
           onViewMyClubs={() => setActiveTab("clubs")}
+          initialMessageId={inboxMessageId}
+          onInitialMessageConsumed={clearInboxMessageId}
         />
       )}
         </>
@@ -1359,7 +1392,7 @@ const viewAllLinkStyle = {
 } as const;
 
 const overviewEmptyTextStyle = {
-  color: "#555555",
+  color: "#888888",
   fontSize: "13px",
   margin: 0,
 } as const;
@@ -1636,7 +1669,7 @@ function OverviewCompactTaskRow({
 }) {
   return (
     <Link
-      to={`/app/clubs/${task.clubId}/tasks`}
+      to={getClubTaskPath(task.clubId, task.id)}
       style={{ textDecoration: "none", display: "block" }}
     >
       <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1645,7 +1678,7 @@ function OverviewCompactTaskRow({
           <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
             {task.title}
           </p>
-          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>{task.clubName}</p>
+          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#999999" }}>{task.clubName}</p>
           {task.dueDate?.trim() ? (
             (() => {
               const dueLabel = formatOverviewTaskDueLabel(task.dueDate);
@@ -1668,11 +1701,9 @@ function OverviewCompactTaskRow({
 function OverviewCompactEventRow({
   event,
   logoUrl,
-  isClubMember,
 }: {
   event: DashboardEvent;
   logoUrl?: string;
-  isClubMember: boolean;
 }) {
   const timeLabel = formatOverviewEventTime(event.time);
   const locationLabel = hasEventLocation(event.location) ? event.location.trim() : null;
@@ -1682,8 +1713,8 @@ function OverviewCompactEventRow({
     <Link
       to={
         event.clubId
-          ? resolveEventDetailPath(event.id, event.clubId, isClubMember)
-          : getPublicEventDetailPath(event.id)
+          ? getClubEventPath(event.clubId, event.id)
+          : `/events/${event.id}`
       }
       style={{ textDecoration: "none", display: "block" }}
     >
@@ -1697,9 +1728,9 @@ function OverviewCompactEventRow({
           <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
             {event.title}
           </p>
-          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>{event.clubName}</p>
+          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#999999" }}>{event.clubName}</p>
           {metaParts.length > 0 ? (
-            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#777777" }}>
+            <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#999999" }}>
               {metaParts.join(" · ")}
             </p>
           ) : null}
@@ -1759,17 +1790,40 @@ function OverviewCompactInboxRow({ message }: { message: InboxMessage }) {
   const navigate = useNavigate();
   const action = resolveOverviewInboxAction(message);
   const preview = truncateOverviewPreview(message.message);
+  const detailHref = getDashboardInboxMessagePath(message.id);
+
+  function openExactMessage(event?: { stopPropagation?: () => void }) {
+    event?.stopPropagation?.();
+    navigate(detailHref);
+  }
 
   return (
-    <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => openExactMessage()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openExactMessage();
+        }
+      }}
+      style={{
+        ...overviewRowDividerStyle,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "10px",
+        cursor: "pointer",
+      }}
+    >
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
           {message.title}
         </p>
-        <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>
+        <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#999999" }}>
           {message.clubName ?? "Gryph Club Connect"}
         </p>
-        <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#555555" }}>
+        <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#888888" }}>
           {formatTimeAgo(message.createdAt)}
         </p>
         {preview ? (
@@ -1777,7 +1831,7 @@ function OverviewCompactInboxRow({ message }: { message: InboxMessage }) {
             style={{
               margin: "6px 0 0",
               fontSize: "12px",
-              color: "#777777",
+              color: "#999999",
               lineHeight: 1.45,
             }}
           >
@@ -1786,7 +1840,10 @@ function OverviewCompactInboxRow({ message }: { message: InboxMessage }) {
         ) : null}
         <button
           type="button"
-          onClick={() => navigate(action.href)}
+          onClick={(event) => {
+            event.stopPropagation();
+            navigate(action.href);
+          }}
           style={{
             ...viewAllLinkStyle,
             marginTop: "6px",
@@ -1808,43 +1865,46 @@ function OverviewCompactAnnouncementRow({
   logoUrl?: string;
 }) {
   const preview = truncateOverviewPreview(announcement.content);
+  const href = getClubAnnouncementPath(announcement.clubId, announcement.id);
 
   return (
-    <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
-      <OverviewClubLogo
-        name={announcement.clubName}
-        logoUrl={logoUrl}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
-          {announcement.title}
-        </p>
-        <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#777777" }}>
-          {announcement.clubName}
-        </p>
-        <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#555555" }}>
-          {formatTimeAgo(announcement.createdAt)}
-        </p>
-        {preview ? (
-          <p
-            style={{
-              margin: "6px 0 0",
-              fontSize: "12px",
-              color: "#777777",
-              lineHeight: 1.45,
-            }}
-          >
-            {preview}
+    <Link
+      to={href}
+      style={{ textDecoration: "none", display: "block", color: "inherit" }}
+    >
+      <div style={{ ...overviewRowDividerStyle, display: "flex", alignItems: "flex-start", gap: "10px" }}>
+        <OverviewClubLogo
+          name={announcement.clubName}
+          logoUrl={logoUrl}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#ffffff" }}>
+            {announcement.title}
           </p>
-        ) : null}
-        <Link
-          to={`/app/clubs/${announcement.clubId}/announcements`}
-          style={{ ...viewAllLinkStyle, marginTop: "6px", display: "inline-block" }}
-        >
-          Read More →
-        </Link>
+          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#999999" }}>
+            {announcement.clubName}
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#888888" }}>
+            {formatTimeAgo(announcement.createdAt)}
+          </p>
+          {preview ? (
+            <p
+              style={{
+                margin: "6px 0 0",
+                fontSize: "12px",
+                color: "#999999",
+                lineHeight: 1.45,
+              }}
+            >
+              {preview}
+            </p>
+          ) : null}
+          <span style={{ ...viewAllLinkStyle, marginTop: "6px", display: "inline-block" }}>
+            Read More →
+          </span>
+        </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -1996,7 +2056,7 @@ function WeekTaskCard({
 
   return (
     <Link
-      to={`/app/clubs/${task.clubId}/tasks`}
+      to={getClubTaskPath(task.clubId, task.id)}
       className="block w-full no-underline"
       style={{ cursor: "pointer" }}
     >
@@ -2068,14 +2128,13 @@ function ThisMonthTab({
   membershipAccessKey,
   userId,
   clubLogos,
-  displayName,
   onViewAllTasks,
+  onViewAllEvents,
 }: {
   joinedClubIds: string[];
   membershipAccessKey: string;
   userId?: string;
   clubLogos: Record<string, string>;
-  displayName: string;
   onViewAllTasks: () => void;
   onViewAllEvents: () => void;
 }) {
@@ -2085,8 +2144,6 @@ function ThisMonthTab({
   const [calendarView, setCalendarView] = useState<CalendarViewMode>("month");
   const [monthOffset, setMonthOffset] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [monthlyCompleted, setMonthlyCompleted] = useState(0);
-  const [monthlyTotal, setMonthlyTotal] = useState(0);
   const plannerItemsRef = useRef<HTMLDivElement>(null);
   const todayKey = todayIsoDate();
 
@@ -2129,8 +2186,6 @@ function ThisMonthTab({
     if (joinedClubIds.length === 0 || !userId) {
       queueMicrotask(() => {
         setItems([]);
-        setMonthlyCompleted(0);
-        setMonthlyTotal(0);
         setLoading(false);
       });
       return;
@@ -2140,8 +2195,6 @@ function ThisMonthTab({
 
     let cancelled = false;
     setItems([]);
-    setMonthlyCompleted(0);
-    setMonthlyTotal(0);
 
     async function loadPlanner() {
       setLoading(true);
@@ -2149,7 +2202,7 @@ function ThisMonthTab({
       // Personal planner: only the current user's assigned tasks. General
       // members already see only their own via RLS; this keeps it personal for
       // executives/presidents too so the label matches the data.
-      const [tasksRes, eventsRes, monthTasksRes] = await Promise.all([
+      const [tasksRes, eventsRes] = await Promise.all([
         supabase
           .from("tasks")
           .select(
@@ -2191,14 +2244,6 @@ function ThisMonthTab({
           .lte("date", fetchEnd)
           .order("date", { ascending: true })
           .order("time", { ascending: true }),
-        supabase
-          .from("tasks")
-          .select("id, status")
-          .in("club_id", joinedClubIds)
-          .eq("assigned_to", currentUserId)
-          .neq("status", "cancelled")
-          .gte("due_date", monthRange.start)
-          .lte("due_date", monthRange.end),
       ]);
 
       if (cancelled) return;
@@ -2251,16 +2296,6 @@ function ThisMonthTab({
         }
       }
 
-      if (!monthTasksRes.error) {
-        const monthRows = monthTasksRes.data ?? [];
-        const completed = monthRows.filter((row) => row.status === "done").length;
-        setMonthlyCompleted(completed);
-        setMonthlyTotal(monthRows.length);
-      } else {
-        setMonthlyCompleted(0);
-        setMonthlyTotal(0);
-      }
-
       setItems(plannerItems);
       setLoading(false);
     }
@@ -2270,21 +2305,26 @@ function ThisMonthTab({
     return () => {
       cancelled = true;
     };
-  }, [joinedClubIds, membershipAccessKey, userId, fetchStart, fetchEnd, monthRange.start, monthRange.end]);
+  }, [joinedClubIds, membershipAccessKey, userId, fetchStart, fetchEnd]);
 
   const dayMeta = useMemo(() => {
-    const map = new Map<
-      string,
-      { hasEvents: boolean; hasTasks: boolean; itemCount: number }
-    >();
+    const map = new Map<string, PlannerDayMeta>();
     for (const item of items) {
       const existing = map.get(item.dateKey) ?? {
         hasEvents: false,
         hasTasks: false,
         itemCount: 0,
+        taskTitles: [],
+        eventTitles: [],
       };
-      if (item.kind === "event") existing.hasEvents = true;
-      if (item.kind === "task") existing.hasTasks = true;
+      if (item.kind === "event") {
+        existing.hasEvents = true;
+        existing.eventTitles = [...(existing.eventTitles ?? []), item.title];
+      }
+      if (item.kind === "task") {
+        existing.hasTasks = true;
+        existing.taskTitles = [...(existing.taskTitles ?? []), item.title];
+      }
       existing.itemCount += 1;
       map.set(item.dateKey, existing);
     }
@@ -2383,7 +2423,7 @@ function ThisMonthTab({
         >
           {plannerPeriodLabel}
         </h2>
-        <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#777777" }}>
+        <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#999999" }}>
           {plannerDescription}
         </p>
       </div>
@@ -2418,12 +2458,6 @@ function ThisMonthTab({
           onDayClick={handleDayClick}
         />
       )}
-
-      <WeekAchievementCard
-        displayName={displayName}
-        completedCount={monthlyCompleted}
-        totalCount={monthlyTotal}
-      />
 
       <div ref={plannerItemsRef}>
         <h3
@@ -2468,7 +2502,7 @@ function ThisMonthTab({
           Events {plannerPeriodLabel}
         </h3>
         {filteredEvents.length === 0 ? (
-          <p style={{ color: "#444444", fontSize: "13px", margin: 0 }}>
+          <p style={{ color: "#888888", fontSize: "13px", margin: 0 }}>
             {eventsEmptyMessage}
           </p>
         ) : (
@@ -2481,9 +2515,9 @@ function ThisMonthTab({
               />
             ))}
             <div style={{ textAlign: "center", marginTop: "16px" }}>
-              <Link to="/events" style={{ ...viewAllLinkStyle, display: "inline-block" }}>
+              <button type="button" onClick={onViewAllEvents} style={viewAllLinkStyle}>
                 View all events →
-              </Link>
+              </button>
             </div>
           </div>
         )}
@@ -2651,7 +2685,7 @@ function MyClubsTab({
       <div
         className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-3)] px-4 py-10 text-center"
       >
-        <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
+        <p style={{ color: "#888888", fontSize: "13px", margin: 0 }}>
           You have not joined any clubs yet.
         </p>
         <Link
@@ -2684,7 +2718,7 @@ function MyClubsTab({
             textAlign: "center",
           }}
         >
-          <p style={{ color: "#555555", fontSize: "13px", margin: 0 }}>
+          <p style={{ color: "#888888", fontSize: "13px", margin: 0 }}>
             No clubs match your search or filters.
           </p>
         </div>
@@ -2748,7 +2782,7 @@ function OverviewTab({
   onViewAllTasks: () => void;
   onViewAllClubs: () => void;
   onViewAllInbox: () => void;
-  onViewAllAnnouncements: (clubId?: string) => void;
+  onViewAllAnnouncements: () => void;
 }) {
   const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
@@ -2768,21 +2802,6 @@ function OverviewTab({
     () => inboxMessages.slice(0, 3),
     [inboxMessages],
   );
-
-  // "View All Announcements" is a mixed cross-club section. Only route to a
-  // specific club when it's unambiguous (all previewed announcements belong to
-  // one club, or the user only belongs to one club). Otherwise fall back to a
-  // dashboard-level view instead of an arbitrary first-club redirect.
-  const announcementsTargetClubId = useMemo(() => {
-    const distinctClubIds = new Set(recentAnnouncements.map((a) => a.clubId));
-    if (distinctClubIds.size === 1) {
-      return recentAnnouncements[0]?.clubId;
-    }
-    if (recentAnnouncements.length === 0 && joinedClubIds.length === 1) {
-      return joinedClubIds[0];
-    }
-    return undefined;
-  }, [recentAnnouncements, joinedClubIds]);
 
   useEffect(() => {
     if (!userId || joinedClubIds.length === 0) {
@@ -2964,7 +2983,6 @@ function OverviewTab({
               key={event.id}
               event={event}
               logoUrl={clubLogos[event.clubId ?? ""]}
-              isClubMember={event.clubId ? joinedClubIds.includes(event.clubId) : false}
             />
           ))}
         </div>
@@ -3042,8 +3060,8 @@ function OverviewTab({
       icon={<Megaphone size={16} color="#555555" aria-hidden />}
       footer={
         <OverviewViewAllLink
-          label="View All Announcements →"
-          onClick={() => onViewAllAnnouncements(announcementsTargetClubId)}
+          label="View My Clubs →"
+          onClick={() => onViewAllAnnouncements()}
         />
       }
     >
@@ -3210,7 +3228,7 @@ function TasksTab({
   const [clubFilter, setClubFilter] = useState("all");
   const [groupBy, setGroupBy] = useState<TaskGroupByOption>("status");
   const [sort, setSort] = useState<TaskSortOption>("due_date");
-  const [progressRange, setProgressRange] = useState<TaskProgressTimeRange>("semester");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -3371,7 +3389,8 @@ function TasksTab({
     taskScope !== "assigned_to_me" ||
     search.trim().length > 0 ||
     clubFilter !== "all" ||
-    sort !== "due_date";
+    sort !== "due_date" ||
+    overdueOnly;
 
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -3379,9 +3398,10 @@ function TasksTab({
     return tasks.filter((task) => {
       if (clubFilter !== "all" && task.clubId !== clubFilter) return false;
       if (query && !task.title.toLowerCase().includes(query)) return false;
+      if (overdueOnly && !isTaskOverdue(task)) return false;
       return true;
     });
-  }, [tasks, search, clubFilter]);
+  }, [tasks, search, clubFilter, overdueOnly]);
 
   const taskGroups = useMemo(
     () =>
@@ -3395,7 +3415,6 @@ function TasksTab({
     [filteredTasks, tasks, groupBy, sort, clubFilter],
   );
 
-  const taskProgress = useTaskProgress(filteredTasks, progressRange);
   const breakdown = useTaskBreakdown(filteredTasks);
 
   useEffect(() => {
@@ -3433,30 +3452,30 @@ function TasksTab({
   return (
     <div>
       <DashboardTaskScopeToggle active={taskScope} onChange={setTaskScope} />
-      <div style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <TaskProgressCard
-          completed={taskProgress.completed}
-          total={taskProgress.total}
-          labels={taskProgress.labels}
-          counts={taskProgress.counts}
-          useSummaryOnly={taskProgress.useSummaryOnly}
-          range={progressRange}
-          onRangeChange={setProgressRange}
-        />
+      <div
+        style={{
+          display: "flex",
+          gap: "16px",
+          marginBottom: "20px",
+          flexWrap: "wrap",
+          alignItems: "stretch",
+        }}
+      >
         <TaskBreakdownCard arcs={breakdown.arcs} segments={breakdown.segments} />
+        <TasksFilterBar
+          clubFilter={clubFilter}
+          onClubFilterChange={setClubFilter}
+          clubOptions={clubOptions}
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
+          sort={sort}
+          onSortChange={setSort}
+          overdueOnly={overdueOnly}
+          onOverdueOnlyChange={setOverdueOnly}
+        />
       </div>
 
-      <TasksFilterBar
-        search={search}
-        onSearchChange={setSearch}
-        clubFilter={clubFilter}
-        onClubFilterChange={setClubFilter}
-        clubOptions={clubOptions}
-        groupBy={groupBy}
-        onGroupByChange={setGroupBy}
-        sort={sort}
-        onSortChange={setSort}
-      />
+      <TasksSearchBar search={search} onSearchChange={setSearch} />
 
       {taskGroups.map((group) => (
         <TaskListGroupSection
@@ -3613,7 +3632,7 @@ function StatCardContent({
       >
         {value}
       </p>
-      <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>{sublabel}</p>
+      <p style={{ fontSize: "11px", color: "#888888", margin: 0 }}>{sublabel}</p>
     </>
   );
 }

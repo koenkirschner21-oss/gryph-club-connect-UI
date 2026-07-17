@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Spinner from "../../components/ui/Spinner";
 import {
   filterInboxMessages,
@@ -86,6 +86,8 @@ type InboxTabProps = UseInboxReturn & {
   clubLogos?: Record<string, string>;
   joinedClubs?: ClubOption[];
   onViewMyClubs?: () => void;
+  initialMessageId?: string | null;
+  onInitialMessageConsumed?: () => void;
 };
 
 export default function InboxTab({
@@ -100,11 +102,36 @@ export default function InboxTab({
   clubLogos = {},
   joinedClubs = [],
   onViewMyClubs,
+  initialMessageId = null,
+  onInitialMessageConsumed,
 }: InboxTabProps) {
   const isMobile = useIsMobile();
   const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "action_required">("all");
   const [categoryFilter, setCategoryFilter] = useState<InboxCategoryFilter>("all");
   const [selectedMessage, setSelectedMessage] = useState<InboxMessage | null>(null);
+  const [missingMessageId, setMissingMessageId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialMessageId || loading) return;
+
+    const match = messages.find((message) => message.id === initialMessageId);
+    if (match) {
+      setSelectedMessage(match);
+      setMissingMessageId(null);
+      if (!match.read) {
+        void markAsRead(match.id);
+      }
+    } else {
+      setMissingMessageId(initialMessageId);
+    }
+    onInitialMessageConsumed?.();
+  }, [
+    initialMessageId,
+    loading,
+    messages,
+    markAsRead,
+    onInitialMessageConsumed,
+  ]);
 
   const visibleMessages = useMemo(() => {
     const statusFiltered =
@@ -275,6 +302,36 @@ export default function InboxTab({
 
       <div style={{ display: "flex", gap: "20px", alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {missingMessageId ? (
+            <p
+              style={{
+                color: "#FFC429",
+                fontSize: "13px",
+                margin: "0 0 14px",
+                padding: "12px 14px",
+                border: "1px solid #3a2f00",
+                borderRadius: "8px",
+                background: "#1a1500",
+              }}
+            >
+              That message is no longer available. It may have been removed or you may not have access.
+              <button
+                type="button"
+                onClick={() => setMissingMessageId(null)}
+                style={{
+                  marginLeft: "10px",
+                  background: "transparent",
+                  border: "none",
+                  color: "#cccccc",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  textDecoration: "underline",
+                }}
+              >
+                Dismiss
+              </button>
+            </p>
+          ) : null}
           {loading ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
               <Spinner />

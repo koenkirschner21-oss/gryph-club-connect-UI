@@ -143,7 +143,7 @@ export async function sendOwnershipTransferInvite(
       transferId: transfer.id,
       clubId: params.clubId,
       newRole: params.newRole,
-      path: "/app",
+      path: `/ownership-transfer/${transfer.id}`,
     },
     clubId: params.clubId,
     referenceId: transfer.id,
@@ -153,7 +153,7 @@ export async function sendOwnershipTransferInvite(
   await createNotification(supabase, {
     userId: params.toUserId,
     type: "club_update",
-    message: `You have been invited to become ${roleLabel} of ${params.clubName}.`,
+    message: `[Ownership Transfer] You have been invited to become ${roleLabel} of ${params.clubName}.`,
     clubId: params.clubId,
     referenceId: transfer.id,
   });
@@ -210,7 +210,7 @@ export async function resendOwnershipTransferReminder(
       transferId: transfer.id,
       clubId: transfer.clubId,
       newRole: transfer.newRole,
-      path: "/app",
+      path: `/ownership-transfer/${transfer.id}`,
     },
     clubId: transfer.clubId,
     referenceId: transfer.id,
@@ -314,7 +314,7 @@ export async function acceptOwnershipTransfer(
     actionData: {
       transferId: transfer.id,
       clubId: transfer.clubId,
-      path: "/app",
+      path: `/ownership-transfer/${transfer.id}`,
     },
     clubId: transfer.clubId,
     referenceId: transfer.id,
@@ -324,7 +324,7 @@ export async function acceptOwnershipTransfer(
   await createNotification(supabase, {
     userId: transfer.fromUserId,
     type: "club_update",
-    message: `Your ownership transfer for ${params.clubName} was accepted. Choose your next role in Inbox.`,
+    message: `[Ownership Transfer] Your ownership transfer for ${params.clubName} was accepted. Choose your next role.`,
     clubId: transfer.clubId,
     referenceId: transfer.id,
   });

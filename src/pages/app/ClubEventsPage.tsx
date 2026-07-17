@@ -2281,6 +2281,7 @@ export default function ClubEventsPage() {
   });
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<string | null>(null);
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
+  const [deepLinkEventId, setDeepLinkEventId] = useState<string | null>(null);
 
   const loadAllEventQuestions = useCallback(async () => {
     if (eventIds.length === 0) {
@@ -2501,12 +2502,15 @@ export default function ClubEventsPage() {
   useEffect(() => {
     const eventId = searchParams.get("manageEvent");
     if (!eventId || loading) return;
-    if (!isActiveMember) {
+    // Only authorized managers may open Manage Event; strip the param otherwise.
+    if (!isActiveMember || !canManageEvents) {
       const next = new URLSearchParams(searchParams);
       next.delete("manageEvent");
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams, isActiveMember, loading]);
+  }, [searchParams, setSearchParams, isActiveMember, canManageEvents, loading]);
+
+  // Exact event deep link handled after scrollToEventInList is defined (below).
 
   useEffect(() => {
     const eventId = searchParams.get("viewRsvps");
@@ -3310,6 +3314,27 @@ export default function ClubEventsPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    const eventId = searchParams.get("event");
+    if (!eventId) return;
+
+    const match = events.find((item) => item.id === eventId);
+    if (match) {
+      setDeepLinkEventId(eventId);
+      scrollToEventInList(eventId);
+    } else {
+      setFeedback({
+        type: "error",
+        text: "That event is no longer available or you don't have access.",
+      });
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("event");
+    setSearchParams(next, { replace: true });
+  }, [loading, searchParams, setSearchParams, events, scrollToEventInList]);
+
   const handleCalendarDayClick = useCallback(
     (dateKey: string) => {
       setSelectedCalendarDay(dateKey);
@@ -3364,6 +3389,7 @@ export default function ClubEventsPage() {
   }, [upcomingDisplayList, pastEvents, counts, attendees, loadAttendees]);
 
   function openManageEvent(event: ClubEvent) {
+    if (!canManageEvents) return;
     const next = new URLSearchParams(searchParams);
     next.set("manageEvent", event.id);
     setSearchParams(next);
@@ -3410,7 +3436,7 @@ export default function ClubEventsPage() {
     );
   }
 
-  if (manageEventId && isActiveMember) {
+  if (manageEventId && canManageEvents && isActiveMember) {
     if (!manageEvent) {
       return (
         <div
@@ -4388,6 +4414,130 @@ export default function ClubEventsPage() {
           </div>
         </div>
       ) : null}
+
+      {deepLinkEventId
+        ? (() => {
+            const deepEvent = events.find((item) => item.id === deepLinkEventId);
+            if (!deepEvent) return null;
+            const timeLabel = formatEventTime(deepEvent.time);
+            const locationLabel = cleanEventLocation(deepEvent.location);
+            return (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={deepEvent.title}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 80,
+                  background: "rgba(0,0,0,0.72)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "18px",
+                }}
+                onClick={() => setDeepLinkEventId(null)}
+              >
+                <div
+                  role="presentation"
+                  onClick={(event) => event.stopPropagation()}
+                  style={{
+                    width: "100%",
+                    maxWidth: "520px",
+                    maxHeight: "86vh",
+                    overflowY: "auto",
+                    background: "#141414",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: "12px",
+                    padding: "22px",
+                  }}
+                >
+                  <h2
+                    style={{
+                      margin: "0 0 12px",
+                      color: "#ffffff",
+                      fontSize: "18px",
+                      fontWeight: 700,
+                      paddingRight: "24px",
+                    }}
+                  >
+                    {deepEvent.title}
+                  </h2>
+                  <p style={{ margin: "0 0 6px", fontSize: "13px", color: "#888888" }}>
+                    {new Date(`${deepEvent.date}T12:00:00`).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                    {timeLabel ? ` · ${timeLabel}` : ""}
+                  </p>
+                  {locationLabel ? (
+                    <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#888888" }}>
+                      {locationLabel}
+                    </p>
+                  ) : null}
+                  {deepEvent.description?.trim() ? (
+                    <p
+                      style={{
+                        margin: "0 0 18px",
+                        fontSize: "14px",
+                        color: "#cccccc",
+                        lineHeight: 1.6,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {deepEvent.description}
+                    </p>
+                  ) : (
+                    <p style={{ margin: "0 0 18px", fontSize: "13px", color: "#555555" }}>
+                      No description provided.
+                    </p>
+                  )}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setDeepLinkEventId(null)}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid #333333",
+                        color: "#cccccc",
+                        borderRadius: "8px",
+                        padding: "8px 14px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Close
+                    </button>
+                    {canManageEvents ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeepLinkEventId(null);
+                          openManageEvent(deepEvent);
+                        }}
+                        style={{
+                          background: "#E51937",
+                          border: "none",
+                          color: "#ffffff",
+                          borderRadius: "8px",
+                          padding: "8px 14px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Manage Event
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        : null}
 
       {showTemplatePicker ? (
         <TemplatePickerModal

@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MessageSquare, Calendar, CheckCircle2, Megaphone, Users, Briefcase, Bell } from "lucide-react";
+import {
+  MessageSquare,
+  Calendar,
+  CheckCircle2,
+  Megaphone,
+  Users,
+  Briefcase,
+  Bell,
+  UserPlus,
+} from "lucide-react";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuthContext } from "../../context/useAuthContext";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { parseNotificationDisplay } from "../../lib/parseNotificationDisplay";
+import {
+  getDashboardInboxPath,
+  resolveNotificationDeepLink,
+} from "../../lib/deepLinks";
 import type { Notification, NotificationType } from "../../types";
 import { removeRealtimeChannel, uniqueRealtimeTopic } from "../../lib/realtimeChannels";
 
@@ -49,83 +62,7 @@ function mapRow(row: Record<string, unknown>): Notification {
 }
 
 function resolveNotificationLink(notification: Notification): string | null {
-  if (notification.link?.trim()) {
-    return notification.link.trim();
-  }
-
-  switch (notification.type) {
-    case "new_club_request":
-      return notification.referenceId
-        ? `/app/admin?tab=requests&request=${notification.referenceId}`
-        : "/app/admin?tab=requests";
-    case "report_submitted":
-      return "/app/admin?tab=reports";
-    case "new_claim_request":
-      return notification.referenceId
-        ? `/app/admin?tab=claims&claim=${notification.referenceId}`
-        : "/app/admin?tab=claims";
-    case "club_request_submitted":
-    case "claim_submitted":
-      return notification.referenceId
-        ? `/claim-status/${notification.referenceId}`
-        : "/app";
-    case "club_request_rejected":
-    case "claim_rejected":
-      return notification.referenceId
-        ? `/claim-status/${notification.referenceId}`
-        : "/explore";
-    case "club_request_approved":
-    case "claim_approved":
-      return notification.clubId ? `/app/clubs/${notification.clubId}` : "/app";
-    case "club_request_more_info":
-    case "claim_more_info":
-      return notification.referenceId
-        ? `/claim-status/${notification.referenceId}`
-        : "/app";
-    default:
-      break;
-  }
-
-  if (!notification.clubId) return null;
-
-  const base = `/app/clubs/${notification.clubId}`;
-  const ref = notification.referenceId;
-
-  switch (notification.type as string) {
-    case "new_event":
-    case "event":
-    case "event_cancelled":
-    case "event_updated":
-      return `${base}/events`;
-    case "event_signup_pending":
-      return `${base}/events`;
-    case "meeting_invite":
-    case "meeting_updated":
-    case "meeting_cancelled":
-      return `${base}/meetings`;
-    case "new_document":
-      return `${base}/documents`;
-    case "new_hiring_role":
-      return `${base}/recruiting`;
-    case "announcement":
-      return `${base}/announcements`;
-    case "task_assigned":
-    case "task":
-      return `${base}/tasks`;
-    case "new_join_request":
-    case "join_approved":
-    case "join_rejected":
-    case "join_request_submitted":
-    case "member_joined":
-    case "role_updated":
-    case "member_removed":
-      return `${base}/members`;
-    case "direct_message":
-    case "mention":
-      return ref ? `${base}/chat?conversation=${ref}` : `${base}/chat`;
-    default:
-      return base;
-  }
+  return resolveNotificationDeepLink(notification);
 }
 
 function openDashboardInbox() {
@@ -208,6 +145,12 @@ function notificationTypeIconConfig(type: NotificationType | string): {
       return { Icon: Megaphone, color: "#E51937" };
     case "new_hiring_role":
       return { Icon: Briefcase, color: "#747676" };
+    case "new_club_request":
+    case "club_request_submitted":
+    case "club_request_approved":
+    case "club_request_rejected":
+    case "club_request_more_info":
+      return { Icon: UserPlus, color: notificationIconColor(type) };
     default:
       return { Icon: Bell, color: notificationIconColor(type) };
   }
@@ -769,7 +712,7 @@ export default function NotificationsDropdown() {
             }}
           >
             <Link
-              to="/app"
+              to={getDashboardInboxPath()}
               onClick={() => {
                 openDashboardInbox();
                 setOpen(false);
@@ -791,7 +734,6 @@ export default function NotificationsDropdown() {
             <Link
               to="/app"
               onClick={() => {
-                openDashboardInbox();
                 setOpen(false);
               }}
               style={{
@@ -803,7 +745,7 @@ export default function NotificationsDropdown() {
                 textDecoration: "none",
               }}
             >
-              View all in Dashboard →
+              View Dashboard →
             </Link>
           </div>
         </div>

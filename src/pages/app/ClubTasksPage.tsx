@@ -798,6 +798,30 @@ export default function ClubTasksPage() {
   }, [searchParams, canManageTasks]);
 
   useEffect(() => {
+    if (loading) return;
+    const taskId = searchParams.get("task") ?? searchParams.get("edit");
+    if (!taskId) return;
+
+    const match =
+      enrichedTasks.find((task) => task.id === taskId) ??
+      tasks.find((task) => task.id === taskId);
+
+    if (match) {
+      setSelectedTask(match);
+    } else {
+      setFeedback({
+        type: "error",
+        text: "That task is no longer available or you don't have access.",
+      });
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("task");
+    next.delete("edit");
+    setSearchParams(next, { replace: true });
+  }, [loading, searchParams, setSearchParams, enrichedTasks, tasks]);
+
+  useEffect(() => {
     setActiveQuickFilter("all");
   }, [assignmentTab]);
 

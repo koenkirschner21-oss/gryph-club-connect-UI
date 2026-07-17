@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { supabase } from "../lib/supabaseClient";
+import { resolvePostAuthNavigation } from "../lib/authRedirect";
 import Spinner from "../components/ui/Spinner";
 
 export default function AuthCallbackPage() {
@@ -91,14 +92,12 @@ export default function AuthCallbackPage() {
 
     if (onboardingCompleted === null) return;
 
-    if (onboardingCompleted === false) {
-      console.info("[auth] callback redirect", { destination: "/onboarding" });
-      navigate("/onboarding", { replace: true });
-      return;
-    }
-
-    console.info("[auth] callback redirect", { destination: "/app" });
-    navigate("/app", { replace: true });
+    const next = resolvePostAuthNavigation({
+      redirectParam: null,
+      onboardingCompleted,
+    });
+    console.info("[auth] callback redirect", { destination: next.path });
+    navigate(next.path, { replace: true });
   }, [
     sessionReady,
     loading,

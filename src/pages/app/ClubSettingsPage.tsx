@@ -13,6 +13,7 @@ import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
 import { CLUB_LONG_DESCRIPTION_PLACEHOLDER } from "../../lib/clubRowMapping";
+import { CLUB_CATEGORY_OPTIONS } from "../../lib/clubCategories";
 import { supabase } from "../../lib/supabaseClient";
 import {
   defaultJoinQuestions,
@@ -1705,21 +1706,7 @@ export default function ClubSettingsPage() {
     });
   }
 
-  const categoryOptions = [
-    "Academic",
-    "Arts",
-    "Athletics",
-    "Cultural",
-    "Engineering",
-    "Environmental",
-    "Health",
-    "Media",
-    "Political",
-    "Recreation",
-    "Social",
-    "Technology",
-    "Volunteer",
-  ];
+  const categoryOptions = [...CLUB_CATEGORY_OPTIONS];
 
   return (
     <div
