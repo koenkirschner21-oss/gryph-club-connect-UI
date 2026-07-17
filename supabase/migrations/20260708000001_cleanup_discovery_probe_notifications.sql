@@ -2,4 +2,4 @@
 -- Idempotent: no-op when rows are already gone.
 
 DELETE FROM public.notifications
-WHERE COALESCE(title, message, '') ~* '(DISCOVERY_PROBE|AUDIT-[0-9]+ .*probe)';
+WHERE COALESCE(message, '') ~* '(DISCOVERY_PROBE|AUDIT-[0-9]+ .*probe)';
