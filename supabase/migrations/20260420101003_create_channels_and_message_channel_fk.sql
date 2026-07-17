@@ -156,3 +156,6 @@ DROP TRIGGER IF EXISTS create_default_channels_for_new_club ON public.clubs;
 CREATE TRIGGER create_default_channels_for_new_club
   AFTER INSERT ON public.clubs
   FOR EACH ROW EXECUTE FUNCTION public.ensure_default_channels_for_new_club();
+
+CREATE INDEX IF NOT EXISTS idx_messages_club_channel_created
+  ON public.messages(club_id, channel_id, created_at ASC);

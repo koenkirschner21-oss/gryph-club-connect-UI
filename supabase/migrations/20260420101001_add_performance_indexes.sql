@@ -14,5 +14,3 @@ CREATE INDEX IF NOT EXISTS idx_club_members_club_status_role
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created
   ON public.notifications(user_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_messages_club_channel_created
-  ON public.messages(club_id, channel_id, created_at ASC);
