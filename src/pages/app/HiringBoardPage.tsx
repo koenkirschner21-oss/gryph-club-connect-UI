@@ -22,6 +22,12 @@ import {
 } from "../../lib/notifications";
 import { applyToHiringListing } from "../../lib/hiringApplicationSubmit";
 import {
+  buildLoginPath,
+  consumePendingAuthAction,
+  storePendingAuthAction,
+  storePendingAuthRedirect,
+} from "../../lib/authRedirect";
+import {
   activeUploadSlots,
   HIRING_UPLOAD_SLOT_LABELS,
   MAX_HIRING_FILE_BYTES,
@@ -501,6 +507,8 @@ function SaveRoleButton({
         onToggle();
       }}
       disabled={disabled}
+      aria-label={saved ? "Unsave role" : "Save role"}
+      aria-pressed={saved}
       style={{
         background: saved ? "#1a1500" : "transparent",
         border: saved ? "1px solid #3a2f00" : "1px solid #333333",
@@ -509,11 +517,18 @@ function SaveRoleButton({
         padding: compact ? "6px 12px" : "10px 18px",
         fontSize: compact ? "11px" : "13px",
         fontWeight: 600,
-        cursor: disabled ? "default" : "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         display: "inline-flex",
         alignItems: "center",
         gap: "6px",
         opacity: disabled ? 0.5 : 1,
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.borderColor = saved ? "#5a4a00" : "#555555";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = saved ? "#3a2f00" : "#333333";
       }}
     >
       <Bookmark size={compact ? 12 : 14} fill={saved ? "#FFC429" : "none"} />
@@ -2138,6 +2153,8 @@ function filterBoardPositions(
     roleTypeFilter: string;
     commitmentFilter: string;
     clubCategoryFilter: string;
+    clubSlugFilter: string | null;
+    clubIdFilter: string | null;
     listTab: ListTab;
     savedRoleIds: Set<string>;
     myApplications: Record<string, boolean>;
@@ -2150,6 +2167,15 @@ function filterBoardPositions(
       return false;
     }
     if (options.listTab === "applied" && !options.myApplications[p.id]) {
+      return false;
+    }
+    if (options.clubIdFilter && p.clubId !== options.clubIdFilter) {
+      return false;
+    }
+    if (
+      options.clubSlugFilter &&
+      (p.clubSlug ?? "").toLowerCase() !== options.clubSlugFilter.toLowerCase()
+    ) {
       return false;
     }
     if (
@@ -2266,11 +2292,14 @@ export default function HiringBoardPage() {
   const [myApplications, setMyApplications] = useState<Record<string, boolean>>({});
   const [savedRoleIds, setSavedRoleIds] = useState<Set<string>>(new Set());
 
-  const canSave = Boolean(user?.id);
+  // Keep Save Role clickable while signed out — auth gate is in toggleSaveRole.
+  const canSave = true;
+  const clubSlugFilter = searchParams.get("club");
+  const clubIdFilter = searchParams.get("clubId");
 
   function handleApplyFromDetail(position: BoardPosition) {
     if (!user) {
-      navigate("/login?redirect=/hiring");
+      navigate(buildLoginPath(`/hiring?listing=${encodeURIComponent(position.id)}`));
       return;
     }
     setDetailOverlayId(null);
@@ -2439,7 +2468,10 @@ export default function HiringBoardPage() {
 
   async function toggleSaveRole(positionId: string) {
     if (!user?.id) {
-      navigate("/login?redirect=/hiring");
+      const returnPath = `/hiring?listing=${encodeURIComponent(positionId)}`;
+      storePendingAuthAction({ type: "save_role", listingId: positionId });
+      storePendingAuthRedirect(returnPath);
+      navigate(buildLoginPath(returnPath));
       return;
     }
 
@@ -2478,12 +2510,39 @@ export default function HiringBoardPage() {
     setSavedRoleIds((prev) => new Set(prev).add(positionId));
   }
 
+  // Complete Save Role after returning from auth (once per mount).
+  const pendingSaveHandledRef = useRef(false);
+  useEffect(() => {
+    if (!user?.id || loading || pendingSaveHandledRef.current) return;
+    const pending = consumePendingAuthAction();
+    if (!pending || pending.type !== "save_role") return;
+    pendingSaveHandledRef.current = true;
+    if (savedRoleIds.has(pending.listingId)) {
+      setSelectedId(pending.listingId);
+      return;
+    }
+    void (async () => {
+      const { error } = await supabase.from("saved_roles").insert({
+        user_id: user.id,
+        position_id: pending.listingId,
+      });
+      if (error) {
+        console.error("Failed to complete pending save role:", error.message);
+        return;
+      }
+      setSavedRoleIds((prev) => new Set(prev).add(pending.listingId));
+      setSelectedId(pending.listingId);
+    })();
+  }, [user?.id, loading, savedRoleIds]);
+
   const filtered = useMemo(() => {
     const matches = filterBoardPositions(positions, {
       search,
       roleTypeFilter,
       commitmentFilter,
       clubCategoryFilter,
+      clubSlugFilter,
+      clubIdFilter,
       listTab,
       savedRoleIds,
       myApplications,
@@ -2495,6 +2554,8 @@ export default function HiringBoardPage() {
     roleTypeFilter,
     commitmentFilter,
     clubCategoryFilter,
+    clubSlugFilter,
+    clubIdFilter,
     listTab,
     savedRoleIds,
     myApplications,

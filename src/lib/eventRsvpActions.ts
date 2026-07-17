@@ -148,23 +148,38 @@ async function saveEventFormResponses(
 ): Promise<boolean> {
   if (formResponses.length === 0) return true;
 
-  await supabase
+  const rows = formResponses.map((response) => ({
+    event_id: eventId,
+    user_id: userId,
+    question_id: response.questionId,
+    answer: response.answer.trim(),
+  }));
+
+  const { error } = await supabase.from("event_form_responses").upsert(rows, {
+    onConflict: "event_id,user_id,question_id",
+  });
+
+  if (error) {
+    console.error("Failed to save RSVP responses:", error.message);
+    return false;
+  }
+
+  return true;
+}
+
+export async function clearEventFormResponses(
+  supabase: SupabaseClient,
+  eventId: string,
+  userId: string,
+): Promise<boolean> {
+  const { error } = await supabase
     .from("event_form_responses")
     .delete()
     .eq("event_id", eventId)
     .eq("user_id", userId);
 
-  const { error } = await supabase.from("event_form_responses").insert(
-    formResponses.map((response) => ({
-      event_id: eventId,
-      user_id: userId,
-      question_id: response.questionId,
-      answer: response.answer.trim(),
-    })),
-  );
-
   if (error) {
-    console.error("Failed to save RSVP responses:", error.message);
+    console.error("Failed to clear RSVP responses:", error.message);
     return false;
   }
 

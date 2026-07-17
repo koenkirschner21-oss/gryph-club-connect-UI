@@ -1,5 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  getAdminClaimPath,
+  getAdminClubRequestPath,
+  getClaimStatusPath,
+  getClubEventPath,
+  getClubMembersPendingPath,
+  getClubRecruitingApplicationPath,
+  getClubRequestStatusPath,
+  getDashboardInboxMessagePath,
+  getOwnershipTransferPath,
+} from "./deepLinks";
+import {
   fetchNotificationPreferencesByUserId,
   shouldDeliverInboxMessage,
 } from "./notificationPreferences";
@@ -150,22 +161,47 @@ export function inboxEmptyMessage(): string {
 }
 
 export function resolveInboxLink(message: InboxMessage): string {
+  // Prefer opening this exact inbox record when the stored path is only a generic dashboard.
   const actionPath =
     typeof message.actionData.path === "string"
       ? message.actionData.path.trim()
       : "";
-  if (actionPath) return actionPath;
+  if (
+    actionPath &&
+    actionPath !== "/app" &&
+    actionPath !== "/app/" &&
+    !actionPath.startsWith("/app?tab=inbox")
+  ) {
+    return actionPath;
+  }
 
-  if (message.actionType === "view_claim_status") {
+  if (
+    message.actionType === "ownership_transfer_response" ||
+    message.actionType === "former_owner_role_choice"
+  ) {
+    const transferId =
+      (typeof message.actionData.transferId === "string" &&
+        message.actionData.transferId.trim()) ||
+      message.referenceId;
+    if (transferId) return getOwnershipTransferPath(transferId);
+    return getDashboardInboxMessagePath(message.id);
+  }
+
+  if (message.actionType === "view_claim_status" || message.actionType === "claim_more_info") {
     const claimId =
       (typeof message.actionData.claimId === "string" &&
         message.actionData.claimId.trim()) ||
       message.referenceId;
-    if (claimId) return `/claim-status/${claimId}`;
+    if (claimId) return getClaimStatusPath(claimId);
   }
 
   if (message.actionType === "view_club_request_status") {
-    return "/app";
+    const requestId =
+      (typeof message.actionData.requestId === "string" &&
+        message.actionData.requestId.trim()) ||
+      message.referenceId;
+    if (requestId) return getClubRequestStatusPath(requestId);
+    return getDashboardInboxMessagePath(message.id);
   }
 
   if (message.actionType === "review_club_request") {
@@ -174,7 +210,7 @@ export function resolveInboxLink(message: InboxMessage): string {
         message.actionData.requestId.trim()) ||
       message.referenceId;
     return requestId
-      ? `/app/admin?tab=requests&request=${requestId}`
+      ? getAdminClubRequestPath(requestId)
       : "/app/admin?tab=requests";
   }
 
@@ -183,9 +219,7 @@ export function resolveInboxLink(message: InboxMessage): string {
       (typeof message.actionData.claimId === "string" &&
         message.actionData.claimId.trim()) ||
       message.referenceId;
-    return claimId
-      ? `/app/admin?tab=claims&claim=${claimId}`
-      : "/app/admin?tab=claims";
+    return claimId ? getAdminClaimPath(claimId) : "/app/admin?tab=claims";
   }
 
   if (message.actionType === "view_club_profile") {
@@ -196,18 +230,38 @@ export function resolveInboxLink(message: InboxMessage): string {
     if (clubSlug) return `/clubs/${clubSlug}`;
   }
 
-  if (message.actionType === "claim_more_info") {
-    const claimId =
-      (typeof message.actionData.claimId === "string" &&
-        message.actionData.claimId.trim()) ||
+  if (message.actionType === "view_event") {
+    const eventId =
+      (typeof message.actionData.eventId === "string" &&
+        message.actionData.eventId.trim()) ||
       message.referenceId;
-    if (claimId) return `/claim-status/${claimId}`;
+    if (eventId && message.clubId) return getClubEventPath(message.clubId, eventId);
+    if (eventId) return `/events/${eventId}`;
   }
 
   const clubBase = message.clubId ? `/app/clubs/${message.clubId}` : null;
 
   if (message.actionType === "review_hiring_application") {
-    return clubBase ? `${clubBase}/recruiting` : "/app";
+    const listingId =
+      typeof message.actionData.listingId === "string"
+        ? message.actionData.listingId.trim()
+        : undefined;
+    const applicationId =
+      (typeof message.actionData.applicationId === "string" &&
+        message.actionData.applicationId.trim()) ||
+      message.referenceId ||
+      undefined;
+    if (message.clubId) {
+      return getClubRecruitingApplicationPath(message.clubId, {
+        listingId,
+        applicationId,
+      });
+    }
+    return "/app";
+  }
+
+  if (message.actionType === "review_join_request" && message.clubId) {
+    return getClubMembersPendingPath(message.clubId);
   }
 
   switch (message.type) {
@@ -218,7 +272,7 @@ export function resolveInboxLink(message: InboxMessage): string {
         (typeof message.actionData.claimId === "string" &&
           message.actionData.claimId.trim()) ||
         message.referenceId;
-      if (claimId) return `/claim-status/${claimId}`;
+      if (claimId) return getClaimStatusPath(claimId);
       const clubSlug =
         typeof message.actionData.clubSlug === "string"
           ? message.actionData.clubSlug.trim()
@@ -226,29 +280,70 @@ export function resolveInboxLink(message: InboxMessage): string {
       if (clubSlug) return `/clubs/${clubSlug}`;
       return "/explore";
     }
-    case "club_request_rejected":
-      return "/explore";
+    case "club_request_rejected": {
+      const requestId =
+        (typeof message.actionData.requestId === "string" &&
+          message.actionData.requestId.trim()) ||
+        message.referenceId;
+      return requestId ? getClubRequestStatusPath(requestId) : "/explore";
+    }
     case "club_claim_approved":
     case "club_request_approved":
       return clubBase ?? "/app";
+    case "join_request_submitted":
+      return clubBase ? getClubMembersPendingPath(message.clubId!) : "/app";
     case "admin_message":
     case "system_message":
-      return "/app/settings";
+      if (message.referenceType === "club_request" && message.referenceId) {
+        return getClubRequestStatusPath(message.referenceId);
+      }
+      return getDashboardInboxMessagePath(message.id);
     case "interview_invite":
     case "interview_confirmed":
     case "role_offer":
     case "application_update":
     case "offer_accepted":
     case "offer_declined":
-    case "candidate_selected_time":
-      return clubBase ? `${clubBase}/recruiting` : "/app";
+    case "candidate_selected_time": {
+      if (!message.clubId) return "/app";
+      const listingId =
+        typeof message.actionData.listingId === "string"
+          ? message.actionData.listingId.trim()
+          : undefined;
+      const applicationId =
+        (typeof message.actionData.applicationId === "string" &&
+          message.actionData.applicationId.trim()) ||
+        message.referenceId ||
+        undefined;
+      return getClubRecruitingApplicationPath(message.clubId, {
+        listingId,
+        applicationId,
+      });
+    }
+    case "ownership_transfer": {
+      const transferId =
+        (typeof message.actionData.transferId === "string" &&
+          message.actionData.transferId.trim()) ||
+        message.referenceId;
+      if (transferId) return getOwnershipTransferPath(transferId);
+      return getDashboardInboxMessagePath(message.id);
+    }
     case "club_invite":
     case "executive_invite":
     case "invite_accepted":
     case "invite_declined":
       return clubBase ?? "/app/join";
+    case "event_signup_pending":
+    case "event_cancelled": {
+      const eventId =
+        (typeof message.actionData.eventId === "string" &&
+          message.actionData.eventId.trim()) ||
+        message.referenceId;
+      if (eventId && message.clubId) return getClubEventPath(message.clubId, eventId);
+      return clubBase ? `${clubBase}/events` : "/app";
+    }
     default:
-      return clubBase ?? "/app";
+      return clubBase ?? getDashboardInboxMessagePath(message.id);
   }
 }
 

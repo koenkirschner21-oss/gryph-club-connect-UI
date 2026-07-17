@@ -27,6 +27,7 @@ import { getClubInitials } from "../../lib/clubUtils";
 import { formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { useClubMembers } from "../../hooks/useClubMembers";
+import { resolveEventDetailPath } from "../../lib/eventNavigation";
 import {
   computeClubSetupProgress,
   resolveClubSetupSettingsPath,
@@ -2262,7 +2263,7 @@ export default function ClubCommandCenter({
                 onManage={() =>
                   navigate(
                     row.kind === "event"
-                      ? `${eventsPath}?manageEvent=${row.eventId}`
+                      ? resolveEventDetailPath(row.eventId, club.id)
                       : `${meetingsPath}/${row.meetingId}`,
                   )
                 }

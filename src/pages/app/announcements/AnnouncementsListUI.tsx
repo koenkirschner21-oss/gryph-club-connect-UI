@@ -402,6 +402,7 @@ export function AnnouncementCard({
 
   return (
     <article
+      data-announcement-id={post.id}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{

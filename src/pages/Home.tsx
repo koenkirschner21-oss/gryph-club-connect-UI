@@ -7,6 +7,8 @@ import {
   getClubInitials,
   isUploadedClubBanner,
 } from "../lib/clubUtils";
+import { normalizeClaimStatus } from "../lib/clubClaimUtils";
+import { isClubPubliclyDiscoverable } from "../lib/clubPublicVisibility";
 import { supabase } from "../lib/supabaseClient";
 import BrandLogo from "../components/ui/BrandLogo";
 import Spinner from "../components/ui/Spinner";
@@ -32,6 +34,9 @@ function mapClubFromRow(row: Record<string, unknown>): Club {
     tags: [],
     contactEmail: (row.contact_email as string) ?? "",
     isPublic: (row.is_public as boolean) ?? true,
+    claimStatus: normalizeClaimStatus(row.claim_status),
+    setupCompleted: (row.setup_completed as boolean) ?? false,
+    isPublished: (row.is_published as boolean) ?? false,
     events: [],
     abbreviation: (row.abbreviation as string) ?? undefined,
   };
@@ -1113,6 +1118,9 @@ export default function Home() {
         .from("clubs")
         .select("*")
         .eq("is_public", true)
+        .eq("is_published", true)
+        .eq("setup_completed", true)
+        .eq("claim_status", "active")
         .order("member_count", { ascending: false });
 
       if (cancelled) return;
@@ -1124,9 +1132,9 @@ export default function Home() {
         return;
       }
 
-      const mapped = (data ?? []).map((row) =>
-        mapClubFromRow(row as Record<string, unknown>),
-      );
+      const mapped = (data ?? [])
+        .map((row) => mapClubFromRow(row as Record<string, unknown>))
+        .filter((club) => isClubPubliclyDiscoverable(club) && Boolean(club.slug));
 
       setFeaturedClubs(mapped.slice(0, 8));
       setFeaturedLoading(false);

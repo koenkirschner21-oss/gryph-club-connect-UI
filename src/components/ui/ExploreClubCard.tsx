@@ -8,6 +8,8 @@ import { Link } from "react-router-dom";
 import { Check } from "lucide-react";
 import { isUploadedClubBanner, getClubInitials } from "../../lib/clubUtils";
 import type { ExploreClubClaimState } from "../../lib/clubClaimUtils";
+import { buildLoginPath } from "../../lib/authRedirect";
+import { useAuthContext } from "../../context/useAuthContext";
 import type { Club } from "../../types";
 
 const ACCENT_RED = "#E51937";
@@ -78,12 +80,14 @@ function ExploreCardFooter({
   claimFocused,
   claimState,
   userManagesClub,
+  claimHref,
 }: {
   club: Club;
   joined: boolean;
   claimFocused: boolean;
   claimState: ExploreClubClaimState;
   userManagesClub: boolean;
+  claimHref: string;
 }) {
   if (claimFocused && claimState === "loading") {
     return (
@@ -128,7 +132,7 @@ function ExploreCardFooter({
         }}
       >
         <Link
-          to={`/clubs/${club.slug}/claim`}
+          to={claimHref}
           onClick={(event) => event.stopPropagation()}
           style={{
             flex: 1,
@@ -259,7 +263,7 @@ function ExploreCardFooter({
           flexShrink: 0,
         }}
       >
-        {userManagesClub ? "Open Workspace →" : "View Club →"}
+        View Club →
       </span>
     </div>
   );
@@ -278,6 +282,7 @@ export default function ExploreClubCard({
   userManagesClub?: boolean;
   claimFocused?: boolean;
 }) {
+  const { user } = useAuthContext();
   const [hovered, setHovered] = useState(false);
   const [descriptionPreview, setDescriptionPreview] = useState<{
     text: string;
@@ -299,8 +304,10 @@ export default function ExploreClubCard({
   const showClaimLoadingBadge = claimFocused && isClaimLoading;
   const cardHeight = claimFocused && isClaimable ? "340px" : "320px";
   const contentHeight = claimFocused && isClaimable ? "200px" : "180px";
-  const workspaceHref = `/app/clubs/${club.id}`;
-  const cardLinkTarget = userManagesClub ? workspaceHref : `/clubs/${club.slug}`;
+  // Explore cards always open the public profile — never jump into the workspace.
+  const cardLinkTarget = `/clubs/${club.slug}`;
+  const claimPath = `/clubs/${club.slug}/claim`;
+  const claimAuthPath = user ? claimPath : buildLoginPath(claimPath);
 
   useLayoutEffect(() => {
     const container = descriptionContainerRef.current;
@@ -525,6 +532,7 @@ export default function ExploreClubCard({
           claimFocused={claimFocused}
           claimState={claimState}
           userManagesClub={userManagesClub}
+          claimHref={claimAuthPath}
         />
       </div>
     </article>

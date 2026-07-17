@@ -753,6 +753,39 @@ export default function ClubAnnouncementsPage() {
   ]);
 
   useEffect(() => {
+    if (loading || memberAccess.loading) return;
+    const announcementId = searchParams.get("announcement");
+    if (!announcementId) return;
+
+    const match = posts.find((post) => post.id === announcementId);
+    if (match) {
+      setExpanded((prev) => ({ ...prev, [announcementId]: true }));
+      window.requestAnimationFrame(() => {
+        document
+          .querySelector(`[data-announcement-id="${announcementId}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      void markPostAsSeen(announcementId);
+    } else {
+      setFeedback({
+        type: "error",
+        text: "That announcement is no longer available or you don't have access.",
+      });
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("announcement");
+    setSearchParams(next, { replace: true });
+  }, [
+    loading,
+    memberAccess.loading,
+    searchParams,
+    setSearchParams,
+    posts,
+    markPostAsSeen,
+  ]);
+
+  useEffect(() => {
     if (
       searchParams.get("openTemplate") !== "true" ||
       !isPrivileged ||

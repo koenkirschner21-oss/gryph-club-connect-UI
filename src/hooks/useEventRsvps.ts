@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuthContext } from "../context/useAuthContext";
+import { clearEventFormResponses } from "../lib/eventRsvpActions";
 import type { EventRsvp, RsvpCounts, RsvpStatus } from "../types";
 
 /** Map a Supabase `event_rsvps` row (optionally joined with profiles) to EventRsvp. */
@@ -180,6 +181,8 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
         console.error("Failed to remove RSVP:", error.message);
         return false;
       }
+
+      await clearEventFormResponses(supabase, eventId, user.id);
 
       const prevStatus = myRsvpsRef.current[eventId];
       setMyRsvps((prev) => {

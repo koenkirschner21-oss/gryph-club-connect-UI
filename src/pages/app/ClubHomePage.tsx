@@ -1061,14 +1061,12 @@ function NextEventCard({
   rsvpStatus,
   eventId,
   clubId,
-  canManageEvents,
 }: {
   event: { title: string; date: string; time?: string; location?: string };
   eventsPath: string;
   rsvpStatus?: RsvpStatus | null;
   eventId?: string;
   clubId?: string;
-  canManageEvents?: boolean;
 }) {
   const timeLabel =
     event.time && event.time.trim() !== "" && event.time.toUpperCase() !== "TBD"
@@ -1080,9 +1078,7 @@ function NextEventCard({
       : null;
   const detailPath =
     eventId && clubId
-      ? canManageEvents
-        ? `${eventsPath}?manageEvent=${eventId}`
-        : resolveEventDetailPath(eventId, clubId, true)
+      ? resolveEventDetailPath(eventId, clubId)
       : eventsPath;
 
   return (
@@ -2377,13 +2373,9 @@ export default function ClubHomePage() {
                     clubName={club.name}
                     clubAbbreviation={club.abbreviation}
                     clubLogoUrl={club.logoUrl}
-                    actionLabel={canManageEvents ? "Manage Event →" : "View Event →"}
+                    actionLabel="View Event →"
                     onOpen={() => {
-                      if (canManageEvents) {
-                        navigate(`${eventsPath}?manageEvent=${event.id}`);
-                      } else {
-                        setSelectedEvent(event);
-                      }
+                      navigate(resolveEventDetailPath(event.id, clubId));
                     }}
                   />
                 ))}
@@ -2407,7 +2399,6 @@ export default function ClubHomePage() {
                 }}
                 eventId={nextEvent.id}
                 clubId={clubId}
-                canManageEvents={canManageEvents}
                 eventsPath={eventsPath}
                 rsvpStatus={myRsvps[nextEvent.id]}
               />

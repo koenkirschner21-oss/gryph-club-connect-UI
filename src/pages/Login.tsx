@@ -1,9 +1,14 @@
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuthContext } from "../context/useAuthContext";
 import { showToast } from "../components/ui/Toast";
 import { useIsMobile } from "../hooks/useWindowWidth";
+import {
+  buildSignupPath,
+  getSafeInternalRedirect,
+  storePendingAuthRedirect,
+} from "../lib/authRedirect";
 
 const AUTH_RED = "#E51937";
 const AUTH_RED_HOVER = "#cc0020";
@@ -307,19 +312,28 @@ function AuthPasswordField({
 
 export default function Login() {
   const { signIn } = useAuthContext();
-  const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const redirectParam = getSafeInternalRedirect(
+    new URLSearchParams(location.search).get("redirect"),
+  );
+  const signupHref = buildSignupPath(redirectParam ?? "/app");
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
+      if (redirectParam) {
+        storePendingAuthRedirect(redirectParam);
+      }
       await signIn(email, password);
-      navigate("/app");
+      // Stay on /login so LoginRedirectHandler / AuthContext can honor
+      // redirect + onboarding status without racing to /app.
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Login failed", "error");
     } finally {
@@ -409,7 +423,7 @@ export default function Login() {
         >
           Don&apos;t have an account?{" "}
           <Link
-            to="/signup"
+            to={signupHref}
             style={{ color: "#FFC429", textDecoration: "none", fontWeight: 500 }}
           >
             Sign Up

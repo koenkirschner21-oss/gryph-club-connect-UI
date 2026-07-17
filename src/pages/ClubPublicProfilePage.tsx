@@ -36,6 +36,7 @@ import {
   type PublicClubSocialLinks,
 } from "../lib/publicClubProfileDisplay";
 import { recordPublicProfileEvent } from "../lib/publicProfileAnalytics";
+import { buildLoginPath } from "../lib/authRedirect";
 import {
   canBypassPublicClubVisibility,
   isClubPubliclyDiscoverableRow,
@@ -951,7 +952,15 @@ export default function ClubPublicProfilePage() {
 
   function handleHiringClick() {
     if (clubId) void recordPublicProfileEvent(clubId, "hiring_click");
-    navigate(user && joined ? `/app/clubs/${clubId}/recruiting` : "/hiring");
+    if (user && joined) {
+      navigate(`/app/clubs/${clubId}/recruiting`);
+      return;
+    }
+    // Public hiring board filtered to this club's open roles
+    const params = new URLSearchParams();
+    if (club?.slug) params.set("club", club.slug);
+    else if (clubId) params.set("clubId", clubId);
+    navigate(`/hiring?${params.toString()}`);
   }
 
   function handleOpenReportClub() {
@@ -1238,7 +1247,7 @@ export default function ClubPublicProfilePage() {
                       textAlign: "center",
                     }}
                   >
-                    Open Workspace
+                    Open Club Workspace
                   </Link>
                   <button
                     type="button"
@@ -1262,7 +1271,13 @@ export default function ClubPublicProfilePage() {
                 <>
                   <button
                     type="button"
-                    onClick={() => navigate(`/clubs/${club.slug}/claim`)}
+                    onClick={() =>
+                      navigate(
+                        user
+                          ? `/clubs/${club.slug}/claim`
+                          : buildLoginPath(`/clubs/${club.slug}/claim`),
+                      )
+                    }
                     style={{
                       background: "#E51937",
                       color: "#ffffff",
@@ -2187,7 +2202,7 @@ function ClubAboutModal({
                 cursor: "pointer",
               }}
             >
-              Open Workspace
+              Open Club Workspace
             </button>
           ) : membershipType === "no_membership" ||
             membershipType === "invite_only" ? null : (

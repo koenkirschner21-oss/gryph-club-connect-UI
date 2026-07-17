@@ -1,9 +1,9 @@
 import {
   Bell,
   Briefcase,
-  Building,
   Shield,
   Star,
+  UserPlus,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -234,7 +234,7 @@ function inboxAvatarIcon(message: InboxMessage): AvatarIconConfig {
     case "club_request_submitted":
     case "club_request_more_info":
     case "new_club_request":
-      return { Icon: Building, background: RED, color: "#ffffff" };
+      return { Icon: UserPlus, background: RED, color: "#ffffff" };
     case "application_update":
       return { Icon: Briefcase, background: "#555555", color: "#ffffff" };
     case "executive_invite":
@@ -315,7 +315,7 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
     case "claim_rejected":
       return [{ label: "View Club Profile", variant: "outlined" }];
     case "club_request_rejected":
-      return [{ label: "Browse Clubs", variant: "outlined" }];
+      return [{ label: "View Request Status", variant: "outlined" }];
     case "claim_submitted":
     case "club_request_submitted":
       return [{ label: "View Status", variant: "outlined" }];
@@ -323,7 +323,7 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
     case "club_request_more_info":
       return [{ label: "View Status", variant: "outlined" }];
     case "join_rejected":
-      return [{ label: "Read More →", variant: "link" }];
+      return [{ label: "Browse Clubs", variant: "outlined" }];
     case "new_join_request":
       return [{ label: "Review Request", variant: "outlined" }];
     case "executive_invite":
@@ -335,6 +335,14 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
       return [{ label: "View Invite", variant: "outlined" }];
     case "role_offer":
       return [{ label: "Respond to Offer", variant: "solid" }];
+    case "ownership_transfer":
+      if (message.actionType === "former_owner_role_choice") {
+        return [{ label: "Choose Role →", variant: "solid" }];
+      }
+      if (message.actionType === "ownership_transfer_response") {
+        return [{ label: "Review Transfer", variant: "solid" }];
+      }
+      return [{ label: "View Transfer", variant: "outlined" }];
     case "application_update":
       if (message.actionType === "review_hiring_application") {
         return [{ label: "Review Applicant", variant: "solid" }];
@@ -350,7 +358,17 @@ export function resolveActionButtons(message: InboxMessage): InboxActionButton[]
       if (message.actionType === "review_hiring_application") {
         return [{ label: "Review Applicant", variant: "solid" }];
       }
-      return [{ label: "Read More →", variant: "link" }];
+      if (message.actionType === "view_event") {
+        return [{ label: "View Event", variant: "outlined" }];
+      }
+      if (message.actionType === "former_owner_role_choice") {
+        return [{ label: "Choose Role →", variant: "solid" }];
+      }
+      if (message.actionType === "ownership_transfer_response") {
+        return [{ label: "Review Transfer", variant: "solid" }];
+      }
+      // No dead generic Read More — only show a button when an action type is known.
+      return [];
   }
 }
 

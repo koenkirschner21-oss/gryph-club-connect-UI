@@ -17,6 +17,7 @@ import WorkspaceLayout from "./components/workspace/WorkspaceLayout";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuthContext } from "./context/useAuthContext";
 import { supabase } from "./lib/supabaseClient";
+import { resolvePostAuthNavigation } from "./lib/authRedirect";
 import Spinner from "./components/ui/Spinner";
 import PreviewModeBanner from "./components/ui/PreviewModeBanner";
 import CookieConsentBanner from "./components/ui/CookieConsentBanner";
@@ -28,6 +29,8 @@ import Explore from "./pages/Explore";
 import ClubPublicProfilePage from "./pages/ClubPublicProfilePage";
 import ClubClaimPage from "./pages/ClubClaimPage";
 import ClaimStatusPage from "./pages/ClaimStatusPage";
+import ClubRequestStatusPage from "./pages/ClubRequestStatusPage";
+import OwnershipTransferFollowUpPage from "./pages/OwnershipTransferFollowUpPage";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -140,6 +143,13 @@ const ONBOARDING_EXEMPT_PREFIXES = [
   "/terms",
   "/events/",
   "/events",
+  "/clubs/",
+  "/explore",
+  "/hiring",
+  "/executive-invite",
+  "/claim-status",
+  "/club-request-status",
+  "/ownership-transfer",
 ];
 
 function isOnboardingExemptPath(pathname: string): boolean {
@@ -175,22 +185,25 @@ function LoginRedirectHandler() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (loading || !user) return;
-    if (location.pathname !== "/login") return;
-
-    const redirect = new URLSearchParams(location.search).get("redirect");
-    if (redirect && redirect.startsWith("/")) {
-      navigate(redirect, { replace: true });
+    if (loading || !user || onboardingCompleted === null) return;
+    if (location.pathname !== "/login" && location.pathname !== "/signup") {
       return;
     }
 
-    if (onboardingCompleted === false) {
-      navigate("/onboarding", { replace: true });
-      return;
-    }
-
-    navigate("/app", { replace: true });
-  }, [loading, user, location.pathname, location.search, navigate, onboardingCompleted]);
+    const redirectParam = new URLSearchParams(location.search).get("redirect");
+    const next = resolvePostAuthNavigation({
+      redirectParam,
+      onboardingCompleted,
+    });
+    navigate(next.path, { replace: true });
+  }, [
+    loading,
+    user,
+    location.pathname,
+    location.search,
+    navigate,
+    onboardingCompleted,
+  ]);
 
   return null;
 }
@@ -377,6 +390,22 @@ export default function App() {
                   element={
                     <ProtectedRoute>
                       <ClaimStatusPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/club-request-status/:requestId"
+                  element={
+                    <ProtectedRoute>
+                      <ClubRequestStatusPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/ownership-transfer/:transferId"
+                  element={
+                    <ProtectedRoute>
+                      <OwnershipTransferFollowUpPage />
                     </ProtectedRoute>
                   }
                 />

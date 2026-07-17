@@ -34,6 +34,12 @@ function mapApplyToHiringListingError(message: string): string {
   if (message.includes("listing_deadline_passed")) {
     return "The application deadline for this position has passed.";
   }
+  if (
+    message.includes("missing_required_answers") ||
+    message.includes("missing_required_upload")
+  ) {
+    return "Please complete all required questions and uploads before submitting.";
+  }
   return "Could not submit your application. Please try again.";
 }
 

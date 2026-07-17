@@ -146,7 +146,7 @@ export function MyClubsHeader() {
       >
         My Clubs
       </h2>
-      <p style={{ margin: 0, fontSize: "13px", color: "#777777", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, fontSize: "13px", color: "#999999", lineHeight: 1.5 }}>
         Quick access to the clubs you belong to and manage.
       </p>
     </div>
@@ -228,7 +228,7 @@ export function MyClubsFilterBar({
   onSortChange: (value: ClubSortOption) => void;
 }) {
   return (
-    <div style={{ marginBottom: "16px" }}>
+    <div style={{ marginBottom: "16px", width: "100%" }}>
       <div
         style={{
           display: "flex",
@@ -236,6 +236,7 @@ export function MyClubsFilterBar({
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
+          width: "100%",
         }}
       >
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -266,7 +267,7 @@ export function MyClubsFilterBar({
         <select
           value={sort}
           onChange={(event) => onSortChange(event.target.value as ClubSortOption)}
-          style={CONTROL_STYLE}
+          style={{ ...CONTROL_STYLE, marginLeft: "auto" }}
           aria-label="Sort clubs"
         >
           <option value="recent">Recently Active</option>
@@ -308,7 +309,8 @@ function MyClubsTabCard({
         padding: "18px 16px 16px",
         display: "flex",
         flexDirection: "column",
-        height: "284px",
+        minHeight: "284px",
+        height: "100%",
         boxSizing: "border-box",
       }}
     >
@@ -370,7 +372,7 @@ function MyClubsTabCard({
           style={{
             margin: "11px 0 0",
             fontSize: "11px",
-            color: "#666666",
+            color: "#8a8a8a",
             lineHeight: 1.4,
             minHeight: "17px",
           }}
@@ -382,7 +384,7 @@ function MyClubsTabCard({
           style={{
             margin: "6px 0 0",
             fontSize: "11px",
-            color: "#888888",
+            color: "#999999",
             fontWeight: 500,
             minHeight: "16px",
           }}
@@ -396,7 +398,8 @@ function MyClubsTabCard({
           display: "flex",
           flexDirection: "column",
           gap: "7px",
-          marginTop: "16px",
+          marginTop: "auto",
+          paddingTop: "16px",
         }}
       >
         <button
@@ -423,7 +426,7 @@ function MyClubsTabCard({
           style={{
             display: "block",
             textAlign: "center",
-            color: "#777777",
+            color: "#999999",
             fontSize: "12px",
             fontWeight: 500,
             textDecoration: "none",
@@ -461,10 +464,12 @@ export function MyClubsGrid({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, 236px)",
+        gridTemplateColumns: isMobile
+          ? "1fr"
+          : "repeat(auto-fill, minmax(200px, 1fr))",
         gap: "16px",
         alignItems: "stretch",
-        justifyContent: isMobile ? "stretch" : "start",
+        width: "100%",
       }}
     >
       {clubs.map((club) => (

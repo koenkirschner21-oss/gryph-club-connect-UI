@@ -13,7 +13,7 @@ import {
   formatSignupError,
   isAllowedSignupEmail,
 } from "../lib/authProfile";
-import { buildAuthCallbackUrl } from "../lib/authRedirect";
+import { buildAuthCallbackUrl, resolvePostAuthNavigation } from "../lib/authRedirect";
 import {
   AuthContext,
   type AuthContextValue,
@@ -152,17 +152,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const redirect = new URLSearchParams(location.search).get("redirect");
-    if (location.pathname === "/login" && redirect?.startsWith("/")) {
-      navigate(redirect, { replace: true });
-      return;
-    }
-
-    if (onboardingCompleted === false) {
-      navigate("/onboarding", { replace: true });
-    } else {
-      navigate("/app", { replace: true });
-    }
+    const redirectParam = new URLSearchParams(location.search).get("redirect");
+    const next = resolvePostAuthNavigation({
+      redirectParam,
+      onboardingCompleted,
+    });
+    navigate(next.path, { replace: true });
   }, [
     loading,
     user,

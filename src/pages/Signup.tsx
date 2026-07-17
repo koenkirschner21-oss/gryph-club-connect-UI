@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuthContext } from "../context/useAuthContext";
 import { showToast } from "../components/ui/Toast";
@@ -9,6 +9,12 @@ import {
   isAllowedSignupEmail,
   signupEmailValidationMessage,
 } from "../lib/authProfile";
+import {
+  buildLoginPath,
+  getSafeInternalRedirect,
+  resolvePostAuthNavigation,
+  storePendingAuthRedirect,
+} from "../lib/authRedirect";
 
 const AUTH_RED = "#E51937";
 const AUTH_RED_HOVER = "#cc0020";
@@ -318,6 +324,7 @@ void EMAIL_DOMAIN_ERROR;
 export default function Signup() {
   const { signUp } = useAuthContext();
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
 
   const [email, setEmail] = useState("");
@@ -328,6 +335,11 @@ export default function Signup() {
   const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<
     string | null
   >(null);
+
+  const redirectParam = getSafeInternalRedirect(
+    new URLSearchParams(location.search).get("redirect"),
+  );
+  const loginHref = buildLoginPath(redirectParam ?? "/app");
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -345,13 +357,21 @@ export default function Signup() {
     setEmailError(null);
     setLoading(true);
     try {
+      if (redirectParam) {
+        storePendingAuthRedirect(redirectParam);
+      }
       const { needsEmailConfirmation } = await signUp(normalizedEmail, password);
       if (needsEmailConfirmation) {
         setPendingConfirmationEmail(normalizedEmail);
         return;
       }
-      console.info("[auth] signup redirect", { destination: "/onboarding" });
-      navigate("/onboarding");
+      // New accounts always need onboarding; preserve deep-link for after.
+      const next = resolvePostAuthNavigation({
+        redirectParam,
+        onboardingCompleted: false,
+      });
+      console.info("[auth] signup redirect", { destination: next.path });
+      navigate(next.path, { replace: true });
     } catch (err) {
       console.error("[auth] signup failed:", err);
       showToast(formatSignupError(err), "error");
@@ -510,7 +530,7 @@ export default function Signup() {
         >
           Already have an account?{" "}
           <Link
-            to="/login"
+            to={loginHref}
             style={{ color: "#FFC429", textDecoration: "none", fontWeight: 500 }}
           >
             Log In

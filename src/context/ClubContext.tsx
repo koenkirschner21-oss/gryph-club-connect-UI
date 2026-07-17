@@ -253,10 +253,15 @@ export function ClubProvider({ children }: { children: ReactNode }) {
         memberClubErr = mRes.error;
       }
 
+      // Browse dataset only: published + publicly discoverable.
+      // Claimable/unclaimed clubs are loaded separately (Explore claim directory).
       const publicClubsRes = await supabase
         .from("clubs")
         .select("*")
         .eq("is_public", true)
+        .eq("is_published", true)
+        .eq("setup_completed", true)
+        .eq("claim_status", "active")
         .order("name");
 
       if (isStale()) return;

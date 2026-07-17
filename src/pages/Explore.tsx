@@ -31,7 +31,11 @@ import { resolveOnboardingIntent } from "../lib/onboardingIntent";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import ExploreClubCard from "../components/ui/ExploreClubCard";
 import Spinner from "../components/ui/Spinner";
+import { buildLoginPath } from "../lib/authRedirect";
 import type { Club } from "../types";
+
+/** Min distinct discoverable clubs before showing Most Active / category rows. */
+const DISCOVERY_ROW_MIN_CLUBS = 7;
 
 const PAGE_BG = "#0f0f0f";
 const ACCENT_RED = "#E51937";
@@ -353,6 +357,11 @@ export default function Explore() {
   const [guestClubs, setGuestClubs] = useState<Club[]>([]);
   const [guestLoading, setGuestLoading] = useState(true);
   const [guestError, setGuestError] = useState<string | null>(null);
+  const [claimDirectoryClubs, setClaimDirectoryClubs] = useState<Club[]>([]);
+  const [claimDirectoryLoading, setClaimDirectoryLoading] = useState(false);
+  const [claimDirectoryError, setClaimDirectoryError] = useState<string | null>(
+    null,
+  );
   const [manageIntent, setManageIntent] = useState(false);
   const [claimCreateModalOpen, setClaimCreateModalOpen] = useState(false);
   const [claimCreateModalMode, setClaimCreateModalMode] =
@@ -414,7 +423,9 @@ export default function Explore() {
         setGuestClubs([]);
       } else {
         setGuestClubs(
-          (data ?? []).map((row) => mapPublicClubRow(row as Record<string, unknown>)),
+          (data ?? [])
+            .map((row) => mapPublicClubRow(row as Record<string, unknown>))
+            .filter((club) => isClubPubliclyDiscoverable(club)),
         );
       }
       setGuestLoading(false);
@@ -426,21 +437,82 @@ export default function Explore() {
     };
   }, [user]);
 
-  const clubs = user ? contextClubs : guestClubs;
-  const loading = user ? contextLoading : guestLoading;
-  const error = user ? contextError : guestError;
+  // Dedicated claimable directory — never derived from published browse results.
+  useEffect(() => {
+    const shouldLoad =
+      claimCreateModalOpen ||
+      claimCreateModalMode === "claim" ||
+      isClaimFocusedExplore;
+
+    if (!shouldLoad) return;
+
+    let cancelled = false;
+
+    async function loadClaimDirectory() {
+      setClaimDirectoryLoading(true);
+      setClaimDirectoryError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from("clubs")
+        .select("*")
+        .eq("is_public", true)
+        .eq("claim_status", "unclaimed")
+        .order("name");
+
+      if (cancelled) return;
+
+      if (fetchError) {
+        console.error("Failed to load claimable clubs:", fetchError.message);
+        setClaimDirectoryError(fetchError.message);
+        setClaimDirectoryClubs([]);
+      } else {
+        setClaimDirectoryClubs(
+          (data ?? []).map((row) =>
+            mapPublicClubRow(row as Record<string, unknown>),
+          ),
+        );
+      }
+      setClaimDirectoryLoading(false);
+    }
+
+    void loadClaimDirectory();
+    return () => {
+      cancelled = true;
+    };
+  }, [claimCreateModalOpen, claimCreateModalMode, isClaimFocusedExplore]);
+
+  const browseClubs = user ? contextClubs : guestClubs;
+  const clubs = isClaimFocusedExplore ? claimDirectoryClubs : browseClubs;
+  const loading = isClaimFocusedExplore
+    ? claimDirectoryLoading
+    : user
+      ? contextLoading
+      : guestLoading;
+  const error = isClaimFocusedExplore
+    ? claimDirectoryError
+    : user
+      ? contextError
+      : guestError;
 
   const discoverableClubs = useMemo(() => {
-    if (isClaimFocusedExplore) return clubs;
+    if (isClaimFocusedExplore) return claimDirectoryClubs;
 
-    return clubs.filter((club) => {
+    return browseClubs.filter((club) => {
       if (isClubPubliclyDiscoverable(club)) return true;
       if (!user?.id) return false;
       if (isJoined(club.id) || isPending(club.id)) return true;
       const role = getUserRole(club.id);
       return role === "owner" || role === "executive";
     });
-  }, [clubs, isClaimFocusedExplore, user?.id, isJoined, isPending, getUserRole]);
+  }, [
+    browseClubs,
+    claimDirectoryClubs,
+    isClaimFocusedExplore,
+    user?.id,
+    isJoined,
+    isPending,
+    getUserRole,
+  ]);
 
   const [claimMetaReady, setClaimMetaReady] = useState(false);
   const [activeOwnerCountByClubId, setActiveOwnerCountByClubId] = useState<
@@ -454,7 +526,12 @@ export default function Explore() {
   >(() => new Set());
 
   useEffect(() => {
-    if (clubs.length === 0) {
+    const metaSource =
+      claimCreateModalOpen || isClaimFocusedExplore
+        ? claimDirectoryClubs
+        : clubs;
+
+    if (metaSource.length === 0) {
       setActiveOwnerCountByClubId({});
       setPendingClaimClubIds(new Set());
       setUserPendingClaimClubIds(new Set());
@@ -466,7 +543,7 @@ export default function Explore() {
     setClaimMetaReady(false);
 
     void (async () => {
-      const clubIds = clubs.map((club) => club.id);
+      const clubIds = metaSource.map((club) => club.id);
 
       const [ownersRes, pendingRes, userPendingRes] = await Promise.all([
         supabase
@@ -511,7 +588,13 @@ export default function Explore() {
     return () => {
       cancelled = true;
     };
-  }, [clubs, user?.id]);
+  }, [
+    clubs,
+    claimDirectoryClubs,
+    claimCreateModalOpen,
+    isClaimFocusedExplore,
+    user?.id,
+  ]);
 
   const claimStateForClub = useCallback(
     (club: Club): ExploreClubClaimState => {
@@ -568,12 +651,13 @@ export default function Explore() {
     [user, isJoined],
   );
 
-  const mostActiveClubs = useMemo(
-    () => sortClubsByMemberActivity(discoverableClubs).slice(0, 6),
-    [discoverableClubs],
-  );
+  const mostActiveClubs = useMemo(() => {
+    if (discoverableClubs.length < DISCOVERY_ROW_MIN_CLUBS) return [];
+    return sortClubsByMemberActivity(discoverableClubs).slice(0, 6);
+  }, [discoverableClubs]);
 
   const featuredCategoryRows = useMemo(() => {
+    if (discoverableClubs.length < DISCOVERY_ROW_MIN_CLUBS) return [];
     const order = ["Business", "Science", "Culture", "Sports", "Community"];
     return order
       .map((category) => ({
@@ -620,10 +704,15 @@ export default function Explore() {
   const claimableClubs = useMemo(
     () =>
       sortClubsByMemberActivity(
-        clubs.filter((club) => claimStateForClub(club) === "claimable"),
+        claimDirectoryClubs.filter(
+          (club) => claimStateForClub(club) === "claimable",
+        ),
       ),
-    [clubs, claimStateForClub],
+    [claimDirectoryClubs, claimStateForClub],
   );
+
+  const claimDirectoryReady =
+    !claimDirectoryLoading && claimMetaReady && !claimDirectoryError;
 
   const categoryCount = Math.max(categories.length - 1, 0);
   const clubCountLabel =
@@ -1279,7 +1368,7 @@ export default function Explore() {
                   ← Back to options
                 </button>
 
-                {!claimMetaReady ? (
+                {!claimDirectoryReady ? (
                   <div style={{ display: "grid", gap: "10px" }} aria-busy="true" aria-label="Loading claimable clubs">
                     {[0, 1, 2].map((index) => (
                       <div
@@ -1292,6 +1381,23 @@ export default function Explore() {
                         }}
                       />
                     ))}
+                  </div>
+                ) : claimDirectoryError ? (
+                  <div
+                    style={{
+                      border: "1px solid #2a2a2a",
+                      borderRadius: "12px",
+                      padding: "22px",
+                      textAlign: "center",
+                      background: "#111111",
+                    }}
+                  >
+                    <p style={{ margin: 0, color: "#ffffff", fontSize: "15px", fontWeight: 700 }}>
+                      Could not load claimable clubs.
+                    </p>
+                    <p style={{ margin: "8px 0 0", color: "#777777", fontSize: "13px" }}>
+                      Please check your connection and try again.
+                    </p>
                   </div>
                 ) : claimableClubs.length === 0 ? (
                   <div
@@ -1335,7 +1441,7 @@ export default function Explore() {
                         to={
                           user
                             ? `/clubs/${club.slug}/claim`
-                            : `/signup?redirect=/clubs/${club.slug}/claim`
+                            : buildLoginPath(`/clubs/${club.slug}/claim`)
                         }
                         onClick={() => setClaimCreateModalOpen(false)}
                         style={{

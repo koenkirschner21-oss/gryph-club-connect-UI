@@ -613,43 +613,43 @@ function EventsTabEventRow({
             style={{
               margin: "4px 0 8px",
               fontSize: "13px",
-              color: "#777777",
+            color: "#999999",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {event.clubName}
+        </p>
+        {timeLabel ? (
+          <p
+            style={{
+              margin: "0 0 4px",
+              fontSize: "12px",
+              color: "#999999",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Clock size={12} aria-hidden />
+            {timeLabel}
+          </p>
+        ) : null}
+        {showLocation ? (
+          <p
+            style={{
+              margin: 0,
+              fontSize: "12px",
+              color: "#999999",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            {event.clubName}
-          </p>
-          {timeLabel ? (
-            <p
-              style={{
-                margin: "0 0 4px",
-                fontSize: "12px",
-                color: "#777777",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              <Clock size={12} aria-hidden />
-              {timeLabel}
-            </p>
-          ) : null}
-          {showLocation ? (
-            <p
-              style={{
-                margin: 0,
-                fontSize: "12px",
-                color: "#777777",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
               <MapPin size={12} aria-hidden />
               {event.location.trim()}
             </p>
@@ -698,7 +698,7 @@ export function EventsTabHeader({
       <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#ffffff" }}>
         Events this week
       </h2>
-      <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#777777" }}>
+      <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#999999" }}>
         {eventCount} event{eventCount === 1 ? "" : "s"} · {clubCount} club
         {clubCount === 1 ? "" : "s"}
       </p>

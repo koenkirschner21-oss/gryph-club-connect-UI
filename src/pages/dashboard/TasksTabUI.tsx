@@ -10,6 +10,7 @@ import {
 import { Link } from "react-router-dom";
 import LinkedMeetingCancelledLabel from "../../components/tasks/LinkedMeetingCancelledLabel";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
+import { getClubTaskPath } from "../../lib/deepLinks";
 
 const CARD_STYLE = {
   background: "#141414",
@@ -98,7 +99,7 @@ function daysUntilDue(dueDate?: string): number | null {
 function daysLeftColor(days: number): string {
   if (days <= 3) return "#E51937";
   if (days <= 7) return "#FFC429";
-  return "#555555";
+  return "#888888";
 }
 
 function daysLeftLabel(days: number): string {
@@ -108,6 +109,12 @@ function daysLeftLabel(days: number): string {
   }
   if (days === 0) return "Due today";
   return `${days} day${days === 1 ? "" : "s"} left`;
+}
+
+export function isTaskOverdue(task: TasksTabTask): boolean {
+  if (task.status === "done") return false;
+  const days = daysUntilDue(task.dueDate);
+  return days !== null && days < 0;
 }
 
 function taskTypeLabel(taskType: string): string {
@@ -554,7 +561,7 @@ export function TaskBreakdownCard({
   segments: Array<{ key: string; label: string; color: string; count: number }>;
 }) {
   return (
-    <div style={{ ...CARD_STYLE, flex: 1, minWidth: 0 }}>
+    <div style={{ ...CARD_STYLE, flex: "1 1 280px", minWidth: 0, maxWidth: "420px" }}>
       <h3 style={{ margin: "0 0 16px", fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
         Task Breakdown
       </h3>
@@ -651,9 +658,48 @@ export function DashboardTaskScopeToggle({
   );
 }
 
-export function TasksFilterBar({
+export function TasksSearchBar({
   search,
   onSearchChange,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        background: "#1a1a1a",
+        border: "1px solid #2a2a2a",
+        borderRadius: "8px",
+        padding: "10px 14px",
+        width: "100%",
+        marginBottom: "16px",
+        boxSizing: "border-box",
+      }}
+    >
+      <Search size={16} color="#888888" aria-hidden />
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder="Search tasks..."
+        style={{
+          flex: 1,
+          background: "transparent",
+          border: "none",
+          outline: "none",
+          color: "#ffffff",
+          fontSize: "13px",
+        }}
+      />
+    </label>
+  );
+}
+
+export function TasksFilterBar({
   clubFilter,
   onClubFilterChange,
   clubOptions,
@@ -661,9 +707,9 @@ export function TasksFilterBar({
   onGroupByChange,
   sort,
   onSortChange,
+  overdueOnly,
+  onOverdueOnlyChange,
 }: {
-  search: string;
-  onSearchChange: (value: string) => void;
   clubFilter: string;
   onClubFilterChange: (value: string) => void;
   clubOptions: Array<{ id: string; name: string }>;
@@ -671,105 +717,93 @@ export function TasksFilterBar({
   onGroupByChange: (value: TaskGroupByOption) => void;
   sort: TaskSortOption;
   onSortChange: (value: TaskSortOption) => void;
+  overdueOnly: boolean;
+  onOverdueOnlyChange: (value: boolean) => void;
 }) {
+  const controlStyle: React.CSSProperties = {
+    background: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    color: "#cccccc",
+    fontSize: "13px",
+    width: "100%",
+  };
+
   return (
-    <div style={{ marginBottom: "16px" }}>
-      <div
+    <div
+      style={{
+        ...CARD_STYLE,
+        flex: "1 1 260px",
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+      }}
+    >
+      <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: "#ffffff" }}>
+        Filters & sorting
+      </h3>
+
+      <select
+        value={clubFilter}
+        onChange={(event) => onClubFilterChange(event.target.value)}
+        style={controlStyle}
+        aria-label="Filter by club"
+      >
+        <option value="all">All Clubs</option>
+        {clubOptions.map((club) => (
+          <option key={club.id} value={club.id}>
+            {club.name}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={groupBy}
+        onChange={(event) => onGroupByChange(event.target.value as TaskGroupByOption)}
+        style={controlStyle}
+        aria-label="Group tasks by"
+      >
+        <option value="status">Group by: Progress Status</option>
+        <option value="deadline">Group by: Deadline</option>
+        <option value="club">Group by: Club</option>
+        <option value="priority">Group by: Priority</option>
+        <option value="task_type">Group by: Task Type</option>
+      </select>
+
+      <select
+        value={sort}
+        onChange={(event) => onSortChange(event.target.value as TaskSortOption)}
+        style={controlStyle}
+        aria-label="Sort tasks"
+      >
+        <option value="due_date">Sort: Due Date</option>
+        <option value="priority">Sort: Priority</option>
+        <option value="status">Sort: Status</option>
+        <option value="club_name">Sort: Club Name</option>
+      </select>
+
+      <label
         style={{
           display: "flex",
-          flexWrap: "wrap",
-          gap: "12px",
-          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: "10px",
+          fontSize: "13px",
+          color: "#cccccc",
+          cursor: "pointer",
+          userSelect: "none",
+          marginTop: "4px",
         }}
       >
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            background: "#1a1a1a",
-            border: "1px solid #2a2a2a",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            width: "min(100%, 240px)",
-          }}
-        >
-          <Search size={16} color="#555555" aria-hidden />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search tasks..."
-            style={{
-              flex: 1,
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "#ffffff",
-              fontSize: "13px",
-            }}
-          />
-        </label>
-
-        <select
-          value={clubFilter}
-          onChange={(event) => onClubFilterChange(event.target.value)}
-          style={{
-            background: "#1a1a1a",
-            border: "1px solid #2a2a2a",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            color: "#cccccc",
-            fontSize: "13px",
-          }}
-        >
-          <option value="all">All Clubs</option>
-          {clubOptions.map((club) => (
-            <option key={club.id} value={club.id}>
-              {club.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={groupBy}
-          onChange={(event) => onGroupByChange(event.target.value as TaskGroupByOption)}
-          style={{
-            background: "#1a1a1a",
-            border: "1px solid #2a2a2a",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            color: "#cccccc",
-            fontSize: "13px",
-          }}
-          aria-label="Group tasks by"
-        >
-          <option value="status">Group by: Progress Status</option>
-          <option value="deadline">Group by: Deadline</option>
-          <option value="club">Group by: Club</option>
-          <option value="priority">Group by: Priority</option>
-          <option value="task_type">Group by: Task Type</option>
-        </select>
-
-        <select
-          value={sort}
-          onChange={(event) => onSortChange(event.target.value as TaskSortOption)}
-          style={{
-            background: "#1a1a1a",
-            border: "1px solid #2a2a2a",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            color: "#cccccc",
-            fontSize: "13px",
-          }}
-          aria-label="Sort tasks"
-        >
-          <option value="due_date">Sort: Due Date</option>
-          <option value="priority">Sort: Priority</option>
-          <option value="status">Sort: Status</option>
-          <option value="club_name">Sort: Club Name</option>
-        </select>
-      </div>
+        <input
+          type="checkbox"
+          checked={overdueOnly}
+          onChange={(event) => onOverdueOnlyChange(event.target.checked)}
+          style={{ width: "16px", height: "16px", accentColor: "#E51937" }}
+        />
+        Overdue only
+      </label>
     </div>
   );
 }
@@ -898,7 +932,7 @@ export function TasksTabTaskRow({
 
   return (
     <Link
-      to={`/app/clubs/${task.clubId}/tasks`}
+      to={getClubTaskPath(task.clubId, task.id)}
       style={{ textDecoration: "none", display: "block" }}
     >
       <div
@@ -925,7 +959,7 @@ export function TasksTabTaskRow({
             {task.title}
           </p>
           <LinkedMeetingCancelledLabel show={task.linkedMeetingCancelled} />
-          <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#555555" }}>
+          <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#999999" }}>
             {task.clubName} · {taskTypeLabel(task.taskType)}
           </p>
         </div>
@@ -1019,19 +1053,19 @@ export function TaskClubGroupSection({
             }}
           />
         </div>
-        <span style={{ fontSize: "12px", color: "#777777", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: "12px", color: "#999999", whiteSpace: "nowrap" }}>
           {group.doneCount} of {group.totalCount} done
         </span>
         {expanded ? (
-          <ChevronUp size={18} color="#555555" aria-hidden />
+          <ChevronUp size={18} color="#888888" aria-hidden />
         ) : (
-          <ChevronDown size={18} color="#555555" aria-hidden />
+          <ChevronDown size={18} color="#888888" aria-hidden />
         )}
       </button>
 
       {expanded ? (
         group.tasks.length === 0 ? (
-          <p style={{ margin: 0, textAlign: "center", fontSize: "12px", color: "#555555" }}>
+          <p style={{ margin: 0, textAlign: "center", fontSize: "12px", color: "#888888" }}>
             {emptyMessage}
           </p>
         ) : (
@@ -1066,7 +1100,7 @@ export function TasksTabFooter({
     : `Showing ${visibleCount} tasks across ${clubCount} club${clubCount === 1 ? "" : "s"}`;
 
   return (
-    <p style={{ margin: "8px 0 0", textAlign: "center", fontSize: "12px", color: "#555555" }}>
+    <p style={{ margin: "8px 0 0", textAlign: "center", fontSize: "12px", color: "#888888" }}>
       {label}
     </p>
   );
@@ -1365,19 +1399,19 @@ export function TaskListGroupSection({
         <span style={{ fontSize: "14px", fontWeight: 700, color: "#ffffff", flex: 1 }}>
           {group.label}
         </span>
-        <span style={{ fontSize: "12px", color: "#777777", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: "12px", color: "#999999", whiteSpace: "nowrap" }}>
           {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
         </span>
         {expanded ? (
-          <ChevronUp size={18} color="#555555" aria-hidden />
+          <ChevronUp size={18} color="#888888" aria-hidden />
         ) : (
-          <ChevronDown size={18} color="#555555" aria-hidden />
+          <ChevronDown size={18} color="#888888" aria-hidden />
         )}
       </button>
 
       {expanded ? (
         group.tasks.length === 0 ? (
-          <p style={{ margin: 0, textAlign: "center", fontSize: "12px", color: "#555555" }}>
+          <p style={{ margin: 0, textAlign: "center", fontSize: "12px", color: "#888888" }}>
             {group.emptyMessage}
           </p>
         ) : (

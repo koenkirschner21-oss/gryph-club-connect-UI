@@ -4,8 +4,9 @@ import {
   useMemo,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { FileText, X, Check } from "lucide-react";
+import { FileText, X, Check, UserPlus } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
@@ -399,10 +400,12 @@ function AdminTabButton({
   label,
   active,
   onClick,
+  icon,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  icon?: ReactNode;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -425,8 +428,12 @@ function AdminTabButton({
         transition: "color 0.15s ease",
         flexShrink: 0,
         whiteSpace: "nowrap",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
       }}
     >
+      {icon}
       {label}
     </button>
   );
@@ -1377,6 +1384,7 @@ export default function AdminPage() {
       .from("club_requests")
       .update({
         status: "approved",
+        club_id: clubId,
         reviewed_by: user.id,
         reviewed_at: new Date().toISOString(),
       })
@@ -1456,7 +1464,12 @@ export default function AdminPage() {
 
     const { error: updateError } = await supabase
       .from("club_requests")
-      .update({ review_note: note })
+      .update({
+        status: "more_info",
+        review_note: note,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: user?.id ?? null,
+      })
       .eq("id", moreInfoTarget.id);
 
     if (updateError) {
@@ -1796,6 +1809,7 @@ export default function AdminPage() {
           label="Club Requests"
           active={activeTab === "requests"}
           onClick={() => setActiveTab("requests")}
+          icon={<UserPlus size={14} strokeWidth={2} aria-hidden />}
         />
         <AdminTabButton
           label="Club Claims"

@@ -18,6 +18,7 @@ import {
 } from "../lib/notifications";
 import Spinner from "../components/ui/Spinner";
 import PublicDetailBackButton from "../components/public/PublicDetailBackButton";
+import { buildLoginPath, buildSignupPath } from "../lib/authRedirect";
 import { darkInputStyle } from "./app/HiringBoardPage";
 
 const PAGE_BG = "#0f0f0f";
@@ -341,7 +342,9 @@ export default function ClubClaimPage() {
     );
   }
 
-  const loginRedirect = `/login?redirect=${encodeURIComponent(`/clubs/${club.slug}/claim`)}`;
+  const claimReturnPath = `/clubs/${club.slug}/claim`;
+  const loginRedirect = buildLoginPath(claimReturnPath);
+  const signupRedirect = buildSignupPath(claimReturnPath);
   const claimable = isClubClaimable(club.claimStatus, activeOwnerCount);
   const claimState = resolveExploreClubClaimState(
     club.claimStatus,
@@ -407,11 +410,23 @@ export default function ClubClaimPage() {
         {!user ? (
           <div style={cardStyle}>
             <p style={{ fontSize: "15px", color: "#cccccc", margin: "0 0 16px" }}>
-              Sign in to claim this club. You&apos;ll need a University of Guelph email.
+              Sign in to claim this club. You&apos;ll return here after authentication.
+              Anonymous users cannot submit a claim.
             </p>
-            <Link to={loginRedirect} style={{ ...primaryButtonStyle, display: "inline-block", textDecoration: "none" }}>
-              Sign In
-            </Link>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+              <Link
+                to={loginRedirect}
+                style={{ ...primaryButtonStyle, display: "inline-block", textDecoration: "none" }}
+              >
+                Sign In
+              </Link>
+              <Link
+                to={signupRedirect}
+                style={{ ...secondaryButtonStyle, display: "inline-block", textDecoration: "none" }}
+              >
+                Sign Up
+              </Link>
+            </div>
           </div>
         ) : ineligibleRole ? (
           <div style={cardStyle}>
