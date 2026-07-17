@@ -357,6 +357,7 @@ CREATE POLICY "clubs_delete_owner_admin"
 
 -- ─── club_invites ───
 DROP POLICY IF EXISTS "Presidents can create invites" ON public.club_invites;
+DROP POLICY IF EXISTS "club_invites_insert_manage_members" ON public.club_invites;
 CREATE POLICY "club_invites_insert_manage_members"
   ON public.club_invites
   FOR INSERT
@@ -387,6 +388,7 @@ CREATE POLICY "club_invites_select_managers"
 
 -- ─── hiring_listings ───
 DROP POLICY IF EXISTS "Anyone can view open listings" ON public.hiring_listings;
+DROP POLICY IF EXISTS "hiring_listings_select_open" ON public.hiring_listings;
 CREATE POLICY "hiring_listings_select_open"
   ON public.hiring_listings
   FOR SELECT
@@ -435,6 +437,7 @@ CREATE POLICY "hiring_listings_delete_manage_hiring"
 
 -- ─── hiring_applications ───
 DROP POLICY IF EXISTS "Executives can view club hiring applications" ON public.hiring_applications;
+DROP POLICY IF EXISTS "hiring_applications_select_reviewers" ON public.hiring_applications;
 CREATE POLICY "hiring_applications_select_reviewers"
   ON public.hiring_applications
   FOR SELECT
@@ -445,6 +448,7 @@ CREATE POLICY "hiring_applications_select_reviewers"
   );
 
 DROP POLICY IF EXISTS "Executives can update club hiring applications" ON public.hiring_applications;
+DROP POLICY IF EXISTS "hiring_applications_update_reviewers" ON public.hiring_applications;
 CREATE POLICY "hiring_applications_update_reviewers"
   ON public.hiring_applications
   FOR UPDATE
@@ -458,6 +462,7 @@ CREATE POLICY "hiring_applications_update_reviewers"
 
 -- ─── application_notes ───
 DROP POLICY IF EXISTS "Privileged club members can manage notes" ON public.application_notes;
+DROP POLICY IF EXISTS "application_notes_reviewer_access" ON public.application_notes;
 CREATE POLICY "application_notes_reviewer_access"
   ON public.application_notes
   FOR ALL
@@ -471,6 +476,7 @@ CREATE POLICY "application_notes_reviewer_access"
 
 -- ─── club_documents ───
 DROP POLICY IF EXISTS "Executives and presidents can upload documents" ON public.club_documents;
+DROP POLICY IF EXISTS "club_documents_insert_manage" ON public.club_documents;
 CREATE POLICY "club_documents_insert_manage"
   ON public.club_documents
   FOR INSERT
@@ -480,6 +486,7 @@ CREATE POLICY "club_documents_insert_manage"
   );
 
 DROP POLICY IF EXISTS "Executives and presidents can delete documents" ON public.club_documents;
+DROP POLICY IF EXISTS "club_documents_delete_manage" ON public.club_documents;
 CREATE POLICY "club_documents_delete_manage"
   ON public.club_documents
   FOR DELETE
@@ -489,6 +496,7 @@ CREATE POLICY "club_documents_delete_manage"
   );
 
 DROP POLICY IF EXISTS "Club members can update their club documents" ON public.club_documents;
+DROP POLICY IF EXISTS "club_documents_update_manage" ON public.club_documents;
 CREATE POLICY "club_documents_update_manage"
   ON public.club_documents
   FOR UPDATE
@@ -499,6 +507,7 @@ CREATE POLICY "club_documents_update_manage"
 
 -- ─── club_meetings ───
 DROP POLICY IF EXISTS "Privileged members can manage meetings" ON public.club_meetings;
+DROP POLICY IF EXISTS "club_meetings_manage_permission" ON public.club_meetings;
 CREATE POLICY "club_meetings_manage_permission"
   ON public.club_meetings
   FOR ALL
@@ -511,6 +520,7 @@ CREATE POLICY "club_meetings_manage_permission"
   );
 
 DROP POLICY IF EXISTS "Privileged members can manage action items" ON public.meeting_action_items;
+DROP POLICY IF EXISTS "meeting_action_items_manage_permission" ON public.meeting_action_items;
 CREATE POLICY "meeting_action_items_manage_permission"
   ON public.meeting_action_items
   FOR ALL
