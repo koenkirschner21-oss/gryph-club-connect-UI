@@ -247,7 +247,7 @@ AS $$
     WHERE hl.id = p_listing_id
       AND (
         public.is_club_president(hl.club_id, p_user_id)
-        OR public.club_has_permission(hl.club_id, p_user_id, 'manage_hiring')
+        OR public.club_has_permission(hl.club_id, 'manage_hiring', p_user_id)
         OR p_user_id = ANY(COALESCE(hl.reviewer_ids, '{}'::uuid[]))
       )
   );
@@ -304,15 +304,15 @@ CREATE POLICY "club_members_update_privileged"
   TO authenticated
   USING (
     user_id = auth.uid()
-    OR public.club_has_permission(club_id, auth.uid(), 'manage_members')
-    OR public.club_has_permission(club_id, auth.uid(), 'approve_members')
-    OR public.club_has_permission(club_id, auth.uid(), 'manage_roles')
+    OR public.club_has_permission(club_id, 'manage_members', auth.uid())
+    OR public.club_has_permission(club_id, 'approve_members', auth.uid())
+    OR public.club_has_permission(club_id, 'manage_roles', auth.uid())
   )
   WITH CHECK (
     user_id = auth.uid()
-    OR public.club_has_permission(club_id, auth.uid(), 'manage_members')
-    OR public.club_has_permission(club_id, auth.uid(), 'approve_members')
-    OR public.club_has_permission(club_id, auth.uid(), 'manage_roles')
+    OR public.club_has_permission(club_id, 'manage_members', auth.uid())
+    OR public.club_has_permission(club_id, 'approve_members', auth.uid())
+    OR public.club_has_permission(club_id, 'manage_roles', auth.uid())
   );
 
 DROP POLICY IF EXISTS "club_members_delete_leave_or_manage" ON public.club_members;
@@ -323,8 +323,8 @@ CREATE POLICY "club_members_delete_leave_or_manage"
   TO authenticated
   USING (
     user_id = auth.uid()
-    OR public.club_has_permission(club_id, auth.uid(), 'manage_members')
-    OR public.club_has_permission(club_id, auth.uid(), 'approve_members')
+    OR public.club_has_permission(club_id, 'manage_members', auth.uid())
+    OR public.club_has_permission(club_id, 'approve_members', auth.uid())
   );
 
 -- ─── clubs (settings / join code) ───
@@ -335,10 +335,10 @@ CREATE POLICY "clubs_update_privileged"
   TO authenticated
   USING (
     created_by = auth.uid()
-    OR public.club_has_permission(id, auth.uid(), 'manage_club_settings')
-    OR public.club_has_permission(id, auth.uid(), 'edit_club_settings')
-    OR public.club_has_permission(id, auth.uid(), 'manage_members')
-    OR public.club_has_permission(id, auth.uid(), 'manage_roles')
+    OR public.club_has_permission(id, 'manage_club_settings', auth.uid())
+    OR public.club_has_permission(id, 'edit_club_settings', auth.uid())
+    OR public.club_has_permission(id, 'manage_members', auth.uid())
+    OR public.club_has_permission(id, 'manage_roles', auth.uid())
   );
 
 DROP POLICY IF EXISTS "clubs_delete_owner_admin" ON public.clubs;
@@ -348,7 +348,7 @@ CREATE POLICY "clubs_delete_owner_admin"
   TO authenticated
   USING (
     created_by = auth.uid()
-    OR public.club_has_permission(id, auth.uid(), 'delete_club')
+    OR public.club_has_permission(id, 'delete_club', auth.uid())
   );
 
 -- ─── club_invites ───
@@ -360,8 +360,8 @@ CREATE POLICY "club_invites_insert_manage_members"
   WITH CHECK (
     auth.uid() = invited_by
     AND (
-      public.club_has_permission(club_id, auth.uid(), 'manage_members')
-      OR public.club_has_permission(club_id, auth.uid(), 'invite_members')
+      public.club_has_permission(club_id, 'manage_members', auth.uid())
+      OR public.club_has_permission(club_id, 'invite_members', auth.uid())
     )
   );
 
@@ -377,8 +377,8 @@ CREATE POLICY "club_invites_select_managers"
   FOR SELECT
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_members')
-    OR public.club_has_permission(club_id, auth.uid(), 'invite_members')
+    public.club_has_permission(club_id, 'manage_members', auth.uid())
+    OR public.club_has_permission(club_id, 'invite_members', auth.uid())
   );
 
 -- ─── hiring_listings ───
@@ -405,7 +405,7 @@ CREATE POLICY "hiring_listings_insert_manage_hiring"
   TO authenticated
   WITH CHECK (
     auth.uid() = created_by
-    AND public.club_has_permission(club_id, auth.uid(), 'manage_hiring')
+    AND public.club_has_permission(club_id, 'manage_hiring', auth.uid())
   );
 
 DROP POLICY IF EXISTS "hiring_listings_update_manage_hiring" ON public.hiring_listings;
@@ -414,10 +414,10 @@ CREATE POLICY "hiring_listings_update_manage_hiring"
   FOR UPDATE
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_hiring')
+    public.club_has_permission(club_id, 'manage_hiring', auth.uid())
   )
   WITH CHECK (
-    public.club_has_permission(club_id, auth.uid(), 'manage_hiring')
+    public.club_has_permission(club_id, 'manage_hiring', auth.uid())
   );
 
 DROP POLICY IF EXISTS "hiring_listings_delete_manage_hiring" ON public.hiring_listings;
@@ -426,7 +426,7 @@ CREATE POLICY "hiring_listings_delete_manage_hiring"
   FOR DELETE
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_hiring')
+    public.club_has_permission(club_id, 'manage_hiring', auth.uid())
   );
 
 -- ─── hiring_applications ───
@@ -472,7 +472,7 @@ CREATE POLICY "club_documents_insert_manage"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    public.club_has_permission(club_id, auth.uid(), 'manage_documents')
+    public.club_has_permission(club_id, 'manage_documents', auth.uid())
   );
 
 DROP POLICY IF EXISTS "Executives and presidents can delete documents" ON public.club_documents;
@@ -481,7 +481,7 @@ CREATE POLICY "club_documents_delete_manage"
   FOR DELETE
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_documents')
+    public.club_has_permission(club_id, 'manage_documents', auth.uid())
   );
 
 DROP POLICY IF EXISTS "Club members can update their club documents" ON public.club_documents;
@@ -490,7 +490,7 @@ CREATE POLICY "club_documents_update_manage"
   FOR UPDATE
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_documents')
+    public.club_has_permission(club_id, 'manage_documents', auth.uid())
   );
 
 -- ─── club_meetings ───
@@ -500,10 +500,10 @@ CREATE POLICY "club_meetings_manage_permission"
   FOR ALL
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_meetings')
+    public.club_has_permission(club_id, 'manage_meetings', auth.uid())
   )
   WITH CHECK (
-    public.club_has_permission(club_id, auth.uid(), 'manage_meetings')
+    public.club_has_permission(club_id, 'manage_meetings', auth.uid())
   );
 
 DROP POLICY IF EXISTS "Privileged members can manage action items" ON public.meeting_action_items;
@@ -516,7 +516,7 @@ CREATE POLICY "meeting_action_items_manage_permission"
       SELECT 1
       FROM public.club_meetings AS cm
       WHERE cm.id = meeting_action_items.meeting_id
-        AND public.club_has_permission(cm.club_id, auth.uid(), 'manage_meetings')
+        AND public.club_has_permission(cm.club_id, 'manage_meetings', auth.uid())
     )
   )
   WITH CHECK (
@@ -524,7 +524,7 @@ CREATE POLICY "meeting_action_items_manage_permission"
       SELECT 1
       FROM public.club_meetings AS cm
       WHERE cm.id = meeting_action_items.meeting_id
-        AND public.club_has_permission(cm.club_id, auth.uid(), 'manage_meetings')
+        AND public.club_has_permission(cm.club_id, 'manage_meetings', auth.uid())
     )
   );
 
@@ -535,8 +535,8 @@ CREATE POLICY "posts_insert_privileged"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    public.club_has_permission(club_id, auth.uid(), 'manage_announcements')
-    OR public.club_has_permission(club_id, auth.uid(), 'post_announcements')
+    public.club_has_permission(club_id, 'manage_announcements', auth.uid())
+    OR public.club_has_permission(club_id, 'post_announcements', auth.uid())
   );
 
 DROP POLICY IF EXISTS "posts_delete_privileged" ON public.posts;
@@ -545,8 +545,8 @@ CREATE POLICY "posts_delete_privileged"
   FOR DELETE
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_announcements')
-    OR public.club_has_permission(club_id, auth.uid(), 'post_announcements')
+    public.club_has_permission(club_id, 'manage_announcements', auth.uid())
+    OR public.club_has_permission(club_id, 'post_announcements', auth.uid())
   );
 
 DROP POLICY IF EXISTS "posts_update_privileged" ON public.posts;
@@ -555,8 +555,8 @@ CREATE POLICY "posts_update_privileged"
   FOR UPDATE
   TO authenticated
   USING (
-    public.club_has_permission(club_id, auth.uid(), 'manage_announcements')
-    OR public.club_has_permission(club_id, auth.uid(), 'post_announcements')
+    public.club_has_permission(club_id, 'manage_announcements', auth.uid())
+    OR public.club_has_permission(club_id, 'post_announcements', auth.uid())
   );
 
 -- ─── messages (announcement channel) ───
@@ -581,8 +581,8 @@ CREATE POLICY "messages_insert_channel_policy"
         AND ch.club_id = messages.club_id
         AND (
           ch.is_announcement_only = false
-          OR public.club_has_permission(messages.club_id, auth.uid(), 'manage_announcements')
-          OR public.club_has_permission(messages.club_id, auth.uid(), 'post_announcements')
+          OR public.club_has_permission(messages.club_id, 'manage_announcements', auth.uid())
+          OR public.club_has_permission(messages.club_id, 'post_announcements', auth.uid())
         )
     )
   );
@@ -635,7 +635,7 @@ CREATE POLICY "club_documents_storage_insert"
           WHERE cm.user_id = auth.uid()
             AND cm.status = 'active'
             AND cm.club_id = ((storage.foldername(name))[1])::uuid
-            AND public.club_has_permission(cm.club_id, auth.uid(), 'manage_documents')
+            AND public.club_has_permission(cm.club_id, 'manage_documents', auth.uid())
         )
       )
       OR (
@@ -658,6 +658,6 @@ CREATE POLICY "club_documents_storage_delete"
       WHERE cm.user_id = auth.uid()
         AND cm.status = 'active'
         AND cm.club_id = ((storage.foldername(name))[1])::uuid
-        AND public.club_has_permission(cm.club_id, auth.uid(), 'manage_documents')
+        AND public.club_has_permission(cm.club_id, 'manage_documents', auth.uid())
     )
   );
