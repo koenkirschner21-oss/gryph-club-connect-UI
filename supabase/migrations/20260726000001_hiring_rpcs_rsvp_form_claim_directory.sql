@@ -1,0 +1,3 @@
+-- This migration was applied directly to the remote database.
+-- File recreated for migration history tracking purposes only.
+-- Original changes: hiring RPCs, RSVP form, and claim directory functionality.
