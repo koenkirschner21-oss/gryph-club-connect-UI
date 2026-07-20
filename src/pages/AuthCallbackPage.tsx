@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { supabase } from "../lib/supabaseClient";
+import {
+  consumePendingRedirect,
+  isSafeRedirectPath,
+  storePendingRedirect,
+} from "../lib/authRedirect";
 import Spinner from "../components/ui/Spinner";
 
 export default function AuthCallbackPage() {
@@ -36,6 +41,11 @@ export default function AuthCallbackPage() {
         hasCode: Boolean(code),
         origin: window.location.origin,
       });
+
+      const callbackRedirect = searchParams.get("redirect");
+      if (isSafeRedirectPath(callbackRedirect)) {
+        storePendingRedirect(callbackRedirect);
+      }
 
       try {
         if (code) {
@@ -91,14 +101,20 @@ export default function AuthCallbackPage() {
 
     if (onboardingCompleted === null) return;
 
+    const pendingRedirect = consumePendingRedirect();
+
     if (onboardingCompleted === false) {
-      console.info("[auth] callback redirect", { destination: "/onboarding" });
-      navigate("/onboarding", { replace: true });
+      const destination = pendingRedirect
+        ? `/onboarding?redirect=${encodeURIComponent(pendingRedirect)}`
+        : "/onboarding";
+      console.info("[auth] callback redirect", { destination });
+      navigate(destination, { replace: true });
       return;
     }
 
-    console.info("[auth] callback redirect", { destination: "/app" });
-    navigate("/app", { replace: true });
+    const destination = pendingRedirect ?? "/app";
+    console.info("[auth] callback redirect", { destination });
+    navigate(destination, { replace: true });
   }, [
     sessionReady,
     loading,

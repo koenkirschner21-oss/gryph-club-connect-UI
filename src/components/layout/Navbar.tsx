@@ -35,7 +35,7 @@ function publicNavLinkStyle(isActive: boolean): CSSProperties {
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut, userProfile } = useAuthContext();
+  const { user, signOut, userProfile, onboardingCompleted } = useAuthContext();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
@@ -45,6 +45,7 @@ export default function Navbar() {
     user?.email,
   );
   const avatarUrl = userProfile?.avatarUrl ?? null;
+  const isOnboardingFlow = Boolean(user) && onboardingCompleted === false;
 
   useEffect(() => {
     if (!user?.id) {
@@ -107,8 +108,8 @@ export default function Navbar() {
         aria-label="Main navigation"
       >
         <Link
-          to="/"
-          aria-label="Gryph Club Connect home"
+          to={isOnboardingFlow ? "/onboarding" : "/"}
+          aria-label="ClubConnect home"
           className="group flex shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(10,10,10,0.85)]"
         >
           <span className="inline-flex items-center" style={{ gap: "6px" }}>
@@ -128,7 +129,15 @@ export default function Navbar() {
 
         {/* Desktop Nav */}
         <div className="hidden items-center gap-6 md:flex">
-          {user ? (
+          {isOnboardingFlow ? (
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="cursor-pointer rounded-lg px-3.5 py-2 text-sm font-medium text-[#aaaaaa] transition-colors hover:text-white"
+            >
+              Sign out
+            </button>
+          ) : user ? (
             <>
               <Link
                 to="/app"
@@ -201,7 +210,7 @@ export default function Navbar() {
             })
           )}
 
-          {user ? (
+          {isOnboardingFlow ? null : user ? (
             <div className="ml-3 flex items-center gap-3">
               {isPlatformAdmin ? (
                 <Link
@@ -289,42 +298,52 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* Mobile Hamburger */}
-        <button
-          type="button"
-          className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted hover:bg-white/5 hover:text-white md:hidden"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-expanded={mobileOpen}
-          aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
-        >
-          <svg
-            className="h-6 w-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
+        {/* Mobile Hamburger / onboarding sign-out */}
+        {isOnboardingFlow ? (
+          <button
+            type="button"
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-[#aaaaaa] hover:text-white md:hidden"
+            onClick={() => void handleLogout()}
           >
-            {mobileOpen ? (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            ) : (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            )}
-          </svg>
-        </button>
+            Sign out
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-muted hover:bg-white/5 hover:text-white md:hidden"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-expanded={mobileOpen}
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+          >
+            <svg
+              className="h-6 w-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              {mobileOpen ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              )}
+            </svg>
+          </button>
+        )}
       </nav>
 
       {/* Mobile Menu */}
-      {mobileOpen && (
+      {mobileOpen && !isOnboardingFlow && (
         <div className="w-full border-t border-border bg-page-bg md:hidden">
           <div className="w-full space-y-1 py-3">
             {user ? (

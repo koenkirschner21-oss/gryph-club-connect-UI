@@ -13,6 +13,7 @@ import type { Task, TaskPriority, TaskStatus, TaskType } from "../../../types";
 import { TASK_TYPE_BADGE_LABELS, TASK_TYPE_FILTER_CHIPS, type TaskTypeFilter } from "../../../lib/taskTypes";
 import { formatTaskDate } from "../../../lib/taskDueUrgency";
 import { getTaskStatusMenuItems } from "../../../lib/taskStatusActions";
+import { isTaskInactiveForDueTracking } from "../../../lib/taskDueUrgency";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
@@ -28,7 +29,7 @@ const statCardStyle: CSSProperties = {
   padding: "16px",
 };
 
-export type TasksStatCardFilter = "all" | "due_this_week" | "high_priority" | "completed";
+export type TasksStatCardFilter = "all" | "due_this_week" | "high_priority" | "completed" | "overdue";
 
 function statCardButtonStyle(isActive: boolean): CSSProperties {
   return {
@@ -380,7 +381,7 @@ export function formatDueDateSubLabel(
   dueDate: string | undefined,
   status: TaskStatus,
 ): { text: string; color: string } | null {
-  if (!dueDate?.trim() || status === "done") return null;
+  if (!dueDate?.trim() || isTaskInactiveForDueTracking(status)) return null;
   const dueDay = parseTaskDueDay(dueDate);
   if (!dueDay) return null;
 
@@ -408,7 +409,7 @@ export function formatRelativeDueLabel(
   dueDate: string | undefined,
   status: TaskStatus,
 ): { text: string; color: string } | null {
-  if (!dueDate?.trim() || status === "done") return null;
+  if (!dueDate?.trim() || isTaskInactiveForDueTracking(status)) return null;
   const dueDay = parseTaskDueDay(dueDate);
   if (!dueDay) return null;
 
@@ -528,8 +529,8 @@ const sectionUnderlineColor: Record<
 const sectionLabels: Record<"todo" | "in_progress" | "done" | "pending_review", string> = {
   todo: "To Do",
   in_progress: "In Progress",
-  done: "Done",
-  pending_review: "Needs Review",
+  done: "Completed",
+  pending_review: "Submitted for Review",
 };
 
 export function TasksListSectionHeader({
@@ -990,6 +991,7 @@ export function TasksListMenu({
   onDelete,
   taskStatus,
   canChangeStatus = false,
+  submitForReview = false,
   onStatusChange,
 }: {
   open: boolean;
@@ -998,13 +1000,14 @@ export function TasksListMenu({
   onDelete?: () => void;
   taskStatus?: TaskStatus;
   canChangeStatus?: boolean;
+  submitForReview?: boolean;
   onStatusChange?: (status: TaskStatus) => void;
 }) {
   if (!open) return null;
 
   const statusItems =
     canChangeStatus && taskStatus && onStatusChange
-      ? getTaskStatusMenuItems(taskStatus)
+      ? getTaskStatusMenuItems(taskStatus, { submitForReview })
       : [];
 
   const menuButtonStyle: React.CSSProperties = {

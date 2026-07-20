@@ -1,20 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ExternalLink, Link2, MapPin, Trash2, Users, Video } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  ArrowLeft,
+  CheckSquare,
+  ClipboardList,
+  ExternalLink,
+  FileText,
+  GripVertical,
+  Link2,
+  MapPin,
+  NotebookPen,
+  Trash2,
+  Users,
+  Video,
+} from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useClubMembers } from "../../../hooks/useClubMembers";
 import { useIsMobile } from "../../../hooks/useWindowWidth";
 import { formatNameWithRoleTitle } from "../../../lib/memberRoleTitle";
 import {
   inviteeCountLabel,
   isUserInvitedToMeeting,
-  parseAgendaItems,
+  parseAgendaItemDetails,
   parseMeetingNotes,
   resolveInviteeUserIds,
-  serializeAgendaItems,
+  serializeAgendaItemDetails,
   serializeMeetingNotes,
+  type AgendaItemDetail,
   type MeetingMetadata,
 } from "../../../lib/meetingMetadata";
 import { supabase } from "../../../lib/supabaseClient";
+import DateTimeField from "../../../components/ui/DateTimeField";
 import type { TaskPriority } from "../../../types";
 import { MeetingTypeBadge } from "./MeetingCard";
 import { MeetingDateBadge } from "./MeetingsListUI";
@@ -36,18 +51,31 @@ import {
   mapActionItemRow,
   mapMeetingRow,
   meetingTypeLabel,
+  moveArrayItem,
 } from "./meetingUtils";
+
+type SaveStatus = "saved" | "saving" | "error";
 
 function useDebouncedSave(
   value: string,
   onSave: (value: string) => Promise<void>,
   delay = 900,
-): "saved" | "saving" | "error" {
-  const [status, setStatus] = useState<"saved" | "saving" | "error">("saved");
+): { status: SaveStatus; retry: () => void } {
+  const [status, setStatus] = useState<SaveStatus>("saved");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipInitialRef = useRef(true);
   const onSaveRef = useRef(onSave);
+  const valueRef = useRef(value);
   onSaveRef.current = onSave;
+  valueRef.current = value;
+
+  const runSave = useCallback((next: string) => {
+    setStatus("saving");
+    void onSaveRef
+      .current(next)
+      .then(() => setStatus("saved"))
+      .catch(() => setStatus("error"));
+  }, []);
 
   useEffect(() => {
     if (skipInitialRef.current) {
@@ -57,30 +85,84 @@ function useDebouncedSave(
 
     setStatus("saving");
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      void onSaveRef
-        .current(value)
-        .then(() => setStatus("saved"))
-        .catch(() => setStatus("error"));
-    }, delay);
+    timerRef.current = setTimeout(() => runSave(value), delay);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [value, delay]);
+  }, [value, delay, runSave]);
 
-  return status;
+  const retry = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    runSave(valueRef.current);
+  }, [runSave]);
+
+  return { status, retry };
 }
 
-function saveStatusLabel(status: "saved" | "saving" | "error"): string {
+function saveStatusLabel(status: SaveStatus): string {
   if (status === "saved") return "Saved";
-  if (status === "error") return "Save failed";
+  if (status === "error") return "Could not save — Retry";
   return "Saving…";
 }
 
-function saveStatusColor(status: "saved" | "saving" | "error"): string {
+function saveStatusColor(status: SaveStatus): string {
   if (status === "saved") return "#4ade80";
   if (status === "error") return "#E51937";
   return "#777777";
+}
+
+function SaveStatusIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+  if (status === "error") {
+    return (
+      <button
+        type="button"
+        onClick={onRetry}
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          fontSize: "11px",
+          fontWeight: 600,
+          color: saveStatusColor(status),
+          cursor: "pointer",
+          textDecoration: "underline",
+        }}
+      >
+        {saveStatusLabel(status)}
+      </button>
+    );
+  }
+  return (
+    <span style={{ fontSize: "11px", color: saveStatusColor(status) }}>
+      {saveStatusLabel(status)}
+    </span>
+  );
+}
+
+function SectionEmptyState({ icon, message }: { icon: ReactNode; message: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "2px 0",
+        color: "#888888",
+        fontSize: "13px",
+      }}
+    >
+      {icon}
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function sectionCardStyleForContent(hasContent: boolean): CSSProperties {
+  return {
+    ...sectionCardStyle,
+    padding: hasContent ? "16px" : "12px 16px",
+    marginBottom: hasContent ? "16px" : "10px",
+  };
 }
 
 export function MeetingDetailView({
@@ -97,16 +179,22 @@ export function MeetingDetailView({
   onEdit: (meeting: ClubMeeting) => void;
 }) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { members } = useClubMembers(clubId);
+  const notesSectionRef = useRef<HTMLElement | null>(null);
+  const notesInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [meeting, setMeeting] = useState<ClubMeeting | null>(null);
   const [metadata, setMetadata] = useState<MeetingMetadata | null>(null);
   const [actionItems, setActionItems] = useState<MeetingActionItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [agendaItems, setAgendaItems] = useState<string[]>([]);
+  const [agendaItems, setAgendaItems] = useState<AgendaItemDetail[]>([]);
+  const [agendaDragIndex, setAgendaDragIndex] = useState<number | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [decisionsDraft, setDecisionsDraft] = useState("");
+  const [prepDraft, setPrepDraft] = useState("");
   const [addingItem, setAddingItem] = useState(false);
+  const [showItemDescription, setShowItemDescription] = useState(false);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [newItemDescription, setNewItemDescription] = useState("");
   const [newItemPriority, setNewItemPriority] = useState<TaskPriority>("medium");
@@ -153,9 +241,10 @@ export function MeetingDetailView({
     const parsedNotes = parseMeetingNotes(mapped.notes);
     setMeeting(mapped);
     setMetadata(parsedNotes.metadata);
-    setAgendaItems(parseAgendaItems(mapped.agenda));
+    setAgendaItems(parseAgendaItemDetails(mapped.agenda));
     setNotesDraft(parsedNotes.meetingNotes);
     setDecisionsDraft(parsedNotes.metadata.decisions ?? "");
+    setPrepDraft(parsedNotes.metadata.preparation ?? "");
     setLoading(false);
   }, [clubId, meetingId]);
 
@@ -187,12 +276,27 @@ export function MeetingDetailView({
     void loadActionItems();
   }, [loadMeeting, loadActionItems]);
 
+  useEffect(() => {
+    if (loading || searchParams.get("focus") !== "recap") return;
+    const timer = window.setTimeout(() => {
+      notesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (isPrivileged) {
+        notesInputRef.current?.focus();
+      }
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus");
+      next.delete("tab");
+      setSearchParams(next, { replace: true });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [loading, searchParams, setSearchParams, isPrivileged]);
+
   const saveAgenda = useCallback(
-    async (items: string[]) => {
+    async (items: AgendaItemDetail[]) => {
       if (!isPrivileged || !meeting) {
         throw new Error("Unable to save agenda");
       }
-      const serialized = serializeAgendaItems(items);
+      const serialized = serializeAgendaItemDetails(items);
       const { error } = await supabase
         .from("club_meetings")
         .update({ agenda: serialized })
@@ -204,11 +308,15 @@ export function MeetingDetailView({
   );
 
   const saveNotesBundle = useCallback(
-    async (notes: string, decisions: string) => {
+    async (notes: string, decisions: string, preparation: string) => {
       if (!isPrivileged || !meeting || !metadata) {
         throw new Error("Unable to save notes");
       }
-      const nextMetadata: MeetingMetadata = { ...metadata, decisions: decisions.trim() || undefined };
+      const nextMetadata: MeetingMetadata = {
+        ...metadata,
+        decisions: decisions.trim() || undefined,
+        preparation: preparation.trim() || undefined,
+      };
       const serialized = serializeMeetingNotes(nextMetadata, notes);
       const { error } = await supabase
         .from("club_meetings")
@@ -221,21 +329,38 @@ export function MeetingDetailView({
     [isPrivileged, meeting, metadata],
   );
 
-  const agendaSaveStatus = useDebouncedSave(
+  const agendaSave = useDebouncedSave(
     JSON.stringify(agendaItems),
     async () => {
       await saveAgenda(agendaItems);
     },
   );
 
-  const notesSaveStatus = useDebouncedSave(
-    `${notesDraft}|||${decisionsDraft}`,
+  const notesSave = useDebouncedSave(
+    `${notesDraft}|||${decisionsDraft}|||${prepDraft}`,
     async () => {
-      await saveNotesBundle(notesDraft, decisionsDraft);
+      await saveNotesBundle(notesDraft, decisionsDraft, prepDraft);
     },
   );
 
   const convertedCount = actionItems.filter((item) => item.linkedTaskId).length;
+
+  const updateAgendaItem = (index: number, patch: Partial<AgendaItemDetail>) => {
+    setAgendaItems((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+    );
+  };
+
+  const removeAgendaItem = (index: number) => {
+    setAgendaItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const addAgendaItem = () => {
+    setAgendaItems((current) => [
+      ...current,
+      { id: `new-${Date.now()}-${current.length}`, title: "" },
+    ]);
+  };
 
   const toggleActionItem = async (item: MeetingActionItem) => {
     if (!isPrivileged) return;
@@ -258,6 +383,7 @@ export function MeetingDetailView({
     setAddingItem(false);
     setNewItemTitle("");
     setNewItemDescription("");
+    setShowItemDescription(false);
     setNewItemPriority("medium");
     setNewItemAssignee("");
     setNewItemDueDate("");
@@ -455,47 +581,79 @@ export function MeetingDetailView({
         }}
       >
         <div>
-          <section style={sectionCardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+          <section
+            style={sectionCardStyleForContent(
+              isPrivileged || agendaItems.length > 0,
+            )}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: isPrivileged || agendaItems.length > 0 ? "12px" : "6px" }}>
               <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>Agenda</h2>
               {isPrivileged ? (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: saveStatusColor(agendaSaveStatus),
-                  }}
-                >
-                  {saveStatusLabel(agendaSaveStatus)}
-                </span>
+                <SaveStatusIndicator status={agendaSave.status} onRetry={agendaSave.retry} />
               ) : null}
             </div>
             {isPrivileged ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {agendaItems.map((item, index) => (
-                  <div key={`detail-agenda-${index}`} style={{ display: "flex", gap: "8px" }}>
-                    <input
-                      style={{ ...inputStyle, flex: 1 }}
-                      value={item}
-                      onChange={(e) =>
-                        setAgendaItems((current) =>
-                          current.map((value, itemIndex) =>
-                            itemIndex === index ? e.target.value : value,
-                          ),
-                        )
-                      }
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={() => setAgendaDragIndex(index)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (agendaDragIndex === null || agendaDragIndex === index) return;
+                      setAgendaItems((current) => moveArrayItem(current, agendaDragIndex, index));
+                      setAgendaDragIndex(null);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "8px",
+                      background: "#111111",
+                      border: `1px solid ${CARD_BORDER}`,
+                      borderRadius: "8px",
+                      padding: "8px",
+                    }}
+                  >
+                    <GripVertical
+                      size={16}
+                      color="#555555"
+                      aria-hidden
+                      style={{ cursor: "grab", marginTop: "8px", flexShrink: 0 }}
                     />
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
+                      <input
+                        style={inputStyle}
+                        value={item.title}
+                        onChange={(e) => updateAgendaItem(index, { title: e.target.value })}
+                        placeholder={`Agenda item ${index + 1}`}
+                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                        <input
+                          style={{ ...inputStyle, fontSize: "12px" }}
+                          value={item.owner ?? ""}
+                          onChange={(e) => updateAgendaItem(index, { owner: e.target.value })}
+                          placeholder="Owner (optional)"
+                        />
+                        <input
+                          style={{ ...inputStyle, fontSize: "12px" }}
+                          value={item.estimate ?? ""}
+                          onChange={(e) => updateAgendaItem(index, { estimate: e.target.value })}
+                          placeholder="Time (optional, e.g. 10 min)"
+                        />
+                      </div>
+                    </div>
                     <button
                       type="button"
                       aria-label="Remove agenda item"
-                      onClick={() =>
-                        setAgendaItems((current) =>
-                          current.filter((_, itemIndex) => itemIndex !== index),
-                        )
-                      }
+                      onClick={() => removeAgendaItem(index)}
                       style={{
-                        ...outlineButtonStyle,
-                        padding: "8px 10px",
+                        background: "transparent",
+                        border: "none",
                         color: "#777777",
+                        cursor: "pointer",
+                        padding: "8px 4px",
+                        flexShrink: 0,
                       }}
                     >
                       <Trash2 size={14} aria-hidden />
@@ -504,53 +662,118 @@ export function MeetingDetailView({
                 ))}
                 <button
                   type="button"
-                  onClick={() => setAgendaItems((current) => [...current, ""])}
+                  onClick={addAgendaItem}
                   style={{ ...outlineButtonStyle, alignSelf: "flex-start" }}
                 >
                   Add agenda item
                 </button>
               </div>
+            ) : agendaItems.length === 0 ? (
+              <SectionEmptyState
+                icon={<ClipboardList size={16} color="#555555" aria-hidden />}
+                message="No agenda items yet."
+              />
             ) : (
               <ul style={{ margin: 0, paddingLeft: "18px", color: "#cccccc", fontSize: "14px" }}>
-                {agendaItems.map((item, index) => (
-                  <li key={`agenda-read-${index}`}>{item}</li>
+                {agendaItems.map((item) => (
+                  <li key={item.id} style={{ marginBottom: "4px" }}>
+                    {item.title}
+                    {item.owner || item.estimate ? (
+                      <span style={{ color: "#777777", fontSize: "12px" }}>
+                        {" — "}
+                        {[item.owner, item.estimate].filter(Boolean).join(" · ")}
+                      </span>
+                    ) : null}
+                  </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <section style={sectionCardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
-              <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>Notes</h2>
+          <section
+            style={sectionCardStyleForContent(isPrivileged || Boolean(prepDraft.trim()))}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: isPrivileged || prepDraft.trim() ? "12px" : "6px" }}>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <NotebookPen size={15} aria-hidden />
+                Preparation
+              </h2>
               {isPrivileged ? (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: saveStatusColor(notesSaveStatus),
-                  }}
-                >
-                  {saveStatusLabel(notesSaveStatus)}
-                </span>
+                <SaveStatusIndicator status={notesSave.status} onRetry={notesSave.retry} />
               ) : null}
             </div>
             {isPrivileged ? (
               <textarea
+                style={{ ...inputStyle, minHeight: "90px", resize: "vertical" }}
+                value={prepDraft}
+                onChange={(e) => setPrepDraft(e.target.value)}
+                placeholder="Notes, links, or context to review before the meeting…"
+              />
+            ) : prepDraft.trim() ? (
+              <p style={{ margin: 0, fontSize: "14px", color: "#cccccc", whiteSpace: "pre-wrap" }}>
+                {prepDraft}
+              </p>
+            ) : (
+              <SectionEmptyState
+                icon={<NotebookPen size={16} color="#555555" aria-hidden />}
+                message="No preparation notes yet."
+              />
+            )}
+          </section>
+
+          <section
+            ref={notesSectionRef}
+            style={sectionCardStyleForContent(isPrivileged || Boolean(notesDraft.trim()))}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: isPrivileged || notesDraft.trim() ? "12px" : "6px" }}>
+              <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>Meeting Notes</h2>
+              {isPrivileged ? (
+                <SaveStatusIndicator status={notesSave.status} onRetry={notesSave.retry} />
+              ) : null}
+            </div>
+            {isPrivileged ? (
+              <textarea
+                ref={notesInputRef}
                 style={{ ...inputStyle, minHeight: "120px", resize: "vertical" }}
                 value={notesDraft}
                 onChange={(e) => setNotesDraft(e.target.value)}
                 placeholder="Meeting notes…"
               />
-            ) : (
+            ) : notesDraft.trim() ? (
               <p style={{ margin: 0, fontSize: "14px", color: "#cccccc", whiteSpace: "pre-wrap" }}>
-                {notesDraft || "No notes yet."}
+                {notesDraft}
               </p>
+            ) : (
+              <SectionEmptyState
+                icon={<FileText size={16} color="#555555" aria-hidden />}
+                message="No notes yet."
+              />
             )}
           </section>
 
-          <section style={sectionCardStyle}>
-            <h2 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
-              Decisions Made
-            </h2>
+          <section
+            style={sectionCardStyleForContent(
+              isPrivileged || Boolean(decisionsDraft.trim()),
+            )}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: isPrivileged || decisionsDraft.trim() ? "12px" : "6px" }}>
+              <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
+                Decisions Made
+              </h2>
+              {isPrivileged ? (
+                <SaveStatusIndicator status={notesSave.status} onRetry={notesSave.retry} />
+              ) : null}
+            </div>
             {isPrivileged ? (
               <textarea
                 style={{ ...inputStyle, minHeight: "100px", resize: "vertical" }}
@@ -558,22 +781,36 @@ export function MeetingDetailView({
                 onChange={(e) => setDecisionsDraft(e.target.value)}
                 placeholder="Record decisions from this meeting…"
               />
-            ) : (
+            ) : decisionsDraft.trim() ? (
               <p style={{ margin: 0, fontSize: "14px", color: "#cccccc", whiteSpace: "pre-wrap" }}>
-                {decisionsDraft || "No decisions recorded."}
+                {decisionsDraft}
               </p>
+            ) : (
+              <SectionEmptyState
+                icon={<CheckSquare size={16} color="#555555" aria-hidden />}
+                message="No decisions recorded."
+              />
             )}
           </section>
 
-          <section style={sectionCardStyle}>
-            <h2 style={{ margin: "0 0 16px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
+          <section
+            style={sectionCardStyleForContent(
+              isPrivileged || actionItems.length > 0,
+            )}
+          >
+            <h2 style={{ margin: actionItems.length > 0 || isPrivileged ? "0 0 16px" : "0 0 6px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
               Action Items
             </h2>
             {convertError ? (
               <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#E51937" }}>{convertError}</p>
             ) : null}
             {actionItems.length === 0 ? (
-              <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#777777" }}>No action items yet.</p>
+              <div style={{ marginBottom: "12px" }}>
+                <SectionEmptyState
+                  icon={<CheckSquare size={16} color="#555555" aria-hidden />}
+                  message="No action items yet."
+                />
+              </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "16px" }}>
                 {actionItems.map((item) => (
@@ -683,31 +920,30 @@ export function MeetingDetailView({
               </div>
             )}
             {isPrivileged ? (
-              <div style={{ borderTop: `1px solid ${CARD_BORDER}`, paddingTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div
+                style={{
+                  borderTop: `1px solid ${CARD_BORDER}`,
+                  paddingTop: "14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
                 <input
                   style={inputStyle}
                   value={newItemTitle}
                   onChange={(e) => setNewItemTitle(e.target.value)}
-                  placeholder="Follow-up title"
+                  placeholder="Action item title"
                 />
-                <textarea
-                  style={{ ...inputStyle, minHeight: "72px", resize: "vertical" }}
-                  value={newItemDescription}
-                  onChange={(e) => setNewItemDescription(e.target.value)}
-                  placeholder="Optional description"
-                />
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: "10px" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr",
+                    gap: "8px",
+                  }}
+                >
                   <select
-                    style={inputStyle}
-                    value={newItemPriority}
-                    onChange={(e) => setNewItemPriority(e.target.value as TaskPriority)}
-                  >
-                    <option value="high">High priority</option>
-                    <option value="medium">Medium priority</option>
-                    <option value="low">Low priority</option>
-                  </select>
-                  <select
-                    style={inputStyle}
+                    style={{ ...inputStyle, fontSize: "12px" }}
                     value={newItemAssignee}
                     onChange={(e) => setNewItemAssignee(e.target.value)}
                   >
@@ -718,16 +954,46 @@ export function MeetingDetailView({
                       </option>
                     ))}
                   </select>
-                  <input
+                  <DateTimeField
                     type="date"
-                    style={inputStyle}
                     value={newItemDueDate}
-                    onChange={(e) => setNewItemDueDate(e.target.value)}
+                    onChange={setNewItemDueDate}
+                    inputStyle={{ ...inputStyle, fontSize: "12px" }}
                   />
+                  <select
+                    style={{ ...inputStyle, fontSize: "12px", gridColumn: isMobile ? "span 2" : undefined }}
+                    value={newItemPriority}
+                    onChange={(e) => setNewItemPriority(e.target.value as TaskPriority)}
+                  >
+                    <option value="high">High priority</option>
+                    <option value="medium">Medium priority</option>
+                    <option value="low">Low priority</option>
+                  </select>
                 </div>
-                <p style={{ margin: 0, fontSize: "11px", color: "#666666" }}>
-                  Source meeting: {meeting.title}
-                </p>
+                {showItemDescription ? (
+                  <textarea
+                    style={{ ...inputStyle, minHeight: "60px", resize: "vertical" }}
+                    value={newItemDescription}
+                    onChange={(e) => setNewItemDescription(e.target.value)}
+                    placeholder="Optional description"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowItemDescription(true)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#777777",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      padding: 0,
+                      textAlign: "left",
+                    }}
+                  >
+                    + Add description
+                  </button>
+                )}
                 <button
                   type="button"
                   style={{ ...primaryButtonStyle, alignSelf: "flex-start" }}
@@ -759,14 +1025,6 @@ export function MeetingDetailView({
                 value={String(meeting.openActionItemCount)}
               />
             </dl>
-            {metadata.preparation ? (
-              <div style={{ marginTop: "12px" }}>
-                <p style={{ margin: "0 0 6px", fontSize: "12px", color: "#777777" }}>Preparation</p>
-                <p style={{ margin: 0, fontSize: "13px", color: "#cccccc", whiteSpace: "pre-wrap" }}>
-                  {metadata.preparation}
-                </p>
-              </div>
-            ) : null}
           </section>
 
           <section style={sectionCardStyle}>
@@ -785,7 +1043,7 @@ export function MeetingDetailView({
               Invitees / Attendees
             </h2>
             {invitedMembers.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>No invitees listed.</p>
+              <p style={{ margin: 0, fontSize: "13px", color: "#999999" }}>No invitees listed.</p>
             ) : (
               <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
                 {invitedMembers.map((member) => (
@@ -805,19 +1063,21 @@ export function MeetingDetailView({
             )}
           </section>
 
-          <section style={sectionCardStyle}>
-            <h2 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
-              Linked Work
-            </h2>
-            <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#cccccc" }}>
-              {actionItems.length} action item{actionItems.length === 1 ? "" : "s"}
-              {" · "}
-              {meeting.openActionItemCount} open
-            </p>
-            <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
-              {convertedCount} converted task{convertedCount === 1 ? "" : "s"}
-            </p>
-          </section>
+          {actionItems.length > 0 || meeting.openActionItemCount > 0 || convertedCount > 0 ? (
+            <section style={sectionCardStyle}>
+              <h2 style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
+                Linked Work
+              </h2>
+              <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#cccccc" }}>
+                {actionItems.length} action item{actionItems.length === 1 ? "" : "s"}
+                {" · "}
+                {meeting.openActionItemCount} open
+              </p>
+              <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
+                {convertedCount} converted task{convertedCount === 1 ? "" : "s"}
+              </p>
+            </section>
+          ) : null}
 
           {metadata.linkedEventTitle || metadata.linkedHiringTitle ? (
             <section style={sectionCardStyle}>
@@ -857,15 +1117,15 @@ export function MeetingDetailView({
                 {meeting.location}
               </p>
             </section>
-          ) : meetingFormat !== "online" ? (
+          ) : meetingFormat !== "online" && isPrivileged ? (
             <section style={{ ...sectionCardStyle, background: CARD_BG }}>
-              <p style={{ margin: 0, fontSize: "13px", color: "#777777", display: "flex", gap: "8px" }}>
+              <p style={{ margin: 0, fontSize: "13px", color: "#999999", display: "flex", gap: "8px" }}>
                 <MapPin size={16} aria-hidden />
                 Location missing
               </p>
             </section>
           ) : null}
-          {meetingFormat !== "in_person" ? (
+          {meetingFormat !== "in_person" && meeting.meetingLink?.trim() ? (
             <section style={{ ...sectionCardStyle, background: CARD_BG }}>
               <h2
                 style={{
@@ -881,28 +1141,24 @@ export function MeetingDetailView({
                 <Video size={16} aria-hidden />
                 Meeting Link
               </h2>
-              {meeting.meetingLink?.trim() ? (
-                <a
-                  href={meeting.meetingLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    fontSize: "13px",
-                    color: "#E51937",
-                    textDecoration: "none",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  <Link2 size={14} aria-hidden />
-                  {meeting.meetingLink}
-                </a>
-              ) : (
-                <p style={{ margin: 0, fontSize: "13px", color: "#777777" }}>Meeting link missing</p>
-              )}
-              {showJoin && meeting.meetingLink?.trim() ? (
+              <a
+                href={meeting.meetingLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontSize: "13px",
+                  color: "#E51937",
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  wordBreak: "break-all",
+                }}
+              >
+                <Link2 size={14} aria-hidden />
+                {meeting.meetingLink}
+              </a>
+              {showJoin ? (
                 <a
                   href={meeting.meetingLink}
                   target="_blank"
@@ -920,6 +1176,24 @@ export function MeetingDetailView({
                   Join Meeting
                 </a>
               ) : null}
+            </section>
+          ) : meetingFormat !== "in_person" && isPrivileged ? (
+            <section style={{ ...sectionCardStyle, background: CARD_BG }}>
+              <h2
+                style={{
+                  margin: "0 0 10px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <Video size={16} aria-hidden />
+                Meeting Link
+              </h2>
+              <p style={{ margin: 0, fontSize: "13px", color: "#999999" }}>Meeting link missing</p>
             </section>
           ) : null}
         </div>

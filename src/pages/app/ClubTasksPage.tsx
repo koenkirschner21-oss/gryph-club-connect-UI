@@ -14,8 +14,12 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyUsers } from "../../lib/notifyUsers";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
-import { formatTaskDate } from "../../lib/taskDueUrgency";
-import { resolveTaskCompletionStatus, isTaskAwaitingReviewFromUser } from "../../lib/taskCompletion";
+import { formatTaskDate, isTaskInactiveForDueTracking } from "../../lib/taskDueUrgency";
+import {
+  resolveTaskCompletionStatus,
+  isTaskAwaitingReviewFromUser,
+  shouldSubmitTaskForReview,
+} from "../../lib/taskCompletion";
 import { addTaskComment } from "../../lib/taskComments";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import type { Task, TaskStatus, TaskPriority, TaskType } from "../../types";
@@ -54,10 +58,19 @@ const STAT_CARD_FILTER_LABELS: Record<TasksStatCardFilter, string> = {
   due_this_week: "due this week",
   high_priority: "high priority",
   completed: "completed",
+  overdue: "overdue",
 };
 
+function isTaskOverdue(task: Task): boolean {
+  if (isTaskInactiveForDueTracking(task.status) || !task.dueDate) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = parseTaskDueDay(task.dueDate);
+  return due != null && due.getTime() < today.getTime();
+}
+
 function isTaskDueThisWeek(task: Task): boolean {
-  if (task.status === "done" || !task.dueDate) return false;
+  if (isTaskInactiveForDueTracking(task.status) || !task.dueDate) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const weekEnd = new Date(today);
@@ -122,9 +135,13 @@ function nextStatus(status: TaskStatus): TaskStatus | null {
   return null;
 }
 
-function listQuickActionLabel(status: TaskStatus): string | null {
-  if (status === "todo") return "Start Task";
-  if (status === "in_progress") return "Mark Done";
+function listQuickActionLabel(task: Task, userId?: string): string | null {
+  if (task.status === "todo") return "Start Task";
+  if (task.status === "in_progress") {
+    return userId && shouldSubmitTaskForReview(task, userId)
+      ? "Submit for Review"
+      : "Mark Complete";
+  }
   return null;
 }
 
@@ -727,9 +744,7 @@ export default function ClubTasksPage() {
     const activeTasks = enrichedTasks.filter((task) => task.status !== "cancelled");
 
     if (!canManageTasks) {
-      return activeTasks.filter(
-      (task) => task.assignedTo === user?.id && task.status !== "pending_review",
-    );
+      return activeTasks.filter((task) => task.assignedTo === user?.id);
     }
 
     if (activeTypeFilter === "event") {
@@ -745,9 +760,7 @@ export default function ClubTasksPage() {
       );
     }
 
-    return activeTasks.filter(
-      (task) => task.assignedTo === user?.id && task.status !== "pending_review",
-    );
+    return activeTasks.filter((task) => task.assignedTo === user?.id);
   }, [enrichedTasks, assignmentTab, user?.id, canManageTasks, activeTypeFilter]);
 
 
@@ -802,6 +815,23 @@ export default function ClubTasksPage() {
   }, [assignmentTab]);
 
   useEffect(() => {
+    if (searchParams.get("filter") === "overdue") {
+      setActiveQuickFilter("overdue");
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const taskId = searchParams.get("task");
+    if (!taskId || loading) return;
+    const match = tasks.find((task) => task.id === taskId);
+    if (!match) return;
+    setSelectedTask(match);
+    const next = new URLSearchParams(searchParams);
+    next.delete("task");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, loading, tasks]);
+
+  useEffect(() => {
     if (visibleTasks.length === 0) {
       setCommentCounts({});
       return;
@@ -849,10 +879,14 @@ export default function ClubTasksPage() {
         return typeFilteredTasks.filter(isTaskDueThisWeek);
       case "high_priority":
         return typeFilteredTasks.filter(
-          (task) => task.priority === "high" && task.status !== "done",
+          (task) =>
+            task.priority === "high" &&
+            !isTaskInactiveForDueTracking(task.status),
         );
       case "completed":
         return typeFilteredTasks.filter((task) => task.status === "done");
+      case "overdue":
+        return typeFilteredTasks.filter(isTaskOverdue);
       default:
         return typeFilteredTasks;
     }
@@ -868,8 +902,10 @@ export default function ClubTasksPage() {
 
   const highPriorityCount = useMemo(
     () =>
-      typeFilteredTasks.filter((task) => task.priority === "high" && task.status !== "done")
-        .length,
+      typeFilteredTasks.filter(
+        (task) =>
+          task.priority === "high" && !isTaskInactiveForDueTracking(task.status),
+      ).length,
     [typeFilteredTasks],
   );
 
@@ -1011,14 +1047,38 @@ export default function ClubTasksPage() {
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     setStatusAnimatingId(taskId);
     const task = enrichedTasks.find((item) => item.id === taskId);
+    if (!task || !user?.id) {
+      window.setTimeout(() => setStatusAnimatingId(null), 280);
+      return;
+    }
+
     let resolvedStatus = newStatus;
     let completedAt: string | null | undefined;
 
-    if (newStatus === "done" && task && user?.id) {
-      resolvedStatus = resolveTaskCompletionStatus(task, user.id);
-      if (resolvedStatus === "pending_review") {
+    if (newStatus === "done") {
+      // Assignees of review-required tasks submit; only the creator/reviewer completes.
+      if (task.status === "pending_review") {
+        if (!isTaskAwaitingReviewFromUser(task, user.id)) {
+          window.setTimeout(() => setStatusAnimatingId(null), 280);
+          setFeedback({
+            type: "error",
+            text: "Only the reviewer can mark this task complete.",
+          });
+          return;
+        }
+        resolvedStatus = "done";
         completedAt = new Date().toISOString();
+      } else {
+        resolvedStatus = resolveTaskCompletionStatus(task, user.id);
+        if (resolvedStatus === "pending_review") {
+          completedAt = new Date().toISOString();
+        }
       }
+    }
+
+    if (task.status === resolvedStatus) {
+      window.setTimeout(() => setStatusAnimatingId(null), 280);
+      return;
     }
 
     const ok = await updateTask(taskId, {
@@ -1028,12 +1088,39 @@ export default function ClubTasksPage() {
     window.setTimeout(() => setStatusAnimatingId(null), 280);
     if (!ok) {
       setFeedback({ type: "error", text: "Failed to update status." });
-    } else if (resolvedStatus === "pending_review") {
+      return;
+    }
+
+    if (resolvedStatus === "pending_review") {
       setFeedback({ type: "success", text: "Task submitted for review." });
+      if (task.createdBy && task.createdBy !== user.id) {
+        void notifyUsers([
+          {
+            user_id: task.createdBy,
+            type: "task_assigned",
+            message: `"${task.title}" was submitted for review.`,
+            club_id: clubId,
+            reference_id: task.id,
+          },
+        ]);
+      }
+    } else if (resolvedStatus === "done") {
+      setFeedback({ type: "success", text: "Task marked complete." });
+    } else if (resolvedStatus === "in_progress" && newStatus === "in_progress") {
+      setFeedback({ type: "success", text: "Task started." });
     }
   }
 
   async function handleApproveReview(task: Task) {
+    if (!user?.id || !isTaskAwaitingReviewFromUser(task, user.id)) {
+      setFeedback({
+        type: "error",
+        text: "Only the reviewer can approve this task.",
+      });
+      return;
+    }
+    if (task.status === "done") return;
+
     const ok = await updateTask(task.id, {
       status: "done",
       completedAt: new Date().toISOString(),
@@ -1044,19 +1131,17 @@ export default function ClubTasksPage() {
     }
   }
 
-  async function handleSendBackReview(task: Task, note: string) {
-    if (note.trim() && user?.id) {
-      await addTaskComment(task.id, user.id, note.trim());
-    }
-    const ok = await updateTask(task.id, { status: "in_progress", completedAt: null });
-    if (ok) {
-      setFeedback({ type: "success", text: "Task sent back." });
-      closeTaskDetail();
-    }
-  }
-
   async function handleRequestChangesReview(task: Task, note: string) {
-    if (note.trim() && user?.id) {
+    if (!user?.id || !isTaskAwaitingReviewFromUser(task, user.id)) {
+      setFeedback({
+        type: "error",
+        text: "Only the reviewer can request changes.",
+      });
+      return;
+    }
+    if (task.status !== "pending_review") return;
+
+    if (note.trim()) {
       await addTaskComment(task.id, user.id, `Change requested: ${note.trim()}`);
     }
     const ok = await updateTask(task.id, { status: "in_progress", completedAt: null });
@@ -1193,9 +1278,7 @@ export default function ClubTasksPage() {
         status,
         tasks: tasks.filter((task) => {
           if (status === "pending_review") {
-            return user?.id
-              ? isTaskAwaitingReviewFromUser(task, user.id)
-              : false;
+            return task.status === "pending_review";
           }
           return task.status === status;
         }),
@@ -1226,14 +1309,21 @@ export default function ClubTasksPage() {
     const next = nextStatus(task.status);
     const assigneeName = assigneePlainNameFor(task);
     const commentCount = commentCounts[task.id] ?? 0;
-    const listAction = listQuickActionLabel(task.status);
+    const listAction = listQuickActionLabel(task, user?.id);
     const showStatusAction = canChangeStatus && listAction && !isDone;
     const leftBorder = listRowLeftBorder(task.status);
     const metaParts: string[] = [assigneeName];
-    if (task.dueDate) {
+    if (task.dueDate && !isTaskInactiveForDueTracking(task.status)) {
       metaParts.push(`Due: ${formatTaskDate(task.dueDate)}`);
       const dueSub = formatDueDateSubLabel(task.dueDate, task.status);
       if (dueSub) metaParts.push(dueSub.text);
+    } else if (task.status === "done" && task.completedAt) {
+      metaParts.push(`Completed: ${formatTaskDate(task.completedAt)}`);
+      if (task.creatorName) {
+        metaParts.push(`Reviewer: ${task.creatorName}`);
+      }
+    } else if (task.status === "pending_review") {
+      metaParts.push("Submitted for Review");
     }
     if (canViewComments) {
       metaParts.push(
@@ -1256,6 +1346,9 @@ export default function ClubTasksPage() {
           open={openMenuTaskId === task.id}
           taskStatus={task.status}
           canChangeStatus={canChangeStatus}
+          submitForReview={Boolean(
+            user?.id && shouldSubmitTaskForReview(task, user.id),
+          )}
           onStatusChange={(status) => {
             setOpenMenuTaskId(null);
             void handleStatusChange(task.id, status);
@@ -1748,6 +1841,7 @@ export default function ClubTasksPage() {
         <TaskDetailModal
           task={detailTask}
           clubId={clubId}
+          clubName={club?.name}
           onClose={closeTaskDetail}
           onBack={closeTaskDetail}
           assigneeName={assigneeDisplayFor(detailTask)}
@@ -1772,7 +1866,6 @@ export default function ClubTasksPage() {
           onStatusChange={(status) => void handleStatusChange(detailTask.id, status)}
           isReviewMode={isReviewingTask}
           onApproveReview={() => void handleApproveReview(detailTask)}
-          onSendBackReview={(note) => void handleSendBackReview(detailTask, note)}
           onRequestChangesReview={(note) =>
             void handleRequestChangesReview(detailTask, note)
           }

@@ -312,6 +312,55 @@ textarea::placeholder {
 .toast-error { background: var(--bg-2); color: #f87171; border-left: 3px solid #ef4444; }
 .toast-info { background: var(--bg-2); color: var(--text-1); border-left: 3px solid var(--red); }
 
+/* Shared date/time controls — theme-aware native picker icons */
+.datetime-field-input {
+  color-scheme: dark;
+}
+
+.datetime-field-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.85;
+  filter: invert(1) brightness(0.9);
+}
+
+/* Full-field hit target with custom Lucide icon overlay */
+.datetime-field-with-icon::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  filter: none;
+}
+
+.datetime-field-input:hover::-webkit-calendar-picker-indicator,
+.datetime-field-input:focus::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+
+.datetime-field-with-icon:hover::-webkit-calendar-picker-indicator,
+.datetime-field-with-icon:focus::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+.datetime-field-input:disabled::-webkit-calendar-picker-indicator {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: light) {
+  .datetime-field-input[data-appearance="light"],
+  [data-appearance="light"] .datetime-field-input {
+    color-scheme: light;
+  }
+
+  .datetime-field-input[data-appearance="light"]::-webkit-calendar-picker-indicator,
+  [data-appearance="light"] .datetime-field-input::-webkit-calendar-picker-indicator {
+    filter: none;
+  }
+}
+
 /* ── Accessibility: reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   *,

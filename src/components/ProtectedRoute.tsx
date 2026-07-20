@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
+import { RequireCompletedOnboarding } from "./RequireCompletedOnboarding";
 import Spinner from "./ui/Spinner";
 
 export default function ProtectedRoute({
@@ -25,5 +26,5 @@ export default function ProtectedRoute({
     return <Navigate to={`/login?redirect=${redirect}`} replace />;
   }
 
-  return children;
+  return <RequireCompletedOnboarding>{children}</RequireCompletedOnboarding>;
 }

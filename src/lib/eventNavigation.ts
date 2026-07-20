@@ -1,4 +1,8 @@
 export function getWorkspaceEventDetailPath(clubId: string, eventId: string): string {
+  return `/app/clubs/${clubId}/events?event=${encodeURIComponent(eventId)}`;
+}
+
+export function getWorkspaceEventManagePath(clubId: string, eventId: string): string {
   return `/app/clubs/${clubId}/events?manageEvent=${encodeURIComponent(eventId)}`;
 }
 

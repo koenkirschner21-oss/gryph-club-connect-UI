@@ -29,6 +29,8 @@ import {
 } from "../lib/eventCategories";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import Spinner from "../components/ui/Spinner";
+import DateTimeField from "../components/ui/DateTimeField";
+import { getDateRangeError } from "../lib/dateRangeValidation";
 import { clubCategoryFilterOptions } from "../lib/clubCategories";
 import { submitEventSignup } from "../lib/eventRsvpActions";
 import type { RsvpStatus } from "../types";
@@ -1378,7 +1380,7 @@ export default function PublicEventsPage() {
             lineHeight: 1.05,
           }}
         >
-          Campus <span style={{ color: "#E51937" }}>Events</span>
+          Upcoming <span style={{ color: "#E51937" }}>Events</span>
         </h1>
         <div
           style={{
@@ -1583,31 +1585,25 @@ export default function PublicEventsPage() {
               marginBottom: "16px",
             }}
           >
-            <div>
-              <label htmlFor="events-from-date" style={labelStyle}>
-                From
-              </label>
-              <input
-                id="events-from-date"
-                type="date"
-                value={customDateFrom}
-                onChange={(e) => setCustomDateFrom(e.target.value)}
-                style={fieldStyle}
-              />
-            </div>
-            <div>
-              <label htmlFor="events-to-date" style={labelStyle}>
-                To
-              </label>
-              <input
-                id="events-to-date"
-                type="date"
-                value={customDateTo}
-                min={customDateFrom || undefined}
-                onChange={(e) => setCustomDateTo(e.target.value)}
-                style={fieldStyle}
-              />
-            </div>
+            <DateTimeField
+              id="events-from-date"
+              type="date"
+              label="From"
+              value={customDateFrom}
+              onChange={setCustomDateFrom}
+              max={customDateTo || undefined}
+              inputStyle={fieldStyle}
+            />
+            <DateTimeField
+              id="events-to-date"
+              type="date"
+              label="To"
+              value={customDateTo}
+              onChange={setCustomDateTo}
+              min={customDateFrom || undefined}
+              rangeError={getDateRangeError(customDateFrom, customDateTo) ?? undefined}
+              inputStyle={fieldStyle}
+            />
           </div>
         ) : null}
         {loading ? (

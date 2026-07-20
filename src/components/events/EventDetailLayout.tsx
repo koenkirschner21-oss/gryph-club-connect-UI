@@ -274,22 +274,22 @@ export function EventDetailMeta({
     alignItems: "flex-start",
     gap: "10px",
     fontSize: "14px",
-    color: "#aaaaaa",
+    color: "#cccccc",
     margin: 0,
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
       <p style={rowStyle}>
-        <Calendar size={16} color="#555555" aria-hidden style={{ flexShrink: 0, marginTop: "2px" }} />
+        <Calendar size={16} color="#888888" aria-hidden style={{ flexShrink: 0, marginTop: "2px" }} />
         <span>{formatEventDate(date)}</span>
       </p>
       <p style={rowStyle}>
-        <Clock size={16} color="#555555" aria-hidden style={{ flexShrink: 0, marginTop: "2px" }} />
+        <Clock size={16} color="#888888" aria-hidden style={{ flexShrink: 0, marginTop: "2px" }} />
         <span>{timeLabel ?? "Time TBD"}</span>
       </p>
       <p style={rowStyle}>
-        <MapPin size={16} color="#555555" aria-hidden style={{ flexShrink: 0, marginTop: "2px" }} />
+        <MapPin size={16} color="#888888" aria-hidden style={{ flexShrink: 0, marginTop: "2px" }} />
         <span>{locationLabel ?? "Location TBD"}</span>
       </p>
     </div>
@@ -467,13 +467,12 @@ export function EventDetailPublicLink({ href }: { href: string }) {
         display: "inline-flex",
         alignItems: "center",
         gap: "6px",
-        marginTop: "12px",
         fontSize: "13px",
-        color: "#777777",
+        color: "#aaaaaa",
         textDecoration: "none",
       }}
     >
-      View public posting
+      View Public Posting
       <ExternalLink size={14} aria-hidden />
     </Link>
   );
@@ -505,7 +504,7 @@ export function EventDetailTwoColumn({
       style={{
         display: "grid",
         gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(280px, 340px)",
-        gap: "20px",
+        gap: isMobile ? "16px" : "18px",
         alignItems: "start",
       }}
     >
@@ -516,7 +515,7 @@ export function EventDetailTwoColumn({
           top: isMobile ? undefined : "16px",
           display: "flex",
           flexDirection: "column",
-          gap: "16px",
+          gap: "12px",
         }}
       >
         {sidebar}

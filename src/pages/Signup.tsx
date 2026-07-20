@@ -1,5 +1,5 @@
-import { type FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { type FormEvent, useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuthContext } from "../context/useAuthContext";
 import { showToast } from "../components/ui/Toast";
@@ -9,6 +9,7 @@ import {
   isAllowedSignupEmail,
   signupEmailValidationMessage,
 } from "../lib/authProfile";
+import { isSafeRedirectPath, storePendingRedirect } from "../lib/authRedirect";
 
 const AUTH_RED = "#E51937";
 const AUTH_RED_HOVER = "#cc0020";
@@ -319,6 +320,10 @@ export default function Signup() {
   const { signUp } = useAuthContext();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const [searchParams] = useSearchParams();
+
+  const rawRedirect = searchParams.get("redirect");
+  const redirectPath = isSafeRedirectPath(rawRedirect) ? rawRedirect : null;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -328,6 +333,12 @@ export default function Signup() {
   const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<
     string | null
   >(null);
+
+  useEffect(() => {
+    if (redirectPath) {
+      storePendingRedirect(redirectPath);
+    }
+  }, [redirectPath]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -345,13 +356,22 @@ export default function Signup() {
     setEmailError(null);
     setLoading(true);
     try {
-      const { needsEmailConfirmation } = await signUp(normalizedEmail, password);
+      const { needsEmailConfirmation } = await signUp(
+        normalizedEmail,
+        password,
+        redirectPath,
+      );
       if (needsEmailConfirmation) {
         setPendingConfirmationEmail(normalizedEmail);
         return;
       }
-      console.info("[auth] signup redirect", { destination: "/onboarding" });
-      navigate("/onboarding");
+      const onboardingDestination = redirectPath
+        ? `/onboarding?redirect=${encodeURIComponent(redirectPath)}`
+        : "/onboarding";
+      console.info("[auth] signup redirect", {
+        destination: onboardingDestination,
+      });
+      navigate(onboardingDestination);
     } catch (err) {
       console.error("[auth] signup failed:", err);
       showToast(formatSignupError(err), "error");

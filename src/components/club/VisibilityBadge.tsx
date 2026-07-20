@@ -77,8 +77,9 @@ export default function VisibilityBadge({
     <span
       style={{
         ...badgeStyle,
-        color: "#555555",
-        border: "1px solid #333333",
+        color: "#bbbbbb",
+        border: "1px solid #555555",
+        background: "#1a1a1a",
       }}
     >
       <Globe size={12} aria-hidden />

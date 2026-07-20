@@ -49,6 +49,8 @@ function parseMentionedUserIds(
   return [...mentioned];
 }
 
+export type MessageSendStatus = "sending" | "failed";
+
 export interface DirectMessage {
   id: string;
   conversationId: string;
@@ -64,6 +66,8 @@ export interface DirectMessage {
   replyToId?: string | null;
   replyToContent?: string | null;
   replyToSender?: string | null;
+  /** Client-only status for optimistic outbound messages. */
+  sendStatus?: MessageSendStatus;
 }
 
 export interface Conversation {
@@ -403,6 +407,7 @@ export interface UseConversationsReturn {
       senderName: string;
     } | null,
   ) => Promise<boolean>;
+  retryFailedMessage: (messageId: string) => Promise<boolean>;
   editMessage: (messageId: string, content: string) => Promise<boolean>;
   createPoll: (
     conversationId: string,
@@ -471,6 +476,7 @@ export function useConversations(
 
   const messagesChannelRef = useRef<RealtimeChannel | null>(null);
   const pollsChannelRef = useRef<RealtimeChannel | null>(null);
+  const hasLoadedConversationsRef = useRef(false);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   const activeConversation =
@@ -541,14 +547,19 @@ export function useConversations(
     void loadRoleAndMembers();
   }, [loadRoleAndMembers, refreshKey]);
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (options?: { silent?: boolean }) => {
     if (!clubId || !user?.id) {
       setConversations([]);
       setLoading(false);
+      hasLoadedConversationsRef.current = false;
       return;
     }
 
-    setLoading(true);
+    const silent =
+      options?.silent === true || hasLoadedConversationsRef.current;
+    if (!silent) {
+      setLoading(true);
+    }
 
     await ensureMyClubChats(supabase, clubId);
 
@@ -567,6 +578,7 @@ export function useConversations(
     const conversationIds = (memberships ?? []).map((m) => m.conversation_id);
     if (conversationIds.length === 0) {
       setConversations([]);
+      hasLoadedConversationsRef.current = true;
       setLoading(false);
       return;
     }
@@ -647,6 +659,7 @@ export function useConversations(
     );
 
     setConversations(sortConversationsByPriority(enriched));
+    hasLoadedConversationsRef.current = true;
     setLoading(false);
   }, [clubId, user?.id]);
 
@@ -657,6 +670,7 @@ export function useConversations(
   useEffect(() => {
     setActiveConversationId(null);
     setConversations([]);
+    hasLoadedConversationsRef.current = false;
     setLoading(Boolean(clubId && user?.id));
   }, [clubId, user?.id]);
 
@@ -852,7 +866,7 @@ export function useConversations(
       if (clubId) {
         notifyClubChatRead(clubId, conversationId);
       }
-      void loadConversations();
+      void loadConversations({ silent: true });
     },
     [clubId, loadConversations, user?.id],
   );
@@ -908,7 +922,7 @@ export function useConversations(
               });
             }
           }
-          void loadConversations();
+          void loadConversations({ silent: true });
         },
       )
       .on(
@@ -929,7 +943,7 @@ export function useConversations(
               message.id === enriched.id ? enriched : message,
             ),
           );
-          void loadConversations();
+          void loadConversations({ silent: true });
         },
       );
 
@@ -1237,13 +1251,14 @@ export function useConversations(
         content: string;
         senderName: string;
       } | null,
+      options?: { existingTempId?: string },
     ): Promise<boolean> => {
       if (!user?.id) return false;
 
       const trimmed = content.trim();
       if (!trimmed && !attachment) return false;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = options?.existingTempId ?? `temp-${Date.now()}`;
       const metadata = user.user_metadata as Record<string, unknown> | undefined;
       const currentUserName =
         (metadata?.full_name as string | undefined) ??
@@ -1266,9 +1281,29 @@ export function useConversations(
         replyToId: reply?.id ?? null,
         replyToContent: reply?.content ?? null,
         replyToSender: reply?.senderName ?? null,
+        sendStatus: "sending",
       };
 
-      setMessages((prev) => [...prev, optimisticMessage]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === tempId)) {
+          return prev.map((m) => (m.id === tempId ? optimisticMessage : m));
+        }
+        return [...prev, optimisticMessage];
+      });
+
+      setConversations((prev) =>
+        sortConversationsByPriority(
+          prev.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  lastMessage: optimisticMessage,
+                  updatedAt: optimisticMessage.createdAt,
+                }
+              : c,
+          ),
+        ),
+      );
 
       const { data, error } = await supabase
         .from("direct_messages")
@@ -1288,7 +1323,11 @@ export function useConversations(
 
       if (error || !data) {
         console.error("Failed to send message:", error?.message);
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, sendStatus: "failed" as const } : m,
+          ),
+        );
         return false;
       }
 
@@ -1296,7 +1335,21 @@ export function useConversations(
       const [enriched] = await attachMessageSenders([mapped]);
       setMessages((prev) => mergeConfirmedMessage(prev, enriched, tempId));
 
-      await supabase
+      setConversations((prev) =>
+        sortConversationsByPriority(
+          prev.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  lastMessage: enriched,
+                  updatedAt: enriched.createdAt,
+                }
+              : c,
+          ),
+        ),
+      );
+
+      void supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
         .eq("id", conversationId);
@@ -1321,10 +1374,39 @@ export function useConversations(
         }
       }
 
-      await loadConversations();
+      void loadConversations({ silent: true });
       return true;
     },
     [user, clubId, conversations, loadConversations],
+  );
+
+  const retryFailedMessage = useCallback(
+    async (messageId: string): Promise<boolean> => {
+      const failed = messages.find(
+        (m) => m.id === messageId && m.sendStatus === "failed",
+      );
+      if (!failed) return false;
+
+      return sendMessage(
+        failed.conversationId,
+        failed.content ?? "",
+        failed.attachmentUrl
+          ? {
+              url: failed.attachmentUrl,
+              type: failed.attachmentType ?? "file",
+            }
+          : null,
+        failed.replyToId
+          ? {
+              id: failed.replyToId,
+              content: failed.replyToContent ?? "",
+              senderName: failed.replyToSender ?? "Member",
+            }
+          : null,
+        { existingTempId: failed.id },
+      );
+    },
+    [messages, sendMessage],
   );
 
   const createPoll = useCallback(
@@ -1429,7 +1511,7 @@ export function useConversations(
           message.id === messageId ? enriched : message,
         ),
       );
-      await loadConversations();
+      await loadConversations({ silent: true });
       return true;
     },
     [loadConversations, user?.id],
@@ -1454,6 +1536,7 @@ export function useConversations(
     createDirectMessage,
     createGroupChat,
     sendMessage,
+    retryFailedMessage,
     editMessage,
     createPoll,
     voteOnPoll,

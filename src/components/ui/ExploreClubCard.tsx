@@ -9,6 +9,9 @@ import { Check } from "lucide-react";
 import { isUploadedClubBanner, getClubInitials } from "../../lib/clubUtils";
 import type { ExploreClubClaimState } from "../../lib/clubClaimUtils";
 import type { Club } from "../../types";
+import { useClubContext } from "../../context/useClubContext";
+import { showToast } from "./Toast";
+import { useAuthContext } from "../../context/useAuthContext";
 
 const ACCENT_RED = "#E51937";
 
@@ -278,6 +281,9 @@ export default function ExploreClubCard({
   userManagesClub?: boolean;
   claimFocused?: boolean;
 }) {
+  const { user } = useAuthContext();
+  const { isSaved, toggleSaveClub } = useClubContext();
+  const saved = isSaved(club.id);
   const [hovered, setHovered] = useState(false);
   const [descriptionPreview, setDescriptionPreview] = useState<{
     text: string;
@@ -405,6 +411,53 @@ export default function ExploreClubCard({
             </span>
           </div>
         )}
+        {user ? (
+          <button
+            type="button"
+            aria-label={saved ? "Unsave club" : "Save club"}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const result = toggleSaveClub(club.id);
+              if (result === true) showToast("Club saved", "success");
+              if (result === false) {
+                showToast("Club removed from saved clubs", "info");
+              }
+            }}
+            style={{
+              position: "absolute",
+              top: "10px",
+              right: "10px",
+              width: "32px",
+              height: "32px",
+              borderRadius: "999px",
+              border: "1px solid #333333",
+              background: "rgba(15,15,15,0.85)",
+              color: saved ? "#FFC429" : "#cccccc",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              zIndex: 2,
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              fill={saved ? "currentColor" : "none"}
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+              />
+            </svg>
+          </button>
+        ) : null}
       </div>
 
       <div

@@ -48,8 +48,13 @@ export interface UseClubMembersReturn {
     options?: { accessLevel?: AccessLevel; title?: string | null },
   ) => Promise<boolean>;
   removeMember: (memberId: string) => Promise<boolean>;
-  approveRequest: (memberId: string) => Promise<boolean>;
-  rejectRequest: (memberId: string) => Promise<boolean>;
+  approveRequest: (
+    memberId: string,
+  ) => Promise<{ ok: true; outcome: string } | { ok: false; error: string }>;
+  rejectRequest: (
+    memberId: string,
+    reason?: string,
+  ) => Promise<{ ok: true; outcome: string } | { ok: false; error: string }>;
   refresh: () => void;
 }
 
@@ -265,47 +270,76 @@ export function useClubMembers(
 
   /** Approve a pending join request → set status to 'active'. */
   const approveRequest = useCallback(
-    async (memberId: string): Promise<boolean> => {
-      const { error: err } = await supabase
-        .from("club_members")
-        .update({ status: "active" })
-        .eq("id", memberId);
+    async (
+      memberId: string,
+    ): Promise<{ ok: true; outcome: string } | { ok: false; error: string }> => {
+      const { data, error: err } = await supabase.rpc("approve_club_join_request", {
+        p_member_id: memberId,
+      });
 
       if (err) {
         console.error("Failed to approve request:", err.message);
-        return false;
+        return { ok: false, error: err.message };
       }
 
-      // Move from pending to active members
-      let approved: ClubMember | undefined;
-      setPendingMembers((prev) => {
-        approved = prev.find((m) => m.id === memberId);
-        return prev.filter((m) => m.id !== memberId);
-      });
-      if (approved) {
-        const approvedMember = approved;
-        setMembers((active) => [...active, { ...approvedMember, status: "active" }]);
+      const outcome =
+        data && typeof data === "object" && "outcome" in data
+          ? String((data as { outcome?: string }).outcome ?? "approved")
+          : "approved";
+
+      if (outcome === "already_active" || outcome === "approved") {
+        let approved: ClubMember | undefined;
+        setPendingMembers((prev) => {
+          approved = prev.find((m) => m.id === memberId);
+          return prev.filter((m) => m.id !== memberId);
+        });
+        if (approved) {
+          const approvedMember = approved;
+          setMembers((active) => {
+            if (active.some((m) => m.id === memberId || m.userId === approvedMember.userId)) {
+              return active.map((m) =>
+                m.id === memberId || m.userId === approvedMember.userId
+                  ? { ...m, status: "active" as const }
+                  : m,
+              );
+            }
+            return [...active, { ...approvedMember, status: "active" as const }];
+          });
+        } else {
+          // Already active elsewhere — refresh pending list only
+          setPendingMembers((prev) => prev.filter((m) => m.id !== memberId));
+        }
+        return { ok: true, outcome };
       }
-      return true;
+
+      return { ok: false, error: "Unexpected approval result." };
     },
-    [clubId],
+    [],
   );
 
   /** Reject a pending join request → delete the row. */
   const rejectRequest = useCallback(
-    async (memberId: string): Promise<boolean> => {
-      const { error: err } = await supabase
-        .from("club_members")
-        .delete()
-        .eq("id", memberId);
+    async (
+      memberId: string,
+      reason?: string,
+    ): Promise<{ ok: true; outcome: string } | { ok: false; error: string }> => {
+      const { data, error: err } = await supabase.rpc("reject_club_join_request", {
+        p_member_id: memberId,
+        p_reason: reason?.trim() || null,
+      });
 
       if (err) {
         console.error("Failed to reject request:", err.message);
-        return false;
+        return { ok: false, error: err.message };
       }
 
+      const outcome =
+        data && typeof data === "object" && "outcome" in data
+          ? String((data as { outcome?: string }).outcome ?? "rejected")
+          : "rejected";
+
       setPendingMembers((prev) => prev.filter((m) => m.id !== memberId));
-      return true;
+      return { ok: true, outcome };
     },
     [],
   );

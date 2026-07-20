@@ -19,6 +19,7 @@ import {
   type InterviewType,
   type PositionHandling,
 } from "../../lib/hiringPipelineUtils";
+import { dispatchHiringApplicationUpdated } from "../../lib/clubDataSyncEvents";
 import { darkInputStyle, modalOverlayStyle } from "../../pages/app/HiringBoardPage";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import {
@@ -172,6 +173,14 @@ export default function CandidateReviewPanel({
 
   const applicantName = application.profile?.full_name ?? "Applicant";
 
+  function emitStatusChanged() {
+    dispatchHiringApplicationUpdated({
+      clubId,
+      listingId: positionId,
+      applicationId: application.id,
+    });
+    onStatusChanged();
+  }
   const loadNotes = useCallback(async () => {
     setNotesLoading(true);
 
@@ -277,7 +286,7 @@ export default function CandidateReviewPanel({
     }
 
     onApplicationUpdated({ subStatus: "reviewed", status: "reviewed" });
-    onStatusChanged();
+    emitStatusChanged();
   }
 
   async function handleAddNote(noteText: string) {
@@ -502,6 +511,7 @@ export default function CandidateReviewPanel({
               .from("hiring_applications")
               .update({
                 sub_status: "interview_invite_sent",
+                status: "reviewed",
                 interview_type: payload.interviewType,
                 interview_times: payload.interviewTimes,
                 meeting_location: payload.meetingLocation || null,
@@ -566,7 +576,7 @@ export default function CandidateReviewPanel({
               meetingLocation: payload.meetingLocation,
               meetingLink: payload.meetingLink,
             });
-            onStatusChanged();
+            emitStatusChanged();
             setSubmitting(false);
             setActiveModal(null);
           }}
@@ -612,6 +622,7 @@ export default function CandidateReviewPanel({
               .from("hiring_applications")
               .update({
                 sub_status: "offer_sent",
+                status: "reviewed",
                 offered_access_level: payload.accessLevel,
                 offered_role_title: payload.roleTitle,
                 position_handling: payload.positionHandling,
@@ -670,7 +681,7 @@ export default function CandidateReviewPanel({
               offeredRoleTitle: payload.roleTitle,
               positionHandling: payload.positionHandling,
             });
-            onStatusChanged();
+            emitStatusChanged();
             setSubmitting(false);
             setActiveModal(null);
           }}
@@ -716,7 +727,7 @@ export default function CandidateReviewPanel({
             });
 
             onApplicationUpdated({ subStatus: "rejected", status: "rejected" });
-            onStatusChanged();
+            emitStatusChanged();
             setSubmitting(false);
             setActiveModal(null);
           }}

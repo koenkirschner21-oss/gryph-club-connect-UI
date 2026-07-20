@@ -170,6 +170,13 @@ export function useEventRsvps(eventIds: string[]): UseEventRsvpsReturn {
     async (eventId: string): Promise<boolean> => {
       if (!user) return false;
 
+      // Clear custom-question answers so a later re-signup can start clean.
+      await supabase
+        .from("event_form_responses")
+        .delete()
+        .eq("event_id", eventId)
+        .eq("user_id", user.id);
+
       const { error } = await supabase
         .from("event_rsvps")
         .delete()

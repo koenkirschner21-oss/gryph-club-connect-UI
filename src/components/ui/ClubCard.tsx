@@ -4,6 +4,7 @@ import type { Club } from "../../types";
 import { normalizeTags } from "../../lib/normalizeTags";
 import { getClubInitials } from "../../lib/clubUtils";
 import { useClubContext } from "../../context/useClubContext";
+import { showToast } from "./Toast";
 
 interface ClubCardProps {
   club: Club;
@@ -144,11 +145,17 @@ export default function ClubCard({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                toggleSaveClub(club.id);
+                const result = toggleSaveClub(club.id);
+                if (result === true) showToast("Club saved", "success");
+                if (result === false) showToast("Club removed from saved clubs", "info");
               }}
               aria-label={saved ? "Unsave club" : "Save club"}
               className="flex-shrink-0 cursor-pointer rounded-full p-1.5 transition-colors hover:text-[#FFC429]"
-              style={{ color: "#555555", background: "transparent", border: "none" }}
+              style={{
+                color: saved ? "#FFC429" : "#555555",
+                background: "transparent",
+                border: "none",
+              }}
             >
               <svg
                 className="h-4 w-4"

@@ -764,6 +764,7 @@ export default function ClubMembersPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showExecutiveInviteModal, setShowExecutiveInviteModal] = useState(false);
   const [viewRequestMember, setViewRequestMember] = useState<ClubMember | null>(null);
+  const [messagingApplicantId, setMessagingApplicantId] = useState<string | null>(null);
   const [executiveInvites, setExecutiveInvites] = useState<ExecutiveInviteRow[]>([]);
   const [executiveInvitesLoading, setExecutiveInvitesLoading] = useState(false);
   const [executiveInviteActionId, setExecutiveInviteActionId] = useState<string | null>(
@@ -940,6 +941,26 @@ export default function ClubMembersPage() {
     next.delete("tab");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, canReviewJoinRequests]);
+
+  useEffect(() => {
+    const invite = searchParams.get("invite");
+    if (!invite || !canInviteMembers) return;
+    if (invite === "executive") {
+      setShowExecutiveInviteModal(true);
+    } else if (invite === "members") {
+      setShowInviteModal(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("invite");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, canInviteMembers]);
+
+  useEffect(() => {
+    if (searchParams.get("filter") === "recent") {
+      setViewMode("list");
+      // Keep param so list UI can emphasize recent joiners if needed.
+    }
+  }, [searchParams]);
 
   const loadOrgChartMembers = useCallback(async () => {
     if (!clubId) return;
@@ -1164,14 +1185,23 @@ export default function ClubMembersPage() {
   }
 
   async function handleApprove(memberId: string) {
+    if (!canReviewJoinRequests) {
+      setFeedback({ type: "error", text: "You do not have permission to approve join requests." });
+      return;
+    }
     setActionLoading(memberId);
     setFeedback(null);
     const pendingMember =
       pendingMembers.find((member) => member.id === memberId) ??
       (viewRequestMember?.id === memberId ? viewRequestMember : null);
-    const ok = await approveRequest(memberId);
-    if (ok) {
-      if (pendingMember && clubId && club?.name) {
+    const result = await approveRequest(memberId);
+    if (result.ok) {
+      if (
+        pendingMember &&
+        clubId &&
+        club?.name &&
+        result.outcome === "approved"
+      ) {
         void notifyJoinRequestApproved(supabase, {
           clubId,
           clubName: club.name,
@@ -1179,26 +1209,37 @@ export default function ClubMembersPage() {
         });
       }
       setViewRequestMember(null);
-      setFeedback({ type: "success", text: "Request approved." });
+      setFeedback({
+        type: "success",
+        text:
+          result.outcome === "already_active"
+            ? "This person is already a member. Request resolved."
+            : "Request approved.",
+      });
     } else {
       setFeedback({ type: "error", text: "Failed to approve request." });
     }
     setActionLoading(null);
   }
 
-  async function handleReject(memberId: string) {
+  async function handleReject(memberId: string, reason?: string) {
+    if (!canReviewJoinRequests) {
+      setFeedback({ type: "error", text: "You do not have permission to decline join requests." });
+      return;
+    }
     setActionLoading(memberId);
     setFeedback(null);
     const pendingMember =
       pendingMembers.find((member) => member.id === memberId) ??
       (viewRequestMember?.id === memberId ? viewRequestMember : null);
-    const ok = await rejectRequest(memberId);
-    if (ok) {
-      if (pendingMember && clubId && club?.name) {
+    const result = await rejectRequest(memberId, reason);
+    if (result.ok) {
+      if (pendingMember && clubId && club?.name && result.outcome === "rejected") {
         void notifyJoinRequestRejected(supabase, {
           clubId,
           clubName: club.name,
           studentUserId: pendingMember.userId,
+          reason,
         });
       }
       setViewRequestMember(null);
@@ -1207,6 +1248,37 @@ export default function ClubMembersPage() {
       setFeedback({ type: "error", text: "Failed to decline request." });
     }
     setActionLoading(null);
+  }
+
+  async function handleMessageApplicant(member: ClubMember) {
+    if (!canReviewJoinRequests || !clubId) {
+      setFeedback({
+        type: "error",
+        text: "You do not have permission to message this applicant.",
+      });
+      return;
+    }
+
+    setMessagingApplicantId(member.id);
+    setFeedback(null);
+
+    const { data, error } = await supabase.rpc("find_or_create_direct_conversation", {
+      p_other_user_id: member.userId,
+      p_club_id: clubId,
+    });
+
+    setMessagingApplicantId(null);
+
+    if (error || !data) {
+      console.error("Failed to open applicant conversation:", error?.message);
+      setFeedback({
+        type: "error",
+        text: "Could not open a message thread with this applicant.",
+      });
+      return;
+    }
+
+    navigate(`/app/clubs/${clubId}/chat?conversation=${data as string}`);
   }
 
   function handleCopyCode() {
@@ -2315,9 +2387,11 @@ export default function ClubMembersPage() {
         <PendingRequestModal
           member={viewRequestMember}
           actionLoading={actionLoading === viewRequestMember.id}
+          messagingLoading={messagingApplicantId === viewRequestMember.id}
           onClose={() => setViewRequestMember(null)}
           onApprove={() => void handleApprove(viewRequestMember.id)}
-          onDecline={() => void handleReject(viewRequestMember.id)}
+          onDecline={(reason) => void handleReject(viewRequestMember.id, reason)}
+          onSendMessage={() => void handleMessageApplicant(viewRequestMember)}
         />
       ) : null}
     </div>
@@ -2338,16 +2412,24 @@ const modalOverlayStyle: CSSProperties = {
 function PendingRequestModal({
   member,
   actionLoading,
+  messagingLoading,
   onClose,
   onApprove,
   onDecline,
+  onSendMessage,
 }: {
   member: ClubMember;
   actionLoading: boolean;
+  messagingLoading: boolean;
   onClose: () => void;
   onApprove: () => void;
-  onDecline: () => void;
+  onDecline: (reason?: string) => void;
+  onSendMessage: () => void;
 }) {
+  const [step, setStep] = useState<"review" | "decline">("review");
+  const [declineReason, setDeclineReason] = useState("");
+  const busy = actionLoading || messagingLoading;
+
   const requestedLabel = new Date(member.joinedAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -2355,6 +2437,7 @@ function PendingRequestModal({
   });
   const profileMeta = [member.program, member.yearOfStudy].filter(Boolean).join(" · ");
   const answers = member.joinAnswers ?? [];
+  const displayName = member.fullName?.trim() || "Unknown applicant";
 
   return (
     <div
@@ -2362,14 +2445,16 @@ function PendingRequestModal({
       aria-modal="true"
       aria-labelledby="pending-request-title"
       style={modalOverlayStyle}
-      onClick={onClose}
+      onClick={() => {
+        if (!busy) onClose();
+      }}
     >
       <div
         style={{
           background: "#1a1a1a",
           border: "1px solid #2a2a2a",
           borderRadius: "12px",
-          padding: "28px",
+          padding: "24px",
           maxWidth: "520px",
           width: "100%",
           maxHeight: "90vh",
@@ -2377,143 +2462,312 @@ function PendingRequestModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2
-          id="pending-request-title"
-          style={{
-            fontWeight: 700,
-            fontSize: "18px",
-            color: "#ffffff",
-            margin: "0 0 20px",
-          }}
-        >
-          Join Request
-        </h2>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-          <div>
-            <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Name</p>
-            <p style={{ margin: "4px 0 0", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
-              {member.fullName ?? "Unknown"}
-            </p>
-          </div>
-          {member.email ? (
-            <div>
-              <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Email</p>
-              <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#cccccc" }}>
-                {member.email}
-              </p>
-            </div>
-          ) : null}
-          {profileMeta ? (
-            <div>
-              <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Program & year</p>
-              <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#cccccc" }}>
-                {profileMeta}
-              </p>
-            </div>
-          ) : null}
-          <div>
-            <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>Date requested</p>
-            <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#cccccc" }}>
-              {requestedLabel}
-            </p>
-          </div>
-        </div>
-
-        {answers.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginBottom: "20px" }}>
-            <p
+        {step === "decline" ? (
+          <>
+            <h2
+              id="pending-request-title"
               style={{
-                margin: 0,
-                fontSize: "13px",
-                fontWeight: 600,
-                color: "#888888",
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
+                fontWeight: 700,
+                fontSize: "18px",
+                color: "#ffffff",
+                margin: "0 0 10px",
               }}
             >
-              Answers
+              Decline this join request?
+            </h2>
+            <p
+              style={{
+                margin: "0 0 16px",
+                fontSize: "13px",
+                color: "#aaaaaa",
+                lineHeight: 1.5,
+              }}
+            >
+              Declining removes {displayName} from the pending queue. They will be notified
+              and will not join the club. They can submit a new request later if your club
+              still accepts applications.
             </p>
-            {answers.map((answer: JoinAnswer, index) => (
-              <div key={answer.id ?? `answer-${index}`}>
-                <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>
-                  {answer.question || "Question"}
+            <label
+              htmlFor="decline-reason"
+              style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#888888",
+                marginBottom: "6px",
+              }}
+            >
+              Reason (optional)
+            </label>
+            <textarea
+              id="decline-reason"
+              value={declineReason}
+              onChange={(event) => setDeclineReason(event.target.value)}
+              rows={3}
+              disabled={busy}
+              placeholder="Share brief context for the applicant"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                background: "#111111",
+                border: "1px solid #2a2a2a",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                color: "#ffffff",
+                fontSize: "14px",
+                resize: "vertical",
+                marginBottom: "20px",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setStep("review")}
+                disabled={busy}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#888888",
+                  borderRadius: "6px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDecline(declineReason.trim() || undefined)}
+                style={{
+                  ...declineOutlineButtonStyle,
+                  opacity: busy ? 0.6 : 1,
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+              >
+                {actionLoading ? "Declining…" : "Confirm Decline"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div
+              style={{
+                display: "flex",
+                gap: "14px",
+                alignItems: "flex-start",
+                marginBottom: "20px",
+              }}
+            >
+              <MemberAvatar
+                avatarUrl={member.avatarUrl}
+                name={displayName}
+                size={52}
+              />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h2
+                  id="pending-request-title"
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "18px",
+                    color: "#ffffff",
+                    margin: "0 0 4px",
+                  }}
+                >
+                  {displayName}
+                </h2>
+                {profileMeta ? (
+                  <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
+                    {profileMeta}
+                  </p>
+                ) : null}
+                <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#777777" }}>
+                  Submitted {requestedLabel}
+                </p>
+                {member.email ? (
+                  <p
+                    style={{
+                      margin: "8px 0 0",
+                      fontSize: "12px",
+                      color: "#666666",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {member.email}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            {answers.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  marginBottom: "16px",
+                }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: "#888888",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  Application answers
+                </p>
+                {answers.map((answer: JoinAnswer, index) => (
+                  <div
+                    key={answer.id ?? `answer-${index}`}
+                    style={{
+                      background: "#141414",
+                      border: "1px solid #242424",
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#888888",
+                      }}
+                    >
+                      {answer.question || "Question"}
+                    </p>
+                    <p
+                      style={{
+                        margin: "6px 0 0",
+                        fontSize: "14px",
+                        color: "#e8e8e8",
+                        lineHeight: 1.45,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {answer.answer?.trim() || "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {member.joinMessage ? (
+              <div
+                style={{
+                  background: "#141414",
+                  border: "1px solid #242424",
+                  borderRadius: "8px",
+                  padding: "12px 14px",
+                  marginBottom: "16px",
+                }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#888888",
+                  }}
+                >
+                  Additional message
                 </p>
                 <p
                   style={{
-                    margin: "4px 0 0",
+                    margin: "6px 0 0",
                     fontSize: "14px",
-                    color: "#cccccc",
+                    color: "#e8e8e8",
+                    lineHeight: 1.45,
                     whiteSpace: "pre-wrap",
                   }}
                 >
-                  {answer.answer}
+                  {member.joinMessage}
                 </p>
               </div>
-            ))}
-          </div>
-        ) : null}
+            ) : null}
 
-        {member.joinMessage ? (
-          <div style={{ marginBottom: "24px" }}>
-            <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>
-              Additional message
-            </p>
-            <p
+            <div
               style={{
-                margin: "4px 0 0",
-                fontSize: "14px",
-                color: "#cccccc",
-                whiteSpace: "pre-wrap",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
               }}
             >
-              {member.joinMessage}
-            </p>
-          </div>
-        ) : null}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={actionLoading}
-            style={{
-              background: "transparent",
-              border: "1px solid #333333",
-              color: "#888888",
-              borderRadius: "6px",
-              padding: "8px 16px",
-              fontSize: "13px",
-              cursor: actionLoading ? "not-allowed" : "pointer",
-            }}
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            disabled={actionLoading}
-            onClick={onDecline}
-            style={{
-              ...declineOutlineButtonStyle,
-              opacity: actionLoading ? 0.6 : 1,
-              cursor: actionLoading ? "not-allowed" : "pointer",
-            }}
-          >
-            Decline
-          </button>
-          <button
-            type="button"
-            disabled={actionLoading}
-            onClick={onApprove}
-            style={{
-              ...approveOutlineButtonStyle,
-              opacity: actionLoading ? 0.6 : 1,
-              cursor: actionLoading ? "not-allowed" : "pointer",
-            }}
-          >
-            {actionLoading ? "Saving…" : "Approve"}
-          </button>
-        </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={busy}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#777777",
+                    borderRadius: "6px",
+                    padding: "8px 12px",
+                    fontSize: "13px",
+                    cursor: busy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onSendMessage}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #333333",
+                    color: "#dddddd",
+                    borderRadius: "6px",
+                    padding: "8px 14px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: busy ? "not-allowed" : "pointer",
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  {messagingLoading ? "Opening…" : "Send Message"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setStep("decline")}
+                  style={{
+                    ...declineOutlineButtonStyle,
+                    opacity: busy ? 0.6 : 1,
+                    cursor: busy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Decline
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onApprove}
+                  style={{
+                    ...approveOutlineButtonStyle,
+                    opacity: busy ? 0.6 : 1,
+                    cursor: busy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {actionLoading ? "Approving…" : "Approve"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

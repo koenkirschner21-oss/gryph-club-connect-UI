@@ -10,6 +10,13 @@ import {
   type MeetingMetadata,
 } from "../../../lib/meetingMetadata";
 
+export function moveArrayItem<T>(items: T[], from: number, to: number): T[] {
+  const next = [...items];
+  const [removed] = next.splice(from, 1);
+  next.splice(to, 0, removed);
+  return next;
+}
+
 export function meetingTypeLabel(type: MeetingType): string {
   const labels: Record<MeetingType, string> = {
     general: "General",

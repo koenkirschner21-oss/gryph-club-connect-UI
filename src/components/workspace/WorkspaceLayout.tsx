@@ -6,6 +6,7 @@ import {
   type ReactElement,
 } from "react";
 import {
+  Link,
   NavLink,
   Outlet,
   useLocation,
@@ -688,49 +689,81 @@ export default function WorkspaceLayout() {
       </div>
 
       <nav
-        className="flex flex-1 flex-col space-y-0.5 overflow-y-auto p-3"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
         aria-label="Workspace navigation"
       >
-        {workspaceLinks
-          .filter(({ key }) => workspaceNav.isLinkVisible(key))
-          .map(({ to, label, end, Icon, badgeKey }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) => workspaceNavClass(isActive)}
-            onClick={() => {
-              handleBadgeNavClick(badgeKey);
-              closeDrawer();
-            }}
-            style={navLinkStyle}
+        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-3">
+          {workspaceLinks
+            .filter(({ key }) => workspaceNav.isLinkVisible(key))
+            .map(({ to, label, end, Icon, badgeKey }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) => workspaceNavClass(isActive)}
+                onClick={() => {
+                  handleBadgeNavClick(badgeKey);
+                  closeDrawer();
+                }}
+                style={navLinkStyle}
+              >
+                <NavItemLabel Icon={Icon} label={label} />
+                <NavCountBadge count={badgeCountFor(badgeKey)} />
+              </NavLink>
+            ))}
+        </div>
+
+        {(workspaceNav.showAnalytics || workspaceNav.canManageClubSettings) ? (
+          <div
+            className="shrink-0 space-y-0.5 border-t px-3 pt-2 pb-1"
+            style={{ borderColor: "#1e1e1e" }}
+            aria-label="Club management"
           >
-            <NavItemLabel Icon={Icon} label={label} />
-            <NavCountBadge count={badgeCountFor(badgeKey)} />
-          </NavLink>
-        ))}
-        <div className="flex-1" aria-hidden />
-        {workspaceNav.showAnalytics ? (
+            {workspaceNav.showAnalytics ? (
+              <NavLink
+                to={analyticsLink.to}
+                className={({ isActive }) => workspaceNavClass(isActive)}
+                onClick={closeDrawer}
+                style={navLinkStyle}
+              >
+                <NavItemLabel Icon={analyticsLink.Icon} label={analyticsLink.label} />
+              </NavLink>
+            ) : null}
+            {workspaceNav.canManageClubSettings ? (
+              <NavLink
+                to={settingsLink.to}
+                className={({ isActive }) => workspaceNavClass(isActive)}
+                onClick={closeDrawer}
+                style={navLinkStyle}
+              >
+                <NavItemLabel Icon={settingsLink.Icon} label="Club Settings" />
+              </NavLink>
+            ) : null}
+          </div>
+        ) : null}
+      </nav>
+
+      <div className="shrink-0 border-t px-2 py-2" style={{ borderColor: "#1e1e1e" }}>
+        <NavLink
+          to="/app"
+          end
+          className={({ isActive }) => workspaceNavClass(isActive)}
+          onClick={closeDrawer}
+          style={navLinkStyle}
+          aria-label="Main Dashboard"
+        >
+          <NavItemLabel Icon={LayoutDashboard} label="Main Dashboard" />
+        </NavLink>
+        {!workspaceNav.canManageClubSettings ? (
           <NavLink
-            to={analyticsLink.to}
+            to={settingsLink.to}
             className={({ isActive }) => workspaceNavClass(isActive)}
             onClick={closeDrawer}
             style={navLinkStyle}
           >
-            <NavItemLabel Icon={analyticsLink.Icon} label={analyticsLink.label} />
+            <NavItemLabel Icon={settingsLink.Icon} label="My Membership" />
           </NavLink>
         ) : null}
-        <NavLink
-          to={settingsLink.to}
-          className={({ isActive }) => workspaceNavClass(isActive)}
-          onClick={closeDrawer}
-          style={navLinkStyle}
-        >
-          <NavItemLabel Icon={settingsLink.Icon} label={workspaceNav.settingsLabel} />
-        </NavLink>
-      </nav>
-
-      <div className="border-t px-2 py-2" style={{ borderColor: "#1e1e1e" }}>
         {userProfile ? (
           <div
             style={{
@@ -738,7 +771,7 @@ export default function WorkspaceLayout() {
               alignItems: "flex-start",
               gap: "8px",
               padding: "8px",
-              marginBottom: "6px",
+              marginTop: "6px",
               borderRadius: "8px",
               background: "#141414",
             }}
@@ -829,7 +862,7 @@ export default function WorkspaceLayout() {
     <div className="flex min-h-[calc(100vh-4rem)]">
       {!isMobile ? (
         <aside
-          className="hidden w-44 flex-shrink-0 border-r md:block"
+          className="sticky top-0 hidden h-[calc(100vh-4rem)] w-44 flex-shrink-0 overflow-hidden border-r md:block"
           style={{ backgroundColor: "#111111", borderColor: "#1e1e1e" }}
         >
           {sidebarContent}
@@ -842,6 +875,8 @@ export default function WorkspaceLayout() {
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
               padding: "12px 16px",
               borderBottom: "1px solid #1e1e1e",
               backgroundColor: "#0f0f0f",
@@ -863,6 +898,23 @@ export default function WorkspaceLayout() {
             >
               <Menu size={22} aria-hidden />
             </button>
+            <Link
+              to="/app"
+              aria-label="Main Dashboard"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                color: "#cccccc",
+                textDecoration: "none",
+                fontSize: "13px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <LayoutDashboard size={16} aria-hidden />
+              Main Dashboard
+            </Link>
           </div>
         ) : null}
 

@@ -18,6 +18,7 @@ import {
   resolveElevatedClaimStatus,
 } from "../lib/clubClaimUtils";
 import { useAuthContext } from "../context/useAuthContext";
+import { useClubMemberAccess } from "../hooks/useClubMemberAccess";
 import { useIsMobile } from "../hooks/useWindowWidth";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -590,6 +591,9 @@ export default function ClubPublicProfilePage() {
   const joined = clubId ? isJoined(clubId) : false;
   const pending = clubId ? isPending(clubId) : false;
   const saved = clubId ? isSaved(clubId) : false;
+  const memberAccess = useClubMemberAccess(clubId);
+  const canEditPublicProfile =
+    Boolean(user) && !memberAccess.loading && memberAccess.canManageClubSettings;
 
   useEffect(() => {
     const state = location.state as
@@ -961,6 +965,12 @@ export default function ClubPublicProfilePage() {
       return;
     }
     setShowReportModal(true);
+  }
+
+  function handleEditPublicProfile() {
+    setShowReportMenu(false);
+    if (!clubId) return;
+    navigate(`/app/clubs/${clubId}/settings?section=profile`);
   }
 
   const loading = user ? contextLoading || pageLoading : pageLoading;
@@ -1367,6 +1377,25 @@ export default function ClubPublicProfilePage() {
                       boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
                     }}
                   >
+                    {canEditPublicProfile ? (
+                      <button
+                        type="button"
+                        onClick={handleEditPublicProfile}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          background: "transparent",
+                          border: "none",
+                          borderBottom: "1px solid #2a2a2a",
+                          color: "#cccccc",
+                          padding: "10px 14px",
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Edit Public Profile
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={handleOpenReportClub}

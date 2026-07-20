@@ -47,6 +47,9 @@ export function parseNotificationDisplay(
   if (type === "claim_rejected") {
     return { title: "Claim Declined", body: trimmed };
   }
+  if (type === "claim_canceled") {
+    return { title: "Claim Cancelled", body: trimmed };
+  }
   if (type === "claim_more_info") {
     return { title: "More Info Needed", body: trimmed };
   }

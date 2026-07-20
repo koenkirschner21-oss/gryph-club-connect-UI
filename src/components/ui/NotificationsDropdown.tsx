@@ -71,6 +71,7 @@ function resolveNotificationLink(notification: Notification): string | null {
         : "/app";
     case "club_request_rejected":
     case "claim_rejected":
+    case "claim_canceled":
       return notification.referenceId
         ? `/claim-status/${notification.referenceId}`
         : "/explore";
@@ -158,6 +159,7 @@ function notificationIconColor(type: string): string {
     case "claim_approved":
       return "#22c55e";
     case "claim_rejected":
+    case "claim_canceled":
       return "#777777";
     case "claim_more_info":
       return "#FFC429";

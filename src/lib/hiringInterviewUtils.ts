@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { dispatchHiringApplicationUpdated } from "./clubDataSyncEvents";
 import { parseInterviewTimes } from "./hiringPipelineUtils";
 import { notifyHiringManagerBells } from "./hiringNotificationRecipients";
 
@@ -141,13 +142,9 @@ export async function selectHiringInterviewTime(
       .eq("recipient_id", params.recipientUserId);
   }
 
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("hiring-application-updated", {
-        detail: { applicationId: params.applicationId },
-      }),
-    );
-  }
+  dispatchHiringApplicationUpdated({
+    applicationId: params.applicationId,
+  });
 
   return { ok: true };
 }

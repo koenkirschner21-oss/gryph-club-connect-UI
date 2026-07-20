@@ -7,44 +7,39 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import {
-  FileText,
-  Globe,
-  Lock,
-  Plus,
-  Search,
-  Target,
-  Users,
-  X,
-} from "lucide-react";
-import { useParams } from "react-router-dom";
+import { FileText, Plus, Search, X } from "lucide-react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
-import { useClubMembers } from "../../hooks/useClubMembers";
 import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
-import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
+import {
+  filterByVisibility,
+  canViewContent,
+  normalizeVisibility,
+  toStandardVisibility,
+} from "../../lib/contentVisibility";
 import { notifyNewDocumentUploaded } from "../../lib/notifications";
 import type { AccessLevel, Visibility } from "../../types";
-import SelectedVisibilityPicker from "../../components/club/SelectedVisibilityPicker";
+import ContentVisibilityDropdown from "../../components/club/ContentVisibilityDropdown";
 import {
-  EMPTY_SELECTED_VISIBILITY,
-  hasSelectedVisibilityTargets,
   normalizeAccessLevelArray,
   normalizeUuidArray,
-  selectedVisibilityPayload,
 } from "../../lib/selectedVisibility";
 import {
+  AddContentDropdown,
   CategoryFilterDropdown,
   DocumentCard,
   DocumentsTipBar,
+  RecentFilesRow,
   ResourceLinkRow,
   ResourceLinksEmptyState,
   SortDropdown,
   UploadedFilesEmptyState,
   previewKindForDocument,
   sortDocuments,
+  type AddContentAction,
   type SortOption,
 } from "./documents/DocumentsListUI";
 import {
@@ -208,111 +203,6 @@ function saveCustomCategories(clubId: string, categories: CategoryOption[]) {
   );
 }
 
-const DOCUMENT_VISIBILITY_OPTIONS: {
-  value: Visibility;
-  label: string;
-  description: string;
-  Icon: typeof Globe;
-}[] = [
-  {
-    value: "public",
-    label: "Public",
-    description: "Anyone can see this",
-    Icon: Globe,
-  },
-  {
-    value: "members_only",
-    label: "Members Only",
-    description: "Only club members",
-    Icon: Users,
-  },
-  {
-    value: "executives_only",
-    label: "Executives Only",
-    description: "Only executives and above",
-    Icon: Lock,
-  },
-  {
-    value: "selected",
-    label: "Selected",
-    description: "Specific roles or members",
-    Icon: Target,
-  },
-];
-
-function DocumentsVisibilitySelector({
-  value,
-  onChange,
-}: {
-  value: Visibility;
-  onChange: (value: Visibility) => void;
-}) {
-  return (
-    <div>
-      <p
-        style={{
-          fontSize: "12px",
-          fontWeight: 600,
-          color: "#888888",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-          margin: "0 0 10px",
-        }}
-      >
-        Who can see this?
-      </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        {DOCUMENT_VISIBILITY_OPTIONS.map((option) => {
-          const active = value === option.value;
-          const Icon = option.Icon;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              style={{
-                borderRadius: "20px",
-                padding: "8px 14px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                textAlign: "left",
-                flex: "1 1 140px",
-                minWidth: 0,
-                background: active ? "#E51937" : "transparent",
-                border: active ? "1px solid #E51937" : "1px solid #333333",
-                color: active ? "#ffffff" : "#999999",
-              }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <Icon size={14} aria-hidden />
-                {option.label}
-              </span>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: "11px",
-                  fontWeight: 500,
-                  marginTop: "2px",
-                  color: active ? "#ffffff" : "#777777",
-                }}
-              >
-                {option.description}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function categoryEmptySubtext(category: string): string {
   const messages: Record<string, string> = {
     finance: "Upload budgets, receipts, or funding forms here.",
@@ -467,11 +357,11 @@ function CategoryPills({
 
 export default function ClubDocumentsPage() {
   const { clubId } = useParams<{ clubId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
 
   const memberAccess = useClubMemberAccess(clubId);
-  const { members } = useClubMembers(clubId);
   const canManageDocuments =
     memberAccess.isPresident || memberAccess.can("manage_documents");
   const isExecutiveForVisibility = isExecutiveAccessLevel(
@@ -495,9 +385,6 @@ export default function ClubDocumentsPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [uploadCategory, setUploadCategory] = useState("general");
   const [uploadVisibility, setUploadVisibility] = useState<Visibility>("members_only");
-  const [uploadSelectedTargets, setUploadSelectedTargets] = useState(
-    EMPTY_SELECTED_VISIBILITY,
-  );
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [feedback, setFeedback] = useState<{
@@ -511,9 +398,6 @@ export default function ClubDocumentsPage() {
   const [editDocName, setEditDocName] = useState("");
   const [editDocVisibility, setEditDocVisibility] =
     useState<Visibility>("members_only");
-  const [editSelectedTargets, setEditSelectedTargets] = useState(
-    EMPTY_SELECTED_VISIBILITY,
-  );
   const [savingEdit, setSavingEdit] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -749,7 +633,6 @@ export default function ClubDocumentsPage() {
     setDocDescription("");
     setUploadCategory("general");
     setUploadVisibility("members_only");
-    setUploadSelectedTargets(EMPTY_SELECTED_VISIBILITY);
     setUploadProgress(0);
   }
 
@@ -770,6 +653,19 @@ export default function ClubDocumentsPage() {
     setShowAddLinkModal(false);
     resetLinkForm();
   }
+
+  useEffect(() => {
+    if (!isPrivileged) return;
+    const openUpload = searchParams.get("openUpload") === "true";
+    const openAddLink = searchParams.get("openAddLink") === "true";
+    if (!openUpload && !openAddLink) return;
+    if (openUpload) setShowUploadModal(true);
+    if (openAddLink) setShowAddLinkModal(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("openUpload");
+    next.delete("openAddLink");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isPrivileged]);
 
   function handleCreateCategory() {
     if (!clubId || !newCategoryName.trim()) return;
@@ -885,16 +781,6 @@ export default function ClubDocumentsPage() {
 
   async function handleUpload() {
     if (!clubId || !user?.id || !selectedFile || !docName.trim()) return;
-    if (
-      uploadVisibility === "selected" &&
-      !hasSelectedVisibilityTargets(uploadSelectedTargets)
-    ) {
-      setFeedback({
-        type: "error",
-        text: "Choose at least one role or member for selected visibility.",
-      });
-      return;
-    }
 
     setUploading(true);
     setUploadProgress(0);
@@ -921,14 +807,8 @@ export default function ClubDocumentsPage() {
         file_size: selectedFile.size,
         category: uploadCategory,
         visibility: uploadVisibility,
-        visibility_roles:
-          uploadVisibility === "selected"
-            ? uploadSelectedTargets.visibilityRoles
-            : [],
-        visibility_user_ids:
-          uploadVisibility === "selected"
-            ? uploadSelectedTargets.visibilityUserIds
-            : [],
+        visibility_roles: [],
+        visibility_user_ids: [],
       });
 
     setUploading(false);
@@ -944,14 +824,8 @@ export default function ClubDocumentsPage() {
       documentId,
       documentName: docName.trim(),
       visibility: uploadVisibility,
-      visibilityRoles:
-        uploadVisibility === "selected"
-          ? uploadSelectedTargets.visibilityRoles
-          : [],
-      visibilityUserIds:
-        uploadVisibility === "selected"
-          ? uploadSelectedTargets.visibilityUserIds
-          : [],
+      visibilityRoles: [],
+      visibilityUserIds: [],
       uploadedByUserId: user.id,
     });
 
@@ -962,6 +836,27 @@ export default function ClubDocumentsPage() {
 
   async function handleDownloadDocument(doc: ClubDocument) {
     setFeedback(null);
+    const allowed = canViewContent(
+      doc.visibility,
+      {
+        isMember,
+        isPrivileged: isExecutiveForVisibility,
+        userId: user?.id,
+        accessLevel: memberAccess.accessLevel,
+        role: memberAccess.role,
+      },
+      {
+        visibilityRoles: doc.visibilityRoles,
+        visibilityUserIds: doc.visibilityUserIds,
+      },
+    );
+    if (!allowed) {
+      setFeedback({
+        type: "error",
+        text: "You do not have access to this document.",
+      });
+      return;
+    }
     const ok = await downloadClubDocument(doc);
     if (!ok) {
       setFeedback({ type: "error", text: "Failed to download document." });
@@ -971,13 +866,9 @@ export default function ClubDocumentsPage() {
   function openEditDocument(doc: ClubDocument) {
     setEditingDocument(doc);
     setEditDocName(doc.name);
-    setEditDocVisibility(doc.visibility ?? "members_only");
-    setEditSelectedTargets(
-      selectedVisibilityPayload(
-        doc.visibilityRoles ?? [],
-        doc.visibilityUserIds ?? [],
-      ),
-    );
+    // Legacy "selected" visibility is normalized to Members Only since the
+    // picker for choosing specific roles/members has been removed.
+    setEditDocVisibility(toStandardVisibility(doc.visibility, "members_only"));
   }
 
   function closeEditModal() {
@@ -985,7 +876,6 @@ export default function ClubDocumentsPage() {
     setEditingDocument(null);
     setEditDocName("");
     setEditDocVisibility("members_only");
-    setEditSelectedTargets(EMPTY_SELECTED_VISIBILITY);
   }
 
   function openMoveCategory(doc: ClubDocument) {
@@ -1025,16 +915,6 @@ export default function ClubDocumentsPage() {
 
   async function handleRenameDocument() {
     if (!editingDocument || !editDocName.trim()) return;
-    if (
-      editDocVisibility === "selected" &&
-      !hasSelectedVisibilityTargets(editSelectedTargets)
-    ) {
-      setFeedback({
-        type: "error",
-        text: "Choose at least one role or member for selected visibility.",
-      });
-      return;
-    }
 
     setSavingEdit(true);
     setFeedback(null);
@@ -1044,14 +924,8 @@ export default function ClubDocumentsPage() {
       .update({
         name: editDocName.trim(),
         visibility: editDocVisibility,
-        visibility_roles:
-          editDocVisibility === "selected"
-            ? editSelectedTargets.visibilityRoles
-            : [],
-        visibility_user_ids:
-          editDocVisibility === "selected"
-            ? editSelectedTargets.visibilityUserIds
-            : [],
+        visibility_roles: [],
+        visibility_user_ids: [],
       })
       .eq("id", editingDocument.id);
 
@@ -1096,9 +970,62 @@ export default function ClubDocumentsPage() {
 
   const gridStyle: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
-    gap: "16px",
+    gridTemplateColumns: isMobile
+      ? "1fr"
+      : "repeat(auto-fill, minmax(240px, 1fr))",
+    gap: "12px",
+    maxWidth: "1100px",
   };
+
+  const recentDocuments = useMemo(() => {
+    if (searchActive || categoryFiltered) return [];
+    return sortedDocuments.slice(0, 4);
+  }, [sortedDocuments, searchActive, categoryFiltered]);
+
+  const addContentActions: AddContentAction[] = isPrivileged
+    ? [
+        {
+          id: "upload_file",
+          label: "Upload File",
+          onClick: () => setShowUploadModal(true),
+        },
+        {
+          id: "add_link",
+          label: "Add Resource Link",
+          onClick: () => setShowAddLinkModal(true),
+        },
+        {
+          id: "create_category",
+          label: "Create Category",
+          onClick: () => setShowCreateCategoryModal(true),
+        },
+      ]
+    : [];
+
+  function handleDocumentPreview(doc: ClubDocument) {
+    const allowed = canViewContent(
+      doc.visibility,
+      {
+        isMember,
+        isPrivileged: isExecutiveForVisibility,
+        userId: user?.id,
+        accessLevel: memberAccess.accessLevel,
+        role: memberAccess.role,
+      },
+      {
+        visibilityRoles: doc.visibilityRoles,
+        visibilityUserIds: doc.visibilityUserIds,
+      },
+    );
+    if (!allowed) {
+      setFeedback({
+        type: "error",
+        text: "You do not have access to this document.",
+      });
+      return;
+    }
+    setPreviewDoc(doc);
+  }
 
   return (
     <div
@@ -1108,6 +1035,7 @@ export default function ClubDocumentsPage() {
         padding: isMobile ? "16px" : "24px",
       }}
     >
+      <div style={{ maxWidth: "1100px" }}>
       <Box
         style={{
           display: "flex",
@@ -1115,7 +1043,7 @@ export default function ClubDocumentsPage() {
           alignItems: "flex-start",
           justifyContent: "space-between",
           gap: "16px",
-          marginBottom: "24px",
+          marginBottom: "20px",
         }}
       >
         <Box>
@@ -1129,30 +1057,50 @@ export default function ClubDocumentsPage() {
           >
             Documents
           </h1>
-          <p style={{ fontSize: "14px", color: "#555555", marginTop: "4px", marginBottom: 0 }}>
-            Find club files, resources, meeting notes, and important links all in one place.
+          <p style={{ fontSize: "14px", color: "#777777", marginTop: "4px", marginBottom: 0 }}>
+            Club files and resource links in one library. Organized by category.
           </p>
-          <p style={{ fontSize: "12px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
-            {documents.length} files · {resourceLinks.length} links
+          <p style={{ fontSize: "12px", color: "#555555", marginTop: "4px", marginBottom: 0 }}>
+            {documents.length} {documents.length === 1 ? "file" : "files"} ·{" "}
+            {resourceLinks.length} {resourceLinks.length === 1 ? "link" : "links"}
           </p>
         </Box>
         {isPrivileged ? (
-          <button
-            type="button"
-            onClick={() => setShowUploadModal(true)}
-            style={{
-              background: "#E51937",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "6px",
-              padding: "9px 18px",
-              fontWeight: 500,
-              fontSize: "13px",
-              cursor: "pointer",
-            }}
-          >
-            Upload File
-          </button>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => setShowUploadModal(true)}
+              style={{
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 14px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Upload File
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddLinkModal(true)}
+              style={{
+                background: "transparent",
+                color: "#cccccc",
+                border: "1px solid #333333",
+                borderRadius: "6px",
+                padding: "8px 14px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Add Resource Link
+            </button>
+            <AddContentDropdown actions={addContentActions} />
+          </div>
         ) : null}
       </Box>
 
@@ -1176,66 +1124,73 @@ export default function ClubDocumentsPage() {
         </div>
       ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          marginBottom: "16px",
-          flexWrap: isMobile ? "wrap" : "nowrap",
-        }}
-      >
-        <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
-          <Search
-            size={16}
-            color="#555555"
-            aria-hidden
-            style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              pointerEvents: "none",
-            }}
-          />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            placeholder="Search files, links, categories, and descriptions…"
-            style={{
-              width: "100%",
-              height: "44px",
-              background: "#111111",
-              border: `1px solid ${searchFocused ? "#E51937" : "#2a2a2a"}`,
-              borderRadius: "8px",
-              padding: "0 16px 0 40px",
-              fontSize: "14px",
-              color: "#ffffff",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
-        </div>
-        <SortDropdown value={sortBy} onChange={setSortBy} />
-      </div>
-
-      <Box style={{ marginBottom: "20px" }}>
+      {/* 1. Search and filters */}
+      <section aria-label="Search and filters" style={{ marginBottom: "20px" }}>
         <div
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
             gap: "12px",
+            flexWrap: isMobile ? "wrap" : "nowrap",
           }}
         >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <CategoryFilterDropdown
-              value={filterCategory}
-              onChange={setFilterCategory}
-              categories={allCategories}
+          <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+            <Search
+              size={16}
+              color="#555555"
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                pointerEvents: "none",
+              }}
             />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Search files, links, categories, and descriptions…"
+              aria-label="Search documents"
+              style={{
+                width: "100%",
+                height: "48px",
+                background: "#111111",
+                border: `1px solid ${searchFocused ? "#E51937" : "#2a2a2a"}`,
+                borderRadius: "8px",
+                padding: "0 16px 0 40px",
+                fontSize: "14px",
+                color: "#ffffff",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          <SortDropdown value={sortBy} onChange={setSortBy} />
+        </div>
+      </section>
+
+      {/* 2. Categories */}
+      <section aria-label="Categories" style={{ marginBottom: "24px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: "12px",
+            marginBottom: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#ffffff" }}>
+              Categories
+            </h2>
+            <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#666666" }}>
+              Filter the file library by topic. Categories group files — they are not separate folders.
+            </p>
           </div>
           {isPrivileged ? (
             <button
@@ -1244,7 +1199,7 @@ export default function ClubDocumentsPage() {
               style={{
                 background: "transparent",
                 border: "1px solid #2a2a2a",
-                color: "#777777",
+                color: "#cccccc",
                 borderRadius: "6px",
                 padding: "6px 12px",
                 fontSize: "12px",
@@ -1252,129 +1207,57 @@ export default function ClubDocumentsPage() {
                 cursor: "pointer",
                 flexShrink: 0,
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#E51937";
-                e.currentTarget.style.color = "#E51937";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.color = "#777777";
-              }}
             >
-              + New Category
+              Create Category
             </button>
           ) : null}
         </div>
-      </Box>
+        <CategoryFilterDropdown
+          value={filterCategory}
+          onChange={setFilterCategory}
+          categories={allCategories}
+        />
+      </section>
 
-      <Box
-        style={{
-          marginBottom: "24px",
-          background: "#141414",
-          border: "1px solid #2a2a2a",
-          borderRadius: "14px",
-          padding: "24px",
-        }}
-      >
-        <Box
+      {/* 3. Recent files */}
+      {!loading && recentDocuments.length > 0 ? (
+        <section aria-label="Recent files" style={{ marginBottom: "24px" }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: "15px", fontWeight: 700, color: "#ffffff" }}>
+            Recent Files
+          </h2>
+          <p style={{ margin: "0 0 10px", fontSize: "12px", color: "#666666" }}>
+            Newest uploads across all categories
+          </p>
+          <RecentFilesRow
+            docs={recentDocuments}
+            categoryNameFor={(value) => categoryLabel(value, allCategories)}
+            onPreview={(item) => handleDocumentPreview(item as ClubDocument)}
+            onDownload={(item) => void handleDownloadDocument(item as ClubDocument)}
+          />
+        </section>
+      ) : null}
+
+      {/* 4. Uploaded files */}
+      <section aria-label="Uploaded files" style={{ marginBottom: "28px" }}>
+        <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            marginBottom: "12px",
             gap: "12px",
-            marginBottom: resourceLinks.length > 0 ? "0" : "0",
+            flexWrap: "wrap",
           }}
         >
-          <h2
-            style={{
-              fontWeight: 700,
-              fontSize: "15px",
-              color: "#ffffff",
-              margin: 0,
-            }}
-          >
-            Resource Links
-          </h2>
-          {isPrivileged ? (
-            <button
-              type="button"
-              onClick={() => setShowAddLinkModal(true)}
-              style={{
-                background: "transparent",
-                border: "1px solid #2a2a2a",
-                color: "#777777",
-                borderRadius: "6px",
-                padding: "6px 14px",
-                fontSize: "12px",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#E51937";
-                e.currentTarget.style.color = "#E51937";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.color = "#777777";
-              }}
-            >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <Plus size={14} aria-hidden />
-                Add Link
-              </span>
-            </button>
-          ) : null}
-        </Box>
-
-        {linksLoading ? (
-          <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
-            Loading links…
-          </p>
-        ) : filteredResourceLinks.length === 0 ? (
-          searchActive ? (
-            <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
-              No links match your search.
+          <div>
+            <h2 style={{ margin: 0, fontSize: "15px", fontWeight: 700, color: "#ffffff" }}>
+              Uploaded Files
+            </h2>
+            <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#666666" }}>
+              {filteredDocuments.length}{" "}
+              {filteredDocuments.length === 1 ? "file matches" : "files match"} current filters
             </p>
-          ) : isPrivileged ? (
-            <ResourceLinksEmptyState onAddLink={() => setShowAddLinkModal(true)} />
-          ) : (
-            <p style={{ fontSize: "13px", color: "#555555", margin: "8px 0 0" }}>
-              No resource links added yet.
-            </p>
-          )
-        ) : (
-          <Box>
-            {filteredResourceLinks.map((link, index) => (
-              <ResourceLinkRow
-                key={link.id}
-                link={link}
-                canManage={isPrivileged}
-                deleting={deletingLinkId === link.id}
-                isLast={index === filteredResourceLinks.length - 1}
-                onDelete={(item) => void handleDeleteLink(item as ResourceLink)}
-              />
-            ))}
-          </Box>
-        )}
-      </Box>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: "16px",
-          marginTop: "8px",
-          gap: "12px",
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ fontSize: "15px", fontWeight: 700, color: "#ffffff" }}>
-          Uploaded Files
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <span style={{ fontSize: "12px", color: "#555555" }}>
-            {filteredDocuments.length} {filteredDocuments.length === 1 ? "file" : "files"}
-          </span>
+          </div>
           {sortedDocuments.length > 6 && !showAllFiles ? (
             <button
               type="button"
@@ -1393,86 +1276,154 @@ export default function ClubDocumentsPage() {
             </button>
           ) : null}
         </div>
-      </div>
 
-      {loading ? (
-        <div style={gridStyle}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      ) : filteredDocuments.length === 0 ? (
-        documents.length === 0 && !searchActive && !categoryFiltered && isPrivileged ? (
-          <UploadedFilesEmptyState onUpload={() => setShowUploadModal(true)} />
+        {loading ? (
+          <div style={gridStyle}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : filteredDocuments.length === 0 ? (
+          documents.length === 0 && !searchActive && !categoryFiltered && isPrivileged ? (
+            <UploadedFilesEmptyState onUpload={() => setShowUploadModal(true)} />
+          ) : (
+            <div style={{ padding: "28px 4px" }}>
+              <FileText
+                size={28}
+                color="#2a2a2a"
+                aria-hidden
+                style={{ marginBottom: "10px" }}
+              />
+              <p style={{ fontSize: "14px", fontWeight: 600, color: "#777777", margin: 0 }}>
+                {documents.length === 0 && !searchActive && !categoryFiltered
+                  ? "No documents yet"
+                  : categoryFiltered && !searchActive
+                    ? "No files in this category yet"
+                    : "No files found"}
+              </p>
+              <p style={{ fontSize: "12px", color: "#555555", marginTop: "4px", marginBottom: 0 }}>
+                {searchActive
+                  ? "Try a different search or clear the category filter."
+                  : categoryFiltered &&
+                      !documents.some((doc) => doc.category === filterCategory)
+                    ? categoryEmptySubtext(filterCategory)
+                    : documents.length === 0
+                      ? "Upload a file or add a resource link to get started."
+                      : "Try another category or upload a new file."}
+              </p>
+            </div>
+          )
         ) : (
-        <div style={{ textAlign: "center", padding: "48px 24px" }}>
-          <FileText
-            size={36}
-            color="#2a2a2a"
-            aria-hidden
-            style={{ marginBottom: "12px" }}
-          />
-          <p style={{ fontSize: "15px", fontWeight: 600, color: "#333333", margin: 0 }}>
-            {documents.length === 0 && !searchActive && !categoryFiltered
-              ? "No documents yet"
-              : categoryFiltered && !searchActive
-                ? "No files in this category yet."
-                : "No files found"}
-          </p>
-          <p style={{ fontSize: "13px", color: "#444444", marginTop: "4px", marginBottom: 0 }}>
-            {searchActive
-              ? "Try a different search or category."
-              : categoryFiltered &&
-                  !documents.some((doc) => doc.category === filterCategory)
-                ? categoryEmptySubtext(filterCategory)
-                : documents.length === 0 && !searchActive && !categoryFiltered
-                  ? "Upload a file or add a link to get started."
-                  : categoryFiltered
-                    ? "Upload a file or add a link to get started."
-                    : "Try a different category or upload a new file."}
-          </p>
-          {isPrivileged &&
-          documents.length === 0 &&
-          !searchActive &&
-          !categoryFiltered ? (
-            <button
-              type="button"
-              onClick={() => setShowUploadModal(true)}
+          <div style={gridStyle}>
+            {displayedDocuments.map((doc) => (
+              <DocumentCard
+                key={doc.id}
+                doc={doc}
+                categoryName={categoryLabel(doc.category, allCategories)}
+                isPrivileged={isPrivileged}
+                deleting={deletingId === doc.id}
+                onDelete={(item) => void handleDelete(item as ClubDocument)}
+                onEdit={(item) => openEditDocument(item as ClubDocument)}
+                onMoveCategory={(item) => openMoveCategory(item as ClubDocument)}
+                onPreview={(item) => handleDocumentPreview(item as ClubDocument)}
+                onDownload={(item) => void handleDownloadDocument(item as ClubDocument)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 5. Resource links */}
+      <section
+        aria-label="Resource links"
+        style={{
+          marginBottom: "20px",
+          background: "#141414",
+          border: "1px solid #2a2a2a",
+          borderRadius: "12px",
+          padding: isMobile ? "16px" : "18px 20px",
+          maxWidth: "1100px",
+        }}
+      >
+        <Box
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "12px",
+            marginBottom: "12px",
+          }}
+        >
+          <div>
+            <h2
               style={{
-                background: "transparent",
-                border: "none",
-                color: "#E51937",
-                fontSize: "14px",
-                cursor: "pointer",
-                marginTop: "12px",
+                fontWeight: 700,
+                fontSize: "15px",
+                color: "#ffffff",
+                margin: 0,
               }}
             >
-              Upload File
+              Resource Links
+            </h2>
+            <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#666666" }}>
+              External tools and shared destinations (Google Drive, forms, social pages)
+            </p>
+          </div>
+          {isPrivileged ? (
+            <button
+              type="button"
+              onClick={() => setShowAddLinkModal(true)}
+              style={{
+                background: "transparent",
+                border: "1px solid #2a2a2a",
+                color: "#cccccc",
+                borderRadius: "6px",
+                padding: "6px 12px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              Add Resource Link
             </button>
           ) : null}
-        </div>
-        )
-      ) : (
-        <div style={gridStyle}>
-          {displayedDocuments.map((doc) => (
-            <DocumentCard
-              key={doc.id}
-              doc={doc}
-              categoryName={categoryLabel(doc.category, allCategories)}
-              isPrivileged={isPrivileged}
-              deleting={deletingId === doc.id}
-              onDelete={(item) => void handleDelete(item as ClubDocument)}
-              onEdit={(item) => openEditDocument(item as ClubDocument)}
-              onMoveCategory={(item) => openMoveCategory(item as ClubDocument)}
-              onPreview={(item) => setPreviewDoc(item as ClubDocument)}
-              onDownload={(item) => void handleDownloadDocument(item as ClubDocument)}
-            />
-          ))}
-        </div>
-      )}
+        </Box>
 
-      <DocumentsTipBar />
+        {linksLoading ? (
+          <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+            Loading links…
+          </p>
+        ) : filteredResourceLinks.length === 0 ? (
+          searchActive ? (
+            <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+              No links match your search.
+            </p>
+          ) : isPrivileged ? (
+            <ResourceLinksEmptyState onAddLink={() => setShowAddLinkModal(true)} />
+          ) : (
+            <p style={{ fontSize: "13px", color: "#555555", margin: 0 }}>
+              No resource links added yet.
+            </p>
+          )
+        ) : (
+          <Box>
+            {filteredResourceLinks.map((link, index) => (
+              <ResourceLinkRow
+                key={link.id}
+                link={link}
+                canManage={isPrivileged}
+                deleting={deletingLinkId === link.id}
+                isLast={index === filteredResourceLinks.length - 1}
+                onDelete={(item) => void handleDeleteLink(item as ResourceLink)}
+              />
+            ))}
+          </Box>
+        )}
+      </section>
 
+      <DocumentsTipBar canManage={isPrivileged} />
+      </div>
       {showAddLinkModal && isPrivileged ? (
         <div
           role="dialog"
@@ -1493,7 +1444,7 @@ export default function ClubDocumentsPage() {
                 margin: "0 0 16px",
               }}
             >
-              Add Link
+              Add Resource Link
             </h2>
 
             <label htmlFor="link-title" style={labelStyle}>
@@ -1580,7 +1531,7 @@ export default function ClubDocumentsPage() {
                       : 1,
                 }}
               >
-                {savingLink ? "Saving…" : "Save"}
+                {savingLink ? "Saving…" : "Add Resource Link"}
               </button>
             </Box>
           </div>
@@ -1711,21 +1662,12 @@ export default function ClubDocumentsPage() {
             />
 
             <Box style={{ marginTop: "16px" }}>
-              <DocumentsVisibilitySelector
+              <ContentVisibilityDropdown
                 value={uploadVisibility}
                 onChange={setUploadVisibility}
+                disabled={uploading}
               />
             </Box>
-            {uploadVisibility === "selected" ? (
-              <Box style={{ marginTop: "12px" }}>
-                <SelectedVisibilityPicker
-                  members={members}
-                  targets={uploadSelectedTargets}
-                  onChange={setUploadSelectedTargets}
-                  disabled={uploading}
-                />
-              </Box>
-            ) : null}
 
             {uploading ? (
               <Box style={{ marginTop: "16px" }}>
@@ -1785,13 +1727,7 @@ export default function ClubDocumentsPage() {
               <button
                 type="button"
                 onClick={() => void handleUpload()}
-                disabled={
-                  uploading ||
-                  !selectedFile ||
-                  !docName.trim() ||
-                  (uploadVisibility === "selected" &&
-                    !hasSelectedVisibilityTargets(uploadSelectedTargets))
-                }
+                disabled={uploading || !selectedFile || !docName.trim()}
                 style={{
                   background: "#E51937",
                   color: "#ffffff",
@@ -1801,14 +1737,7 @@ export default function ClubDocumentsPage() {
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity:
-                    uploading ||
-                    !selectedFile ||
-                    !docName.trim() ||
-                    (uploadVisibility === "selected" &&
-                      !hasSelectedVisibilityTargets(uploadSelectedTargets))
-                      ? 0.5
-                      : 1,
+                  opacity: uploading || !selectedFile || !docName.trim() ? 0.5 : 1,
                 }}
               >
                 {uploading ? "Uploading…" : "Upload"}
@@ -1986,22 +1915,13 @@ export default function ClubDocumentsPage() {
               style={{ ...inputStyle, marginBottom: "16px" }}
             />
 
-            <DocumentsVisibilitySelector
-              value={editDocVisibility}
-              onChange={setEditDocVisibility}
-            />
-            {editDocVisibility === "selected" ? (
-              <Box style={{ marginTop: "12px", marginBottom: "16px" }}>
-                <SelectedVisibilityPicker
-                  members={members}
-                  targets={editSelectedTargets}
-                  onChange={setEditSelectedTargets}
-                  disabled={savingEdit}
-                />
-              </Box>
-            ) : (
-              <Box style={{ marginBottom: "16px" }} />
-            )}
+            <Box style={{ marginBottom: "16px" }}>
+              <ContentVisibilityDropdown
+                value={editDocVisibility}
+                onChange={setEditDocVisibility}
+                disabled={savingEdit}
+              />
+            </Box>
 
             <Box
               style={{
@@ -2029,12 +1949,7 @@ export default function ClubDocumentsPage() {
               <button
                 type="button"
                 onClick={() => void handleRenameDocument()}
-                disabled={
-                  savingEdit ||
-                  !editDocName.trim() ||
-                  (editDocVisibility === "selected" &&
-                    !hasSelectedVisibilityTargets(editSelectedTargets))
-                }
+                disabled={savingEdit || !editDocName.trim()}
                 style={{
                   background: "#E51937",
                   color: "#ffffff",
@@ -2044,16 +1959,10 @@ export default function ClubDocumentsPage() {
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: "pointer",
-                  opacity:
-                    savingEdit ||
-                    !editDocName.trim() ||
-                    (editDocVisibility === "selected" &&
-                      !hasSelectedVisibilityTargets(editSelectedTargets))
-                      ? 0.5
-                      : 1,
+                  opacity: savingEdit || !editDocName.trim() ? 0.5 : 1,
                 }}
               >
-                {savingEdit ? "Saving…" : "Save"}
+                {savingEdit ? "Saving…" : "Save Changes"}
               </button>
             </Box>
           </div>
@@ -2168,7 +2077,7 @@ export default function ClubDocumentsPage() {
                   opacity: savingMove ? 0.5 : 1,
                 }}
               >
-                {savingMove ? "Saving…" : "Save"}
+                {savingMove ? "Saving…" : "Move Category"}
               </button>
             </Box>
           </div>
@@ -2203,7 +2112,7 @@ export default function ClubDocumentsPage() {
                 margin: "0 0 16px",
               }}
             >
-              New Category
+              Create Category
             </h2>
             <label htmlFor="new-category-name" style={labelStyle}>
               Category name
@@ -2258,7 +2167,7 @@ export default function ClubDocumentsPage() {
                   opacity: newCategoryName.trim() ? 1 : 0.5,
                 }}
               >
-                Create
+                Confirm Category
               </button>
             </Box>
           </div>

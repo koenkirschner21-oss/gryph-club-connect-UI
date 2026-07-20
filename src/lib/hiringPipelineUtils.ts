@@ -14,13 +14,17 @@ export type HiringSubStatus =
   | "rejected"
   | "withdrawn";
 
+/** UI filter values (mapped safely onto backend sub_status). */
 export type ApplicantPipelineFilter =
   | "all"
-  | "pending"
-  | "reviewed"
+  | "new"
+  | "in_review"
   | "interview"
+  | "offered"
   | "accepted"
   | "rejected";
+
+export type ApplicantSort = "newest" | "oldest" | "recently_updated";
 
 export type InterviewType = "online" | "in_person" | "phone";
 export type PositionHandling = "keep_open" | "close_after_accept" | "close_now";
@@ -39,21 +43,24 @@ export const APPLICANT_PIPELINE_FILTER_OPTIONS: {
   value: ApplicantPipelineFilter;
   label: string;
 }[] = [
-  { value: "all", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "reviewed", label: "Reviewed" },
+  { value: "all", label: "All Applicants" },
+  { value: "new", label: "New" },
+  { value: "in_review", label: "In Review" },
   { value: "interview", label: "Interview" },
+  { value: "offered", label: "Offered" },
   { value: "accepted", label: "Accepted" },
   { value: "rejected", label: "Rejected" },
 ];
 
-const PENDING_SUB_STATUSES = new Set<HiringSubStatus>([
-  "submitted",
-  "viewed",
-  "notes_added",
-]);
+export const APPLICANT_SORT_OPTIONS: { value: ApplicantSort; label: string }[] = [
+  { value: "newest", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "recently_updated", label: "Recently Updated" },
+];
 
-const REVIEWED_SUB_STATUSES = new Set<HiringSubStatus>(["reviewed"]);
+const NEW_SUB_STATUSES = new Set<HiringSubStatus>(["submitted", "viewed"]);
+
+const IN_REVIEW_SUB_STATUSES = new Set<HiringSubStatus>(["reviewed", "notes_added"]);
 
 const INTERVIEW_SUB_STATUSES = new Set<HiringSubStatus>([
   "interview_invite_sent",
@@ -63,13 +70,17 @@ const INTERVIEW_SUB_STATUSES = new Set<HiringSubStatus>([
 
 const OFFER_SENT_SUB_STATUSES = new Set<HiringSubStatus>(["offer_sent"]);
 
-const ACCEPTED_SUB_STATUSES = new Set<HiringSubStatus>(["offer_accepted"]);
+const REJECTED_SUB_STATUSES = new Set<HiringSubStatus>([
+  "rejected",
+  "withdrawn",
+  "offer_declined",
+]);
 
 export type ApplicantPipelineStage =
-  | "pending"
-  | "reviewed"
+  | "new"
+  | "in_review"
   | "interview"
-  | "offer_sent"
+  | "offered"
   | "accepted"
   | "rejected";
 
@@ -89,6 +100,12 @@ export function isApplicantHireConverted(
   );
 }
 
+/** Pending review queue: New + In Review stages (matches Recruiting pendingCount). */
+export function isHiringApplicationPendingReview(subStatus: string): boolean {
+  const stage = resolveApplicantPipelineStage(subStatus);
+  return stage === "new" || stage === "in_review";
+}
+
 export function resolveApplicantPipelineStage(
   subStatus: string,
   options?: {
@@ -100,75 +117,44 @@ export function resolveApplicantPipelineStage(
 
   if (REJECTED_SUB_STATUSES.has(normalized)) return "rejected";
 
-  const memberIds = options?.activeClubMemberIds;
   if (isApplicantPipelineAccepted(normalized)) {
+    const memberIds = options?.activeClubMemberIds;
     if (memberIds && options?.applicantId) {
       return isApplicantHireConverted(normalized, options.applicantId, memberIds)
         ? "accepted"
-        : "offer_sent";
+        : "offered";
     }
     return "accepted";
   }
 
-  if (OFFER_SENT_SUB_STATUSES.has(normalized)) return "offer_sent";
+  if (OFFER_SENT_SUB_STATUSES.has(normalized)) return "offered";
   if (INTERVIEW_SUB_STATUSES.has(normalized)) return "interview";
-  if (REVIEWED_SUB_STATUSES.has(normalized)) return "reviewed";
-  return "pending";
+  if (IN_REVIEW_SUB_STATUSES.has(normalized)) return "in_review";
+  return "new";
 }
-
-const REJECTED_SUB_STATUSES = new Set<HiringSubStatus>([
-  "rejected",
-  "withdrawn",
-  "offer_declined",
-]);
 
 export function normalizeSubStatus(value: string | null | undefined): HiringSubStatus {
   const normalized = (value ?? "submitted") as HiringSubStatus;
   return normalized || "submitted";
 }
 
+/** Coarse stage label for list UI (New / In Review / …). */
+export function applicantStageDisplayLabel(subStatus: string): string {
+  return applicantPipelineStageLabel(resolveApplicantPipelineStage(subStatus));
+}
+
+/** Granular backend labels — prefer applicantStageDisplayLabel for list cards. */
 export function subStatusLabel(subStatus: string): string {
-  switch (subStatus) {
-    case "submitted":
-      return "Submitted";
-    case "viewed":
-      return "Viewed";
-    case "reviewed":
-      return "Reviewed";
-    case "notes_added":
-      return "Notes Added";
-    case "interview_invite_sent":
-      return "Interview Invite Sent";
-    case "interview_scheduled":
-      return "Interview Scheduled";
-    case "interview_completed":
-      return "Interview Completed";
-    case "offer_sent":
-      return "Offer Sent";
-    case "offer_accepted":
-      return "Offer Accepted";
-    case "offer_declined":
-      return "Offer Declined";
-    case "rejected":
-      return "Rejected";
-    case "withdrawn":
-      return "Withdrawn";
-    default:
-      return subStatus.charAt(0).toUpperCase() + subStatus.slice(1);
-  }
+  return applicantStageDisplayLabel(subStatus);
 }
 
 export function subStatusColor(subStatus: string): string {
-  if (ACCEPTED_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#FFC429";
-  if (OFFER_SENT_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#d4a017";
-  if (REJECTED_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#E51937";
-  if (INTERVIEW_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#6b7cff";
-  if (REVIEWED_SUB_STATUSES.has(subStatus as HiringSubStatus)) return "#FFC429";
-  return "#747676";
+  return applicantPipelineStageColor(resolveApplicantPipelineStage(subStatus));
 }
 
 export function subStatusPillStyle(subStatus: string): CSSProperties {
   const color = subStatusColor(subStatus);
+  const stage = resolveApplicantPipelineStage(subStatus);
   return {
     borderRadius: "20px",
     padding: "3px 10px",
@@ -176,11 +162,11 @@ export function subStatusPillStyle(subStatus: string): CSSProperties {
     fontWeight: 600,
     flexShrink: 0,
     background:
-      ACCEPTED_SUB_STATUSES.has(subStatus as HiringSubStatus)
+      stage === "accepted"
         ? "#1a1200"
-        : OFFER_SENT_SUB_STATUSES.has(subStatus as HiringSubStatus)
+        : stage === "offered"
           ? "#1a1500"
-          : REJECTED_SUB_STATUSES.has(subStatus as HiringSubStatus)
+          : stage === "rejected"
             ? "#1a0505"
             : "#1a1a1a",
     color,
@@ -213,7 +199,7 @@ export function applicantMoveStatusActions(
     return ["accept", "reject", "send_update"];
   }
 
-  if (REVIEWED_SUB_STATUSES.has(normalized)) {
+  if (IN_REVIEW_SUB_STATUSES.has(normalized)) {
     return ["schedule", "accept", "reject"];
   }
 
@@ -227,12 +213,14 @@ export function matchesApplicantPipelineFilter(
   const normalizedSubStatus = normalizeSubStatus(subStatus);
 
   switch (filter) {
-    case "pending":
-      return PENDING_SUB_STATUSES.has(normalizedSubStatus);
-    case "reviewed":
-      return REVIEWED_SUB_STATUSES.has(normalizedSubStatus);
+    case "new":
+      return NEW_SUB_STATUSES.has(normalizedSubStatus);
+    case "in_review":
+      return IN_REVIEW_SUB_STATUSES.has(normalizedSubStatus);
     case "interview":
       return INTERVIEW_SUB_STATUSES.has(normalizedSubStatus);
+    case "offered":
+      return OFFER_SENT_SUB_STATUSES.has(normalizedSubStatus);
     case "accepted":
       return isApplicantPipelineAccepted(subStatus);
     case "rejected":
@@ -244,14 +232,14 @@ export function matchesApplicantPipelineFilter(
 
 export function applicantPipelineStageLabel(stage: ApplicantPipelineStage): string {
   switch (stage) {
-    case "pending":
-      return "Applied";
-    case "reviewed":
-      return "Reviewed";
+    case "new":
+      return "New";
+    case "in_review":
+      return "In Review";
     case "interview":
       return "Interview";
-    case "offer_sent":
-      return "Offer Sent";
+    case "offered":
+      return "Offered";
     case "accepted":
       return "Accepted";
     case "rejected":
@@ -261,13 +249,13 @@ export function applicantPipelineStageLabel(stage: ApplicantPipelineStage): stri
 
 export function applicantPipelineStageColor(stage: ApplicantPipelineStage): string {
   switch (stage) {
-    case "pending":
-      return "#747676";
-    case "reviewed":
+    case "new":
+      return "#a0a0a0";
+    case "in_review":
       return "#FFC429";
     case "interview":
       return "#6b7cff";
-    case "offer_sent":
+    case "offered":
       return "#d4a017";
     case "accepted":
       return "#FFC429";

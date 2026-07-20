@@ -1,7 +1,21 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
-import { Camera, Check } from "lucide-react";
-import BrandLogo from "../components/ui/BrandLogo";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Briefcase,
+  Camera,
+  Check,
+  Compass,
+  Users,
+} from "lucide-react";
 import ImageCropModal from "../components/ui/ImageCropModal";
 import { useAuthContext } from "../context/useAuthContext";
 import { notifyOnboardingCompleted, refreshUserProfile } from "../context/AuthContext";
@@ -13,10 +27,20 @@ import { uploadImage } from "../lib/uploadImage";
 import Spinner from "../components/ui/Spinner";
 import {
   cacheOnboardingIntent,
+  cacheOnboardingStep,
+  clearOnboardingStepCache,
+  destinationForOnboardingIntent,
+  persistOnboardingIntentDraft,
+  readOnboardingIntentFromStorage,
+  readOnboardingStepFromStorage,
   type OnboardingIntent,
+  type OnboardingStep,
 } from "../lib/onboardingIntent";
-
-type Step = 1 | 2;
+import {
+  consumePendingRedirect,
+  isSafeRedirectPath,
+  storePendingRedirect,
+} from "../lib/authRedirect";
 
 const YEAR_OPTIONS = [
   "1st year",
@@ -30,28 +54,31 @@ const INTENT_OPTIONS: {
   value: OnboardingIntent;
   title: string;
   description: string;
-  cta: string;
+  detail: string;
+  icon: ReactNode;
+  badge?: string;
 }[] = [
   {
     value: "discover",
-    title: "Discover and join clubs",
-    description:
-      "Browse clubs, RSVP to events, and get involved on campus",
-    cta: "Find Clubs",
+    title: "Join clubs",
+    description: "Discover clubs, events, and opportunities.",
+    detail: "Best for students looking to get involved.",
+    icon: <Compass size={22} strokeWidth={1.75} aria-hidden />,
+    badge: "Most common",
   },
   {
     value: "manage",
     title: "Manage a club",
-    description:
-      "Claim an existing club, request a new one, or set up and manage your club profile as a president or executive.",
-    cta: "Manage My Club",
+    description: "Claim, create, or help run a club.",
+    detail: "Best for presidents and executive teams.",
+    icon: <Briefcase size={22} strokeWidth={1.75} aria-hidden />,
   },
   {
     value: "both",
-    title: "Both",
-    description:
-      "Join clubs as a member and manage one or more clubs as an executive",
-    cta: "Set Up Both",
+    title: "Join and manage clubs",
+    description: "Participate as a member while helping lead a club.",
+    detail: "Best for students doing both.",
+    icon: <Users size={22} strokeWidth={1.75} aria-hidden />,
   },
 ];
 
@@ -87,48 +114,43 @@ const labelStyle: CSSProperties = {
 function intentCardStyle(selected: boolean): CSSProperties {
   return {
     position: "relative",
-    background: selected ? "rgba(229, 25, 55, 0.1)" : "#141414",
+    background: selected ? "rgba(255, 255, 255, 0.04)" : "#141414",
     border: selected ? "2px solid #E51937" : "1px solid #2a2a2a",
-    boxShadow: selected ? "0 0 0 1px rgba(229, 25, 55, 0.2)" : "none",
+    boxShadow: selected ? "inset 0 0 0 1px rgba(229, 25, 55, 0.25)" : "none",
     borderRadius: "12px",
-    padding: "24px",
+    padding: "22px 20px",
     cursor: "pointer",
     textAlign: "left",
     width: "100%",
     boxSizing: "border-box",
     transition: "border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease",
+    outline: "none",
   };
-}
-
-function intentCtaStyle(selected: boolean): CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    fontSize: "13px",
-    fontWeight: 700,
-    color: selected ? "#ffffff" : "#aaaaaa",
-    background: selected ? "#E51937" : "#1a1a1a",
-    border: selected ? "none" : "1px solid #2a2a2a",
-    borderRadius: "6px",
-    padding: "7px 14px",
-  };
-}
-
-function redirectForIntent(intent: OnboardingIntent): string {
-  if (intent === "manage") return "/explore?claim=true";
-  if (intent === "both") return "/app";
-  return "/explore";
 }
 
 export default function OnboardingPage() {
   const isMobile = useIsMobile();
   const { user } = useAuthContext();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pathGroupId = useId();
+
+  const rawRedirect = searchParams.get("redirect");
+  const redirectPath = isSafeRedirectPath(rawRedirect) ? rawRedirect : null;
+
+  useEffect(() => {
+    if (redirectPath) {
+      storePendingRedirect(redirectPath);
+    }
+  }, [redirectPath]);
 
   const [checkingProfile, setCheckingProfile] = useState(true);
-  const [step, setStep] = useState<Step>(1);
-  const [intent, setIntent] = useState<OnboardingIntent | null>(null);
+  const [step, setStep] = useState<OnboardingStep>(
+    () => readOnboardingStepFromStorage() ?? 1,
+  );
+  const [intent, setIntent] = useState<OnboardingIntent | null>(
+    () => readOnboardingIntentFromStorage(),
+  );
   const [fullName, setFullName] = useState("");
   const [program, setProgram] = useState("");
   const [yearOfStudy, setYearOfStudy] = useState("");
@@ -155,7 +177,9 @@ export default function OnboardingPage() {
 
       const { data, error: profileError } = await supabase
         .from("profiles")
-        .select("full_name, program, year_of_study, avatar_url, onboarding_completed")
+        .select(
+          "full_name, program, year_of_study, avatar_url, onboarding_completed, onboarding_intent",
+        )
         .eq("id", user.id)
         .maybeSingle();
 
@@ -169,9 +193,27 @@ export default function OnboardingPage() {
 
       if (data?.onboarding_completed) {
         notifyOnboardingCompleted();
-        navigate("/app", { replace: true });
+        clearOnboardingStepCache();
+        const pending = redirectPath ?? consumePendingRedirect();
+        navigate(pending ?? "/app", { replace: true });
         return;
       }
+
+      const storedIntent = readOnboardingIntentFromStorage();
+      const profileIntent = data?.onboarding_intent as string | null | undefined;
+      if (storedIntent) {
+        setIntent(storedIntent);
+      } else if (
+        profileIntent === "discover" ||
+        profileIntent === "manage" ||
+        profileIntent === "both"
+      ) {
+        cacheOnboardingIntent(profileIntent);
+        setIntent(profileIntent);
+      }
+
+      const storedStep = readOnboardingStepFromStorage();
+      if (storedStep) setStep(storedStep);
 
       setFullName((data?.full_name as string) ?? "");
       setProgram((data?.program as string) ?? "");
@@ -183,7 +225,40 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, navigate]);
+  }, [user?.id, navigate, redirectPath]);
+
+  function selectIntent(next: OnboardingIntent) {
+    setIntent(next);
+    cacheOnboardingIntent(next);
+  }
+
+  function handleIntentKeyDown(
+    event: KeyboardEvent<HTMLDivElement>,
+    optionValue: OnboardingIntent,
+    index: number,
+  ) {
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      selectIntent(optionValue);
+      return;
+    }
+
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = (index + delta + INTENT_OPTIONS.length) % INTENT_OPTIONS.length;
+    const next = INTENT_OPTIONS[nextIndex];
+    selectIntent(next.value);
+    const el = document.getElementById(`${pathGroupId}-${next.value}`);
+    el?.focus();
+  }
+
+  async function handleContinue() {
+    if (!intent || !user?.id) return;
+    cacheOnboardingStep(2);
+    setStep(2);
+    await persistOnboardingIntentDraft(user.id, intent);
+  }
 
   async function handleAvatarUpload(file: File) {
     if (!user?.id) return;
@@ -217,6 +292,9 @@ export default function OnboardingPage() {
     setSubmitting(true);
     setError(null);
 
+    const pending = redirectPath ?? consumePendingRedirect();
+    const destination = pending ?? destinationForOnboardingIntent(intent);
+
     try {
       cacheOnboardingIntent(intent);
 
@@ -236,7 +314,8 @@ export default function OnboardingPage() {
 
       notifyOnboardingCompleted();
       await refreshUserProfile();
-      navigate(redirectForIntent(intent), { replace: true });
+      clearOnboardingStepCache();
+      navigate(destination, { replace: true });
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -263,16 +342,6 @@ export default function OnboardingPage() {
       }}
     >
       <div style={{ width: "100%", maxWidth: step === 1 ? "720px" : "480px" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            marginBottom: "32px",
-          }}
-        >
-          <BrandLogo variant="hero" />
-        </div>
-
         {step === 1 ? (
           <>
             <h1
@@ -284,7 +353,7 @@ export default function OnboardingPage() {
                 textAlign: "center",
               }}
             >
-              How do you want to use Gryph ClubConnect?
+              How do you want to use ClubConnect?
             </h1>
             <p
               style={{
@@ -292,12 +361,16 @@ export default function OnboardingPage() {
                 color: "#777777",
                 textAlign: "center",
                 margin: "0 0 28px",
+                lineHeight: 1.5,
               }}
             >
-              Choose the path that fits you best. You can change this later.
+              Choose a starting path. This personalizes onboarding — it does not
+              permanently restrict what you can do later.
             </p>
 
             <div
+              role="radiogroup"
+              aria-label="Onboarding path"
               style={{
                 display: "flex",
                 flexDirection: "column",
@@ -305,22 +378,57 @@ export default function OnboardingPage() {
                 marginBottom: "28px",
               }}
             >
-              {INTENT_OPTIONS.map((option) => {
+              {INTENT_OPTIONS.map((option, index) => {
                 const selected = intent === option.value;
                 return (
-                  <button
+                  <div
                     key={option.value}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => setIntent(option.value)}
+                    id={`${pathGroupId}-${option.value}`}
+                    role="radio"
+                    tabIndex={selected || (!intent && index === 0) ? 0 : -1}
+                    aria-checked={selected}
+                    onClick={() => selectIntent(option.value)}
+                    onKeyDown={(event) =>
+                      handleIntentKeyDown(event, option.value, index)
+                    }
                     style={intentCardStyle(selected)}
+                    onFocus={(event) => {
+                      event.currentTarget.style.boxShadow = selected
+                        ? "inset 0 0 0 1px rgba(229, 25, 55, 0.25), 0 0 0 2px rgba(229, 25, 55, 0.35)"
+                        : "0 0 0 2px rgba(229, 25, 55, 0.35)";
+                    }}
+                    onBlur={(event) => {
+                      event.currentTarget.style.boxShadow = selected
+                        ? "inset 0 0 0 1px rgba(229, 25, 55, 0.25)"
+                        : "none";
+                    }}
                   >
+                    {option.badge ? (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "14px",
+                          right: selected ? "48px" : "16px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          color: "#aaaaaa",
+                          background: "#1a1a1a",
+                          border: "1px solid #2a2a2a",
+                          borderRadius: "4px",
+                          padding: "3px 8px",
+                        }}
+                      >
+                        {option.badge}
+                      </span>
+                    ) : null}
                     {selected ? (
                       <span
                         style={{
                           position: "absolute",
-                          top: "16px",
-                          right: "16px",
+                          top: "14px",
+                          right: "14px",
                           width: "24px",
                           height: "24px",
                           borderRadius: "50%",
@@ -334,29 +442,66 @@ export default function OnboardingPage() {
                         <Check size={14} color="#ffffff" />
                       </span>
                     ) : null}
-                    <p
+
+                    <div
                       style={{
-                        fontSize: "16px",
-                        fontWeight: 700,
-                        color: selected ? "#ffffff" : "#dddddd",
-                        margin: "0 0 8px",
-                        paddingRight: "32px",
+                        display: "flex",
+                        gap: "14px",
+                        alignItems: "flex-start",
+                        paddingRight: option.badge || selected ? "72px" : 0,
                       }}
                     >
-                      {option.title}
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "13px",
-                        color: selected ? "#cccccc" : "#777777",
-                        margin: "0 0 14px",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {option.description}
-                    </p>
-                    <span style={intentCtaStyle(selected)}>{option.cta}</span>
-                  </button>
+                      <span
+                        style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "10px",
+                          background: selected ? "#1a1214" : "#1a1a1a",
+                          border: "1px solid #2a2a2a",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: selected ? "#E51937" : "#888888",
+                          flexShrink: 0,
+                        }}
+                        aria-hidden
+                      >
+                        {option.icon}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <p
+                          style={{
+                            fontSize: "16px",
+                            fontWeight: 700,
+                            color: selected ? "#ffffff" : "#dddddd",
+                            margin: "0 0 6px",
+                          }}
+                        >
+                          {option.title}
+                        </p>
+                        <p
+                          style={{
+                            fontSize: "13px",
+                            color: selected ? "#cccccc" : "#888888",
+                            margin: "0 0 6px",
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {option.description}
+                        </p>
+                        <p
+                          style={{
+                            fontSize: "12px",
+                            color: "#666666",
+                            margin: 0,
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {option.detail}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -365,7 +510,7 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 disabled={!intent}
-                onClick={() => setStep(2)}
+                onClick={() => void handleContinue()}
                 style={{
                   background: "#E51937",
                   color: "#ffffff",
@@ -534,7 +679,10 @@ export default function OnboardingPage() {
             >
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => {
+                  cacheOnboardingStep(1);
+                  setStep(1);
+                }}
                 disabled={submitting}
                 style={{
                   background: "transparent",

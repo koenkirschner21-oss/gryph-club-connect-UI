@@ -17,27 +17,27 @@ import {
   notifyMeetingUpdated,
 } from "../../../lib/notifications";
 import { supabase } from "../../../lib/supabaseClient";
+import DateTimeField from "../../../components/ui/DateTimeField";
 import {
   inputStyle,
   labelStyle,
+  outlineButtonStyle,
   primaryButtonStyle,
   sectionCardStyle,
   sectionHeadingStyle,
 } from "./meetingStyles";
 import type { MeetingCreateFormState } from "./meetingTypes";
 import { MEETING_TYPES } from "./meetingTypes";
-import { buildMeetingUpdatePayload, combineDateTime, emptyCreateForm } from "./meetingUtils";
+import {
+  buildMeetingUpdatePayload,
+  combineDateTime,
+  emptyCreateForm,
+  moveArrayItem,
+} from "./meetingUtils";
 
 interface LinkOption {
   id: string;
   title: string;
-}
-
-function moveAgendaItem(items: string[], from: number, to: number): string[] {
-  const next = [...items];
-  const [removed] = next.splice(from, 1);
-  next.splice(to, 0, removed);
-  return next;
 }
 
 export function MeetingCreateFlow({
@@ -67,6 +67,20 @@ export function MeetingCreateFlow({
     () => members.filter((member) => member.status === "active"),
     [members],
   );
+
+  const isDirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(initial),
+    [form, initial],
+  );
+
+  const leaveToMeetingsList = () => {
+    navigate(`/app/clubs/${clubId}/meetings`);
+  };
+
+  const handleDiscardNavigation = () => {
+    if (isDirty && !window.confirm("Discard this meeting draft?")) return;
+    leaveToMeetingsList();
+  };
 
   function effectiveMeetingLocation(formState: MeetingCreateFormState): string | null {
     return formState.format === "online"
@@ -335,7 +349,7 @@ export function MeetingCreateFlow({
       <div style={{ maxWidth: "760px", margin: "0 auto", padding: "24px 20px 48px" }}>
         <button
           type="button"
-          onClick={() => navigate(`/app/clubs/${clubId}/meetings`)}
+          onClick={handleDiscardNavigation}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -384,26 +398,22 @@ export function MeetingCreateFlow({
               </select>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              <div>
-                <label style={labelStyle} htmlFor="meeting-date">Date</label>
-                <input
-                  id="meeting-date"
-                  type="date"
-                  style={inputStyle}
-                  value={form.date}
-                  onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label style={labelStyle} htmlFor="meeting-time">Time</label>
-                <input
-                  id="meeting-time"
-                  type="time"
-                  style={inputStyle}
-                  value={form.time}
-                  onChange={(e) => setForm((current) => ({ ...current, time: e.target.value }))}
-                />
-              </div>
+              <DateTimeField
+                id="meeting-date"
+                type="date"
+                label="Date"
+                value={form.date}
+                onChange={(value) => setForm((current) => ({ ...current, date: value }))}
+                inputStyle={inputStyle}
+              />
+              <DateTimeField
+                id="meeting-time"
+                type="time"
+                label="Time"
+                value={form.time}
+                onChange={(value) => setForm((current) => ({ ...current, time: value }))}
+                inputStyle={inputStyle}
+              />
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#cccccc" }}>
               <input
@@ -601,7 +611,7 @@ export function MeetingCreateFlow({
                   if (dragIndex === null || dragIndex === index) return;
                   setForm((current) => ({
                     ...current,
-                    agendaItems: moveAgendaItem(current.agendaItems, dragIndex, index),
+                    agendaItems: moveArrayItem(current.agendaItems, dragIndex, index),
                   }));
                   setDragIndex(null);
                 }}
@@ -693,11 +703,11 @@ export function MeetingCreateFlow({
                       </option>
                     ))}
                   </select>
-                  <input
+                  <DateTimeField
                     type="date"
-                    style={inputStyle}
                     value={item.dueDate}
-                    onChange={(e) => updateActionItem(index, "dueDate", e.target.value)}
+                    onChange={(value) => updateActionItem(index, "dueDate", value)}
+                    inputStyle={inputStyle}
                   />
                 </div>
               </div>
@@ -720,26 +730,41 @@ export function MeetingCreateFlow({
           </section>
         ) : null}
 
-        <button
-          type="button"
-          disabled={saving || !form.title.trim() || !form.date || !form.time}
-          onClick={() => void handleSave()}
-          style={{
-            ...primaryButtonStyle,
-            width: "100%",
-            padding: "12px 16px",
-            fontSize: "14px",
-            opacity: saving || !form.title.trim() ? 0.6 : 1,
-          }}
-        >
-          {saving
-            ? "Saving…"
-            : saveSuccess
-              ? "Saved"
-              : editingId
-                ? "Save Changes"
-                : "Create Meeting"}
-        </button>
+        <div style={{ display: "flex", gap: "12px" }}>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleDiscardNavigation}
+            style={{
+              ...outlineButtonStyle,
+              padding: "12px 16px",
+              fontSize: "14px",
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving || !form.title.trim() || !form.date || !form.time}
+            onClick={() => void handleSave()}
+            style={{
+              ...primaryButtonStyle,
+              flex: 1,
+              padding: "12px 16px",
+              fontSize: "14px",
+              opacity: saving || !form.title.trim() ? 0.6 : 1,
+            }}
+          >
+            {saving
+              ? "Saving…"
+              : saveSuccess
+                ? "Saved"
+                : editingId
+                  ? "Save Changes"
+                  : "Create Meeting"}
+          </button>
+        </div>
         {saveError ? (
           <p style={{ margin: "10px 0 0", fontSize: "13px", color: "#E51937" }}>
             {saveError}

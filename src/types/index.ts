@@ -82,6 +82,8 @@ export interface Club {
   categoryConfirmed?: boolean;
   meetingLocationConfirmed?: boolean;
   contentVisibilityDefaultsConfirmed?: boolean;
+  /** null/undefined = unanswered; controls whether schedule/location block publish */
+  meetsRegularly?: boolean | null;
   setupSkippedItems?: string[];
   claimStatus?: ClaimStatus;
   setupCompleted?: boolean;
@@ -301,6 +303,7 @@ export type NotificationType =
   | "claim_approved"
   | "claim_rejected"
   | "claim_more_info"
+  | "claim_canceled"
   | "new_club_request"
   | "club_request_submitted"
   | "club_request_approved"

@@ -1,9 +1,10 @@
-import { type FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { type FormEvent, useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuthContext } from "../context/useAuthContext";
 import { showToast } from "../components/ui/Toast";
 import { useIsMobile } from "../hooks/useWindowWidth";
+import { isSafeRedirectPath, storePendingRedirect } from "../lib/authRedirect";
 
 const AUTH_RED = "#E51937";
 const AUTH_RED_HOVER = "#cc0020";
@@ -309,17 +310,26 @@ export default function Login() {
   const { signIn } = useAuthContext();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const [searchParams] = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const redirect = searchParams.get("redirect");
+    if (isSafeRedirectPath(redirect)) {
+      storePendingRedirect(redirect);
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
       await signIn(email, password);
-      navigate("/app");
+      const redirect = searchParams.get("redirect");
+      navigate(isSafeRedirectPath(redirect) ? redirect : "/app");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Login failed", "error");
     } finally {

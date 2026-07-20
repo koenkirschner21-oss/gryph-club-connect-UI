@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowLeft, Send, X } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Send, X } from "lucide-react";
 import LinkedMeetingCancelledLabel from "./LinkedMeetingCancelledLabel";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { formatTaskDate, getTaskDueUrgency, taskDueBadgeConfig, taskDueDateColor } from "../../lib/taskDueUrgency";
@@ -109,20 +109,20 @@ function SectionTitle({ children }: { children: ReactNode }) {
 
 function MetaField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: "14px" }}>
+    <div style={{ marginBottom: "12px" }}>
       <p
         style={{
           margin: "0 0 4px",
           fontSize: "10px",
           fontWeight: 700,
-          color: "#555555",
+          color: "#8a8a8a",
           letterSpacing: "0.06em",
           textTransform: "uppercase",
         }}
       >
         {label}
       </p>
-      <div style={{ fontSize: "13px", color: "#cccccc", lineHeight: 1.4 }}>{children}</div>
+      <div style={{ fontSize: "13px", color: "#e0e0e0", lineHeight: 1.4 }}>{children}</div>
     </div>
   );
 }
@@ -337,6 +337,7 @@ function TaskTypeBadge({ taskType }: { taskType: Task["taskType"] }) {
 export interface TaskDetailModalProps {
   task: Task;
   clubId: string;
+  clubName?: string;
   onClose: () => void;
   onBack?: () => void;
   assigneeName: string;
@@ -353,6 +354,7 @@ export interface TaskDetailModalProps {
   linkedEventFallback?: string;
   isReviewMode?: boolean;
   onApproveReview?: () => void;
+  /** @deprecated Prefer onRequestChangesReview — Send Back and Request Changes were duplicates. */
   onSendBackReview?: (note: string) => void;
   onRequestChangesReview?: (note: string) => void;
 }
@@ -360,6 +362,7 @@ export interface TaskDetailModalProps {
 export default function TaskDetailModal({
   task,
   clubId,
+  clubName,
   onClose,
   onBack,
   assigneeName,
@@ -385,8 +388,11 @@ export default function TaskDetailModal({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
 
   const handleBack = onBack ?? onClose;
+  const handleRequestChanges = onRequestChangesReview ?? onSendBackReview;
 
   useEffect(() => {
     const scrollY = window.scrollY;
@@ -495,13 +501,9 @@ export default function TaskDetailModal({
       ? "Submit for Review"
       : "Mark Complete";
 
-  const metadataFooter = [
-    task.createdAt
-      ? `Created ${new Date(task.createdAt).toLocaleString()}`
-      : null,
-    task.completedAt
-      ? `Completed ${new Date(task.completedAt).toLocaleString()}`
-      : null,
+  const contextLine = [
+    clubName?.trim() || null,
+    assigneeName?.trim() ? `Assigned to ${assigneeName.trim()}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -577,17 +579,11 @@ export default function TaskDetailModal({
         >
           <div
             style={{
-              paddingBottom: "16px",
-              marginBottom: "18px",
+              paddingBottom: "12px",
+              marginBottom: "14px",
               borderBottom: "1px solid #1e1e1e",
             }}
           >
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
-              <StatusBadge status={task.status} />
-              <PriorityPill priority={task.priority} />
-              <TaskTypeBadge taskType={task.taskType} />
-            </div>
-
             <h2
               id="task-detail-title"
               style={{
@@ -600,6 +596,19 @@ export default function TaskDetailModal({
             >
               {task.title}
             </h2>
+            {contextLine ? (
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: "13px",
+                  color: "#b0b0b0",
+                  fontWeight: 500,
+                  lineHeight: 1.4,
+                }}
+              >
+                {contextLine}
+              </p>
+            ) : null}
             <LinkedMeetingCancelledLabel task={task} />
           </div>
 
@@ -607,19 +616,19 @@ export default function TaskDetailModal({
             style={{
               display: "grid",
               gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.45fr) minmax(220px, 1fr)",
-              gap: isMobile ? "20px" : "28px",
+              gap: isMobile ? "16px" : "24px",
               alignItems: "start",
             }}
           >
             <div style={{ minWidth: 0 }}>
               {displayDescription ? (
-                <div style={{ marginBottom: "18px" }}>
+                <div style={{ marginBottom: "14px" }}>
                   <SectionTitle>Description</SectionTitle>
                   <p
                     style={{
                       margin: 0,
                       fontSize: "14px",
-                      color: "#cccccc",
+                      color: "#d0d0d0",
                       lineHeight: 1.6,
                       whiteSpace: "pre-wrap",
                     }}
@@ -630,9 +639,9 @@ export default function TaskDetailModal({
               ) : null}
 
               {linkedSource ? (
-                <div style={{ marginBottom: "18px" }}>
+                <div style={{ marginBottom: "14px" }}>
                   <SectionTitle>{linkedSource.fieldLabel}</SectionTitle>
-                  <p style={{ margin: 0, fontSize: "14px", color: "#cccccc", fontWeight: 500 }}>
+                  <p style={{ margin: 0, fontSize: "14px", color: "#d0d0d0", fontWeight: 500 }}>
                     {linkedSource.value}
                   </p>
                 </div>
@@ -645,7 +654,7 @@ export default function TaskDetailModal({
                     background: "#0f0f0f",
                     border: "1px solid #1e1e1e",
                     borderRadius: "8px",
-                    padding: "12px",
+                    padding: "10px 12px",
                   }}
                 >
                   {loadingComments ? (
@@ -768,7 +777,7 @@ export default function TaskDetailModal({
                     style={{
                       fontSize: dueUrgency ? "16px" : "14px",
                       fontWeight: dueUrgency ? 800 : 600,
-                      color: task.dueDate ? dueColor : "#555555",
+                      color: task.dueDate ? dueColor : "#888888",
                     }}
                   >
                     {task.dueDate ? formatTaskDate(task.dueDate) : "No due date"}
@@ -805,24 +814,23 @@ export default function TaskDetailModal({
                 <TaskTypeBadge taskType={task.taskType} />
               </MetaField>
 
+              {task.createdAt ? (
+                <MetaField label="Created">
+                  {new Date(task.createdAt).toLocaleString()}
+                </MetaField>
+              ) : null}
+
+              {task.completedAt ? (
+                <MetaField label="Completed">
+                  {new Date(task.completedAt).toLocaleString()}
+                </MetaField>
+              ) : null}
+
               {linkedSource ? (
                 <MetaField label="Source">{linkedSource.value}</MetaField>
               ) : null}
             </aside>
           </div>
-
-          {metadataFooter ? (
-            <p
-              style={{
-                margin: "16px 0 0",
-                fontSize: "10px",
-                color: "#444444",
-                lineHeight: 1.5,
-              }}
-            >
-              {metadataFooter}
-            </p>
-          ) : null}
         </div>
 
         <div
@@ -838,7 +846,7 @@ export default function TaskDetailModal({
               <textarea
                 value={reviewNote}
                 onChange={(event) => setReviewNote(event.target.value)}
-                placeholder="Optional note for send-back or change request…"
+                placeholder="Add a note explaining what needs to change…"
                 rows={2}
                 style={{
                   width: "100%",
@@ -859,26 +867,65 @@ export default function TaskDetailModal({
                   onClick={() => onApproveReview?.()}
                   style={primaryButtonStyle}
                 >
-                  Approve
+                  Approve Task
+                </button>
+                {handleRequestChanges ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRequestChanges(reviewNote.trim())}
+                    style={secondaryButtonStyle}
+                  >
+                    Request Task Changes
+                  </button>
+                ) : null}
+              </div>
+              <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#888888", lineHeight: 1.4 }}>
+                Request Changes returns the task to In Progress with your note.
+              </p>
+            </div>
+          ) : confirmingDelete ? (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <p style={{ margin: 0, fontSize: "13px", color: "#dddddd" }}>
+                Delete this task permanently?
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  style={secondaryButtonStyle}
+                >
+                  Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => onSendBackReview?.(reviewNote.trim())}
-                  style={secondaryButtonStyle}
+                  onClick={() => {
+                    setConfirmingDelete(false);
+                    onDelete();
+                  }}
+                  style={dangerButtonStyle}
                 >
-                  Send Back
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRequestChangesReview?.(reviewNote.trim())}
-                  style={secondaryButtonStyle}
-                >
-                  Request Changes
+                  Delete Task
                 </button>
               </div>
             </div>
           ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
               {canMarkComplete ? (
                 <button
                   type="button"
@@ -899,13 +946,55 @@ export default function TaskDetailModal({
               ) : null}
               {canEdit ? (
                 <button type="button" onClick={onEdit} style={secondaryButtonStyle}>
-                  Edit
+                  Edit Task
                 </button>
               ) : null}
               {canDelete ? (
-                <button type="button" onClick={onDelete} style={dangerButtonStyle}>
-                  Delete
-                </button>
+                <div style={{ position: "relative", marginLeft: "auto" }}>
+                  <button
+                    type="button"
+                    aria-label="More actions"
+                    onClick={() => setOverflowOpen((value) => !value)}
+                    style={{
+                      ...secondaryButtonStyle,
+                      padding: "9px 10px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <MoreHorizontal size={16} aria-hidden />
+                  </button>
+                  {overflowOpen ? (
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        bottom: "calc(100% + 6px)",
+                        background: "#161616",
+                        border: "1px solid #2a2a2a",
+                        borderRadius: "8px",
+                        padding: "6px",
+                        minWidth: "150px",
+                        zIndex: 2,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverflowOpen(false);
+                          setConfirmingDelete(true);
+                        }}
+                        style={{
+                          ...dangerButtonStyle,
+                          width: "100%",
+                          textAlign: "left",
+                        }}
+                      >
+                        Delete Task
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}

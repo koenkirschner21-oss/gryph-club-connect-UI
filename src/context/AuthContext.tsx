@@ -13,7 +13,11 @@ import {
   formatSignupError,
   isAllowedSignupEmail,
 } from "../lib/authProfile";
-import { buildAuthCallbackUrl } from "../lib/authRedirect";
+import {
+  buildAuthCallbackUrl,
+  isSafeRedirectPath,
+  storePendingRedirect,
+} from "../lib/authRedirect";
 import {
   AuthContext,
   type AuthContextValue,
@@ -152,17 +156,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const redirect = new URLSearchParams(location.search).get("redirect");
-    if (location.pathname === "/login" && redirect?.startsWith("/")) {
-      navigate(redirect, { replace: true });
-      return;
+    const rawRedirect = new URLSearchParams(location.search).get("redirect");
+    const safeRedirect = isSafeRedirectPath(rawRedirect) ? rawRedirect : null;
+    if (safeRedirect) {
+      storePendingRedirect(safeRedirect);
     }
 
     if (onboardingCompleted === false) {
-      navigate("/onboarding", { replace: true });
-    } else {
-      navigate("/app", { replace: true });
+      navigate(
+        safeRedirect
+          ? `/onboarding?redirect=${encodeURIComponent(safeRedirect)}`
+          : "/onboarding",
+        { replace: true },
+      );
+      return;
     }
+
+    navigate(safeRedirect ?? "/app", { replace: true });
   }, [
     loading,
     user,
@@ -177,57 +187,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return "/onboarding";
   }, [user, onboardingCompleted]);
 
-  const signUp = useCallback(async (email: string, password: string) => {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!isAllowedSignupEmail(normalizedEmail)) {
-      throw new Error(
-        `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
-      );
-    }
-
-    console.info("[auth] signup start", { email: normalizedEmail });
-
-    const emailRedirectTo = buildAuthCallbackUrl();
-    console.info("[auth] signup emailRedirectTo", { emailRedirectTo });
-
-    const { data, error } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        emailRedirectTo,
-        data: {
-          email: normalizedEmail,
-        },
-      },
-    });
-
-    if (error) {
-      console.error("[auth] signup auth error:", error.message, error);
-      throw new Error(formatSignupError(error));
-    }
-
-    console.info("[auth] signup auth response", {
-      userId: data.user?.id ?? null,
-      hasSession: Boolean(data.session),
-    });
-
-    const needsEmailConfirmation = Boolean(data.user && !data.session);
-
-    if (data.user && data.session) {
-      const profileResult = await ensureMinimalProfile(data.user);
-      if (profileResult.error) {
-        console.error(
-          "[auth] signup profile ensure failed:",
-          profileResult.error,
+  const signUp = useCallback(
+    async (
+      email: string,
+      password: string,
+      redirectPath?: string | null,
+    ) => {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!isAllowedSignupEmail(normalizedEmail)) {
+        throw new Error(
+          `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are permitted to sign up.`,
         );
-      } else if (profileResult.created) {
-        console.info("[auth] signup created minimal profile");
       }
-      setOnboardingCompleted(false);
-    }
 
-    return { needsEmailConfirmation };
-  }, []);
+      console.info("[auth] signup start", { email: normalizedEmail });
+
+      if (redirectPath) {
+        storePendingRedirect(redirectPath);
+      }
+      const emailRedirectTo = buildAuthCallbackUrl(redirectPath);
+      console.info("[auth] signup emailRedirectTo", { emailRedirectTo });
+
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          emailRedirectTo,
+          data: {
+            email: normalizedEmail,
+          },
+        },
+      });
+
+      if (error) {
+        console.error("[auth] signup auth error:", error.message, error);
+        throw new Error(formatSignupError(error));
+      }
+
+      console.info("[auth] signup auth response", {
+        userId: data.user?.id ?? null,
+        hasSession: Boolean(data.session),
+      });
+
+      const needsEmailConfirmation = Boolean(data.user && !data.session);
+
+      if (data.user && data.session) {
+        const profileResult = await ensureMinimalProfile(data.user);
+        if (profileResult.error) {
+          console.error(
+            "[auth] signup profile ensure failed:",
+            profileResult.error,
+          );
+        } else if (profileResult.created) {
+          console.info("[auth] signup created minimal profile");
+        }
+        setOnboardingCompleted(false);
+      }
+
+      return { needsEmailConfirmation };
+    },
+    [],
+  );
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({

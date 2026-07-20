@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useAuthContext } from "../../context/useAuthContext";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  ensureClubInviteLink,
+  sendClubInviteEmail,
+} from "../../lib/clubInviteEmail";
 
 const UOFG_EMAIL_PATTERN = /@uoguelph\.ca$/i;
 void UOFG_EMAIL_PATTERN; // preserved for UofG email restriction restore
@@ -33,18 +37,22 @@ export default function ClubInviteModal({
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
+  const [inviteCopyingLink, setInviteCopyingLink] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [emailValidationError, setEmailValidationError] = useState<string | null>(
     null,
   );
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  const sendLockRef = useRef(false);
 
   if (!open) return null;
 
   function handleClose() {
     setInviteEmail("");
     setInviteError(null);
+    setInviteSuccess(null);
     setEmailValidationError(null);
     setInviteLink(null);
     setInviteLinkCopied(false);
@@ -63,9 +71,8 @@ export default function ClubInviteModal({
     );
   }
 
-  function handleCopyInviteLink() {
-    if (!inviteLink) return;
-    navigator.clipboard.writeText(inviteLink).then(
+  function handleCopyInviteLinkValue(link: string) {
+    navigator.clipboard.writeText(link).then(
       () => {
         setInviteLinkCopied(true);
         window.setTimeout(() => setInviteLinkCopied(false), 2000);
@@ -76,6 +83,8 @@ export default function ClubInviteModal({
 
   function handleInviteEmailChange(value: string) {
     setInviteEmail(value);
+    setInviteSuccess(null);
+    setInviteError(null);
     const trimmed = value.trim();
     if (!trimmed || isValidUofGEmail(trimmed)) {
       setEmailValidationError(null);
@@ -86,33 +95,65 @@ export default function ClubInviteModal({
 
   const inviteEmailValid = isValidUofGEmail(inviteEmail);
 
-  async function handleSendInvite() {
-    if (!clubId || !user?.id || !inviteEmailValid) return;
+  async function handleSendInvite(resend = false) {
+    if (!clubId || !user?.id || !inviteEmailValid || sendLockRef.current) return;
+    sendLockRef.current = true;
     setInviteSending(true);
     setInviteError(null);
-    setInviteLink(null);
+    setInviteSuccess(null);
 
-    const { data, error } = await supabase
-      .from("club_invites")
-      .insert({
-        club_id: clubId,
-        invited_email: inviteEmail.trim().toLowerCase(),
-        invited_by: user.id,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      })
-      .select("token")
-      .single();
+    const result = await sendClubInviteEmail(supabase, {
+      clubId,
+      invitedEmail: inviteEmail,
+      invitedBy: user.id,
+      resend,
+    });
 
     setInviteSending(false);
+    sendLockRef.current = false;
 
-    if (error || !data?.token) {
-      setInviteError(
-        error?.message ?? "Failed to create invite. Please try again.",
-      );
+    if (result.inviteLink) {
+      setInviteLink(result.inviteLink);
+    }
+
+    if (!result.ok) {
+      setInviteError(result.error);
       return;
     }
 
-    setInviteLink(`${window.location.origin}/invite/${data.token as string}`);
+    setInviteLink(result.inviteLink);
+    setInviteSuccess(
+      result.reused
+        ? "Invitation email sent (existing invite reused)."
+        : "Invitation email sent.",
+    );
+  }
+
+  async function handleCopyInviteLink() {
+    if (!clubId || !user?.id || !inviteEmailValid) return;
+    setInviteCopyingLink(true);
+    setInviteError(null);
+
+    if (inviteLink) {
+      handleCopyInviteLinkValue(inviteLink);
+      setInviteCopyingLink(false);
+      return;
+    }
+
+    const result = await ensureClubInviteLink(supabase, {
+      clubId,
+      invitedEmail: inviteEmail,
+      invitedBy: user.id,
+    });
+    setInviteCopyingLink(false);
+
+    if (!result.ok) {
+      setInviteError(result.error);
+      return;
+    }
+
+    setInviteLink(result.inviteLink);
+    handleCopyInviteLinkValue(result.inviteLink);
   }
 
   return (
@@ -244,7 +285,7 @@ export default function ClubInviteModal({
             value={inviteEmail}
             onChange={(e) => handleInviteEmailChange(e.target.value)}
             placeholder="Enter UofG email address"
-            disabled={inviteSending}
+            disabled={inviteSending || inviteCopyingLink}
             style={{
               width: "100%",
               boxSizing: "border-box",
@@ -254,7 +295,8 @@ export default function ClubInviteModal({
               padding: "10px 14px",
               color: "#ffffff",
               fontSize: "14px",
-              marginBottom: emailValidationError || inviteError ? "8px" : "12px",
+              marginBottom:
+                emailValidationError || inviteError || inviteSuccess ? "8px" : "12px",
             }}
           />
           {emailValidationError ? (
@@ -267,65 +309,90 @@ export default function ClubInviteModal({
               {inviteError}
             </p>
           ) : null}
+          {inviteSuccess ? (
+            <p style={{ fontSize: "12px", color: "#4ade80", margin: "0 0 12px" }}>
+              {inviteSuccess}
+            </p>
+          ) : null}
           {inviteLink ? (
             <div style={{ marginBottom: "12px" }}>
               <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
-                Invite link created! Share this link:
+                Invite link:
               </p>
-              <div style={{ display: "flex", gap: "8px", alignItems: "stretch" }}>
-                <input
-                  type="text"
-                  readOnly
-                  value={inviteLink}
-                  style={{
-                    flex: 1,
-                    background: "#111111",
-                    border: "1px solid #2a2a2a",
-                    borderRadius: "6px",
-                    padding: "10px 14px",
-                    color: "#cccccc",
-                    fontSize: "12px",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyInviteLink}
-                  style={{
-                    background: "#1f1f1f",
-                    border: "1px solid #333333",
-                    color: "#ffffff",
-                    borderRadius: "6px",
-                    padding: "10px 14px",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {inviteLinkCopied ? "Copied!" : "Copy"}
-                </button>
-              </div>
+              <input
+                type="text"
+                readOnly
+                value={inviteLink}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#111111",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: "6px",
+                  padding: "10px 14px",
+                  color: "#cccccc",
+                  fontSize: "12px",
+                  marginBottom: "8px",
+                }}
+              />
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={() => void handleSendInvite()}
-            disabled={inviteSending || !inviteEmailValid}
-            style={{
-              width: "100%",
-              background: "#E51937",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "6px",
-              padding: "10px 24px",
-              fontSize: "13px",
-              fontWeight: 500,
-              cursor:
-                inviteSending || !inviteEmailValid ? "not-allowed" : "pointer",
-              opacity: inviteSending || !inviteEmailValid ? 0.6 : 1,
-            }}
-          >
-            {inviteSending ? "Sending…" : "Send Invite"}
-          </button>
+          <div style={{ display: "grid", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={() => void handleSendInvite(Boolean(inviteSuccess || inviteLink))}
+              disabled={inviteSending || inviteCopyingLink || !inviteEmailValid}
+              style={{
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "10px 24px",
+                fontSize: "13px",
+                fontWeight: 500,
+                cursor:
+                  inviteSending || inviteCopyingLink || !inviteEmailValid
+                    ? "not-allowed"
+                    : "pointer",
+                opacity:
+                  inviteSending || inviteCopyingLink || !inviteEmailValid ? 0.6 : 1,
+              }}
+            >
+              {inviteSending
+                ? "Sending…"
+                : inviteSuccess || inviteLink
+                  ? "Resend Invitation"
+                  : "Send Invitation"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCopyInviteLink()}
+              disabled={inviteSending || inviteCopyingLink || !inviteEmailValid}
+              style={{
+                width: "100%",
+                background: "#1f1f1f",
+                border: "1px solid #333333",
+                color: "#ffffff",
+                borderRadius: "6px",
+                padding: "10px 24px",
+                fontSize: "13px",
+                fontWeight: 500,
+                cursor:
+                  inviteSending || inviteCopyingLink || !inviteEmailValid
+                    ? "not-allowed"
+                    : "pointer",
+                opacity:
+                  inviteSending || inviteCopyingLink || !inviteEmailValid ? 0.6 : 1,
+              }}
+            >
+              {inviteCopyingLink
+                ? "Preparing…"
+                : inviteLinkCopied
+                  ? "Copied!"
+                  : "Copy Invite Link"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

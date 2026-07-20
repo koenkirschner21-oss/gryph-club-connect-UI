@@ -30,7 +30,7 @@ import {
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { filterByVisibility } from "../../lib/contentVisibility";
-import { resolveEventDetailPath } from "../../lib/eventNavigation";
+import { getWorkspaceEventManagePath, resolveEventDetailPath } from "../../lib/eventNavigation";
 import { formatNameWithRoleTitle, accessLevelFromMember, formatAccessLevelWithMemberTitle } from "../../lib/memberRoleTitle";
 import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
 import { isPrivilegedClubRole } from "../../lib/clubRoles";
@@ -49,7 +49,6 @@ import {
 } from "../../lib/taskCompletion";
 import { TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import { addTaskComment } from "../../lib/taskComments";
-import { recordAnnouncementView } from "../../lib/postViews";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import type {
   AccessLevel,
@@ -63,7 +62,10 @@ import type {
 } from "../../types";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import Spinner from "../../components/ui/Spinner";
-import SetupChecklist, { SetupChecklistModal } from "../../components/club/SetupChecklist";
+import SetupChecklist, {
+  SetupChecklistDrawer,
+} from "../../components/club/SetupChecklist";
+import { useClubSetupProgress } from "../../hooks/useClubSetupProgress";
 import CreateMenuDropdown from "../../components/club/CreateMenuDropdown";
 import NeedsReviewSection from "../../components/dashboard/NeedsReviewSection";
 import PrepareForMeetingSection from "../../components/dashboard/PrepareForMeetingSection";
@@ -1081,7 +1083,7 @@ function NextEventCard({
   const detailPath =
     eventId && clubId
       ? canManageEvents
-        ? `${eventsPath}?manageEvent=${eventId}`
+        ? getWorkspaceEventManagePath(clubId, eventId)
         : resolveEventDetailPath(eventId, clubId, true)
       : eventsPath;
 
@@ -1373,14 +1375,22 @@ export default function ClubHomePage() {
   const { tasks, loading: tasksLoading, updateTask, deleteTask, createTask } = useClubTasks(clubId);
   const { members } = useClubMembers(clubId);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
-  const [documentsCount, setDocumentsCount] = useState(0);
-  const [pendingInviteCount, setPendingInviteCount] = useState(0);
-  const [setupCountsLoading, setSetupCountsLoading] = useState(false);
 
   const activeMemberCount = useMemo(
     () => members.filter((member) => member.status === "active").length,
     [members],
   );
+
+  const {
+    progress: setupProgress,
+    loading: setupCountsLoading,
+    refreshError: setupRefreshError,
+    refresh: refreshSetupProgress,
+  } = useClubSetupProgress(club, {
+    postsCount: posts.length,
+    eventsCount: events.length,
+    activeMemberCount,
+  });
 
   const shouldPromptSetupChecklist = useMemo(() => {
     if (!club || memberAccess.loading) return false;
@@ -1410,62 +1420,11 @@ export default function ClubHomePage() {
     }
   }, [clubId, shouldPromptSetupChecklist]);
 
-  const loadSetupSupplementalCounts = useCallback(async () => {
-    if (!clubId) return;
-
-    setSetupCountsLoading(true);
-    const [documentsRes, executiveInvitesRes, clubInvitesRes] = await Promise.all([
-      supabase
-        .from("club_documents")
-        .select("id", { count: "exact", head: true })
-        .eq("club_id", clubId),
-      supabase
-        .from("executive_invites")
-        .select("id", { count: "exact", head: true })
-        .eq("club_id", clubId)
-        .eq("status", "pending"),
-      supabase
-        .from("club_invites")
-        .select("id", { count: "exact", head: true })
-        .eq("club_id", clubId)
-        .eq("status", "pending"),
-    ]);
-
-    setDocumentsCount(documentsRes.count ?? 0);
-    setPendingInviteCount(
-      (executiveInvitesRes.count ?? 0) + (clubInvitesRes.count ?? 0),
-    );
-    setSetupCountsLoading(false);
-  }, [clubId]);
-
-  useEffect(() => {
-    if (!selectedAnnouncement?.id || !user?.id) return;
-    void recordAnnouncementView(selectedAnnouncement.id, user.id);
-  }, [selectedAnnouncement?.id, user?.id]);
-
   const refetchClubData = useCallback(() => {
-    if (!clubId) return;
-    refreshPosts();
     refreshEvents();
-    void loadSetupSupplementalCounts();
-  }, [clubId, refreshEvents, refreshPosts, loadSetupSupplementalCounts]);
-
-  useEffect(() => {
-    if (!clubId || !club) return;
-    if (
-      !memberAccess.canManageClubSettings ||
-      club.claimStatus !== "claimed" ||
-      club.setupCompleted
-    ) {
-      return;
-    }
-    void loadSetupSupplementalCounts();
-  }, [
-    clubId,
-    club,
-    memberAccess.canManageClubSettings,
-    loadSetupSupplementalCounts,
-  ]);
+    refreshPosts();
+    void refreshSetupProgress();
+  }, [refreshEvents, refreshPosts, refreshSetupProgress]);
 
   useEffect(() => {
     if (!clubId) return;
@@ -1593,6 +1552,11 @@ export default function ClubHomePage() {
     [eventsThisMonth, eventRecurring],
   );
 
+  const taskStatusSyncKey = useMemo(
+    () => tasks.map((task) => `${task.id}:${task.status}`).join("|"),
+    [tasks],
+  );
+
   useEffect(() => {
     if (!clubId || !user?.id) {
       setOpenTaskCount(0);
@@ -1629,7 +1593,7 @@ export default function ClubHomePage() {
     return () => {
       cancelled = true;
     };
-  }, [clubId, tasks.length, user?.id, canManageTasks]);
+  }, [clubId, user?.id, canManageTasks, taskStatusSyncKey]);
 
   const nextEvent = upcomingOccurrences[0];
 
@@ -1956,6 +1920,8 @@ export default function ClubHomePage() {
   }
 
   async function handleApproveReview(task: Task) {
+    if (!user?.id || !isTaskAwaitingReviewFromUser(task, user.id)) return;
+    if (task.status === "done") return;
     await updateTask(task.id, {
       status: "done",
       completedAt: new Date().toISOString(),
@@ -1963,16 +1929,10 @@ export default function ClubHomePage() {
     setSelectedTask(null);
   }
 
-  async function handleSendBackReview(task: Task, note: string) {
-    if (note.trim() && user?.id) {
-      await addTaskComment(task.id, user.id, note.trim());
-    }
-    await updateTask(task.id, { status: "in_progress", completedAt: null });
-    setSelectedTask(null);
-  }
-
   async function handleRequestChangesReview(task: Task, note: string) {
-    if (note.trim() && user?.id) {
+    if (!user?.id || !isTaskAwaitingReviewFromUser(task, user.id)) return;
+    if (task.status !== "pending_review") return;
+    if (note.trim()) {
       await addTaskComment(
         task.id,
         user.id,
@@ -2009,30 +1969,24 @@ export default function ClubHomePage() {
       {showSetupChecklist && club ? (
         <SetupChecklist
           club={club}
-          postsCount={posts.length}
-          eventsCount={events.length}
-          documentsCount={documentsCount}
-          activeMemberCount={activeMemberCount}
-          pendingInviteCount={pendingInviteCount}
+          progress={setupProgress}
           contentLoading={
             postsLoading || eventsLoading || setupCountsLoading
           }
+          refreshError={setupRefreshError}
           onPublish={handlePublishClub}
           onRefetch={refetchClubData}
         />
       ) : null}
 
       {setupModalOpen && club ? (
-        <SetupChecklistModal
+        <SetupChecklistDrawer
           club={club}
-          postsCount={posts.length}
-          eventsCount={events.length}
-          documentsCount={documentsCount}
-          activeMemberCount={activeMemberCount}
-          pendingInviteCount={pendingInviteCount}
+          progress={setupProgress}
           contentLoading={
             postsLoading || eventsLoading || setupCountsLoading
           }
+          refreshError={setupRefreshError}
           onPublish={handlePublishClub}
           onRefetch={refetchClubData}
           onClose={dismissSetupChecklistModal}
@@ -2379,8 +2333,8 @@ export default function ClubHomePage() {
                     clubLogoUrl={club.logoUrl}
                     actionLabel={canManageEvents ? "Manage Event →" : "View Event →"}
                     onOpen={() => {
-                      if (canManageEvents) {
-                        navigate(`${eventsPath}?manageEvent=${event.id}`);
+                      if (canManageEvents && clubId) {
+                        navigate(getWorkspaceEventManagePath(clubId, event.id));
                       } else {
                         setSelectedEvent(event);
                       }
@@ -2543,6 +2497,16 @@ export default function ClubHomePage() {
                 : undefined
           }
         >
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#aaaaaa",
+              margin: "0 0 8px",
+              fontWeight: 600,
+            }}
+          >
+            {club?.name ?? "Club"}
+          </p>
           <h2
             style={{
               fontSize: "18px",
@@ -2554,21 +2518,21 @@ export default function ClubHomePage() {
           >
             {selectedEvent.title}
           </h2>
-          <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
-            <span style={{ color: "#555555" }}>Date: </span>
+          <p style={{ fontSize: "13px", color: "#bbbbbb", margin: "0 0 8px" }}>
+            <span style={{ color: "#888888" }}>Date: </span>
             {formatEventDateShort(selectedEvent.occurrenceDate)}
           </p>
           {selectedEvent.time &&
           selectedEvent.time.trim() !== "" &&
           selectedEvent.time.toUpperCase() !== "TBD" ? (
-            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
-              <span style={{ color: "#555555" }}>Time: </span>
+            <p style={{ fontSize: "13px", color: "#bbbbbb", margin: "0 0 8px" }}>
+              <span style={{ color: "#888888" }}>Time: </span>
               {formatEventTime12h(selectedEvent.time)}
             </p>
           ) : null}
           {selectedEvent.location && !isHiddenLocation(selectedEvent.location) ? (
-            <p style={{ fontSize: "13px", color: "#888888", margin: "0 0 8px" }}>
-              <span style={{ color: "#555555" }}>Location: </span>
+            <p style={{ fontSize: "13px", color: "#bbbbbb", margin: "0 0 8px" }}>
+              <span style={{ color: "#888888" }}>Location: </span>
               {selectedEvent.location.trim()}
             </p>
           ) : null}
@@ -2586,8 +2550,8 @@ export default function ClubHomePage() {
             </p>
           ) : null}
           {(eventRsvpCounts[selectedEvent.id]?.going ?? 0) > 0 ? (
-            <p style={{ fontSize: "13px", color: "#888888", margin: "16px 0 0" }}>
-              <span style={{ color: "#555555" }}>RSVPs: </span>
+            <p style={{ fontSize: "13px", color: "#bbbbbb", margin: "16px 0 0" }}>
+              <span style={{ color: "#888888" }}>RSVPs: </span>
               {eventRsvpCounts[selectedEvent.id]?.going} going
             </p>
           ) : null}
@@ -2598,6 +2562,7 @@ export default function ClubHomePage() {
         <TaskDetailModal
           task={detailTask}
           clubId={clubId}
+          clubName={club?.name}
           onClose={() => setSelectedTask(null)}
           assigneeName={assigneeDisplayFor(detailTask)}
           assigneeAvatarUrl={assigneeAvatarFor(detailTask)}
@@ -2621,7 +2586,6 @@ export default function ClubHomePage() {
           onStatusChange={(status) => void handleTaskStatusChange(detailTask.id, status)}
           isReviewMode={isReviewingTask}
           onApproveReview={() => void handleApproveReview(detailTask)}
-          onSendBackReview={(note) => void handleSendBackReview(detailTask, note)}
           onRequestChangesReview={(note) =>
             void handleRequestChangesReview(detailTask, note)
           }

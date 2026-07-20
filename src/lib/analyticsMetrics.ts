@@ -484,10 +484,10 @@ export function buildHiringFunnel(
   options?: HiringAnalyticsOptions,
 ): FunnelStage[] {
   const stageOrder: ApplicantPipelineStage[] = [
-    "pending",
-    "reviewed",
+    "new",
+    "in_review",
     "interview",
-    "offer_sent",
+    "offered",
     "accepted",
     "rejected",
   ];
@@ -519,7 +519,7 @@ export function buildHiringSectionInsight(
     (app) => hiringPipelineStage(app, options) === "accepted",
   ).length;
   const offerSent = applications.filter(
-    (app) => hiringPipelineStage(app, options) === "offer_sent",
+    (app) => hiringPipelineStage(app, options) === "offered",
   ).length;
   const interview = applications.filter(
     (app) => hiringPipelineStage(app, options) === "interview",

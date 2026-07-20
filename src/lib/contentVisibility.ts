@@ -92,6 +92,31 @@ function resolveViewerAccessLevel(
   return null;
 }
 
+export const STANDARD_VISIBILITY_OPTIONS: {
+  value: Exclude<Visibility, "selected">;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "public",
+    label: "Public",
+    description: "Anyone can see this, including non-members.",
+  },
+  {
+    value: "members_only",
+    label: "Members Only",
+    description: "Only active club members can see this.",
+  },
+  {
+    value: "executives_only",
+    label: "Executives Only",
+    description: "Only executives and presidents can see this.",
+  },
+];
+
+export type StandardVisibility = (typeof STANDARD_VISIBILITY_OPTIONS)[number]["value"];
+
+/** @deprecated Prefer STANDARD_VISIBILITY_OPTIONS + ContentVisibilityDropdown. Kept for legacy Selected data. */
 export const VISIBILITY_OPTIONS: {
   value: Visibility;
   emoji: string;
@@ -123,3 +148,13 @@ export const VISIBILITY_OPTIONS: {
     description: "Specific roles or members",
   },
 ];
+
+export function toStandardVisibility(
+  value: Visibility | null | undefined,
+  fallback: StandardVisibility = "members_only",
+): StandardVisibility {
+  if (value === "public" || value === "members_only" || value === "executives_only") {
+    return value;
+  }
+  return fallback;
+}

@@ -11,6 +11,14 @@ import { supabase } from "../lib/supabaseClient";
 import BrandLogo from "../components/ui/BrandLogo";
 import Spinner from "../components/ui/Spinner";
 import type { Club } from "../types";
+import {
+  HomeEverythingSection,
+  HomeOpenPositionsBlock,
+  HomePathSection,
+  HomeProductShowcase,
+} from "../components/home/HomeMarketingSections";
+
+const ACCENT_RED = "#E51937";
 
 function mapClubFromRow(row: Record<string, unknown>): Club {
   return {
@@ -37,280 +45,6 @@ function mapClubFromRow(row: Record<string, unknown>): Club {
   };
 }
 
-function DashboardHeroMockup() {
-  return (
-    <div
-      style={{
-        background: "#161616",
-        border: "1px solid #2a2a2a",
-        borderRadius: "12px",
-        overflow: "hidden",
-        boxShadow: "0 24px 48px rgba(0,0,0,0.45)",
-        width: "100%",
-        maxWidth: "600px",
-        opacity: 1,
-      }}
-    >
-      <div
-        style={{
-          background: "#121212",
-          borderBottom: "1px solid #2a2a2a",
-          padding: "8px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-        }}
-      >
-        <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-          {["#E51937", "#FFC429", "#333333"].map((color) => (
-            <span
-              key={color}
-              style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                background: color,
-              }}
-            />
-          ))}
-        </div>
-        <span
-          style={{
-            flex: 1,
-            textAlign: "center",
-            fontSize: "10px",
-            color: "#666666",
-          }}
-        >
-          GryphClubConnect
-        </span>
-      </div>
-
-      <div style={{ display: "flex", height: "320px" }}>
-        <div
-          style={{
-            width: "44px",
-            flexShrink: 0,
-            background: "#141414",
-            borderRight: "1px solid #2a2a2a",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            paddingTop: "12px",
-            gap: "8px",
-          }}
-        >
-          {["#E51937", "#2a2a2a", "#2a2a2a", "#2a2a2a", "#2a2a2a"].map(
-            (color, i) => (
-              <span
-                key={i}
-                style={{
-                  width: "8px",
-                  height: "8px",
-                  borderRadius: "2px",
-                  background: color,
-                }}
-              />
-            ),
-          )}
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            padding: "14px",
-            background: "#161616",
-            overflowY: "hidden",
-            minWidth: 0,
-          }}
-        >
-          <p style={{ margin: 0, fontSize: "9px", color: "#777777" }}>
-            Welcome back,
-          </p>
-          <p
-            style={{
-              margin: "0 0 10px",
-              fontSize: "12px",
-              fontWeight: 700,
-              color: "#ffffff",
-            }}
-          >
-            Alex
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "6px",
-              marginBottom: "12px",
-            }}
-          >
-            {[
-              { value: "12", label: "MEMBERS", accent: "#E51937" },
-              { value: "3", label: "EVENTS", accent: "#FFC429" },
-              { value: "7", label: "TASKS", accent: "#333333" },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                style={{
-                  background: "#1a1a1a",
-                  borderRadius: "4px",
-                  padding: "6px 8px",
-                  borderLeft: `2px solid ${stat.accent}`,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    color: "#ffffff",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {stat.value}
-                </div>
-                <div
-                  style={{
-                    fontSize: "7px",
-                    color: "#555555",
-                    textTransform: "uppercase",
-                    marginTop: "2px",
-                  }}
-                >
-                  {stat.label}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p
-            style={{
-              margin: "0 0 6px",
-              fontSize: "8px",
-              color: "#444444",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-            }}
-          >
-            Upcoming Events
-          </p>
-          {[0, 1].map((i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                marginBottom: "4px",
-              }}
-            >
-              <div
-                style={{
-                  width: "16px",
-                  height: "20px",
-                  background: "#E51937",
-                  borderRadius: "2px",
-                  flexShrink: 0,
-                }}
-              />
-              <div
-                style={{
-                  width: "14px",
-                  height: "14px",
-                  background: "#2a2a2a",
-                  borderRadius: "2px",
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    height: "5px",
-                    background: "#1e1e1e",
-                    borderRadius: "2px",
-                    marginBottom: "4px",
-                  }}
-                />
-                <div
-                  style={{
-                    height: "5px",
-                    width: "60%",
-                    background: "#1e1e1e",
-                    borderRadius: "2px",
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-
-          <p
-            style={{
-              margin: "8px 0 6px",
-              fontSize: "8px",
-              color: "#444444",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-            }}
-          >
-            My Tasks
-          </p>
-          {[
-            { accent: "#FFC429" },
-            { accent: "#333333" },
-          ].map((task, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                marginBottom: "4px",
-              }}
-            >
-              <div
-                style={{
-                  width: "3px",
-                  height: "14px",
-                  background: task.accent,
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    height: "5px",
-                    background: "#1e1e1e",
-                    borderRadius: "2px",
-                    marginBottom: "4px",
-                  }}
-                />
-                <div
-                  style={{
-                    height: "5px",
-                    width: "60%",
-                    background: "#1e1e1e",
-                    borderRadius: "2px",
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  width: "10px",
-                  height: "10px",
-                  background: "#1a1a1a",
-                  borderRadius: "1px",
-                  flexShrink: 0,
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function HomeFeaturedClubBanner({ bannerUrl }: { bannerUrl: string }) {
   return (
     <div
@@ -328,6 +62,8 @@ function HomeFeaturedClubBanner({ bannerUrl }: { bannerUrl: string }) {
       <img
         src={bannerUrl}
         alt=""
+        loading="lazy"
+        decoding="async"
         style={{
           width: "100%",
           height: "100%",
@@ -566,7 +302,7 @@ const HOW_IT_WORKS = [
   {
     step: "2",
     title: "Find Your Club",
-    description: "Browse 200+ clubs by category, size, or interest",
+    description: "Browse clubs by category, size, or interest",
     to: "/explore",
     borderTop: "#FFC429",
     Icon: Search,
@@ -995,17 +731,17 @@ function HomeUpcomingEventsBlock({
             margin: 0,
           }}
         >
-          Upcoming Events Across Campus
+          Upcoming Events
         </h2>
         <p
           style={{
             fontSize: 13,
-            color: "#555555",
+            color: "#777777",
             marginTop: 8,
             marginBottom: 0,
           }}
         >
-          Discover what&apos;s happening next
+          Public events from clubs across the University of Guelph
         </p>
       </div>
 
@@ -1073,7 +809,7 @@ function HomeUpcomingEventsBlock({
               textDecoration: "none",
             }}
           >
-            Explore 260+ clubs →
+            Explore clubs →
           </Link>
         </p>
       </div>
@@ -1081,18 +817,36 @@ function HomeUpcomingEventsBlock({
 
   if (combinedLayout) {
     return (
-      <section className="mx-auto max-w-[1100px] px-4 py-[60px]">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <section
+        className="mx-auto max-w-[1100px] px-4 py-[60px]"
+        style={{
+          background:
+            "linear-gradient(180deg, #0f0f0f 0%, #121010 50%, #0f0f0f 100%)",
+        }}
+      >
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           {eventsColumn}
-          {savedClubsColumn}
+          <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+            {savedClubsColumn}
+            <HomeOpenPositionsBlock />
+          </div>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="mx-auto max-w-[1100px] px-4 py-[60px]">
-      {eventsColumn}
+    <section
+      className="mx-auto max-w-[1100px] px-4 py-[60px]"
+      style={{
+        background:
+          "linear-gradient(180deg, #0f0f0f 0%, #121010 50%, #0f0f0f 100%)",
+      }}
+    >
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        {eventsColumn}
+        <HomeOpenPositionsBlock />
+      </div>
     </section>
   );
 }
@@ -1145,17 +899,16 @@ export default function Home() {
       <section
         className="relative overflow-hidden"
         style={{
-          background: "#0f0f0f",
+          background:
+            "radial-gradient(ellipse 90% 70% at 15% 10%, rgba(229,25,55,0.18), transparent 50%), radial-gradient(ellipse 70% 50% at 90% 30%, rgba(255,196,41,0.08), transparent 45%), #0f0f0f",
           minHeight: "100vh",
           display: "flex",
           flexDirection: "column",
-          padding: "80px 48px 60px",
+          padding: "64px 16px 40px",
           boxSizing: "border-box",
         }}
       >
-        <div
-          className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center"
-        >
+        <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center sm:px-8">
           <div className="flex w-full flex-col items-center gap-14 md:flex-row md:items-center lg:gap-20">
             <div className="w-full max-w-4xl flex-1">
               <div className="mb-8" style={{ marginTop: "-12px" }}>
@@ -1164,14 +917,25 @@ export default function Home() {
                   className="gap-3 [&_img]:!h-10 [&_img]:md:!h-12 [&_span]:!text-xl [&_span]:md:!text-2xl"
                 />
               </div>
+              <p
+                style={{
+                  margin: "0 0 12px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: ACCENT_RED,
+                }}
+              >
+                Built for students at the University of Guelph
+              </p>
               <h1 className="text-[2.25rem] font-extrabold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-[4rem]">
                 <span style={{ color: "#ffffff" }}>Discover Your</span>{" "}
-                <span style={{ color: "#FFC429" }}>Community</span>{" "}
-                <span style={{ color: "#ffffff" }}>at Guelph</span>
+                <span style={{ color: "#FFC429" }}>Community</span>
               </h1>
               <p className="mt-8 max-w-2xl text-base leading-relaxed text-muted md:text-xl lg:text-[1.25rem]">
-                Browse 260+ student clubs, find your passion, and connect with
-                like-minded Gryphons. Your university experience starts here.
+                Find clubs that match your interests, join with your UofG email, and help
+                executives run the work that keeps campus groups moving.
               </p>
               <div className="mt-12 flex w-full flex-col gap-4 sm:flex-row sm:flex-wrap">
                 <Link
@@ -1207,51 +971,38 @@ export default function Home() {
             </div>
 
             <div className="hidden w-full max-w-[600px] shrink-0 lg:block lg:max-w-[48vw]">
-              <DashboardHeroMockup />
+              <HomeProductShowcase>
+                <img
+                  src="/mockup-exports/student-dashboard.png"
+                  alt="ClubConnect student dashboard showing clubs, tasks, and upcoming events"
+                  width={1440}
+                  height={900}
+                  decoding="async"
+                  style={{
+                    width: "100%",
+                    height: "auto",
+                    display: "block",
+                    borderRadius: "12px",
+                    border: "1px solid #2a2a2a",
+                    boxShadow: "0 24px 48px rgba(0,0,0,0.45)",
+                  }}
+                />
+              </HomeProductShowcase>
             </div>
           </div>
         </div>
-
-        <div
-          className="mx-auto mt-auto grid w-full max-w-7xl grid-cols-2 gap-8 lg:grid-cols-4"
-          style={{ paddingTop: "28px" }}
-        >
-          {[
-            { value: "260+", label: "Active Clubs" },
-            { value: "5,000+", label: "Student Members" },
-            { value: "50+", label: "Categories" },
-            { value: "100+", label: "Events Monthly" },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <p
-                style={{
-                  fontSize: "36px",
-                  fontWeight: 800,
-                  color: "#ffffff",
-                  margin: 0,
-                }}
-              >
-                {stat.value}
-              </p>
-              <p
-                style={{
-                  marginTop: "8px",
-                  fontSize: "13px",
-                  color: "#999999",
-                }}
-              >
-                {stat.label}
-              </p>
-            </div>
-          ))}
-        </div>
       </section>
+
+      <HomePathSection />
 
       {/* Featured Clubs */}
       {!featuredLoading && featuredClubs.length > 0 ? (
       <section
         className="mx-auto max-w-7xl px-4 py-section sm:px-6 lg:px-8"
-        style={{ backgroundColor: "#0f0f0f" }}
+        style={{
+          background:
+            "linear-gradient(180deg, #0f0f0f 0%, #151212 100%)",
+        }}
       >
         <div className="mb-10 text-center">
           <h2
@@ -1267,12 +1018,12 @@ export default function Home() {
           <p
             style={{
               fontSize: "14px",
-              color: "#555555",
+              color: "#777777",
               marginTop: "8px",
               marginBottom: 0,
             }}
           >
-            Ranked by club activity
+            Real clubs from the directory, ranked by activity
           </p>
         </div>
         <div
@@ -1303,13 +1054,24 @@ export default function Home() {
             textDecoration: "none",
           }}
         >
-          Browse all 260+ clubs →
+          Browse all clubs →
         </Link>
       </section>
       ) : null}
 
+      <HomeUpcomingEventsBlock
+        savedClubList={user && savedClubList.length > 0 ? savedClubList : undefined}
+      />
+
       {/* How it works */}
-      <section className="bg-[#0f0f0f] px-4 py-[60px]">
+      <section
+        className="px-4 py-[60px]"
+        style={{
+          background:
+            "linear-gradient(180deg, #121010 0%, #0f0f0f 100%)",
+          borderTop: "1px solid #1e1e1e",
+        }}
+      >
         <div className="mx-auto max-w-7xl">
           <h2
             style={{
@@ -1320,12 +1082,12 @@ export default function Home() {
               margin: "0 0 8px",
             }}
           >
-            How it works
+            How It Works
           </h2>
           <p
             style={{
               fontSize: "14px",
-              color: "#555555",
+              color: "#777777",
               textAlign: "center",
               margin: "0 0 40px",
             }}
@@ -1399,7 +1161,7 @@ export default function Home() {
                 <p
                   style={{
                     fontSize: "13px",
-                    color: "#555555",
+                    color: "#777777",
                     lineHeight: 1.6,
                     marginTop: "6px",
                     marginBottom: 0,
@@ -1414,9 +1176,7 @@ export default function Home() {
         </div>
       </section>
 
-      <HomeUpcomingEventsBlock
-        savedClubList={user && savedClubList.length > 0 ? savedClubList : undefined}
-      />
+      <HomeEverythingSection />
 
       {/* CTA Section */}
       <CtaSection />
@@ -1468,8 +1228,7 @@ function CtaSection() {
               marginBottom: 0,
             }}
           >
-            Join thousands of Guelph students managing their club life on
-            GryphClubConnect.
+            Join Guelph students managing club life on ClubConnect.
           </p>
         </div>
         <div className="flex w-full flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center md:w-auto md:shrink-0">

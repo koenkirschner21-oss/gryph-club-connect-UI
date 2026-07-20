@@ -13,7 +13,8 @@ type NotificationType =
   | "claim_submitted"
   | "claim_approved"
   | "claim_rejected"
-  | "claim_more_info";
+  | "claim_more_info"
+  | "claim_canceled";
 
 type NotificationInput = {
   user_id: string;

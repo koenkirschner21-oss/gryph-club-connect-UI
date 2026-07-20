@@ -62,6 +62,7 @@ export default function ClubMeetingsPage() {
     applying: boolean;
   } | null>(null);
   const editMeetingId = searchParams.get("edit");
+  const duplicateMeetingId = searchParams.get("duplicate");
 
   const isPrivileged = canManageMeetings;
   const isCreateRoute =
@@ -84,6 +85,46 @@ export default function ClubMeetingsPage() {
         }
       });
   }, [editMeetingId, clubId]);
+
+  useEffect(() => {
+    if (!duplicateMeetingId || !clubId || editMeetingId) return;
+
+    const applyDuplicate = (source: ClubMeeting) => {
+      const base = createFormFromMeeting(source);
+      const fallbackDate = emptyCreateForm().date;
+      setEditingMeeting(null);
+      setCreateInitial({
+        ...base,
+        title: `${source.title} (Copy)`.trim(),
+        date: fallbackDate,
+        time: base.time || "18:00",
+      });
+    };
+
+    const cached = meetings.find((row) => row.id === duplicateMeetingId);
+    if (cached) {
+      applyDuplicate(cached);
+      return;
+    }
+
+    void supabase
+      .from("club_meetings")
+      .select("*")
+      .eq("id", duplicateMeetingId)
+      .eq("club_id", clubId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          applyDuplicate(mapMeetingRow(data as Record<string, unknown>));
+        }
+      });
+  }, [duplicateMeetingId, clubId, editMeetingId, meetings]);
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "past") {
+      setActiveTab("past");
+    }
+  }, [searchParams]);
 
   const loadMeetings = useCallback(async () => {
     if (!clubId) return;
@@ -180,11 +221,11 @@ export default function ClubMeetingsPage() {
   }, [loadMeetings, loadClubActionItems, meetingId]);
 
   useEffect(() => {
-    if (isCreateRoute && isPrivileged && !editMeetingId) {
+    if (isCreateRoute && isPrivileged && !editMeetingId && !duplicateMeetingId) {
       setEditingMeeting(null);
       setCreateInitial(emptyCreateForm(presetType));
     }
-  }, [isCreateRoute, isPrivileged, presetType, editMeetingId]);
+  }, [isCreateRoute, isPrivileged, presetType, editMeetingId, duplicateMeetingId]);
 
   const visibleMeetings = useMemo(() => {
     if (isPrivileged || !user?.id) return meetings;
@@ -302,6 +343,10 @@ export default function ClubMeetingsPage() {
     setEditingMeeting(meeting);
     setCreateInitial(createFormFromMeeting(meeting));
     navigate(`/app/clubs/${clubId}/meetings/new?edit=${meeting.id}`);
+  };
+
+  const requestDuplicateMeeting = (meeting: ClubMeeting) => {
+    navigate(`/app/clubs/${clubId}/meetings/new?duplicate=${meeting.id}`);
   };
 
   const requestCancelMeeting = async (meeting: ClubMeeting) => {
@@ -436,6 +481,7 @@ export default function ClubMeetingsPage() {
 
   return (
     <div style={{ padding: isMobile ? "16px" : "24px", width: "100%" }}>
+      <div style={{ maxWidth: "1080px", margin: "0 auto", width: "100%" }}>
       <div
         style={{
           display: "flex",
@@ -469,9 +515,10 @@ export default function ClubMeetingsPage() {
           nextMeeting={nextMeeting}
           openFollowUpCount={openFollowUpCount}
           dueThisWeekCount={dueThisWeekCount}
-          needsRecapCount={needsRecapCount}
+          needsRecapCount={isPrivileged ? needsRecapCount : 0}
           isMobile={isMobile}
           activeCard={activeStatCard}
+          hideNeedsRecap={!isPrivileged}
           onUpcomingClick={() => {
             setPastNeedsRecapOnly(false);
             setActiveTab("upcoming");
@@ -480,10 +527,14 @@ export default function ClubMeetingsPage() {
             setPastNeedsRecapOnly(false);
             setActiveTab("follow_ups");
           }}
-          onNeedsRecapClick={() => {
-            setPastNeedsRecapOnly(true);
-            setActiveTab("past");
-          }}
+          onNeedsRecapClick={
+            isPrivileged
+              ? () => {
+                  setPastNeedsRecapOnly(true);
+                  setActiveTab("past");
+                }
+              : undefined
+          }
         />
       ) : null}
 
@@ -540,6 +591,7 @@ export default function ClubMeetingsPage() {
                   isPrivileged={isPrivileged}
                   isPast
                   onEdit={openEdit}
+                  onDuplicate={requestDuplicateMeeting}
                   onCancel={requestCancelMeeting}
                 />
               ))}
@@ -561,6 +613,7 @@ export default function ClubMeetingsPage() {
           needsRecapMeetings={needsRecapMeetings}
           upcomingPrepMeetings={upcomingPrepMeetings}
           onEdit={openEdit}
+          onDuplicate={requestDuplicateMeeting}
           onCancel={requestCancelMeeting}
           onViewAllActions={() => setActiveTab("follow_ups")}
           onViewAllRecap={() => {
@@ -584,6 +637,7 @@ export default function ClubMeetingsPage() {
           onGoBack={closeCancelModal}
         />
       ) : null}
+      </div>
     </div>
   );
 }

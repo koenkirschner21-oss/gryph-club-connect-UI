@@ -44,6 +44,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { uploadImage } from "../../lib/uploadImage";
 import Spinner from "../../components/ui/Spinner";
 import ImageCropModal from "../../components/ui/ImageCropModal";
+import { LinkedMessageText } from "../../components/chat/LinkedMessageText";
 
 const ACCEPTED_FILE_TYPES =
   "image/jpeg,image/png,image/gif,image/webp,application/pdf,application/octet-stream";
@@ -1004,6 +1005,7 @@ function MessageBubble({
   isGroupChat,
   onReply,
   onEdit,
+  onRetry,
   reaction,
   onToggleReaction,
 }: {
@@ -1012,6 +1014,7 @@ function MessageBubble({
   isGroupChat: boolean;
   onReply?: (msg: DirectMessage) => void;
   onEdit?: (messageId: string, content: string) => Promise<boolean>;
+  onRetry?: (messageId: string) => void;
   reaction?: MessageReactionSummary;
   onToggleReaction?: (messageId: string) => void;
 }) {
@@ -1240,7 +1243,7 @@ function MessageBubble({
               </div>
             ) : (
               <>
-                {msg.content}
+                <LinkedMessageText content={msg.content ?? ""} />
                 <MessageAttachment msg={msg} />
               </>
             )}
@@ -1254,11 +1257,35 @@ function MessageBubble({
             textAlign: isOwn ? "right" : "left",
           }}
         >
-          {formatMessageTime(msg.createdAt)}
-          {msg.editedAt ? (
+          {msg.sendStatus === "sending"
+            ? "Sending…"
+            : msg.sendStatus === "failed"
+              ? null
+              : formatMessageTime(msg.createdAt)}
+          {msg.sendStatus !== "sending" &&
+          msg.sendStatus !== "failed" &&
+          msg.editedAt ? (
             <span style={{ marginLeft: "6px", color: "#555555" }}>edited</span>
           ) : null}
         </span>
+        {msg.sendStatus === "failed" && onRetry ? (
+          <button
+            type="button"
+            onClick={() => onRetry(msg.id)}
+            style={{
+              marginTop: "4px",
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: "#E51937",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Failed to send — Retry
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -1277,7 +1304,6 @@ export default function ClubChatPage() {
     polls,
     loading,
     messagesLoading,
-    pollsLoading,
     userRole,
     isChatExecutive,
     clubMembers,
@@ -1289,6 +1315,7 @@ export default function ClubChatPage() {
     createDirectMessage,
     createGroupChat,
     sendMessage,
+    retryFailedMessage,
     editMessage,
     createPoll,
     voteOnPoll,
@@ -1979,12 +2006,24 @@ export default function ClubChatPage() {
     setSending(true);
     setSendError(false);
 
+    const replySnapshot = replyingTo;
+    const fileSnapshot = pendingFile;
+
+    // Clear input immediately so the composer stays usable.
+    setDraft("");
+    setPendingFile(null);
+    setReplyingTo(null);
+
     let attachment: { url: string; type: string } | null = null;
-    if (pendingFile) {
-      attachment = await uploadAttachment(pendingFile, activeConversationId);
+    if (fileSnapshot) {
+      attachment = await uploadAttachment(fileSnapshot, activeConversationId);
       if (!attachment) {
         setSendError(true);
         setSending(false);
+        // Restore draft so the user can retry without retyping.
+        setDraft(text);
+        setPendingFile(fileSnapshot);
+        setReplyingTo(replySnapshot);
         return;
       }
     }
@@ -1993,14 +2032,10 @@ export default function ClubChatPage() {
       activeConversationId,
       text,
       attachment,
-      replyingTo,
+      replySnapshot,
     );
-    if (ok) {
-      setDraft("");
-      setPendingFile(null);
-      setReplyingTo(null);
-    } else {
-      setSendError(true);
+    if (!ok && !text && attachment) {
+      // Attachment-only failure is shown on the optimistic message row.
     }
     setSending(false);
   }
@@ -2590,11 +2625,11 @@ export default function ClubChatPage() {
                 flexDirection: "column",
               }}
             >
-              {messagesLoading || pollsLoading ? (
+              {messagesLoading && filteredChatTimeline.length === 0 ? (
                 <div className="flex justify-center py-8">
                   <Spinner label="Loading messages…" />
                 </div>
-              ) : filteredChatTimeline.length === 0 ? (
+              ) : filteredChatTimeline.length === 0 && !messagesLoading ? (
                 chatContentFilter === "all" ? (
                   <ChatTabEmptyState
                     icon={<MessageCircle size={40} color="#2a2a2a" aria-hidden />}
@@ -2658,6 +2693,7 @@ export default function ClubChatPage() {
                             : undefined
                         }
                         onEdit={editMessage}
+                        onRetry={(id) => void retryFailedMessage(id)}
                         reaction={messageReactions[item.message.id]}
                         onToggleReaction={(id) => void toggleMessageReaction(id)}
                       />

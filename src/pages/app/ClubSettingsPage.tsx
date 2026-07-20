@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useParams, useNavigate, Navigate, useSearchParams } from "react-router-dom";
-import { Users, ClipboardList, Link2, Bookmark, Camera, Globe, Check, Lock, X } from "lucide-react";
+import { Users, ClipboardList, Link2, Bookmark, Camera, Globe, Check, Lock, X, ExternalLink } from "lucide-react";
 import { useClubContext } from "../../context/useClubContext";
 import { useAuthContext } from "../../context/useAuthContext";
 import { uploadImage } from "../../lib/uploadImage";
@@ -212,6 +212,7 @@ interface FormSnapshot {
   logoUrl: string;
   bannerUrl: string;
   contactEmail: string;
+  meetsRegularly: boolean | null;
   meetingSchedule: string;
   meetingLocation: string;
   instagramUrl: string;
@@ -961,6 +962,9 @@ export default function ClubSettingsPage() {
   const [meetingSchedule, setMeetingSchedule] = useState(
     club?.meetingSchedule ?? "",
   );
+  const [meetsRegularly, setMeetsRegularly] = useState<boolean | null>(
+    club?.meetsRegularly ?? null,
+  );
   const [meetingLocation, setMeetingLocation] = useState(
     club?.meetingLocation ?? "",
   );
@@ -1034,6 +1038,7 @@ export default function ClubSettingsPage() {
       logoUrl: club?.logoUrl ?? "",
       bannerUrl: club?.bannerUrl ?? "",
       contactEmail: club?.contactEmail ?? "",
+      meetsRegularly: club?.meetsRegularly ?? null,
       meetingSchedule: club?.meetingSchedule ?? "",
       meetingLocation: club?.meetingLocation ?? "",
       instagramUrl: "",
@@ -1059,6 +1064,7 @@ export default function ClubSettingsPage() {
     setLogoUrl(snapshot.logoUrl);
     setBannerUrl(snapshot.bannerUrl);
     setContactEmail(snapshot.contactEmail);
+    setMeetsRegularly(snapshot.meetsRegularly);
     setMeetingSchedule(snapshot.meetingSchedule);
     setMeetingLocation(snapshot.meetingLocation);
     setInstagramUrl(snapshot.instagramUrl);
@@ -1106,6 +1112,7 @@ export default function ClubSettingsPage() {
       banner: "branding",
       "short-description": "short-description",
       "contact-email": "contact-email",
+      "meets-regularly": "meets-regularly",
       "meeting-schedule": "meeting-schedule",
       "meeting-location": "meeting-location",
       category: "manage-category",
@@ -1321,6 +1328,7 @@ export default function ClubSettingsPage() {
       logoUrl: logoUrl.trim() || undefined,
       bannerUrl: bannerUrl.trim() || undefined,
       contactEmail: contactEmail.trim() || undefined,
+      meetsRegularly,
       meetingSchedule: meetingSchedule.trim() || undefined,
       meetingLocation: meetingLocation.trim() || undefined,
       membershipType,
@@ -1467,6 +1475,7 @@ export default function ClubSettingsPage() {
         logoUrl: logoUrl.trim(),
         bannerUrl: bannerUrl.trim(),
         contactEmail: contactEmail.trim(),
+        meetsRegularly,
         meetingSchedule: meetingSchedule.trim(),
         meetingLocation: meetingLocation.trim(),
         instagramUrl: instagramUrl.trim(),
@@ -1729,26 +1738,62 @@ export default function ClubSettingsPage() {
         paddingBottom: hasUnsavedChanges ? "88px" : isMobile ? "16px" : "24px",
       }}
     >
-      <h1
+      <div
         style={{
-          fontSize: "28px",
-          fontWeight: 800,
-          color: "#ffffff",
-          margin: "0 0 4px",
+          display: "flex",
+          alignItems: isMobile ? "flex-start" : "center",
+          justifyContent: "space-between",
+          gap: "16px",
+          flexWrap: "wrap",
         }}
       >
-        Club Settings
-      </h1>
-      <p
-        style={{
-          fontSize: "14px",
-          color: "#555555",
-          marginTop: "4px",
-          marginBottom: "24px",
-        }}
-      >
-        Manage your club profile, branding, membership, and permissions.
-      </p>
+        <div>
+          <h1
+            style={{
+              fontSize: "28px",
+              fontWeight: 800,
+              color: "#ffffff",
+              margin: "0 0 4px",
+            }}
+          >
+            Club Settings
+          </h1>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#555555",
+              marginTop: "4px",
+              marginBottom: "24px",
+            }}
+          >
+            Manage your club profile, branding, membership, and permissions.
+          </p>
+        </div>
+        {club.slug ? (
+          <a
+            href={`/clubs/${club.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "transparent",
+              border: "1px solid #333333",
+              color: "#cccccc",
+              borderRadius: "8px",
+              padding: "9px 16px",
+              fontSize: "13px",
+              fontWeight: 600,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <ExternalLink size={14} aria-hidden />
+            View Public Profile
+          </a>
+        ) : null}
+      </div>
 
       {error ? (
         <div
@@ -1798,6 +1843,7 @@ export default function ClubSettingsPage() {
             highlightedSection === "profile" ||
             highlightedSection === "short-description" ||
             highlightedSection === "contact-email" ||
+            highlightedSection === "meets-regularly" ||
             highlightedSection === "meeting-schedule" ||
             highlightedSection === "meeting-location" ||
             highlightedSection === "category" ||
@@ -1836,25 +1882,75 @@ export default function ClubSettingsPage() {
             />
           </SettingsField>
 
-          <SettingsField id="meeting-schedule" label="Meeting Schedule">
-            <SettingsTextInput
-              id="meeting-schedule"
-              value={meetingSchedule}
-              onChange={setMeetingSchedule}
-              onDirty={markDirty}
-              placeholder="e.g. Wednesdays at 6pm in UC 442"
-            />
+          <SettingsField id="meets-regularly" label="Does this club meet regularly?">
+            <div
+              id="meets-regularly"
+              style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setMeetsRegularly(true);
+                  markDirty();
+                }}
+                style={{
+                  background: meetsRegularly === true ? "#E51937" : "transparent",
+                  color: meetsRegularly === true ? "#ffffff" : "#cccccc",
+                  border: "1px solid #333333",
+                  borderRadius: "8px",
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMeetsRegularly(false);
+                  markDirty();
+                }}
+                style={{
+                  background: meetsRegularly === false ? "#E51937" : "transparent",
+                  color: meetsRegularly === false ? "#ffffff" : "#cccccc",
+                  border: "1px solid #333333",
+                  borderRadius: "8px",
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                No
+              </button>
+            </div>
           </SettingsField>
 
-          <SettingsField id="meeting-location" label="Meeting Location">
-            <SettingsTextInput
-              id="meeting-location"
-              value={meetingLocation}
-              onChange={setMeetingLocation}
-              onDirty={markDirty}
-              placeholder="e.g. Thornbrough Building, Room 1307"
-            />
-          </SettingsField>
+          {meetsRegularly === true ? (
+            <>
+              <SettingsField id="meeting-schedule" label="Meeting Schedule">
+                <SettingsTextInput
+                  id="meeting-schedule"
+                  value={meetingSchedule}
+                  onChange={setMeetingSchedule}
+                  onDirty={markDirty}
+                  placeholder="e.g. Wednesdays at 6pm in UC 442"
+                />
+              </SettingsField>
+
+              <SettingsField id="meeting-location" label="Meeting Location">
+                <SettingsTextInput
+                  id="meeting-location"
+                  value={meetingLocation}
+                  onChange={setMeetingLocation}
+                  onDirty={markDirty}
+                  placeholder="e.g. Thornbrough Building, Room 1307"
+                />
+              </SettingsField>
+            </>
+          ) : null}
 
           <SettingsField id="long-description" label="Long Description">
             <SettingsTextarea

@@ -26,20 +26,24 @@ import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useEventRsvps } from "../../hooks/useEventRsvps";
 import { supabase } from "../../lib/supabaseClient";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
-import type { ClubEvent, RsvpStatus, Visibility } from "../../types";
+import type { AccessLevel, ClubEvent, RsvpStatus, Visibility } from "../../types";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import FormInput from "../../components/ui/FormInput";
+import DateTimeField from "../../components/ui/DateTimeField";
 import Spinner from "../../components/ui/Spinner";
-import VisibilitySelector from "../../components/club/VisibilitySelector";
 import VisibilityBadge from "../../components/club/VisibilityBadge";
-import SelectedVisibilityPicker from "../../components/club/SelectedVisibilityPicker";
+import ContentVisibilityDropdown from "../../components/club/ContentVisibilityDropdown";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import CompletedEventCard from "../../components/club/CompletedEventCard";
 import EventMemberFeedbackModal from "../../components/club/EventMemberFeedbackModal";
 import EventReviewModal from "../../components/club/EventReviewModal";
 import { isExecutiveAccessLevel } from "../../lib/clubPermissions";
-import { filterByVisibility, normalizeVisibility } from "../../lib/contentVisibility";
+import {
+  filterByVisibility,
+  normalizeVisibility,
+  toStandardVisibility,
+} from "../../lib/contentVisibility";
 import { summarizeFeedbackRows, type EventReviewStatus } from "../../lib/eventReview";
 import {
   clubEventToSignupContext,
@@ -67,17 +71,13 @@ import {
 } from "../../lib/eventCategories";
 import EventPlanningTasksSection from "../../components/club/EventPlanningTasksSection";
 import { EventManageView } from "./events/EventManageView";
+import { EventMemberDetailView } from "./events/EventMemberDetailView";
 import {
   approveEventSignup,
   rejectEventSignup,
 } from "../../lib/eventSignupReview";
 import { getPublicEventDetailPath } from "../../lib/eventNavigation";
 import { useClubMembers } from "../../hooks/useClubMembers";
-import {
-  EMPTY_SELECTED_VISIBILITY,
-  hasSelectedVisibilityTargets,
-  selectedVisibilityPayload,
-} from "../../lib/selectedVisibility";
 
 type EventFilter = "all" | "going_to" | "needs_response";
 
@@ -86,15 +86,15 @@ const templateOutlineButtonClass =
 
 const EVENT_FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "going_to", label: "Going To" },
+  { value: "going_to", label: "Going" },
   { value: "needs_response", label: "Needs Response" },
 ];
 
 function categoryBadgeStyle(): CSSProperties {
   return {
     background: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    color: "#777777",
+    border: "1px solid #333333",
+    color: "#bbbbbb",
     borderRadius: "20px",
     padding: "3px 10px",
     fontSize: "11px",
@@ -238,102 +238,6 @@ function CategorySelector({
       </div>
     </div>
   );
-}
-
-function escapeIcsText(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/;/g, "\\;")
-    .replace(/,/g, "\\,")
-    .replace(/\r?\n/g, "\\n");
-}
-
-function toIcsUtc(date: Date): string {
-  return date
-    .toISOString()
-    .replace(/[-:]/g, "")
-    .replace(/\.\d{3}Z$/, "Z");
-}
-
-function parseEventStart(event: ClubEvent): Date {
-  if (event.startAt) {
-    const fromStartAt = new Date(event.startAt);
-    if (!Number.isNaN(fromStartAt.getTime())) return fromStartAt;
-  }
-
-  const timeRaw = (event.time ?? "").trim();
-  const timeMatch = timeRaw.match(/^(\d{1,2}):(\d{2})/);
-  if (timeMatch) {
-    const hours = Number.parseInt(timeMatch[1], 10);
-    const minutes = Number.parseInt(timeMatch[2], 10);
-    const local = new Date(event.date);
-    local.setHours(hours, minutes, 0, 0);
-    if (!Number.isNaN(local.getTime())) return local;
-  }
-
-  if (timeRaw && timeRaw !== "TBD") {
-    const combined = new Date(`${event.date} ${timeRaw}`);
-    if (!Number.isNaN(combined.getTime())) return combined;
-  }
-
-  const fallback = new Date(`${event.date}T12:00:00`);
-  return Number.isNaN(fallback.getTime()) ? new Date() : fallback;
-}
-
-function parseEventEnd(event: ClubEvent, start: Date): Date {
-  if (event.endAt) {
-    const fromEndAt = new Date(event.endAt);
-    if (!Number.isNaN(fromEndAt.getTime())) return fromEndAt;
-  }
-  return new Date(start.getTime() + 60 * 60 * 1000);
-}
-
-function downloadEventIcs(event: ClubEvent) {
-  const start = parseEventStart(event);
-  const end = parseEventEnd(event, start);
-  const location =
-    event.location && event.location !== "TBD" ? event.location : "";
-  const description = event.description?.trim() ?? "";
-
-  const lines = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Gryph Club Connect//EN",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-    "BEGIN:VEVENT",
-    `UID:${event.id}@gryphclubconnect`,
-    `DTSTAMP:${toIcsUtc(new Date())}`,
-    `DTSTART:${toIcsUtc(start)}`,
-    `DTEND:${toIcsUtc(end)}`,
-    `SUMMARY:${escapeIcsText(event.title)}`,
-  ];
-
-  if (location) {
-    lines.push(`LOCATION:${escapeIcsText(location)}`);
-  }
-  if (description) {
-    lines.push(`DESCRIPTION:${escapeIcsText(description)}`);
-  }
-
-  lines.push("END:VEVENT", "END:VCALENDAR");
-
-  const blob = new Blob([`${lines.join("\r\n")}\r\n`], {
-    type: "text/calendar;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  const safeTitle = event.title
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .slice(0, 60);
-  anchor.href = url;
-  anchor.download = `${safeTitle || "event"}.ics`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
 }
 
 function EventCardBadges({
@@ -583,17 +487,17 @@ function RecurringEventFormSection({
           >
             Repeat until
           </label>
-          <input
+          <DateTimeField
             id="recurrenceEndDate"
             type="datetime-local"
             value={endDate}
-            onChange={(e) => onEndDateChange(e.target.value)}
-            style={{
+            onChange={onEndDateChange}
+            inputStyle={{
               width: "100%",
               background: "#111111",
               border: "1px solid #2a2a2a",
               borderRadius: "6px",
-              padding: "10px 14px",
+              padding: "10px 40px 10px 14px",
               color: "#ffffff",
               fontSize: "14px",
               boxSizing: "border-box",
@@ -1151,7 +1055,7 @@ function EventTimeLocationMeta({
   timeLabel,
   locationLabel,
   marginBottom = "10px",
-  color = "#666666",
+  color = "#bbbbbb",
   fontSize = "13px",
 }: {
   timeLabel: string | null;
@@ -1176,16 +1080,16 @@ function EventTimeLocationMeta({
     >
       {timeLabel ? (
         <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-          <Clock size={13} color="#555555" aria-hidden />
+          <Clock size={13} color="#999999" aria-hidden />
           {timeLabel}
         </span>
       ) : null}
       {timeLabel && locationLabel ? (
-        <span style={{ color: "#444444" }}>·</span>
+        <span style={{ color: "#666666" }}>·</span>
       ) : null}
       {locationLabel ? (
         <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-          <MapPin size={13} color="#555555" aria-hidden />
+          <MapPin size={13} color="#999999" aria-hidden />
           {locationLabel}
         </span>
       ) : null}
@@ -1263,16 +1167,16 @@ function EventCard({
   attendeePreview,
   onRsvp,
   onManage,
+  onOpenPreview,
+  onViewDetails,
   onStartEdit,
   onDelete,
   onCopyRsvpLink,
-  onAddToCalendar,
   showViewAttendees,
   onToggleAttendees,
   attendeesList,
-  onOpenResponses,
-  hasFormResponses,
   highlighted = false,
+  isMobile = false,
 }: {
   event: ClubEvent;
   category: string;
@@ -1295,10 +1199,11 @@ function EventCard({
   }>;
   onRsvp: (eventId: string, status: RsvpStatus) => void;
   onManage: (event: ClubEvent) => void;
+  onOpenPreview: (event: ClubEvent) => void;
+  onViewDetails: (event: ClubEvent) => void;
   onStartEdit: (event: ClubEvent) => void;
   onDelete: (eventId: string) => void;
   onCopyRsvpLink: (eventId: string) => void;
-  onAddToCalendar: (event: ClubEvent) => void;
   showViewAttendees: boolean;
   onToggleAttendees: (eventId: string) => void;
   attendeesList?: Array<{
@@ -1308,9 +1213,8 @@ function EventCard({
     program?: string;
     status: RsvpStatus;
   }>;
-  onOpenResponses: (event: ClubEvent) => void;
-  hasFormResponses: boolean;
   highlighted?: boolean;
+  isMobile?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const timeLabel = formatEventTime(event.time);
@@ -1324,9 +1228,19 @@ function EventCard({
     <div
       data-event-id={event.id}
       data-event-date={eventCalendarDateKey(event.date)}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenPreview(event)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenPreview(event);
+        }
+      }}
       onMouseLeave={() => setMenuOpen(false)}
       style={{
         ...eventCardStyle,
+        cursor: "pointer",
         ...(past ? { opacity: 0.6 } : null),
         ...(highlighted
           ? {
@@ -1337,8 +1251,15 @@ function EventCard({
         transition: "border-color 0.2s ease, box-shadow 0.2s ease",
       }}
     >
-      <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          alignItems: "flex-start",
+          flexDirection: isMobile ? "column" : "row",
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1, width: "100%" }}>
           <div
             style={{
               display: "flex",
@@ -1413,14 +1334,17 @@ function EventCard({
           <EventTimeLocationMeta
             timeLabel={timeLabel}
             locationLabel={locationLabel}
-            color="#777777"
+            color="#bbbbbb"
           />
 
           {isPrivileged ? (
             planningTaskCount > 0 ? (
               <button
                 type="button"
-                onClick={() => onPlanningTasksClick(event)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlanningTasksClick(event);
+                }}
                 style={{
                   background: "none",
                   border: "none",
@@ -1437,12 +1361,15 @@ function EventCard({
             ) : (
               <button
                 type="button"
-                onClick={() => onAddPlanningTask(event)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddPlanningTask(event);
+                }}
                 style={{
                   background: "none",
                   border: "none",
                   padding: 0,
-                  color: "#777777",
+                  color: "#999999",
                   fontSize: "13px",
                   cursor: "pointer",
                   textAlign: "left",
@@ -1468,7 +1395,7 @@ function EventCard({
                 <EventAttendeeAvatarStack attendees={attendeePreview} />
               ) : null}
               {attendeeCountLabel ? (
-                <span style={{ fontSize: "12px", color: "#444444" }}>{attendeeCountLabel}</span>
+                <span style={{ fontSize: "12px", color: "#aaaaaa" }}>{attendeeCountLabel}</span>
               ) : null}
             </div>
           ) : null}
@@ -1598,7 +1525,7 @@ function EventCard({
 
         <div
           style={{
-            width: "152px",
+            width: isMobile ? "100%" : "152px",
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-end",
@@ -1606,11 +1533,17 @@ function EventCard({
           }}
         >
           {showOptionsMenu ? (
-            <div style={{ position: "relative", alignSelf: "flex-end", marginBottom: "8px" }}>
+            <div
+              style={{ position: "relative", alignSelf: "flex-end", marginBottom: "8px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
               <button
                 type="button"
                 aria-label="Event options"
-                onClick={() => setMenuOpen((prev) => !prev)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen((prev) => !prev);
+                }}
                 style={{
                   background: "transparent",
                   border: "none",
@@ -1660,28 +1593,6 @@ function EventCard({
                       >
                         {copiedEventId === event.id ? "Copied!" : "Copy RSVP Link"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          onAddToCalendar(event);
-                        }}
-                        style={menuButtonStyle}
-                      >
-                        Add to Calendar
-                      </button>
-                      {hasFormResponses ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            onOpenResponses(event);
-                          }}
-                          style={menuButtonStyle}
-                        >
-                          View Responses
-                        </button>
-                      ) : null}
                     </>
                   ) : null}
                   <button
@@ -1699,15 +1610,60 @@ function EventCard({
             </div>
           ) : null}
 
+          {!past ? (
+            <div
+              style={{ width: "100%", display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {rsvpAccess.showRsvpButton ? (
+                <SmartRsvpButton
+                  eventId={event.id}
+                  status={myStatus}
+                  onRsvp={onRsvp}
+                />
+              ) : rsvpAccess.blockedMessage ? (
+                <p
+                  style={{
+                    fontSize: "11px",
+                    color: "#999999",
+                    margin: 0,
+                    textAlign: "right",
+                    maxWidth: "140px",
+                  }}
+                >
+                  {rsvpAccess.blockedMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: "4px",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              flexWrap: "wrap",
+              gap: "10px",
               width: "100%",
             }}
+            onClick={(e) => e.stopPropagation()}
           >
+            <button
+              type="button"
+              onClick={() => onViewDetails(event)}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: "#E51937",
+                fontSize: "13px",
+                cursor: "pointer",
+              }}
+            >
+              View Details
+            </button>
+
             {isPrivileged && !past ? (
               <button
                 type="button"
@@ -1716,12 +1672,12 @@ function EventCard({
                   background: "none",
                   border: "none",
                   padding: 0,
-                  color: "#E51937",
+                  color: "#cccccc",
                   fontSize: "13px",
                   cursor: "pointer",
                 }}
               >
-                Manage →
+                Manage Event
               </button>
             ) : null}
 
@@ -1733,7 +1689,7 @@ function EventCard({
                   background: "none",
                   border: "none",
                   padding: 0,
-                  color: "#777777",
+                  color: "#aaaaaa",
                   fontSize: "12px",
                   cursor: "pointer",
                 }}
@@ -1742,30 +1698,6 @@ function EventCard({
               </button>
             ) : null}
           </div>
-
-          {!past ? (
-            <div style={{ marginTop: "12px", width: "100%", display: "flex", justifyContent: "flex-end" }}>
-              {rsvpAccess.showRsvpButton ? (
-                <SmartRsvpButton
-                  eventId={event.id}
-                  status={myStatus}
-                  onRsvp={onRsvp}
-                />
-              ) : rsvpAccess.blockedMessage ? (
-                <p
-                  style={{
-                    fontSize: "11px",
-                    color: "#777777",
-                    margin: 0,
-                    textAlign: "right",
-                    maxWidth: "140px",
-                  }}
-                >
-                  {rsvpAccess.blockedMessage}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
@@ -2195,6 +2127,8 @@ export default function ClubEventsPage() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [previewEvent, setPreviewEvent] = useState<ClubEvent | null>(null);
+  const [memberEventNotes, setMemberEventNotes] = useState<string | null>(null);
 
   // Form state for create / edit
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -2222,10 +2156,7 @@ export default function ClubEventsPage() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [location, setLocation] = useState("");
-  const [visibility, setVisibility] = useState<Visibility>("public");
-  const [selectedVisibilityTargets, setSelectedVisibilityTargets] = useState(
-    EMPTY_SELECTED_VISIBILITY,
-  );
+  const [visibility, setVisibility] = useState<Visibility>("members_only");
   const [signupRequiresApproval, setSignupRequiresApproval] = useState(false);
   const [category, setCategory] = useState<EventCategory>(DEFAULT_EVENT_CATEGORY);
   const [categoryColumnReady, setCategoryColumnReady] = useState(false);
@@ -2505,8 +2436,47 @@ export default function ClubEventsPage() {
       const next = new URLSearchParams(searchParams);
       next.delete("manageEvent");
       setSearchParams(next, { replace: true });
+      return;
     }
-  }, [searchParams, setSearchParams, isActiveMember, loading]);
+    if (!canManageEvents) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("manageEvent");
+      next.set("event", eventId);
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, isActiveMember, canManageEvents, loading]);
+
+  useEffect(() => {
+    const eventId = searchParams.get("event");
+    if (!eventId || loading || !isActiveMember) return;
+    void loadAttendees(eventId);
+  }, [searchParams, loading, isActiveMember, loadAttendees]);
+
+  useEffect(() => {
+    const eventId = searchParams.get("event");
+    if (!eventId || loading) {
+      setMemberEventNotes(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadNotes() {
+      const { data, error } = await supabase
+        .from("events")
+        .select("notes")
+        .eq("id", eventId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        setMemberEventNotes(null);
+        return;
+      }
+      setMemberEventNotes((data?.notes as string | null) ?? null);
+    }
+    void loadNotes();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, loading]);
 
   useEffect(() => {
     const eventId = searchParams.get("viewRsvps");
@@ -2702,8 +2672,7 @@ export default function ClubEventsPage() {
     setDate("");
     setTime("");
     setLocation("");
-    setVisibility("public");
-    setSelectedVisibilityTargets(EMPTY_SELECTED_VISIBILITY);
+    setVisibility("members_only");
     setSignupRequiresApproval(false);
     setCategory(DEFAULT_EVENT_CATEGORY);
     setIsRecurring(false);
@@ -2722,13 +2691,7 @@ export default function ClubEventsPage() {
     setDate(current.date);
     setTime(current.time);
     setLocation(current.location);
-    setVisibility(normalizeVisibility(current.visibility, "public"));
-    setSelectedVisibilityTargets(
-      selectedVisibilityPayload(
-        current.visibilityRoles ?? [],
-        current.visibilityUserIds ?? [],
-      ),
-    );
+    setVisibility(toStandardVisibility(current.visibility, "members_only"));
     setSignupRequiresApproval(Boolean(current.signupRequiresApproval));
     setCategory(
       eventCategories[current.id] ?? DEFAULT_EVENT_CATEGORY,
@@ -2761,16 +2724,6 @@ export default function ClubEventsPage() {
 
   async function handleSubmit() {
     if (!title.trim() || !date) return;
-    if (
-      visibility === "selected" &&
-      !hasSelectedVisibilityTargets(selectedVisibilityTargets)
-    ) {
-      setFeedback({
-        type: "error",
-        text: "Choose at least one role or member for selected visibility.",
-      });
-      return;
-    }
     setSaving(true);
     setFeedback(null);
 
@@ -2783,14 +2736,8 @@ export default function ClubEventsPage() {
       time: time || "TBD",
       location: location.trim() || "TBD",
       visibility,
-      visibilityRoles:
-        visibility === "selected"
-          ? selectedVisibilityTargets.visibilityRoles
-          : [],
-      visibilityUserIds:
-        visibility === "selected"
-          ? selectedVisibilityTargets.visibilityUserIds
-          : [],
+      visibilityRoles: [] as AccessLevel[],
+      visibilityUserIds: [] as string[],
       signupRequiresApproval,
     };
 
@@ -2948,7 +2895,12 @@ export default function ClubEventsPage() {
     }
 
     if (myRsvps[eventId] === status) {
-      await removeRsvp(eventId);
+      const removed = await removeRsvp(eventId);
+      setFeedback(
+        removed
+          ? { type: "success", text: "RSVP canceled." }
+          : { type: "error", text: "Failed to cancel RSVP." },
+      );
       return;
     }
 
@@ -2975,6 +2927,8 @@ export default function ClubEventsPage() {
           type: "error",
           text: result.error ?? "Failed to update RSVP.",
         });
+      } else if (result.ok) {
+        setFeedback({ type: "success", text: "RSVP updated." });
       }
       return;
     }
@@ -3001,6 +2955,11 @@ export default function ClubEventsPage() {
         type: "error",
         text: result.error ?? "Failed to confirm RSVP.",
       });
+      return;
+    }
+
+    if (result.ok) {
+      setFeedback({ type: "success", text: "You're signed up." });
     }
   }
 
@@ -3364,8 +3323,27 @@ export default function ClubEventsPage() {
   }, [upcomingDisplayList, pastEvents, counts, attendees, loadAttendees]);
 
   function openManageEvent(event: ClubEvent) {
+    if (!canManageEvents) {
+      openMemberEventDetail(event);
+      return;
+    }
     const next = new URLSearchParams(searchParams);
+    next.delete("event");
     next.set("manageEvent", event.id);
+    setSearchParams(next);
+  }
+
+  function openMemberEventDetail(event: ClubEvent) {
+    setPreviewEvent(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete("manageEvent");
+    next.set("event", event.id);
+    setSearchParams(next);
+  }
+
+  function closeMemberEventDetail() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("event");
     setSearchParams(next);
   }
 
@@ -3392,8 +3370,12 @@ export default function ClubEventsPage() {
   }
 
   const manageEventId = searchParams.get("manageEvent");
+  const memberEventId = searchParams.get("event");
   const manageEvent = manageEventId
     ? events.find((item) => item.id === manageEventId)
+    : undefined;
+  const memberDetailEvent = memberEventId
+    ? events.find((item) => item.id === memberEventId)
     : undefined;
   const planningTasksForManageEvent = useMemo(() => {
     if (!manageEventId) return [];
@@ -3410,7 +3392,90 @@ export default function ClubEventsPage() {
     );
   }
 
-  if (manageEventId && isActiveMember) {
+  if (memberEventId && isActiveMember) {
+    if (!memberDetailEvent) {
+      return (
+        <div
+          style={{
+            backgroundColor: "#0f0f0f",
+            padding: isMobile ? "16px" : "24px",
+          }}
+        >
+          <p style={{ color: "#777777", margin: 0 }}>Event not found.</p>
+          <button
+            type="button"
+            onClick={closeMemberEventDetail}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#E51937",
+              cursor: "pointer",
+              marginTop: "12px",
+              padding: 0,
+              fontSize: "14px",
+            }}
+          >
+            Back to Events
+          </button>
+        </div>
+      );
+    }
+
+    const memberCounts = counts[memberDetailEvent.id] ?? {
+      going: 0,
+      maybe: 0,
+      not_going: 0,
+    };
+    const isPastMemberEvent =
+      new Date(`${memberDetailEvent.date}T23:59:59`).getTime() < Date.now();
+
+    return (
+      <div
+        style={{
+          backgroundColor: "#0f0f0f",
+          padding: isMobile ? "16px" : "24px",
+        }}
+      >
+        {feedback ? (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              background: feedback.type === "success" ? "#0a1a0a" : "#1a0a0a",
+              color: feedback.type === "success" ? "#4ade80" : "#E51937",
+              border: `1px solid ${feedback.type === "success" ? "#22c55e" : "#E51937"}`,
+            }}
+          >
+            {feedback.text}
+          </div>
+        ) : null}
+        <EventMemberDetailView
+          event={memberDetailEvent}
+          clubName={club?.name ?? "Club"}
+          clubLogoUrl={clubBrand.logoUrl}
+          clubAbbreviation={clubBrand.abbreviation}
+          clubSlug={club?.slug}
+          isMobile={isMobile}
+          counts={memberCounts}
+          myRsvpStatus={myRsvps[memberDetailEvent.id]}
+          rsvpAccess={getRsvpAccessForEvent(memberDetailEvent)}
+          publicEventPath={
+            isEventPublic(memberDetailEvent)
+              ? getPublicEventDetailPath(memberDetailEvent.id)
+              : null
+          }
+          publicNotes={memberEventNotes}
+          isPast={isPastMemberEvent}
+          onBack={closeMemberEventDetail}
+          onRsvp={handleRsvp}
+        />
+      </div>
+    );
+  }
+
+  if (manageEventId && isActiveMember && canManageEvents) {
     if (!manageEvent) {
       return (
         <div
@@ -3488,6 +3553,11 @@ export default function ClubEventsPage() {
       }
     }
 
+    async function handleDeleteFromManage(eventId: string) {
+      await handleDelete(eventId);
+      closeManageView();
+    }
+
     return (
       <div
         style={{
@@ -3543,6 +3613,14 @@ export default function ClubEventsPage() {
           onApproveSignup={handleApproveSignup}
           onRejectSignup={handleRejectSignup}
           reviewBusyRsvpId={reviewBusyRsvpId}
+          copiedEventId={copiedEventId}
+          onCopyRsvpLink={copyRsvpLink}
+          onDelete={handleDeleteFromManage}
+          signupQuestions={(eventQuestionsMap[manageEvent.id] ?? []).map((q) => ({
+            id: q.id,
+            question: q.question,
+          }))}
+          onOpenResponses={openResponsesModal}
         />
       </div>
     );
@@ -3740,20 +3818,13 @@ export default function ClubEventsPage() {
               endDate={recurrenceEndDate}
               onEndDateChange={setRecurrenceEndDate}
             />
-            <VisibilitySelector
+            <ContentVisibilityDropdown
               key={editingId ?? "create"}
               value={visibility}
               onChange={setVisibility}
               label="Who can see this event?"
+              disabled={saving}
             />
-            {visibility === "selected" ? (
-              <SelectedVisibilityPicker
-                members={members}
-                targets={selectedVisibilityTargets}
-                onChange={setSelectedVisibilityTargets}
-                disabled={saving}
-              />
-            ) : null}
             <label
               style={{
                 display: "flex",
@@ -3839,13 +3910,7 @@ export default function ClubEventsPage() {
               )}
               <Button
                 onClick={handleSubmit}
-                disabled={
-                  !title.trim() ||
-                  !date ||
-                  saving ||
-                  (visibility === "selected" &&
-                    !hasSelectedVisibilityTargets(selectedVisibilityTargets))
-                }
+                disabled={!title.trim() || !date || saving}
               >
                 {saving
                   ? "Saving…"
@@ -3989,18 +4054,18 @@ export default function ClubEventsPage() {
                 attendeePreview={attendees[event.id]}
                 onRsvp={handleRsvp}
                 onManage={openManageEvent}
+                onOpenPreview={setPreviewEvent}
+                onViewDetails={openMemberEventDetail}
                 onStartEdit={startEdit}
                 onDelete={handleDelete}
                 onCopyRsvpLink={copyRsvpLink}
-                onAddToCalendar={downloadEventIcs}
                 showViewAttendees={canManageEvents}
                 onToggleAttendees={toggleAttendees}
                 attendeesList={
                   expandedAttendees === event.id ? attendees[event.id] : undefined
                 }
-                onOpenResponses={openResponsesModal}
-                hasFormResponses={(eventQuestionsMap[event.id]?.length ?? 0) > 0}
                 highlighted={highlightedEventId === event.id}
+                isMobile={isMobile}
               />
             );
           })}
@@ -4091,6 +4156,119 @@ export default function ClubEventsPage() {
           fullWidth={isMobile}
         />
       </div>
+
+      {previewEvent ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.65)",
+            zIndex: 80,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={() => setPreviewEvent(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Event preview"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: "480px",
+              background: "#151515",
+              border: "1px solid #2a2a2a",
+              borderRadius: "12px",
+              padding: "20px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+            }}
+          >
+            <p
+              style={{
+                margin: "0 0 8px",
+                fontSize: "12px",
+                color: "#aaaaaa",
+                fontWeight: 600,
+              }}
+            >
+              {club?.name ?? "Club"}
+            </p>
+            <h2
+              style={{
+                margin: "0 0 12px",
+                fontSize: "18px",
+                fontWeight: 700,
+                color: "#ffffff",
+              }}
+            >
+              {previewEvent.title}
+            </h2>
+            <EventTimeLocationMeta
+              timeLabel={formatEventTime(previewEvent.time)}
+              locationLabel={cleanEventLocation(previewEvent.location)}
+              color="#cccccc"
+              marginBottom="8px"
+            />
+            <p style={{ margin: "0 0 8px", fontSize: "13px", color: "#bbbbbb" }}>
+              {new Date(`${previewEvent.date}T12:00:00`).toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </p>
+            {previewEvent.description?.trim() ? (
+              <p
+                style={{
+                  margin: "12px 0 0",
+                  fontSize: "14px",
+                  color: "#cccccc",
+                  lineHeight: 1.55,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {previewEvent.description}
+              </p>
+            ) : null}
+            {(counts[previewEvent.id]?.going ?? 0) > 0 ? (
+              <p style={{ margin: "14px 0 0", fontSize: "13px", color: "#aaaaaa" }}>
+                {counts[previewEvent.id].going} going
+                {myRsvps[previewEvent.id] === "going" ? " · You’re going" : ""}
+              </p>
+            ) : myRsvps[previewEvent.id] ? (
+              <p style={{ margin: "14px 0 0", fontSize: "13px", color: "#aaaaaa" }}>
+                Your RSVP: {myRsvps[previewEvent.id]}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                const event = previewEvent;
+                setPreviewEvent(null);
+                openMemberEventDetail(event);
+              }}
+              style={{
+                marginTop: "18px",
+                width: "100%",
+                background: "#E51937",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "11px 16px",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              View Full Event
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {rsvpModalEvent ? (
         <div

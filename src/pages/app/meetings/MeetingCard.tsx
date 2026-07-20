@@ -241,7 +241,7 @@ export function MeetingCard({
           alignItems: "center",
         }}
       >
-        Open Meeting
+        View Meeting
       </Link>
     </div>
   );

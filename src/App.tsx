@@ -13,6 +13,7 @@ import { Briefcase, LayoutDashboard } from "lucide-react";
 import AppShell from "./components/layout/AppShell";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { GateIncompleteOnboardingBrowse } from "./components/RequireCompletedOnboarding";
 import WorkspaceLayout from "./components/workspace/WorkspaceLayout";
 import { AuthProvider } from "./context/AuthContext";
 import { useAuthContext } from "./context/useAuthContext";
@@ -128,47 +129,6 @@ function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
   return children;
 }
 
-const ONBOARDING_EXEMPT_PREFIXES = [
-  "/onboarding",
-  "/login",
-  "/signup",
-  "/auth/callback",
-  "/invite",
-  "/forgot-password",
-  "/reset-password",
-  "/privacy",
-  "/terms",
-  "/events/",
-  "/events",
-];
-
-function isOnboardingExemptPath(pathname: string): boolean {
-  return ONBOARDING_EXEMPT_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(prefix),
-  );
-}
-
-function OnboardingRedirect() {
-  const { user, loading, onboardingCompleted } = useAuthContext();
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (loading || !user || onboardingCompleted !== false) return;
-    if (isOnboardingExemptPath(location.pathname)) return;
-    if (location.pathname.startsWith("/admin")) return;
-    navigate("/onboarding", { replace: true });
-  }, [
-    loading,
-    user,
-    onboardingCompleted,
-    location.pathname,
-    navigate,
-  ]);
-
-  return null;
-}
-
 function LoginRedirectHandler() {
   const { user, loading, onboardingCompleted } = useAuthContext();
   const location = useLocation();
@@ -177,19 +137,25 @@ function LoginRedirectHandler() {
   useEffect(() => {
     if (loading || !user) return;
     if (location.pathname !== "/login") return;
+    if (onboardingCompleted === null) return;
 
     const redirect = new URLSearchParams(location.search).get("redirect");
-    if (redirect && redirect.startsWith("/")) {
-      navigate(redirect, { replace: true });
-      return;
-    }
+    const safeRedirect =
+      redirect && redirect.startsWith("/") && !redirect.startsWith("//")
+        ? redirect
+        : null;
 
     if (onboardingCompleted === false) {
-      navigate("/onboarding", { replace: true });
+      navigate(
+        safeRedirect
+          ? `/onboarding?redirect=${encodeURIComponent(safeRedirect)}`
+          : "/onboarding",
+        { replace: true },
+      );
       return;
     }
 
-    navigate("/app", { replace: true });
+    navigate(safeRedirect ?? "/app", { replace: true });
   }, [loading, user, location.pathname, location.search, navigate, onboardingCompleted]);
 
   return null;
@@ -276,7 +242,6 @@ export default function App() {
             <PreviewModeBanner />
             <CookieConsentBanner />
             <BugReportButton />
-            <OnboardingRedirect />
             <LoginRedirectHandler />
             <a
               href="#main-content"
@@ -288,8 +253,14 @@ export default function App() {
               <Route path="/events/:eventId/rsvp" element={<EventRSVPPage />} />
               <Route path="/invite/:token" element={<InvitePage />} />
               <Route path="/executive-invite/:token" element={<ExecutiveInvitePage />} />
-              {/* Public browsing — no auth guard */}
-              <Route element={<AppShell />}>
+              {/* Public browsing — gated for authenticated users mid-onboarding */}
+              <Route
+                element={
+                  <GateIncompleteOnboardingBrowse>
+                    <AppShell />
+                  </GateIncompleteOnboardingBrowse>
+                }
+              >
                 <Route path="/explore" element={<Explore />} />
                 <Route path="/events" element={<PublicEventsPage />} />
                 <Route path="/events/:eventId" element={<PublicEventDetailPage />} />

@@ -348,6 +348,7 @@ export default function Explore() {
     isJoined,
     isPending,
     getUserRole,
+    isSaved,
   } = useClubContext();
   const { user } = useAuthContext();
   const [guestClubs, setGuestClubs] = useState<Club[]>([]);
@@ -555,12 +556,15 @@ export default function Explore() {
 
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [savedOnly, setSavedOnly] = useState(false);
 
-  const hasActiveFilters = search !== "" || activeCategory !== "All";
+  const hasActiveFilters =
+    search !== "" || activeCategory !== "All" || savedOnly;
 
   const clearFilters = useCallback(() => {
     setSearch("");
     setActiveCategory("All");
+    setSavedOnly(false);
   }, []);
 
   const isClubJoined = useCallback(
@@ -601,10 +605,12 @@ export default function Explore() {
         (club.shortDescription ?? "").toLowerCase().includes(query) ||
         normalizeTags(club.tags).some((tag) => tag.toLowerCase().includes(query));
 
-      return matchesCategory && matchesSearch;
+      const matchesSaved = !savedOnly || isSaved(club.id);
+
+      return matchesCategory && matchesSearch && matchesSaved;
     });
     return sortClubsByMemberActivity(filtered);
-  }, [discoverableClubs, search, activeCategory]);
+  }, [discoverableClubs, search, activeCategory, savedOnly, isSaved]);
 
   const displayClubs = useMemo(() => {
     if (!claimMode || !claimMetaReady) return filteredClubs;
@@ -626,22 +632,49 @@ export default function Explore() {
   );
 
   const categoryCount = Math.max(categories.length - 1, 0);
-  const clubCountLabel =
-    discoverableClubs.length >= 260
-      ? "260+"
-      : discoverableClubs.length > 0
-        ? String(discoverableClubs.length)
-        : "0";
+  const clubCountLabel = useMemo(() => {
+    const matchCount = filteredClubs.length;
+    const query = search.trim();
+
+    if (query) {
+      return matchCount === 1
+        ? `Showing 1 result for “${query}”`
+        : `Showing ${matchCount} results for “${query}”`;
+    }
+
+    if (savedOnly || activeCategory !== "All") {
+      return matchCount === 1
+        ? "1 club matches your filters"
+        : `${matchCount} clubs match your filters`;
+    }
+
+    const total = discoverableClubs.length;
+    if (total >= 260) return "260+ clubs found";
+    return total === 1 ? "1 club found" : `${total} clubs found`;
+  }, [
+    filteredClubs.length,
+    search,
+    savedOnly,
+    activeCategory,
+    discoverableClubs.length,
+  ]);
 
   const emptyStateMessage = useMemo(() => {
-    if (isClaimFocusedExplore && (search || activeCategory !== "All")) {
+    if (savedOnly && !search && activeCategory === "All") {
+      return {
+        title: "No saved clubs yet",
+        description: "Bookmark clubs from Explore to find them here later.",
+        showCreateClub: false,
+      };
+    }
+    if (isClaimFocusedExplore && hasActiveFilters) {
       return {
         title: "No matching clubs found",
         description: "Can't find your club? Create a new club profile.",
         showCreateClub: true,
       };
     }
-    if (search || activeCategory !== "All") {
+    if (hasActiveFilters) {
       return {
         title: "No clubs found",
         description: "Try searching a different keyword or clearing your filters.",
@@ -660,7 +693,7 @@ export default function Explore() {
       description: "There are no clubs to display right now.",
       showCreateClub: false,
     };
-  }, [search, activeCategory, isClaimFocusedExplore]);
+  }, [search, activeCategory, isClaimFocusedExplore, savedOnly, hasActiveFilters]);
 
   return (
     <div style={{ backgroundColor: PAGE_BG, minHeight: "100%" }}>
@@ -681,7 +714,8 @@ export default function Explore() {
               margin: 0,
             }}
           >
-            Explore Clubs at <span style={{ color: ACCENT_RED }}>Guelph</span>
+            Explore Clubs at the{" "}
+            <span style={{ color: ACCENT_RED }}>University of Guelph</span>
           </h1>
           <p
             style={{
@@ -774,6 +808,28 @@ export default function Explore() {
                 activeCategory={activeCategory}
                 onSelect={setActiveCategory}
               />
+              {user ? (
+                <button
+                  type="button"
+                  onClick={() => setSavedOnly((prev) => !prev)}
+                  aria-pressed={savedOnly}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    borderRadius: "8px",
+                    border: savedOnly ? "1px solid #FFC429" : "1px solid #333333",
+                    background: savedOnly ? "rgba(255,196,41,0.12)" : "#141414",
+                    color: savedOnly ? "#FFC429" : "#cccccc",
+                    padding: "8px 12px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Saved Clubs
+                </button>
+              ) : null}
               <p
                 style={{
                   fontSize: "12px",
@@ -781,7 +837,8 @@ export default function Explore() {
                   margin: 0,
                 }}
               >
-                {clubCountLabel} clubs · {categoryCount} categories
+                {clubCountLabel}
+                {!hasActiveFilters ? ` · ${categoryCount} categories` : ""}
               </p>
             </div>
           </div>
@@ -887,12 +944,14 @@ export default function Explore() {
               <div className="mb-8 flex items-start justify-between gap-4">
                 <div>
                   <h2 style={sectionHeadingStyle}>
-                    {search !== "" ? "Search Results" : "Clubs to Explore"}
+                    {savedOnly
+                      ? "Saved Clubs"
+                      : search !== ""
+                        ? "Search Results"
+                        : "Clubs to Explore"}
                   </h2>
                   <p style={sectionSubheadingStyle}>
-                    Showing{" "}
-                    <span style={{ fontWeight: 600, color: "#ffffff" }}>{clubCountLabel}</span>{" "}
-                    clubs
+                    <span style={{ fontWeight: 600, color: "#ffffff" }}>{clubCountLabel}</span>
                     {activeCategory !== "All" ? (
                       <span>
                         {" "}

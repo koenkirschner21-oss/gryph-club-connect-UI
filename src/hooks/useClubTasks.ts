@@ -5,6 +5,7 @@ import { useAuthContext } from "../context/useAuthContext";
 import { normalizeTaskType } from "../lib/taskTypes";
 import type { Task, TaskStatus, TaskPriority, TaskType } from "../types";
 import { removeRealtimeChannel, uniqueRealtimeTopic } from "../lib/realtimeChannels";
+import { dispatchClubTasksChanged } from "../lib/clubDataSyncEvents";
 
 const TASK_SELECT = `
   id,
@@ -307,6 +308,7 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
       const mapped = mapTaskRowFallback(data as Record<string, unknown>);
       setTasks((prev) => [mapped, ...prev]);
       refresh();
+      dispatchClubTasksChanged({ clubId, taskId: data.id as string });
       return data.id as string;
     },
     [clubId, user, refresh],
@@ -359,9 +361,10 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
       const updated = mapTaskRowFallback(data as Record<string, unknown>);
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
       refresh();
+      dispatchClubTasksChanged({ clubId, taskId });
       return true;
     },
-    [refresh],
+    [clubId, refresh],
   );
 
   const deleteTask = useCallback(
@@ -392,9 +395,10 @@ export function useClubTasks(clubId: string | undefined): UseClubTasksReturn {
       }
 
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      dispatchClubTasksChanged({ clubId, taskId });
       return true;
     },
-    [],
+    [clubId],
   );
 
   return { tasks, loading, error, createTask, updateTask, deleteTask, refresh };

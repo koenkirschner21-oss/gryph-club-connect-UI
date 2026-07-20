@@ -178,3 +178,39 @@ export async function cancelClubClaimRequest(
     result: mapCancelClubClaimResult(data as Record<string, unknown>),
   };
 }
+
+/** Resubmit a claim after more_info, preserving ownership checks in the RPC. */
+export async function resubmitClubClaimRequest(
+  supabase: SupabaseClient,
+  params: {
+    claimRequestId: string;
+    roleInClub: string;
+    message?: string;
+    proofUrl?: string;
+    contactEmail?: string;
+  },
+): Promise<{ ok: true; claimRequestId: string } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("resubmit_club_claim_request", {
+    p_request_id: params.claimRequestId,
+    p_role_in_club: params.roleInClub,
+    p_message: params.message ?? null,
+    p_proof_url: params.proofUrl ?? null,
+    p_contact_email: params.contactEmail ?? null,
+  });
+
+  if (error) {
+    console.error("Failed to resubmit club claim request:", error.message);
+    return { ok: false, error: error.message };
+  }
+
+  const claimRequestId =
+    data && typeof data === "object" && "claim_request_id" in data
+      ? String((data as { claim_request_id?: string }).claim_request_id ?? "")
+      : params.claimRequestId;
+
+  if (!claimRequestId) {
+    return { ok: false, error: "Claim resubmit returned no result." };
+  }
+
+  return { ok: true, claimRequestId };
+}

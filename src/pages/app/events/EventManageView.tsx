@@ -4,7 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
+import { MoreHorizontal } from "lucide-react";
 import EventPlanningTasksSection from "../../../components/club/EventPlanningTasksSection";
 import PublicDetailBackButton from "../../../components/public/PublicDetailBackButton";
 import {
@@ -13,6 +15,7 @@ import {
   EventDetailDescription,
   EventDetailMeta,
   EventDetailMyRsvp,
+  EventDetailPageShell,
   EventDetailPrimaryAction,
   EventDetailPublicLink,
   EventDetailRsvpSummary,
@@ -37,6 +40,35 @@ import type {
   Task,
   Visibility,
 } from "../../../types";
+
+const menuButtonStyle = {
+  width: "100%",
+  textAlign: "left" as const,
+  background: "transparent",
+  border: "none",
+  color: "#cccccc",
+  padding: "9px 12px",
+  fontSize: "12px",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const secondaryActionButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "6px",
+  background: "transparent",
+  color: "#cccccc",
+  border: "1px solid #333333",
+  borderRadius: "8px",
+  padding: "10px 14px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  width: "100%",
+};
 
 type RecurrenceFrequency = "weekly" | "biweekly" | "monthly";
 
@@ -160,12 +192,16 @@ function AttendeeRow({
   reviewBusy,
   onApprove,
   onReject,
+  hasSignupResponse,
+  onViewSignupResponses,
 }: {
   item: AttendeeListItem;
   canReview: boolean;
   reviewBusy: boolean;
   onApprove?: (rsvpId: string) => void;
   onReject?: (rsvpId: string) => void;
+  hasSignupResponse?: boolean;
+  onViewSignupResponses?: () => void;
 }) {
   const statusColors: Record<RsvpStatus, { bg: string; color: string; border: string }> = {
     going: { bg: "#1a1200", color: "#FFC429", border: "1px solid #FFC429" },
@@ -258,7 +294,7 @@ function AttendeeRow({
           <p
             style={{
               fontSize: "11px",
-              color: "#555555",
+              color: "#8a8a8a",
               margin: "2px 0 0",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -267,6 +303,24 @@ function AttendeeRow({
           >
             {subtitle}
           </p>
+        ) : null}
+        {hasSignupResponse && onViewSignupResponses ? (
+          <button
+            type="button"
+            onClick={onViewSignupResponses}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              margin: "2px 0 0",
+              color: "#E51937",
+              fontSize: "11px",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            View Signup Responses
+          </button>
         ) : null}
       </div>
       <div
@@ -371,6 +425,11 @@ export function EventManageView({
   onApproveSignup,
   onRejectSignup,
   reviewBusyRsvpId,
+  copiedEventId,
+  onCopyRsvpLink,
+  onDelete,
+  signupQuestions,
+  onOpenResponses,
 }: {
   event: ClubEvent;
   category: string;
@@ -404,11 +463,27 @@ export function EventManageView({
   onApproveSignup?: (rsvpId: string) => Promise<void>;
   onRejectSignup?: (rsvpId: string) => Promise<void>;
   reviewBusyRsvpId?: string | null;
+  copiedEventId?: string | null;
+  onCopyRsvpLink?: (eventId: string) => void;
+  onDelete?: (eventId: string) => void;
+  signupQuestions?: Array<{ id: string; question: string }>;
+  onOpenResponses?: (event: ClubEvent) => void;
 }) {
   const rsvpPanelRef = useRef<HTMLElement>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [notesReady, setNotesReady] = useState(false);
   const [attendeeFilter, setAttendeeFilter] = useState<AttendeeFilterTab>("all");
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [respondedUserIds, setRespondedUserIds] = useState<Set<string>>(new Set());
+
+  const isPast = useMemo(() => {
+    const parsed = new Date(`${event.date?.trim() ?? ""}T23:59:59`);
+    if (Number.isNaN(parsed.getTime())) return false;
+    return parsed.getTime() < Date.now();
+  }, [event.date]);
+
+  const questions = signupQuestions ?? [];
+  const hasSignupQuestions = questions.length > 0;
 
   const locationLabel = cleanEventLocation(event.location);
   const categoryLabel = eventCategoryLabel(category);
@@ -469,6 +544,29 @@ export function EventManageView({
     rsvpPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     onRsvpPanelFocused?.();
   }, [focusRsvpPanel, onRsvpPanelFocused]);
+
+  useEffect(() => {
+    if (!isPrivileged || !hasSignupQuestions) {
+      setRespondedUserIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("event_form_responses")
+        .select("user_id")
+        .eq("event_id", event.id);
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to load signup response count:", error.message);
+        return;
+      }
+      setRespondedUserIds(new Set((data ?? []).map((row) => row.user_id as string)));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [event.id, isPrivileged, hasSignupQuestions]);
 
   const saveNotes = useCallback(
     async (value: string) => {
@@ -580,15 +678,18 @@ export function EventManageView({
     publicEventPath &&
     (event.visibility === "public" || !event.visibility);
 
+  const totalSignupResponses = respondedUserIds.size;
+  const awaitingSignupResponseCount = Math.max(
+    totalRsvps - totalSignupResponses,
+    0,
+  );
+  const signupQuestionsSummary = questions
+    .slice(0, 3)
+    .map((q) => q.question)
+    .join(" · ");
+
   const primaryAction = (() => {
-    if (isPrivileged) {
-      return (
-        <EventDetailPrimaryAction
-          label="Manage Event"
-          onClick={() => onEdit(event)}
-        />
-      );
-    }
+    if (isPrivileged) return null;
     if (rsvpAccess.showRsvpButton && onRsvp) {
       if (myRsvpStatus === "going") {
         return (
@@ -628,24 +729,69 @@ export function EventManageView({
     return null;
   })();
 
-  const attendeePanel = isPrivileged ? (
-    <section ref={rsvpPanelRef} style={sectionCardStyle}>
+  const linkedWorkSection = (
+    <section style={sectionCardStyle}>
+      <h2 style={{ margin: "0 0 10px", fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
+        Linked Work
+      </h2>
+      <p style={{ margin: 0, fontSize: "13px", color: "#cccccc" }}>
+        {planningTasks.length} planning task{planningTasks.length === 1 ? "" : "s"}
+        {" · "}
+        {openPlanningCount} open
+      </p>
+    </section>
+  );
+
+  const rsvpResponsesPanel =
+    isPrivileged && hasSignupQuestions ? (
+      <section ref={rsvpPanelRef} style={sectionCardStyle}>
+        <h2 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700, color: "#ffffff" }}>
+          RSVP Responses
+        </h2>
+        <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#999999" }}>
+          {totalSignupResponses} response{totalSignupResponses === 1 ? "" : "s"} ·{" "}
+          {awaitingSignupResponseCount} awaiting response
+        </p>
+        <p
+          style={{
+            margin: "0 0 16px",
+            fontSize: "13px",
+            color: "#cccccc",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {questions.length} question{questions.length === 1 ? "" : "s"}
+          {signupQuestionsSummary ? `: ${signupQuestionsSummary}` : ""}
+        </p>
+        <button
+          type="button"
+          onClick={() => onOpenResponses?.(event)}
+          style={{ ...secondaryActionButtonStyle, width: "auto" }}
+        >
+          Review RSVP Responses
+        </button>
+      </section>
+    ) : null;
+
+  const attendeeSidebarPanel = isPrivileged ? (
+    <section style={sectionCardStyle}>
       <h2
         style={{
           margin: "0 0 4px",
-          fontSize: "16px",
+          fontSize: "15px",
           fontWeight: 700,
           color: "#ffffff",
         }}
       >
         Attendees
       </h2>
-      <p style={{ margin: "0 0 16px", fontSize: "12px", color: "#555555" }}>
+      <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#999999" }}>
         {totalRsvps} responded · {noResponseCount} no response
         {attendeeStatusCounts.pending > 0
           ? ` · ${attendeeStatusCounts.pending} pending approval`
           : ""}
-        {openPlanningCount > 0 ? ` · ${openPlanningCount} open planning tasks` : ""}
       </p>
 
       {attendeeStatusCounts.pending > 0 ? (
@@ -680,7 +826,7 @@ export function EventManageView({
           display: "flex",
           flexWrap: "wrap",
           gap: "6px",
-          margin: "18px 0 12px",
+          margin: "16px 0 10px",
         }}
       >
         {ATTENDEE_FILTER_TABS.map((tab) => {
@@ -692,7 +838,7 @@ export function EventManageView({
               onClick={() => setAttendeeFilter(tab.id)}
               style={{
                 background: active ? "#E51937" : "transparent",
-                color: active ? "#ffffff" : "#777777",
+                color: active ? "#ffffff" : "#999999",
                 border: active ? "1px solid #E51937" : "1px solid #333333",
                 borderRadius: "20px",
                 padding: "5px 12px",
@@ -708,31 +854,115 @@ export function EventManageView({
         })}
       </div>
 
-      {attendeeRows.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "13px", color: "#555555" }}>
-          No attendees in this view.
-        </p>
-      ) : (
-        attendeeRows.map((row) => (
-          <AttendeeRow
-            key={
-              row.kind === "rsvp"
-                ? row.attendee.id
-                : `no-response-${row.member.userId}`
-            }
-            item={row}
-            canReview={isPrivileged}
-            reviewBusy={reviewBusyRsvpId === (row.kind === "rsvp" ? row.attendee.id : "")}
-            onApprove={onApproveSignup}
-            onReject={onRejectSignup}
-          />
-        ))
-      )}
+      <div style={{ maxHeight: "420px", overflowY: "auto" }}>
+        {attendeeRows.length === 0 ? (
+          <p style={{ margin: 0, fontSize: "13px", color: "#888888" }}>
+            No attendees in this view.
+          </p>
+        ) : (
+          attendeeRows.map((row) => {
+            const userId = row.kind === "rsvp" ? row.attendee.userId : row.member.userId;
+            return (
+              <AttendeeRow
+                key={
+                  row.kind === "rsvp"
+                    ? row.attendee.id
+                    : `no-response-${row.member.userId}`
+                }
+                item={row}
+                canReview={isPrivileged}
+                reviewBusy={reviewBusyRsvpId === (row.kind === "rsvp" ? row.attendee.id : "")}
+                onApprove={onApproveSignup}
+                onReject={onRejectSignup}
+                hasSignupResponse={hasSignupQuestions && respondedUserIds.has(userId)}
+                onViewSignupResponses={() => onOpenResponses?.(event)}
+              />
+            );
+          })
+        )}
+      </div>
+    </section>
+  ) : null;
+
+  const eventActionsCard = isPrivileged ? (
+    <section style={sectionCardStyle}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "12px",
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#999999", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Event Actions
+        </h2>
+        {onDelete ? (
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              aria-label="More event actions"
+              onClick={() => setActionsMenuOpen((prev) => !prev)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#888888",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                padding: "2px",
+              }}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {actionsMenuOpen ? (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "100%",
+                  marginTop: "4px",
+                  background: "#151515",
+                  border: `1px solid ${CARD_BORDER}`,
+                  borderRadius: "8px",
+                  minWidth: "150px",
+                  zIndex: 20,
+                  overflow: "hidden",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActionsMenuOpen(false);
+                    onDelete(event.id);
+                  }}
+                  style={{ ...menuButtonStyle, color: "#E51937" }}
+                >
+                  Delete Event
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <EventDetailPrimaryAction label="Edit Event" onClick={() => onEdit(event)} />
+        <button
+          type="button"
+          onClick={() => onCopyRsvpLink?.(event.id)}
+          style={secondaryActionButtonStyle}
+        >
+          {copiedEventId === event.id ? "Copied!" : "Copy RSVP Link"}
+        </button>
+        {showPublicLink ? (
+          <EventDetailPublicLink href={publicEventPath!} />
+        ) : null}
+      </div>
     </section>
   ) : null;
 
   return (
-    <div style={{ width: "100%", maxWidth: "none" }}>
+    <EventDetailPageShell maxWidth="1100px">
       <PublicDetailBackButton
         label="Back to Events"
         onBack={onBack}
@@ -793,7 +1023,8 @@ export function EventManageView({
               </div>
             ) : null}
 
-            <section style={sectionCardStyle}>
+            {isPrivileged || (notesDraft.trim() && isPast) ? (
+            <section style={{ ...sectionCardStyle, marginBottom: "16px" }}>
               <div
                 style={{
                   display: "flex",
@@ -810,13 +1041,13 @@ export function EventManageView({
                     color: "#ffffff",
                   }}
                 >
-                  Notes / Recap
+                  {isPast ? "Notes Recap" : "Planning Notes"}
                 </h2>
                 {isPrivileged ? (
                   <span
                     style={{
                       fontSize: "11px",
-                      color: notesSaved ? "#4ade80" : "#777777",
+                      color: notesSaved ? "#4ade80" : "#999999",
                     }}
                   >
                     {notesSaved ? "Saved" : "Saving…"}
@@ -828,7 +1059,11 @@ export function EventManageView({
                   style={{ ...inputStyle, minHeight: "140px", resize: "vertical" }}
                   value={notesDraft}
                   onChange={(e) => setNotesDraft(e.target.value)}
-                  placeholder="Post-event notes, recap, follow-ups…"
+                  placeholder={
+                    isPast
+                      ? "Post-event notes, recap, follow-ups…"
+                      : "Planning notes for this event…"
+                  }
                 />
               ) : (
                 <p
@@ -839,30 +1074,48 @@ export function EventManageView({
                     whiteSpace: "pre-wrap",
                   }}
                 >
-                  {notesDraft.trim() || "No notes yet."}
+                  {notesDraft.trim()}
                 </p>
               )}
             </section>
+            ) : null}
 
-            {attendeePanel}
+            {isPrivileged ? <div style={{ marginBottom: "16px" }}>{linkedWorkSection}</div> : null}
+
+            {rsvpResponsesPanel}
           </>
         }
         sidebar={
           <>
+            {eventActionsCard}
             <EventDetailMyRsvp status={myRsvpStatus} />
             <EventDetailRsvpSummary counts={counts} />
-            <div>
-              {primaryAction}
-              {rsvpAccess.blockedMessage ? (
-                <p style={{ margin: "10px 0 0", fontSize: "13px", color: "#777777" }}>
-                  {rsvpAccess.blockedMessage}
-                </p>
-              ) : null}
-              {showPublicLink ? <EventDetailPublicLink href={publicEventPath!} /> : null}
-            </div>
+            {!isPrivileged ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  width: "100%",
+                }}
+              >
+                {primaryAction}
+                {rsvpAccess.blockedMessage ? (
+                  <p style={{ margin: 0, fontSize: "13px", color: "#999999" }}>
+                    {rsvpAccess.blockedMessage}
+                  </p>
+                ) : null}
+                {showPublicLink ? (
+                  <div style={{ width: "100%" }}>
+                    <EventDetailPublicLink href={publicEventPath!} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {attendeeSidebarPanel}
           </>
         }
       />
-    </div>
+    </EventDetailPageShell>
   );
 }

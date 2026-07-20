@@ -341,9 +341,13 @@ export async function notifyJoinRequestRejected(
     clubId: string;
     clubName: string;
     studentUserId: string;
+    reason?: string | null;
   },
 ): Promise<void> {
-  const message = `Your request to join ${params.clubName} was not approved at this time.`;
+  const trimmedReason = params.reason?.trim();
+  const message = trimmedReason
+    ? `Your request to join ${params.clubName} was not approved at this time. Reason: ${trimmedReason}`
+    : `Your request to join ${params.clubName} was not approved at this time.`;
 
   const ok = await createNotification(supabase, {
     userId: params.studentUserId,
@@ -498,7 +502,9 @@ export async function notifyClaimRequestApproved(
     actionType: "open_club_dashboard",
     actionData: {
       path: `/app/clubs/${params.clubId}`,
-      actionLabel: "Open Club Dashboard",
+      claimId: params.claimRequestId,
+      claimStatusPath: `/claim-status/${params.claimRequestId}`,
+      actionLabel: "Open Club Workspace",
     },
     clubId: params.clubId,
     referenceId: params.claimRequestId,
@@ -539,7 +545,7 @@ export async function notifyClaimRequestRejected(
     title: `Club claim declined — ${params.clubName}`,
     message,
     actionRequired: false,
-    actionType: "view_club_profile",
+    actionType: "view_claim_status",
     actionData: {
       claimId: params.claimRequestId,
       clubSlug: params.clubSlug,
@@ -552,6 +558,50 @@ export async function notifyClaimRequestRejected(
   });
   if (!inboxOk) {
     console.error("Failed to create claim rejection inbox message.");
+  }
+}
+
+export async function notifyClaimRequestCanceled(
+  supabase: SupabaseClient,
+  params: {
+    clubId: string;
+    clubName: string;
+    submitterUserId: string;
+    claimRequestId: string;
+  },
+): Promise<void> {
+  const message = `You canceled your claim request for ${params.clubName}.`;
+  const claimStatusPath = `/claim-status/${params.claimRequestId}`;
+
+  const bellOk = await createNotification(supabase, {
+    userId: params.submitterUserId,
+    type: "claim_canceled",
+    message,
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+  });
+  if (!bellOk) {
+    console.error("Failed to send claim cancellation notification.");
+  }
+
+  const inboxOk = await createInboxMessage(supabase, {
+    recipientId: params.submitterUserId,
+    type: "system_message",
+    title: `Claim canceled — ${params.clubName}`,
+    message,
+    actionRequired: false,
+    actionType: "view_claim_status",
+    actionData: {
+      claimId: params.claimRequestId,
+      path: claimStatusPath,
+      actionLabel: "View Claim Status",
+    },
+    clubId: params.clubId,
+    referenceId: params.claimRequestId,
+    referenceType: "club_claim_request",
+  });
+  if (!inboxOk) {
+    console.error("Failed to create claim cancellation inbox message.");
   }
 }
 

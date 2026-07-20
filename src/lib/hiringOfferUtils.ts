@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { dispatchHiringApplicationUpdated } from "./clubDataSyncEvents";
 
 const NOT_APPLICANT_ERROR =
   "You can only respond to your own hiring offer.";
@@ -59,13 +60,10 @@ export async function acceptHiringOffer(
     params.recipientUserId,
   );
 
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("hiring-application-updated", {
-        detail: { applicationId: params.applicationId },
-      }),
-    );
-  }
+  dispatchHiringApplicationUpdated({
+    applicationId: params.applicationId,
+    clubId: payload.club_id,
+  });
 
   return { ok: true, clubId: payload.club_id };
 }
@@ -93,13 +91,9 @@ export async function declineHiringOffer(
     params.recipientUserId,
   );
 
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("hiring-application-updated", {
-        detail: { applicationId: params.applicationId },
-      }),
-    );
-  }
+  dispatchHiringApplicationUpdated({
+    applicationId: params.applicationId,
+  });
 
   return { ok: true };
 }

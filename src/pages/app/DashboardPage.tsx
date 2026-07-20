@@ -48,6 +48,7 @@ import {
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { useInbox } from "../../hooks/useInbox";
 import InboxTab from "../dashboard/InboxTab";
+import AnnouncementsTab from "../dashboard/AnnouncementsTab";
 import {
   TasksFilterBar,
   TaskBreakdownCard,
@@ -97,12 +98,22 @@ import {
 import { dashboardMembershipAccessKey } from "../../lib/dashboardMembershipKey";
 import { dashboardPlannerDescription } from "../../lib/dashboardPlannerCopy";
 import { DASHBOARD_MY_TASKS_EXCLUDED_STATUSES } from "../../lib/dashboardMyTasksScope";
+import {
+  CLUB_TASKS_CHANGED_EVENT,
+} from "../../lib/clubDataSyncEvents";
 import type { Club, MemberRole } from "../../types";
 
 // ---------------------------------------------------------------------------
 // Tab types
 // ---------------------------------------------------------------------------
-type DashboardTab = "overview" | "events" | "tasks" | "month" | "clubs" | "inbox";
+type DashboardTab =
+  | "overview"
+  | "events"
+  | "tasks"
+  | "month"
+  | "clubs"
+  | "inbox"
+  | "announcements";
 
 function deriveAbbreviation(name: string, maxLen = 3): string {
   return name
@@ -124,7 +135,8 @@ const newUserGuideCardStyle: CSSProperties = {
   padding: "20px",
   textDecoration: "none",
   color: "inherit",
-  transition: "border-color 0.15s ease, transform 0.15s ease",
+  cursor: "pointer",
+  transition: "border-color 0.15s ease, background 0.15s ease",
 };
 
 const newUserGuideCardSecondaryStyle: CSSProperties = {
@@ -160,12 +172,6 @@ const DISCOVER_GUIDE_CARDS: GuideCard[] = [
     description: "Find executive and volunteer openings posted by clubs.",
     icon: <Briefcase size={22} color="#E51937" aria-hidden />,
   },
-  {
-    to: "/app/settings",
-    title: "Complete your profile",
-    description: "Add a photo, program, and preferences so clubs recognize you.",
-    icon: <UserCircle size={22} color="#747676" aria-hidden />,
-  },
 ];
 
 const MANAGE_GUIDE_CARDS: GuideCard[] = [
@@ -178,7 +184,7 @@ const MANAGE_GUIDE_CARDS: GuideCard[] = [
   {
     to: "/app/create-club",
     title: "Create a club",
-    description: "Submit a request to add a new club to Gryph ClubConnect.",
+    description: "Submit a request to add a new club to ClubConnect.",
     icon: <Megaphone size={22} color="#FFC429" aria-hidden />,
   },
   {
@@ -187,18 +193,11 @@ const MANAGE_GUIDE_CARDS: GuideCard[] = [
     description: "Enter an invite code from your club's admin to join their workspace.",
     icon: <CheckSquare size={22} color="#E51937" aria-hidden />,
   },
-  {
-    to: "/explore",
-    title: "Explore clubs",
-    description: "Browse what's already on campus while you get set up.",
-    icon: <Compass size={22} color="#747676" aria-hidden />,
-    secondary: true,
-  },
 ];
 
 function emptyDashboardSubtitle(intent: OnboardingIntent | null): string {
   if (intent === "manage") {
-    return "You haven't joined or created a club yet. Start by claiming an existing club, creating a new club, or joining with a code.";
+    return "Start by claiming an existing club, creating a new club, or joining with a code.";
   }
   if (intent === "discover") {
     return "Explore clubs, events, and hiring roles to find your place on campus.";
@@ -207,6 +206,38 @@ function emptyDashboardSubtitle(intent: OnboardingIntent | null): string {
     return "Get involved as a member and set up a club you want to lead — pick a starting point below.";
   }
   return "Get started by exploring campus clubs and events.";
+}
+
+function isProfileSetupComplete(profile: {
+  fullName: string;
+  program: string;
+  yearOfStudy: string;
+  avatarUrl: string;
+}): boolean {
+  return Boolean(
+    profile.fullName.trim() &&
+      profile.program.trim() &&
+      profile.yearOfStudy.trim() &&
+      profile.avatarUrl.trim(),
+  );
+}
+
+function profileSetupProgress(profile: {
+  fullName: string;
+  program: string;
+  yearOfStudy: string;
+  avatarUrl: string;
+}): { filled: number; total: number } {
+  const checks = [
+    profile.fullName.trim(),
+    profile.program.trim(),
+    profile.yearOfStudy.trim(),
+    profile.avatarUrl.trim(),
+  ];
+  return {
+    filled: checks.filter(Boolean).length,
+    total: checks.length,
+  };
 }
 
 function NewUserGuideSection({
@@ -227,7 +258,7 @@ function NewUserGuideSection({
             fontWeight: 700,
             letterSpacing: "0.06em",
             textTransform: "uppercase",
-            color: "#777777",
+            color: "#888888",
             margin: "0 0 12px",
           }}
         >
@@ -247,12 +278,19 @@ function NewUserGuideSection({
             to={card.to}
             style={card.secondary ? newUserGuideCardSecondaryStyle : newUserGuideCardStyle}
             onMouseEnter={(event) => {
-              event.currentTarget.style.borderColor = "#333333";
-              event.currentTarget.style.transform = "translateY(-1px)";
+              event.currentTarget.style.borderColor = "#3a3a3a";
+              event.currentTarget.style.background = "#181818";
             }}
             onMouseLeave={(event) => {
               event.currentTarget.style.borderColor = card.secondary ? "#1e1e1e" : "#242424";
-              event.currentTarget.style.transform = "none";
+              event.currentTarget.style.background = card.secondary ? "#121212" : "#141414";
+            }}
+            onFocus={(event) => {
+              event.currentTarget.style.borderColor = "#E51937";
+              event.currentTarget.style.outline = "none";
+            }}
+            onBlur={(event) => {
+              event.currentTarget.style.borderColor = card.secondary ? "#1e1e1e" : "#242424";
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -261,14 +299,14 @@ function NewUserGuideSection({
                 style={{
                   fontSize: "15px",
                   fontWeight: 600,
-                  color: card.secondary ? "#cccccc" : "#ffffff",
+                  color: card.secondary ? "#dddddd" : "#ffffff",
                 }}
               >
                 {card.title}
               </span>
               <ChevronRight
                 size={16}
-                color="#555555"
+                color="#666666"
                 style={{ marginLeft: "auto" }}
                 aria-hidden
               />
@@ -276,7 +314,7 @@ function NewUserGuideSection({
             <p
               style={{
                 fontSize: "13px",
-                color: card.secondary ? "#666666" : "#777777",
+                color: card.secondary ? "#888888" : "#999999",
                 margin: 0,
                 lineHeight: 1.5,
               }}
@@ -542,8 +580,40 @@ function PendingRequestsSection({ clubs }: { clubs: Club[] }) {
   );
 }
 
-function NewUserDashboardGuide({ intent }: { intent: OnboardingIntent | null }) {
+type ProfileGuideFields = {
+  fullName: string;
+  program: string;
+  yearOfStudy: string;
+  avatarUrl: string;
+};
+
+const PROFILE_GUIDE_CARD: GuideCard = {
+  to: "/app/settings",
+  title: "Complete your profile",
+  description: "Add a photo, program, and year so clubs recognize you.",
+  icon: <UserCircle size={22} color="#747676" aria-hidden />,
+};
+
+function withProfileGuideCard(
+  cards: GuideCard[],
+  profileComplete: boolean,
+): GuideCard[] {
+  if (profileComplete) return cards;
+  return [...cards, PROFILE_GUIDE_CARD];
+}
+
+function NewUserDashboardGuide({
+  intent,
+  profile,
+}: {
+  intent: OnboardingIntent | null;
+  profile: ProfileGuideFields;
+}) {
   const isMobileGuide = useIsMobile();
+  const profileComplete = isProfileSetupComplete(profile);
+  const progress = profileSetupProgress(profile);
+  const discoverCards = withProfileGuideCard(DISCOVER_GUIDE_CARDS, profileComplete);
+  const getInvolvedCards = withProfileGuideCard(DISCOVER_GUIDE_CARDS, profileComplete);
 
   return (
     <div
@@ -568,24 +638,38 @@ function NewUserDashboardGuide({ intent }: { intent: OnboardingIntent | null }) 
       <p
         style={{
           fontSize: "14px",
-          color: "#666666",
-          margin: "0 0 28px",
+          color: "#888888",
+          margin: "0 0 12px",
           textAlign: "center",
           lineHeight: 1.5,
         }}
       >
         {emptyDashboardSubtitle(intent)}
       </p>
+      {!profileComplete ? (
+        <p
+          style={{
+            fontSize: "12px",
+            color: "#777777",
+            margin: "0 0 24px",
+            textAlign: "center",
+          }}
+        >
+          Getting started · {progress.filled}/{progress.total} profile fields filled
+        </p>
+      ) : (
+        <div style={{ marginBottom: "28px" }} />
+      )}
 
       {intent === "manage" ? (
         <NewUserGuideSection cards={MANAGE_GUIDE_CARDS} isMobileGuide={isMobileGuide} />
       ) : intent === "discover" ? (
-        <NewUserGuideSection cards={DISCOVER_GUIDE_CARDS} isMobileGuide={isMobileGuide} />
+        <NewUserGuideSection cards={discoverCards} isMobileGuide={isMobileGuide} />
       ) : intent === "both" ? (
         <>
           <NewUserGuideSection
             title="Get involved"
-            cards={DISCOVER_GUIDE_CARDS}
+            cards={getInvolvedCards}
             isMobileGuide={isMobileGuide}
           />
           <NewUserGuideSection
@@ -595,7 +679,7 @@ function NewUserDashboardGuide({ intent }: { intent: OnboardingIntent | null }) 
           />
         </>
       ) : (
-        <NewUserGuideSection cards={DISCOVER_GUIDE_CARDS} isMobileGuide={isMobileGuide} />
+        <NewUserGuideSection cards={discoverCards} isMobileGuide={isMobileGuide} />
       )}
     </div>
   );
@@ -650,8 +734,11 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<{
     fullName: string;
     program: string;
+    yearOfStudy: string;
+    avatarUrl: string;
     university: string;
   } | null>(null);
+  const [hasSubmittedClubRequest, setHasSubmittedClubRequest] = useState(false);
 
   // Fetch profile data
   useEffect(() => {
@@ -661,7 +748,7 @@ export default function DashboardPage() {
 
     supabase
       .from("profiles")
-      .select("full_name, program, university")
+      .select("full_name, program, year_of_study, avatar_url, university")
       .eq("id", user.id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -674,6 +761,8 @@ export default function DashboardPage() {
           setProfile({
             fullName: (data.full_name as string) ?? "",
             program: (data.program as string) ?? "",
+            yearOfStudy: (data.year_of_study as string) ?? "",
+            avatarUrl: (data.avatar_url as string) ?? "",
             university: (data.university as string) ?? "",
           });
         }
@@ -683,6 +772,46 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [user]);
+
+  // Detect claim/create submissions so the getting-started guide can graduate.
+  useEffect(() => {
+    if (!user?.id) return;
+    if (joinedClubs.length > 0 || pendingClubs.length > 0) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const [claimResult, createResult] = await Promise.all([
+        supabase
+          .from("club_claim_requests")
+          .select("id")
+          .eq("submitted_by", user.id)
+          .limit(1),
+        supabase
+          .from("club_requests")
+          .select("id")
+          .eq("submitted_by", user.id)
+          .limit(1),
+      ]);
+
+      if (cancelled) return;
+
+      if (claimResult.error) {
+        console.error("Failed to check claim requests:", claimResult.error.message);
+      }
+      if (createResult.error) {
+        console.error("Failed to check club create requests:", createResult.error.message);
+      }
+
+      const hasClaim = (claimResult.data?.length ?? 0) > 0;
+      const hasCreate = (createResult.data?.length ?? 0) > 0;
+      setHasSubmittedClubRequest(hasClaim || hasCreate);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, joinedClubs.length, pendingClubs.length]);
 
   const myClubs = useMemo(
     () => clubs.filter((c) => joinedClubs.includes(c.id)),
@@ -732,6 +861,17 @@ export default function DashboardPage() {
   const [clubLogos, setClubLogos] = useState<Record<string, string>>({});
   const [overdueTaskCount, setOverdueTaskCount] = useState(0);
   const [dueSoonTaskCount, setDueSoonTaskCount] = useState(0);
+  const [taskDeadlineRefreshKey, setTaskDeadlineRefreshKey] = useState(0);
+
+  useEffect(() => {
+    function onTasksChanged(_event: Event) {
+      setTaskDeadlineRefreshKey((key) => key + 1);
+    }
+    window.addEventListener(CLUB_TASKS_CHANGED_EVENT, onTasksChanged);
+    return () => {
+      window.removeEventListener(CLUB_TASKS_CHANGED_EVENT, onTasksChanged);
+    };
+  }, []);
 
   useEffect(() => {
     const clubIds = Array.from(
@@ -854,6 +994,7 @@ export default function DashboardPage() {
       .eq("assigned_to", user.id)
       .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[0])
       .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1])
+      .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[2])
       .not("due_date", "is", null)
       .then(({ data, error }) => {
         if (cancelled) return;
@@ -891,7 +1032,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, joinedClubs, membershipAccessKey]);
+  }, [user?.id, joinedClubs, membershipAccessKey, taskDeadlineRefreshKey]);
 
   function handleUnreadStatClick() {
     requestOpenNotificationsDropdown();
@@ -970,6 +1111,16 @@ export default function DashboardPage() {
     }).length;
   }, [upcomingEvents]);
 
+  const hasMembershipStart = joinedClubs.length > 0 || pendingClubs.length > 0;
+  const showNewUserGuide = !hasMembershipStart && !hasSubmittedClubRequest;
+
+  const guideProfile: ProfileGuideFields = {
+    fullName: profile?.fullName ?? "",
+    program: profile?.program ?? "",
+    yearOfStudy: profile?.yearOfStudy ?? "",
+    avatarUrl: profile?.avatarUrl ?? "",
+  };
+
   const handleMyClubsStatClick = () => {
     setActiveTab("clubs");
   };
@@ -997,34 +1148,36 @@ export default function DashboardPage() {
               margin: 0,
             }}
           >
-            Welcome back, {displayName}
+            {showNewUserGuide ? "Welcome," : "Welcome back,"} {displayName}
           </h1>
-          <p
-            style={{
-              marginTop: "4px",
-              fontSize: "13px",
-              color: "#999999",
-            }}
-          >
-            {joinedClubs.length === 0
-              ? emptyDashboardSubtitle(onboardingIntent)
-              : "Here's what's happening across your clubs this week."}
-          </p>
+          {!showNewUserGuide ? (
+            <p
+              style={{
+                marginTop: "4px",
+                fontSize: "13px",
+                color: "#999999",
+              }}
+            >
+              Here&apos;s what&apos;s happening across your clubs this week.
+            </p>
+          ) : null}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Link
-            to="/app/create-club"
-            className="inline-flex h-9 items-center rounded-[var(--r-md)] bg-[var(--red)] px-4 text-sm font-medium text-white transition hover:bg-[var(--red-hover)]"
-          >
-            Create a Club
-          </Link>
-          <Link
-            to="/app/join-club"
-            className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-4 text-sm font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
-          >
-            Join with Code
-          </Link>
-        </div>
+        {!showNewUserGuide ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Link
+              to="/app/create-club"
+              className="inline-flex h-9 items-center rounded-[var(--r-md)] bg-[var(--red)] px-4 text-sm font-medium text-white transition hover:bg-[var(--red-hover)]"
+            >
+              Create a Club
+            </Link>
+            <Link
+              to="/app/join-club"
+              className="inline-flex h-9 items-center rounded-[var(--r-md)] border border-[var(--border-md)] px-4 text-sm font-medium text-[var(--text-1)] transition hover:bg-[var(--bg-3)]"
+            >
+              Join with Code
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       {incompleteManagedClubs.length > 0 ? (
@@ -1035,12 +1188,12 @@ export default function DashboardPage() {
         <PendingRequestsSection clubs={myPendingClubs} />
       ) : null}
 
-      {joinedClubs.length === 0 && mySavedClubsExcludingPending.length > 0 ? (
+      {showNewUserGuide && mySavedClubsExcludingPending.length > 0 ? (
         <SavedClubsSection clubs={mySavedClubsExcludingPending} />
       ) : null}
 
-      {joinedClubs.length === 0 ? (
-        <NewUserDashboardGuide intent={onboardingIntent} />
+      {showNewUserGuide ? (
+        <NewUserDashboardGuide intent={onboardingIntent} profile={guideProfile} />
       ) : (
         <>
       {/* ── Stat Cards (always visible) ── */}
@@ -1181,6 +1334,11 @@ export default function DashboardPage() {
           onClick={() => setActiveTab("clubs")}
         />
         <TabButton
+          label="Announcements"
+          active={activeTab === "announcements"}
+          onClick={() => setActiveTab("announcements")}
+        />
+        <TabButton
           label="Tasks"
           active={activeTab === "tasks"}
           onClick={() => setActiveTab("tasks")}
@@ -1211,13 +1369,7 @@ export default function DashboardPage() {
           onViewAllTasks={() => setActiveTab("tasks")}
           onViewAllClubs={() => setActiveTab("clubs")}
           onViewAllInbox={() => setActiveTab("inbox")}
-          onViewAllAnnouncements={(clubId) => {
-            if (clubId) {
-              navigate(`/app/clubs/${clubId}/announcements`);
-              return;
-            }
-            setActiveTab("clubs");
-          }}
+          onViewAllAnnouncements={() => setActiveTab("announcements")}
         />
       )}
       {activeTab === "month" && (
@@ -1239,6 +1391,15 @@ export default function DashboardPage() {
           getUserRole={getUserRole}
           isPending={isPending}
           isMobile={isMobile}
+        />
+      )}
+      {activeTab === "announcements" && (
+        <AnnouncementsTab
+          joinedClubIds={joinedClubs}
+          clubLogos={clubLogos}
+          membershipAccessKey={membershipAccessKey}
+          getUserRole={getUserRole}
+          userId={user?.id}
         />
       )}
       {activeTab === "events" && (
@@ -1573,11 +1734,13 @@ function resolveOverviewInboxAction(message: InboxMessage): { label: string; hre
   switch (uiType) {
     case "join_approved":
     case "claim_approved":
-      return { label: "Open →", href };
+      return { label: "Open Club →", href };
     case "new_join_request":
+      return { label: "Review Join Request →", href };
     case "new_claim_request":
+      return { label: "Review Claim →", href };
     case "application_update":
-      return { label: "Review →", href };
+      return { label: "Review Application →", href };
     case "join_rejected":
     case "claim_rejected":
       return { label: "View Club →", href };
@@ -1585,7 +1748,7 @@ function resolveOverviewInboxAction(message: InboxMessage): { label: string; hre
       return { label: "Read More →", href };
     default:
       if (message.actionRequired && !message.actionCompleted) {
-        return { label: "Review →", href };
+        return { label: "Review Action →", href };
       }
       return { label: "Read More →", href };
   }
@@ -1838,7 +2001,7 @@ function OverviewCompactAnnouncementRow({
           </p>
         ) : null}
         <Link
-          to={`/app/clubs/${announcement.clubId}/announcements`}
+          to={`/app/clubs/${announcement.clubId}/announcements?post=${encodeURIComponent(announcement.id)}`}
           style={{ ...viewAllLinkStyle, marginTop: "6px", display: "inline-block" }}
         >
           Read More →
@@ -2169,8 +2332,9 @@ function ThisMonthTab({
           .eq("assigned_to", currentUserId)
           .gte("due_date", fetchStart)
           .lte("due_date", fetchEnd)
-          .neq("status", "done")
-          .neq("status", "cancelled")
+          .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[0])
+          .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1])
+          .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[2])
           .order("due_date", { ascending: true }),
         supabase
           .from("events")
@@ -2510,7 +2674,8 @@ function taskStatusBorder(status: string): string {
 
 function taskStatusLabel(status: string): string {
   if (status === "in_progress") return "In Progress";
-  if (status === "done") return "Done";
+  if (status === "done") return "Completed";
+  if (status === "pending_review") return "Submitted for Review";
   return "To Do";
 }
 
@@ -2748,7 +2913,7 @@ function OverviewTab({
   onViewAllTasks: () => void;
   onViewAllClubs: () => void;
   onViewAllInbox: () => void;
-  onViewAllAnnouncements: (clubId?: string) => void;
+  onViewAllAnnouncements: () => void;
 }) {
   const [myTasks, setMyTasks] = useState<OverviewTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
@@ -2768,22 +2933,6 @@ function OverviewTab({
     () => inboxMessages.slice(0, 3),
     [inboxMessages],
   );
-
-  // "View All Announcements" is a mixed cross-club section. Only route to a
-  // specific club when it's unambiguous (all previewed announcements belong to
-  // one club, or the user only belongs to one club). Otherwise fall back to a
-  // dashboard-level view instead of an arbitrary first-club redirect.
-  const announcementsTargetClubId = useMemo(() => {
-    const distinctClubIds = new Set(recentAnnouncements.map((a) => a.clubId));
-    if (distinctClubIds.size === 1) {
-      return recentAnnouncements[0]?.clubId;
-    }
-    if (recentAnnouncements.length === 0 && joinedClubIds.length === 1) {
-      return joinedClubIds[0];
-    }
-    return undefined;
-  }, [recentAnnouncements, joinedClubIds]);
-
   useEffect(() => {
     if (!userId || joinedClubIds.length === 0) {
       queueMicrotask(() => {
@@ -2818,6 +2967,7 @@ function OverviewTab({
       .eq("assigned_to", userId)
       .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[0])
       .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1])
+      .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[2])
       .order("due_date", { ascending: true })
       .limit(3)
       .then(({ data, error }) => {
@@ -3043,7 +3193,7 @@ function OverviewTab({
       footer={
         <OverviewViewAllLink
           label="View All Announcements →"
-          onClick={() => onViewAllAnnouncements(announcementsTargetClubId)}
+          onClick={() => onViewAllAnnouncements()}
         />
       }
     >
@@ -3279,7 +3429,8 @@ function TasksTab({
       query = query
         .eq("assigned_to", user.id)
         .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[0])
-        .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1]);
+        .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[1])
+        .neq("status", DASHBOARD_MY_TASKS_EXCLUDED_STATUSES[2]);
     } else {
       query = query
         .eq("created_by", user.id)

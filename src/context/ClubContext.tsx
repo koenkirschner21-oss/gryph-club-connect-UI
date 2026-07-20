@@ -100,6 +100,12 @@ function mapRow(row: Record<string, unknown>): Club {
     meetingLocationConfirmed: (row.meeting_location_confirmed as boolean) ?? false,
     contentVisibilityDefaultsConfirmed:
       (row.content_visibility_defaults_confirmed as boolean) ?? false,
+    meetsRegularly:
+      row.meets_regularly === true
+        ? true
+        : row.meets_regularly === false
+          ? false
+          : null,
     setupSkippedItems: parseSetupSkippedItems(row.setup_skipped_items),
     claimStatus: normalizeClaimStatus(row.claim_status),
     setupCompleted: (row.setup_completed as boolean) ?? false,
@@ -442,45 +448,43 @@ export function ClubProvider({ children }: { children: ReactNode }) {
   );
 
   const toggleSaveClub = useCallback(
-    (clubId: string) => {
-      if (!user) return;
+    (clubId: string): boolean | null => {
+      if (!user) return null;
 
-      setSavedClubs((prev) => {
-        const alreadySaved = prev.includes(clubId);
-        if (alreadySaved) {
-          supabase
-            .from("user_clubs")
-            .delete()
-            .eq("user_id", user.id)
-            .eq("club_id", clubId)
-            .eq("type", "saved")
-            .then(({ error }) => {
-              if (error) {
-                console.error("Failed to unsave club:", error.message);
-                setSavedClubs((p) =>
-                  p.includes(clubId) ? p : [...p, clubId],
-                );
-              }
-            });
-          return prev.filter((id) => id !== clubId);
-        } else {
-          supabase
-            .from("user_clubs")
-            .upsert(
-              { user_id: user.id, club_id: clubId, type: "saved" },
-              { onConflict: "user_id,club_id,type" },
-            )
-            .then(({ error }) => {
-              if (error) {
-                console.error("Failed to save club:", error.message);
-                setSavedClubs((p) => p.filter((id) => id !== clubId));
-              }
-            });
-          return [...prev, clubId];
-        }
-      });
+      const alreadySaved = savedClubs.includes(clubId);
+      if (alreadySaved) {
+        setSavedClubs((prev) => prev.filter((id) => id !== clubId));
+        supabase
+          .from("user_clubs")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("club_id", clubId)
+          .eq("type", "saved")
+          .then(({ error }) => {
+            if (error) {
+              console.error("Failed to unsave club:", error.message);
+              setSavedClubs((p) => (p.includes(clubId) ? p : [...p, clubId]));
+            }
+          });
+        return false;
+      }
+
+      setSavedClubs((prev) => (prev.includes(clubId) ? prev : [...prev, clubId]));
+      supabase
+        .from("user_clubs")
+        .upsert(
+          { user_id: user.id, club_id: clubId, type: "saved" },
+          { onConflict: "user_id,club_id,type" },
+        )
+        .then(({ error }) => {
+          if (error) {
+            console.error("Failed to save club:", error.message);
+            setSavedClubs((p) => p.filter((id) => id !== clubId));
+          }
+        });
+      return true;
     },
-    [user],
+    [user, savedClubs],
   );
 
   const isJoined = useCallback(
@@ -585,6 +589,9 @@ export function ClubProvider({ children }: { children: ReactNode }) {
       if (fields.contentVisibilityDefaultsConfirmed !== undefined) {
         row.content_visibility_defaults_confirmed =
           fields.contentVisibilityDefaultsConfirmed;
+      }
+      if (fields.meetsRegularly !== undefined) {
+        row.meets_regularly = fields.meetsRegularly;
       }
       if (fields.setupSkippedItems !== undefined) {
         row.setup_skipped_items = fields.setupSkippedItems;

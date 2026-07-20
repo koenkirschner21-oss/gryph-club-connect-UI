@@ -26,12 +26,21 @@ function parseTaskDueDate(dateStr: string): Date | null {
   return due;
 }
 
+/** Statuses that leave active due / overdue / due-soon queues. */
+export function isTaskInactiveForDueTracking(status?: string): boolean {
+  return (
+    status === "done" ||
+    status === "cancelled" ||
+    status === "pending_review"
+  );
+}
+
 export function getTaskDueUrgency(
   dueDate: string | undefined,
   status?: string,
 ): TaskDueUrgency | null {
   if (!dueDate?.trim()) return null;
-  if (status === "done") return null;
+  if (isTaskInactiveForDueTracking(status)) return null;
 
   const due = parseTaskDueDate(dueDate);
   if (!due) return null;

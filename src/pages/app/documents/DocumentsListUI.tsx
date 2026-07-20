@@ -1,16 +1,20 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ChevronDown,
   File,
   FileText,
+  FolderPlus,
   Globe,
   Grid3x3,
   Image as ImageIcon,
   Lightbulb,
+  Link2,
   Monitor,
   MoreHorizontal,
   Plus,
+  Upload,
 } from "lucide-react";
+import VisibilityBadge from "../../../components/club/VisibilityBadge";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
@@ -45,6 +49,7 @@ export interface DocumentListItem {
   category: string;
   created_at: string;
   uploaderName?: string;
+  visibility?: string | null;
 }
 
 export interface ResourceLinkItem {
@@ -204,8 +209,8 @@ function linkTypeBadgeStyle(label: string): CSSProperties {
     Drive: { background: "rgba(15,157,88,0.12)", border: "1px solid #0F9D58", color: "#4ade80" },
     Form: { background: "rgba(255,196,41,0.12)", border: "1px solid #FFC429", color: "#FFC429" },
     Resource: { background: "rgba(59,130,246,0.12)", border: "1px solid #3B82F6", color: "#93c5fd" },
-    "Social Link": { background: "#1a1a1a", border: "1px solid #555555", color: "#999999" },
-    Website: { background: "#1a1a1a", border: "1px solid #444444", color: "#777777" },
+    "Social Link": { background: "#1a1a1a", border: "1px solid #666666", color: "#bbbbbb" },
+    Website: { background: "#1a1a1a", border: "1px solid #555555", color: "#aaaaaa" },
   };
   return {
     borderRadius: "4px",
@@ -373,8 +378,8 @@ export function FileTypeIcon({
 function categoryBadgeStyle(): CSSProperties {
   return {
     background: "#1a1a1a",
-    border: `1px solid ${CARD_BORDER}`,
-    color: "#999999",
+    border: "1px solid #3a3a3a",
+    color: "#bbbbbb",
     borderRadius: "4px",
     padding: "2px 8px",
     fontSize: "11px",
@@ -399,11 +404,12 @@ const docActionButtonStyle = (hovered: boolean, half = false): CSSProperties => 
   flex: half ? "1 1 50%" : undefined,
   width: half ? "50%" : undefined,
   background: "transparent",
-  border: `1px solid ${hovered ? ACCENT_RED : CARD_BORDER}`,
-  color: hovered ? ACCENT_RED : "#777777",
+  border: `1px solid ${hovered ? ACCENT_RED : "#555555"}`,
+  color: hovered ? ACCENT_RED : "#cccccc",
   borderRadius: "6px",
   padding: "8px 14px",
   fontSize: "12px",
+  fontWeight: 600,
   cursor: "pointer",
   transition: "border-color 0.15s ease, color 0.15s ease",
 });
@@ -518,7 +524,7 @@ export function DocumentCard({
                   cursor: "pointer",
                 }}
               >
-                Edit
+                Edit Details
               </button>
               <button
                 type="button"
@@ -559,7 +565,7 @@ export function DocumentCard({
                   cursor: deleting ? "not-allowed" : "pointer",
                 }}
               >
-                {deleting ? "Deleting…" : "Delete"}
+                {deleting ? "Removing…" : "Remove"}
               </button>
             </div>
           ) : null}
@@ -572,7 +578,7 @@ export function DocumentCard({
           alt=""
           style={{
             width: "100%",
-            height: "120px",
+            height: "72px",
             objectFit: "cover",
             borderRadius: "8px 8px 0 0",
             display: "block",
@@ -581,17 +587,16 @@ export function DocumentCard({
       ) : (
         <div
           style={{
-            height: "120px",
+            height: "72px",
             display: "flex",
-            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            gap: "8px",
+            gap: "10px",
             background: `${typeColor}14`,
             borderBottom: `1px solid ${CARD_BORDER}`,
           }}
         >
-          <FileTypeIcon name={doc.name} fileType={doc.file_type} size={56} />
+          <FileTypeIcon name={doc.name} fileType={doc.file_type} size={40} />
           <span
             style={{
               fontSize: "11px",
@@ -605,7 +610,7 @@ export function DocumentCard({
         </div>
       )}
 
-      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "10px", flex: 1 }}>
+      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: "8px", flex: 1 }}>
         <p
           style={{
             fontSize: "14px",
@@ -628,27 +633,34 @@ export function DocumentCard({
             {fileTypeLabel(doc.name, doc.file_type)}
           </span>
           <span style={categoryBadgeStyle()}>{categoryName}</span>
+          <VisibilityBadge visibility={doc.visibility} />
         </div>
 
-        <p style={{ fontSize: "11px", color: "#555555", margin: 0 }}>
-          Uploaded by {doc.uploaderName ?? "Unknown"} · {formattedDate} ·{" "}
-          {formatFileSize(doc.file_size)}
-        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+          <p style={{ fontSize: "11px", color: "#bbbbbb", margin: 0 }}>
+            {doc.uploaderName ?? "Unknown"} · Updated {formattedDate}
+          </p>
+          <p style={{ fontSize: "11px", color: "#888888", margin: 0 }}>
+            {formatFileSize(doc.file_size)}
+          </p>
+        </div>
 
-        <p
-          style={{
-            fontSize: "12px",
-            color: doc.description?.trim() ? "#777777" : "#555555",
-            margin: 0,
-            lineHeight: 1.5,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {doc.description?.trim() || "No description added yet."}
-        </p>
+        {doc.description?.trim() ? (
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#aaaaaa",
+              margin: 0,
+              lineHeight: 1.45,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {doc.description.trim()}
+          </p>
+        ) : null}
 
         <div style={{ display: "flex", gap: "8px", marginTop: "auto", paddingTop: "4px" }}>
           {previewKind ? (
@@ -708,6 +720,7 @@ export function ResourceLinkRow({
   deleting: boolean;
   isLast: boolean;
 }) {
+  const [hovered, setHovered] = useState(false);
   const [openHovered, setOpenHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const typeLabel = linkTypeLabel(link.url);
@@ -723,12 +736,38 @@ export function ResourceLinkRow({
 
   return (
     <div
+      role="link"
+      tabIndex={0}
+      onClick={() => openLink()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openLink();
+        }
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setMenuOpen(false);
+      }}
       style={{
         display: "flex",
         alignItems: "flex-start",
         gap: "14px",
-        padding: "14px 0",
-        borderBottom: isLast ? "none" : `1px solid #1a1a1a`,
+        padding: "14px 12px",
+        margin: "0 -12px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        background: hovered ? "#171717" : "transparent",
+        border: `1px solid ${hovered ? "#333333" : "transparent"}`,
+        borderBottom: isLast
+          ? hovered
+            ? "1px solid #333333"
+            : "1px solid transparent"
+          : hovered
+            ? "1px solid #333333"
+            : "1px solid #1a1a1a",
+        transition: "background-color 0.15s ease, border-color 0.15s ease",
       }}
     >
       <ServiceIcon url={link.url} />
@@ -762,7 +801,7 @@ export function ResourceLinkRow({
         <p
           style={{
             fontSize: "12px",
-            color: link.description?.trim() ? "#777777" : "#555555",
+            color: link.description?.trim() ? "#bbbbbb" : "#888888",
             margin: "0 0 4px",
             lineHeight: 1.45,
           }}
@@ -772,7 +811,7 @@ export function ResourceLinkRow({
         <p
           style={{
             fontSize: "12px",
-            color: "#555555",
+            color: "#aaaaaa",
             margin: "0 0 2px",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -782,38 +821,48 @@ export function ResourceLinkRow({
           {displayUrl}
         </p>
         {metaParts.length > 0 ? (
-          <p style={{ fontSize: "11px", color: "#444444", margin: 0 }}>{metaParts.join(" · ")}</p>
+          <p style={{ fontSize: "11px", color: "#888888", margin: 0 }}>{metaParts.join(" · ")}</p>
         ) : null}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}
+        onClick={(event) => event.stopPropagation()}
+      >
         <button
           type="button"
-          onClick={openLink}
+          onClick={(event) => {
+            event.stopPropagation();
+            openLink();
+          }}
           onMouseEnter={() => setOpenHovered(true)}
           onMouseLeave={() => setOpenHovered(false)}
           style={{
             background: "transparent",
-            border: `1px solid ${openHovered ? ACCENT_RED : CARD_BORDER}`,
-            color: openHovered ? ACCENT_RED : "#777777",
+            border: `1px solid ${openHovered ? ACCENT_RED : "#555555"}`,
+            color: openHovered ? ACCENT_RED : "#cccccc",
             borderRadius: "6px",
             padding: "5px 12px",
             fontSize: "12px",
+            fontWeight: 600,
             cursor: "pointer",
             transition: "border-color 0.15s ease, color 0.15s ease",
           }}
         >
-          Open
+          Open Link
         </button>
         {canManage ? (
           <div style={{ position: "relative" }}>
             <button
               type="button"
               aria-label={`Actions for ${link.title}`}
-              onClick={() => setMenuOpen((prev) => !prev)}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen((prev) => !prev);
+              }}
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#777777",
+                color: "#999999",
                 cursor: "pointer",
                 padding: "4px",
                 display: "flex",
@@ -840,7 +889,8 @@ export function ResourceLinkRow({
                 <button
                   type="button"
                   disabled={deleting}
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.stopPropagation();
                     setMenuOpen(false);
                     onDelete(link);
                   }}
@@ -855,7 +905,7 @@ export function ResourceLinkRow({
                     cursor: deleting ? "not-allowed" : "pointer",
                   }}
                 >
-                  {deleting ? "Deleting…" : "Delete"}
+                  {deleting ? "Removing…" : "Remove"}
                 </button>
               </div>
             ) : null}
@@ -1020,7 +1070,131 @@ export function CategoryFilterDropdown({
   );
 }
 
-export function DocumentsTipBar() {
+export type AddContentActionId = "upload_file" | "add_link" | "create_category";
+
+export interface AddContentAction {
+  id: AddContentActionId;
+  label: string;
+  onClick: () => void;
+}
+
+const ADD_ACTION_ICONS: Record<AddContentActionId, ReactNode> = {
+  upload_file: <Upload size={14} aria-hidden />,
+  add_link: <Link2 size={14} aria-hidden />,
+  create_category: <FolderPlus size={14} aria-hidden />,
+};
+
+export function AddContentDropdown({ actions }: { actions: AddContentAction[] }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  if (actions.length === 0) return null;
+
+  return (
+    <div ref={rootRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          background: ACCENT_RED,
+          color: "#ffffff",
+          border: "none",
+          borderRadius: "6px",
+          padding: "9px 14px",
+          fontWeight: 600,
+          fontSize: "13px",
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        <Plus size={14} aria-hidden />
+        Add
+        <ChevronDown size={14} aria-hidden />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            minWidth: "200px",
+            background: "#151515",
+            border: `1px solid ${CARD_BORDER}`,
+            borderRadius: "10px",
+            padding: "6px",
+            zIndex: 30,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+          }}
+        >
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                action.onClick();
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                width: "100%",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                borderRadius: "7px",
+                padding: "9px 10px",
+                color: "#dddddd",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = "#1f1f1f";
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = "transparent";
+              }}
+            >
+              <span style={{ color: ACCENT_RED, display: "inline-flex" }}>
+                {ADD_ACTION_ICONS[action.id]}
+              </span>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function DocumentsTipBar({ canManage = false }: { canManage?: boolean }) {
   return (
     <div
       style={{
@@ -1036,8 +1210,10 @@ export function DocumentsTipBar() {
       }}
     >
       <Lightbulb size={16} color={GOLD} aria-hidden style={{ flexShrink: 0 }} />
-      <p style={{ flex: 1, margin: 0, fontSize: "13px", color: "#777777", minWidth: 0 }}>
-        Tip: Add documents to the right category to help members find them faster.
+      <p style={{ flex: 1, margin: 0, fontSize: "13px", color: "#bbbbbb", minWidth: 0 }}>
+        {canManage
+          ? "Tip: Place files in the right category so members can find them faster."
+          : "Tip: Use search and category filters to find club files and resource links faster."}
       </p>
     </div>
   );
@@ -1045,12 +1221,12 @@ export function DocumentsTipBar() {
 
 export function ResourceLinksEmptyState({ onAddLink }: { onAddLink: () => void }) {
   return (
-    <div style={{ padding: "20px 0 8px", textAlign: "center" }}>
-      <p style={{ fontSize: "13px", color: "#555555", margin: "0 0 8px" }}>
-        No resource links added yet.
+    <div style={{ padding: "16px 0 4px", textAlign: "left" }}>
+      <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 6px" }}>
+        No resource links yet
       </p>
-      <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 12px" }}>
-        Upload a file or add a link to get started.
+      <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 12px" }}>
+        Add shared drives, forms, and external tools members need often.
       </p>
       <button
         type="button"
@@ -1065,11 +1241,12 @@ export function ResourceLinksEmptyState({ onAddLink }: { onAddLink: () => void }
           borderRadius: "6px",
           padding: "8px 14px",
           fontSize: "12px",
+          fontWeight: 600,
           cursor: "pointer",
         }}
       >
         <Plus size={14} aria-hidden />
-        Add Link
+        Add Resource Link
       </button>
     </div>
   );
@@ -1077,27 +1254,135 @@ export function ResourceLinksEmptyState({ onAddLink }: { onAddLink: () => void }
 
 export function UploadedFilesEmptyState({ onUpload }: { onUpload: () => void }) {
   return (
-    <div style={{ textAlign: "center", padding: "48px 24px" }}>
-      <File size={36} color="#555555" aria-hidden style={{ margin: "0 auto 12px", display: "block" }} />
-      <p style={{ fontSize: "14px", color: "#555555", margin: "0 0 8px" }}>
-        No files uploaded yet.
+    <div style={{ textAlign: "left", padding: "28px 4px" }}>
+      <File size={28} color="#555555" aria-hidden style={{ margin: "0 0 10px", display: "block" }} />
+      <p style={{ fontSize: "14px", fontWeight: 600, color: "#888888", margin: "0 0 6px" }}>
+        No files uploaded yet
       </p>
-      <p style={{ fontSize: "12px", color: "#444444", margin: "0 0 12px" }}>
-        Upload a file or add a link to get started.
+      <p style={{ fontSize: "12px", color: "#555555", margin: "0 0 12px" }}>
+        Upload meeting notes, budgets, and other club files to this library.
       </p>
       <button
         type="button"
         onClick={onUpload}
         style={{
-          background: "transparent",
+          background: ACCENT_RED,
           border: "none",
-          color: ACCENT_RED,
-          fontSize: "14px",
+          color: "#ffffff",
+          borderRadius: "6px",
+          padding: "8px 14px",
+          fontSize: "13px",
+          fontWeight: 600,
           cursor: "pointer",
         }}
       >
         Upload File
       </button>
+    </div>
+  );
+}
+
+export function RecentFilesRow({
+  docs,
+  categoryNameFor,
+  onPreview,
+  onDownload,
+}: {
+  docs: DocumentListItem[];
+  categoryNameFor: (category: string) => string;
+  onPreview: (doc: DocumentListItem) => void;
+  onDownload: (doc: DocumentListItem) => void;
+}) {
+  if (docs.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      }}
+    >
+      {docs.map((doc) => {
+        const typeKind = getFileTypeKind(doc.name, doc.file_type);
+        const typeColor = fileTypeColor(typeKind);
+        const previewKind = previewKindForDocument(doc);
+        const date = new Date(doc.created_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
+        return (
+          <div
+            key={doc.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "10px 12px",
+              background: CARD_BG,
+              border: `1px solid ${CARD_BORDER}`,
+              borderRadius: "8px",
+            }}
+          >
+            <FileTypeIcon name={doc.name} fileType={doc.file_type} size={32} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {doc.name}
+              </p>
+              <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#888888" }}>
+                {fileTypeLabel(doc.name, doc.file_type)} · {categoryNameFor(doc.category)} · {date}
+              </p>
+            </div>
+            <VisibilityBadge visibility={doc.visibility} />
+            <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+              {previewKind ? (
+                <button
+                  type="button"
+                  onClick={() => onPreview(doc)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #444444",
+                    color: "#cccccc",
+                    borderRadius: "6px",
+                    padding: "5px 10px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Preview
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => onDownload(doc)}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${typeColor}55`,
+                  color: typeColor,
+                  borderRadius: "6px",
+                  padding: "5px 10px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Download
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

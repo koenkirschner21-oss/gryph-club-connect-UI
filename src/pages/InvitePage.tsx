@@ -3,18 +3,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { useClubContext } from "../context/useClubContext";
 import { supabase } from "../lib/supabaseClient";
-import ClubJoinAccessConfirmation from "../components/club/ClubJoinAccessConfirmation";
-import {
-  notifyExecutiveInviteRequest,
-  resolveStudentDisplayName,
-} from "../lib/notifications";
-import type { AccessLevel } from "../types";
+import { useIsMobile } from "../hooks/useWindowWidth";
+import InviteClubLogo from "../components/club/InviteClubLogo";
 import Spinner from "../components/ui/Spinner";
 
 interface InviteRow {
   id: string;
   club_id: string;
   invited_email: string;
+  invited_by: string | null;
   token: string;
   status: string;
   created_at: string;
@@ -33,14 +30,30 @@ function isInviteExpired(row: InviteRow): boolean {
   return createdAt < now - SEVEN_DAYS_MS;
 }
 
-const pageStyle = {
-  minHeight: "100vh",
-  background: "#0f0f0f",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "24px",
-} as const;
+function formatInviteExpiry(expiresAt: string | null): string | null {
+  if (!expiresAt) return null;
+  const date = new Date(expiresAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function pageShellStyle(isMobile: boolean) {
+  return {
+    minHeight: "100vh",
+    background: "#0f0f0f",
+    display: "flex",
+    alignItems: isMobile ? "flex-start" : "center",
+    justifyContent: "center",
+    padding: isMobile
+      ? "max(24px, env(safe-area-inset-top)) 16px max(140px, calc(env(safe-area-inset-bottom) + 120px))"
+      : "24px",
+    boxSizing: "border-box" as const,
+  };
+}
 
 const cardStyle = {
   background: "#1a1a1a",
@@ -72,15 +85,19 @@ export default function InvitePage() {
   const { user, loading: authLoading, signOut } = useAuthContext();
   const { joinClub } = useClubContext();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [invite, setInvite] = useState<InviteRow | null>(null);
   const [clubName, setClubName] = useState<string | null>(null);
   const [clubLogoUrl, setClubLogoUrl] = useState<string | undefined>();
+  const [inviterName, setInviterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [invalid, setInvalid] = useState(false);
   const [expired, setExpired] = useState(false);
   const [emailMismatch, setEmailMismatch] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [alreadyMember, setAlreadyMember] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -96,7 +113,7 @@ export default function InvitePage() {
       const { data, error: fetchErr } = await supabase
         .from("club_invites")
         .select(
-          "id, club_id, invited_email, token, status, created_at, expires_at",
+          "id, club_id, invited_email, invited_by, token, status, created_at, expires_at",
         )
         .eq("token", token)
         .maybeSingle();
@@ -125,15 +142,26 @@ export default function InvitePage() {
 
       setInvite(row);
 
-      const { data: clubData } = await supabase
-        .from("clubs")
-        .select("name, logo_url")
-        .eq("id", row.club_id)
-        .maybeSingle();
+      const [{ data: clubData }, inviterRow] = await Promise.all([
+        supabase
+          .from("clubs")
+          .select("name, logo_url")
+          .eq("id", row.club_id)
+          .maybeSingle(),
+        row.invited_by
+          ? supabase
+              .from("profiles")
+              .select("full_name")
+              .eq("id", row.invited_by)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
 
       if (!cancelled) {
         setClubName((clubData?.name as string) ?? "this club");
         setClubLogoUrl((clubData?.logo_url as string | null) ?? undefined);
+        const name = (inviterRow.data?.full_name as string | null)?.trim();
+        setInviterName(name || null);
         setLoading(false);
       }
     }
@@ -154,62 +182,82 @@ export default function InvitePage() {
     setEmailMismatch(invited !== current);
   }, [invite, user?.email]);
 
+  useEffect(() => {
+    if (!invite || !user?.id || emailMismatch) {
+      setAlreadyMember(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkMembership() {
+      const { data } = await supabase
+        .from("club_members")
+        .select("id, status")
+        .eq("club_id", invite!.club_id)
+        .eq("user_id", user!.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      setAlreadyMember(Boolean(data && data.status === "active"));
+    }
+
+    void checkMembership();
+    return () => {
+      cancelled = true;
+    };
+  }, [emailMismatch, invite, user?.id]);
+
+  const markInviteAccepted = useCallback(async (inviteId: string) => {
+    const { error: updateErr } = await supabase
+      .from("club_invites")
+      .update({ status: "accepted" })
+      .eq("id", inviteId)
+      .eq("status", "pending");
+
+    if (updateErr) {
+      console.error("Failed to update invite:", updateErr.message);
+    }
+  }, []);
+
   const handleAccept = useCallback(async () => {
     if (!user?.id || !invite || emailMismatch) return;
     setAccepting(true);
     setError(null);
 
     try {
+      const { data: existing } = await supabase
+        .from("club_members")
+        .select("id, status, role, access_level")
+        .eq("club_id", invite.club_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existing?.status === "active") {
+        await markInviteAccepted(invite.id);
+        navigate(`/app/clubs/${invite.club_id}`, { replace: true });
+        return;
+      }
+
       const joined = await joinClub(invite.club_id, { viaJoinCode: true });
       if (!joined) {
-        setError("Could not join the club. You may already be a member.");
+        setError("Could not join the club. Please try again.");
         setAccepting(false);
         return;
       }
 
-      const { error: updateErr } = await supabase
-        .from("club_invites")
-        .update({ status: "accepted" })
-        .eq("id", invite.id);
-
-      if (updateErr) {
-        console.error("Failed to update invite:", updateErr.message);
-      }
-
+      await markInviteAccepted(invite.id);
       navigate(`/app/clubs/${invite.club_id}`, { replace: true });
     } catch {
       setError("Something went wrong. Please try again.");
       setAccepting(false);
     }
-  }, [emailMismatch, invite, joinClub, navigate, user?.id]);
+  }, [emailMismatch, invite, joinClub, markInviteAccepted, navigate, user?.id]);
 
-  const handleRequestExecutiveInvite = useCallback(
-    async (payload: {
-      accessLevel: AccessLevel;
-      roleTitle: string;
-      message?: string;
-    }) => {
-      if (!user?.id || !invite || !clubName) return;
-
-      const requesterName = resolveStudentDisplayName(
-        typeof user.user_metadata?.full_name === "string"
-          ? user.user_metadata.full_name
-          : null,
-        user.email,
-      );
-
-      await notifyExecutiveInviteRequest(supabase, {
-        clubId: invite.club_id,
-        clubName,
-        requesterUserId: user.id,
-        requesterName,
-        accessLevel: payload.accessLevel,
-        roleTitle: payload.roleTitle,
-        message: payload.message,
-      });
-    },
-    [clubName, invite, user],
-  );
+  const handleDecline = useCallback(() => {
+    setDeclining(true);
+    navigate("/app", { replace: true });
+  }, [navigate]);
 
   async function handleSignOut() {
     try {
@@ -221,7 +269,7 @@ export default function InvitePage() {
 
   if (loading || authLoading) {
     return (
-      <div style={pageStyle}>
+      <div style={pageShellStyle(isMobile)}>
         <Spinner label="Loading invite…" />
       </div>
     );
@@ -229,7 +277,7 @@ export default function InvitePage() {
 
   if (expired) {
     return (
-      <div style={pageStyle}>
+      <div style={pageShellStyle(isMobile)}>
         <div style={cardStyle}>
           <h1
             style={{
@@ -263,7 +311,7 @@ export default function InvitePage() {
 
   if (invalid || !invite) {
     return (
-      <div style={pageStyle}>
+      <div style={pageShellStyle(isMobile)}>
         <div style={cardStyle}>
           <h1
             style={{
@@ -298,9 +346,10 @@ export default function InvitePage() {
   const redirectPath = `/invite/${token}`;
   const loginHref = `/login?redirect=${encodeURIComponent(redirectPath)}`;
   const signupHref = `/signup?redirect=${encodeURIComponent(redirectPath)}`;
+  const expiryLabel = formatInviteExpiry(invite.expires_at);
 
   return (
-    <div style={pageStyle}>
+    <div style={pageShellStyle(isMobile)}>
       <div style={{ ...cardStyle, textAlign: "left" }}>
         {error ? (
           <p
@@ -357,15 +406,16 @@ export default function InvitePage() {
             </button>
           </div>
         ) : user ? (
-          <ClubJoinAccessConfirmation
-            clubName={clubName ?? "this club"}
-            logoUrl={clubLogoUrl}
-            joining={accepting}
-            onJoinAsGeneralMember={() => void handleAccept()}
-            onRequestExecutiveInvite={handleRequestExecutiveInvite}
-          />
-        ) : (
           <div style={{ textAlign: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginBottom: "16px",
+              }}
+            >
+              <InviteClubLogo name={clubName ?? "Club"} logoUrl={clubLogoUrl} />
+            </div>
             <h1
               style={{
                 fontSize: "22px",
@@ -374,32 +424,143 @@ export default function InvitePage() {
                 margin: "0 0 12px",
               }}
             >
-              Club invitation
+              {clubName}
             </h1>
-            <p style={{ fontSize: "15px", color: "#888888", margin: "0 0 24px" }}>
-              You&apos;ve been invited to join{" "}
-              <strong style={{ color: "#ffffff" }}>{clubName}</strong>!
+            <p style={{ fontSize: "15px", color: "#888888", margin: "0 0 16px" }}>
+              <strong style={{ color: "#ffffff" }}>{clubName}</strong> has
+              invited you to join their club on ClubConnect.
             </p>
-            <Link
-              to={loginHref}
+            {inviterName || expiryLabel ? (
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#666666",
+                  margin: "0 0 24px",
+                  lineHeight: 1.6,
+                }}
+              >
+                {inviterName ? <>Invited by {inviterName}</> : null}
+                {inviterName && expiryLabel ? " · " : null}
+                {expiryLabel ? <>Expires {expiryLabel}</> : null}
+              </p>
+            ) : (
+              <div style={{ marginBottom: "8px" }} />
+            )}
+            {alreadyMember ? (
+              <p
+                role="status"
+                style={{
+                  fontSize: "13px",
+                  color: "#FFC429",
+                  margin: "0 0 16px",
+                }}
+              >
+                You are already a member of this club.
+              </p>
+            ) : null}
+            <div style={{ paddingBottom: isMobile ? "16px" : 0 }}>
+              <button
+                type="button"
+                disabled={accepting || declining}
+                onClick={() => void handleAccept()}
+                style={{
+                  width: "100%",
+                  background: "#E51937",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "12px 24px",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  cursor: accepting || declining ? "wait" : "pointer",
+                  opacity: accepting || declining ? 0.7 : 1,
+                }}
+              >
+                {accepting
+                  ? "Joining…"
+                  : alreadyMember
+                    ? "Open Club Workspace"
+                    : "Accept Invitation"}
+              </button>
+              {!alreadyMember ? (
+                <button
+                  type="button"
+                  disabled={accepting || declining}
+                  onClick={handleDecline}
+                  style={{
+                    ...secondaryButtonStyle,
+                    cursor: accepting || declining ? "wait" : "pointer",
+                    opacity: accepting || declining ? 0.7 : 1,
+                  }}
+                >
+                  Decline Invitation
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center" }}>
+            <div
               style={{
-                display: "inline-block",
-                width: "100%",
-                boxSizing: "border-box",
-                background: "#E51937",
-                color: "#ffffff",
-                borderRadius: "6px",
-                padding: "12px 24px",
-                fontSize: "15px",
-                fontWeight: 600,
-                textDecoration: "none",
+                display: "flex",
+                justifyContent: "center",
+                marginBottom: "16px",
               }}
             >
-              Sign In
-            </Link>
-            <Link to={signupHref} style={secondaryButtonStyle}>
-              Sign Up
-            </Link>
+              <InviteClubLogo name={clubName ?? "Club"} logoUrl={clubLogoUrl} />
+            </div>
+            <h1
+              style={{
+                fontSize: "22px",
+                fontWeight: 700,
+                color: "#ffffff",
+                margin: "0 0 12px",
+              }}
+            >
+              {clubName}
+            </h1>
+            <p style={{ fontSize: "15px", color: "#888888", margin: "0 0 16px" }}>
+              <strong style={{ color: "#ffffff" }}>{clubName}</strong> has
+              invited you to join their club on ClubConnect.
+            </p>
+            {inviterName || expiryLabel ? (
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#666666",
+                  margin: "0 0 24px",
+                  lineHeight: 1.6,
+                }}
+              >
+                {inviterName ? <>Invited by {inviterName}</> : null}
+                {inviterName && expiryLabel ? " · " : null}
+                {expiryLabel ? <>Expires {expiryLabel}</> : null}
+              </p>
+            ) : (
+              <div style={{ marginBottom: "8px" }} />
+            )}
+            <div style={{ paddingBottom: isMobile ? "16px" : 0 }}>
+              <Link
+                to={loginHref}
+                style={{
+                  display: "inline-block",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "#E51937",
+                  color: "#ffffff",
+                  borderRadius: "6px",
+                  padding: "12px 24px",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                Sign In to Join
+              </Link>
+              <Link to={signupHref} style={secondaryButtonStyle}>
+                Create Account to Join
+              </Link>
+            </div>
           </div>
         )}
       </div>

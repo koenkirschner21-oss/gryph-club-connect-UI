@@ -17,10 +17,12 @@ import { notifyNewHiringRolePosted } from "../../lib/notifications";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
 import { useClubMembers } from "../../hooks/useClubMembers";
 import Spinner from "../../components/ui/Spinner";
+import DateTimeField from "../../components/ui/DateTimeField";
 import ProfileAvatarCircle from "../../components/ui/ProfileAvatarCircle";
 import PublicDetailBackButton from "../../components/public/PublicDetailBackButton";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
 import HiringReviewerIdsPicker from "../../components/club/HiringReviewerIdsPicker";
+import ClubMemberHiringBrowse from "../../components/club/ClubMemberHiringBrowse";
 import CandidateReviewPanel, {
   type CandidateReviewApplication,
   type CandidateReviewPatch,
@@ -28,21 +30,25 @@ import CandidateReviewPanel, {
 } from "../../components/club/CandidateReviewPanel";
 import {
   APPLICANT_PIPELINE_FILTER_OPTIONS,
+  APPLICANT_SORT_OPTIONS,
   applicantMoveStatusActions,
+  applicantStageDisplayLabel,
   isApplicantHireConverted,
+  isHiringApplicationPendingReview,
   matchesApplicantPipelineFilter,
   normalizeSubStatus,
   parseInterviewTimes,
-  subStatusLabel,
+  resolveApplicantPipelineStage,
   subStatusPillStyle,
   type ApplicantMoveStatusAction,
   type ApplicantPipelineFilter,
+  type ApplicantSort,
 } from "../../lib/hiringPipelineUtils";
 import {
   POSITION_TYPES,
   PositionQuestionBuilder,
   ApplicationModal,
-  commitmentLabel,
+  HiringDetailPanel,
   darkInputStyle,
   deadlineLabel,
   modalOverlayStyle,
@@ -50,7 +56,6 @@ import {
   parseListingQuestions,
   parseOptionsText,
   listingQuestionsForApply,
-  positionTypeLabel,
   type CommitmentLevel,
   type HiringApplicationAnswer,
   type ListingQuestion,
@@ -154,6 +159,7 @@ interface HiringApplicationRow {
   status: string;
   subStatus: string;
   createdAt: string;
+  updatedAt?: string;
   answers: HiringApplicationAnswer[];
   profile: HiringApplicationProfile | null;
   interviewTimes: string[];
@@ -230,214 +236,6 @@ function answerLabel(
   return "Response";
 }
 
-function MemberRoleDetailModal({
-  position,
-  clubName,
-  hasApplied,
-  saved,
-  onClose,
-  onApply,
-  onToggleSave,
-}: {
-  position: ClubPosition;
-  clubName: string;
-  hasApplied: boolean;
-  saved: boolean;
-  onClose: () => void;
-  onApply: () => void;
-  onToggleSave: () => void;
-}) {
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={modalOverlayStyle}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "#141414",
-          border: "1px solid #2a2a2a",
-          borderRadius: "12px",
-          padding: "24px",
-          maxWidth: "640px",
-          width: "100%",
-          maxHeight: "85vh",
-          overflowY: "auto",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <PublicDetailBackButton
-          label="Back to roles"
-          onBack={onClose}
-          style={{ marginBottom: "12px" }}
-        />
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: "12px",
-            marginBottom: "16px",
-          }}
-        >
-          <div>
-            <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 4px" }}>
-              {clubName}
-            </p>
-            <h2
-              style={{
-                fontSize: "24px",
-                fontWeight: 800,
-                color: "#ffffff",
-                margin: 0,
-              }}
-            >
-              {position.title}
-            </h2>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-          <span style={roleTypeBadgeStyle()}>
-            {positionTypeLabel(position.positionType)}
-          </span>
-          <span style={commitmentBadgeStyle()}>
-            {commitmentLabel(position.commitmentLevel, position.weeklyHours)}
-          </span>
-        </div>
-
-        {position.description ? (
-          <>
-            <h3 style={{ fontSize: "13px", fontWeight: 700, color: "#cccccc", margin: "0 0 8px" }}>
-              About the role
-            </h3>
-            <p
-              style={{
-                fontSize: "14px",
-                color: "#aaaaaa",
-                lineHeight: 1.6,
-                margin: "0 0 16px",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {position.description}
-            </p>
-          </>
-        ) : null}
-
-        {position.requirements ? (
-          <>
-            <h3 style={{ fontSize: "13px", fontWeight: 700, color: "#cccccc", margin: "0 0 8px" }}>
-              Requirements
-            </h3>
-            <p
-              style={{
-                fontSize: "14px",
-                color: "#aaaaaa",
-                lineHeight: 1.6,
-                margin: "0 0 16px",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {position.requirements}
-            </p>
-          </>
-        ) : null}
-
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "10px",
-            marginTop: "20px",
-            paddingTop: "16px",
-            borderTop: "1px solid #242424",
-          }}
-        >
-          {position.isOpen && !hasApplied ? (
-            <button
-              type="button"
-              onClick={onApply}
-              style={{
-                background: "#E51937",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "8px",
-                padding: "10px 20px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Apply Now
-            </button>
-          ) : hasApplied ? (
-            <span
-              style={{
-                background: "#1a1200",
-                border: "1px solid #FFC429",
-                color: "#FFC429",
-                borderRadius: "8px",
-                padding: "10px 20px",
-                fontSize: "13px",
-                fontWeight: 600,
-              }}
-            >
-              Application Submitted ✓
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={onToggleSave}
-            style={{
-              background: saved ? "#1a1500" : "transparent",
-              border: saved ? "1px solid #3a2f00" : "1px solid #333333",
-              color: saved ? "#FFC429" : "#cccccc",
-              borderRadius: "8px",
-              padding: "10px 18px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            <Bookmark size={14} fill={saved ? "#FFC429" : "none"} />
-            {saved ? "Saved" : "Save Role"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function roleTypeBadgeStyle(): CSSProperties {
-  return {
-    background: "transparent",
-    border: "1px solid #E51937",
-    color: "#E51937",
-    borderRadius: "4px",
-    padding: "2px 8px",
-    fontSize: "11px",
-    fontWeight: 600,
-    display: "inline-block",
-  };
-}
-
-function commitmentBadgeStyle(): CSSProperties {
-  return {
-    background: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    color: "#777777",
-    borderRadius: "4px",
-    padding: "2px 8px",
-    fontSize: "11px",
-    display: "inline-block",
-  };
-}
-
 function listingStatus(position: ClubPosition): ListingStatus {
   if (position.isOpen) return "open";
   if (position.acceptedCount > 0) return "filled";
@@ -471,6 +269,45 @@ function daysLeftMeta(deadline: string | null): { text: string; urgent: boolean 
     text: `${days} day${days === 1 ? "" : "s"} left`,
     urgent: days <= 14,
   };
+}
+
+type RoleStatusBadgeInfo = {
+  label: "Open" | "Closing Soon" | "Closed";
+  bg: string;
+  border: string;
+  color: string;
+};
+
+function roleStatusBadgeInfo(position: ClubPosition): RoleStatusBadgeInfo {
+  if (!position.isOpen) {
+    return { label: "Closed", bg: "#1a1a1a", border: "#333333", color: "#777777" };
+  }
+  const deadline = daysLeftMeta(position.deadline);
+  if (deadline?.urgent) {
+    return { label: "Closing Soon", bg: "#1a1500", border: "#3a2f00", color: "#FFC429" };
+  }
+  return { label: "Open", bg: "rgba(34,197,94,0.1)", border: "#22c55e", color: "#4ade80" };
+}
+
+function PositionStatusBadge({ position }: { position: ClubPosition }) {
+  const badge = roleStatusBadgeInfo(position);
+  return (
+    <span
+      style={{
+        fontSize: "11px",
+        fontWeight: 600,
+        color: badge.color,
+        background: badge.bg,
+        border: `1px solid ${badge.border}`,
+        borderRadius: "4px",
+        padding: "3px 9px",
+        flexShrink: 0,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {badge.label}
+    </span>
+  );
 }
 
 function matchesPositionFilter(
@@ -514,6 +351,44 @@ function publicPostingUrl(listingId: string): string {
   return `${window.location.origin}/hiring?listing=${listingId}`;
 }
 
+function CopyRoleLinkButton({
+  positionId,
+  copied,
+  onCopy,
+}: {
+  positionId: string;
+  copied: boolean;
+  onCopy: (positionId: string) => void;
+}) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+      <button
+        type="button"
+        onClick={() => onCopy(positionId)}
+        style={{
+          background: "transparent",
+          border: "1px solid #2a2a2a",
+          color: "#777777",
+          borderRadius: "6px",
+          padding: "6px 12px",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        Copy Role Link
+      </button>
+      <span
+        role="status"
+        aria-live="polite"
+        style={{ fontSize: "12px", color: "#FFC429", fontWeight: 600 }}
+      >
+        {copied ? "Link copied" : ""}
+      </span>
+    </span>
+  );
+}
+
 function toCandidateReviewApplication(app: HiringApplicationRow): CandidateReviewApplication {
   return {
     id: app.id,
@@ -542,20 +417,41 @@ function toCandidateReviewApplication(app: HiringApplicationRow): CandidateRevie
 
 function positionApplicantSummary(position: ClubPosition): string {
   if (position.applicantCount === 0) return "No applicants yet";
+  const base = `${position.applicantCount} applicant${position.applicantCount === 1 ? "" : "s"}`;
   if (position.pendingCount > 0) {
-    return `${position.pendingCount} pending review`;
+    return `${base} · ${position.pendingCount} need${position.pendingCount === 1 ? "s" : ""} review`;
   }
-  return `${position.applicantCount} applicant${position.applicantCount === 1 ? "" : "s"}`;
+  return base;
 }
 
-function positionCardBorderStyle(isSelected: boolean): CSSProperties {
+/** When opening a role's applicants for review, jump the filter to whichever
+ * stage still needs attention (New first, then In Review). */
+function pendingApplicantFilterFor(
+  apps: HiringApplicationRow[],
+): ApplicantPipelineFilter {
+  if (apps.some((app) => resolveApplicantPipelineStage(app.subStatus) === "new")) {
+    return "new";
+  }
+  if (
+    apps.some((app) => resolveApplicantPipelineStage(app.subStatus) === "in_review")
+  ) {
+    return "in_review";
+  }
+  return "all";
+}
+
+function positionCardBorderStyle(isSelected: boolean, isHovered: boolean): CSSProperties {
   if (isSelected) {
     return {
       border: "1px solid #2a2a2a",
       borderLeft: "3px solid #E51937",
+      boxShadow: isHovered ? "0 4px 16px rgba(0,0,0,0.28)" : "none",
     };
   }
-  return { border: "1px solid #2a2a2a" };
+  return {
+    border: isHovered ? "1px solid #3a3a3a" : "1px solid #2a2a2a",
+    boxShadow: isHovered ? "0 4px 16px rgba(0,0,0,0.28)" : "none",
+  };
 }
 
 function moveStatusActionLabel(action: ApplicantMoveStatusAction): string {
@@ -711,7 +607,7 @@ function ApplicationReviewModal({
                   Applied {formatAppliedDate(application.createdAt)}
                 </span>
                 <span style={subStatusPillStyle(application.subStatus)}>
-                  {subStatusLabel(application.subStatus)}
+                  {applicantStageDisplayLabel(application.subStatus)}
                 </span>
               </div>
               {application.profile?.email ? (
@@ -937,13 +833,18 @@ export default function ClubRecruitingPage() {
     useState<ClubPosition | null>(null);
   const [deletingPositionId, setDeletingPositionId] = useState<string | null>(null);
   const [deletePositionError, setDeletePositionError] = useState<string | null>(null);
+  const [closeConfirmPosition, setCloseConfirmPosition] =
+    useState<ClubPosition | null>(null);
+  const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
+  const [closePositionError, setClosePositionError] = useState<string | null>(null);
   const [savedRoleIds, setSavedRoleIds] = useState<Set<string>>(new Set());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
-  const [positionFilter] = useState<PositionFilter>("all");
+  const [positionFilter, setPositionFilter] = useState<PositionFilter>("all");
   const [applicantSearch, setApplicantSearch] = useState("");
   const [applicantStatusFilter, setApplicantStatusFilter] =
     useState<ApplicantPipelineFilter>("all");
+  const [applicantSort, setApplicantSort] = useState<ApplicantSort>("newest");
   const [applicationReviewModalId, setApplicationReviewModalId] = useState<string | null>(
     null,
   );
@@ -1097,7 +998,7 @@ export default function ClubRecruitingPage() {
         const lid = a.listing_id as string;
         const appSubStatus = (a.sub_status as string) ?? "submitted";
         counts[lid] = (counts[lid] ?? 0) + 1;
-        if (matchesApplicantPipelineFilter(appSubStatus, "pending")) {
+        if (isHiringApplicationPendingReview(appSubStatus)) {
           pendingCounts[lid] = (pendingCounts[lid] ?? 0) + 1;
         }
         if (
@@ -1185,8 +1086,21 @@ export default function ClubRecruitingPage() {
         (app.profile?.full_name ?? "Member").toLowerCase().includes(query),
       );
     }
-    return list;
-  }, [applications, applicantStatusFilter, applicantSearch]);
+
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      if (applicantSort === "oldest") {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (applicantSort === "recently_updated") {
+        const aTime = new Date(a.updatedAt ?? a.createdAt).getTime();
+        const bTime = new Date(b.updatedAt ?? b.createdAt).getTime();
+        return bTime - aTime;
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return sorted;
+  }, [applications, applicantStatusFilter, applicantSearch, applicantSort]);
 
   useEffect(() => {
     setApplicationReviewModalId(null);
@@ -1207,6 +1121,16 @@ export default function ClubRecruitingPage() {
   }, [searchParams, setSearchParams, canManageHiring, loading]);
 
   useEffect(() => {
+    const filter = searchParams.get("filter");
+    if (filter === "open" || filter === "pending_review" || filter === "filled" || filter === "closed") {
+      setPositionFilter(filter);
+      const next = new URLSearchParams(searchParams);
+      next.delete("filter");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
     if (
       searchParams.get("tab") !== "applications" ||
       !canReviewHiring ||
@@ -1220,10 +1144,13 @@ export default function ClubRecruitingPage() {
       reviewablePositions.find((position) => position.pendingCount > 0) ??
       reviewablePositions[0];
 
-    skipApplicantFilterResetRef.current = true;
+    const needsReview = target.pendingCount > 0;
+    skipApplicantFilterResetRef.current = needsReview;
     setExpandedPositionId(target.id);
-    void loadApplicationsForPosition(target.id).then(() => {
-      setApplicantStatusFilter("pending");
+    void loadApplicationsForPosition(target.id).then((loadedApplications) => {
+      if (needsReview) {
+        setApplicantStatusFilter(pendingApplicantFilterFor(loadedApplications));
+      }
     });
 
     const next = new URLSearchParams(searchParams);
@@ -1406,14 +1333,25 @@ export default function ClubRecruitingPage() {
   }
 
   async function closePosition(position: ClubPosition) {
+    setClosingPositionId(position.id);
+    setClosePositionError(null);
+
     const { error } = await supabase
       .from("hiring_listings")
       .update({ is_open: false })
       .eq("id", position.id);
-    if (!error) {
-      void loadPositions();
+
+    setClosingPositionId(null);
+
+    if (error) {
+      console.error("Failed to close position:", error.message);
+      setClosePositionError(error.message || "Could not close this position.");
+      return;
     }
+
+    setCloseConfirmPosition(null);
     setOpenMenuId(null);
+    void loadPositions();
   }
 
   async function deletePosition(positionId: string) {
@@ -1451,13 +1389,15 @@ export default function ClubRecruitingPage() {
     void loadPositions();
   }
 
-  async function loadApplicationsForPosition(listingId: string) {
+  async function loadApplicationsForPosition(
+    listingId: string,
+  ): Promise<HiringApplicationRow[]> {
     const position = positions.find((item) => item.id === listingId);
     if (!position || !canReviewPosition(position)) {
       setApplications([]);
       setApplicationNoteCounts({});
       setAppsLoading(false);
-      return;
+      return [];
     }
 
     setAppsLoading(true);
@@ -1474,7 +1414,7 @@ export default function ClubRecruitingPage() {
       console.error("Failed to load applications:", error);
       setApplications([]);
       setAppsLoading(false);
-      return;
+      return [];
     }
 
     const rows = applicationRows ?? [];
@@ -1504,27 +1444,27 @@ export default function ClubRecruitingPage() {
       }
     }
 
-    setApplications(
-      rows.map((app) => ({
-        id: app.id as string,
-        listingId: app.listing_id as string,
-        applicantId: app.applicant_id as string,
-        status: (app.status as string) ?? "pending",
-        subStatus: normalizeSubStatus(app.sub_status as string | null),
-        createdAt: app.created_at as string,
-        answers: parseHiringAnswers(app.answers),
-        profile:
-          profileRows.find((p) => p.id === app.applicant_id) ?? null,
-        interviewTimes: parseInterviewTimes(app.interview_times),
-        interviewType: (app.interview_type as string | null) ?? undefined,
-        meetingLocation: (app.meeting_location as string | null) ?? undefined,
-        meetingLink: (app.meeting_link as string | null) ?? undefined,
-        offeredAccessLevel:
-          (app.offered_access_level as string | null) ?? undefined,
-        offeredRoleTitle: (app.offered_role_title as string | null) ?? undefined,
-        positionHandling: (app.position_handling as string | null) ?? undefined,
-      })),
-    );
+    const mappedApplications: HiringApplicationRow[] = rows.map((app) => ({
+      id: app.id as string,
+      listingId: app.listing_id as string,
+      applicantId: app.applicant_id as string,
+      status: (app.status as string) ?? "pending",
+      subStatus: normalizeSubStatus(app.sub_status as string | null),
+      createdAt: app.created_at as string,
+      answers: parseHiringAnswers(app.answers),
+      profile:
+        profileRows.find((p) => p.id === app.applicant_id) ?? null,
+      interviewTimes: parseInterviewTimes(app.interview_times),
+      interviewType: (app.interview_type as string | null) ?? undefined,
+      meetingLocation: (app.meeting_location as string | null) ?? undefined,
+      meetingLink: (app.meeting_link as string | null) ?? undefined,
+      offeredAccessLevel:
+        (app.offered_access_level as string | null) ?? undefined,
+      offeredRoleTitle: (app.offered_role_title as string | null) ?? undefined,
+      positionHandling: (app.position_handling as string | null) ?? undefined,
+    }));
+
+    setApplications(mappedApplications);
 
     const applicationIds = rows.map((row) => row.id as string);
     if (applicationIds.length > 0) {
@@ -1544,6 +1484,7 @@ export default function ClubRecruitingPage() {
     }
 
     setAppsLoading(false);
+    return mappedApplications;
   }
 
   function triggerApplicantAction(
@@ -1578,8 +1519,14 @@ export default function ClubRecruitingPage() {
       setApplications([]);
       return;
     }
+
+    const needsReview = position.pendingCount > 0;
+    skipApplicantFilterResetRef.current = needsReview;
     setExpandedPositionId(position.id);
-    await loadApplicationsForPosition(position.id);
+    const loadedApplications = await loadApplicationsForPosition(position.id);
+    if (needsReview) {
+      setApplicantStatusFilter(pendingApplicantFilterFor(loadedApplications));
+    }
   }
 
   useEffect(() => {
@@ -1714,12 +1661,14 @@ export default function ClubRecruitingPage() {
             setOpenMenuId((prev) => (prev === position.id ? null : prev));
           }}
           style={{
-            background: "#141414",
+            background: cardHovered ? "#171717" : "#141414",
             borderRadius: "12px",
             padding: "20px 24px",
             marginBottom: "12px",
             cursor: canReviewThisPosition ? "pointer" : undefined,
-            ...positionCardBorderStyle(isExpanded),
+            transition:
+              "background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+            ...positionCardBorderStyle(isExpanded, cardHovered),
           }}
         >
           <div
@@ -1760,40 +1709,7 @@ export default function ClubRecruitingPage() {
               ) : null}
             </div>
 
-            {canManageHiring && position.isOpen && !hasApplied ? (
-              <button
-                type="button"
-                onClick={() => setApplyPosition(position)}
-                style={{
-                  background: "#E51937",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "8px 18px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                Apply Now
-              </button>
-            ) : canManageHiring && hasApplied ? (
-              <span
-                style={{
-                  background: "#1a1200",
-                  border: "1px solid #FFC429",
-                  color: "#FFC429",
-                  borderRadius: "8px",
-                  padding: "8px 18px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  flexShrink: 0,
-                }}
-              >
-                Applied ✓
-              </span>
-            ) : null}
+            {canManageHiring ? <PositionStatusBadge position={position} /> : null}
           </div>
 
           {canReviewThisPosition ? (
@@ -1837,7 +1753,6 @@ export default function ClubRecruitingPage() {
             <div
               style={{
                 display: "flex",
-                flexWrap: "wrap",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: "10px",
@@ -1862,146 +1777,104 @@ export default function ClubRecruitingPage() {
               >
                 {isExpanded ? "Reviewing Applicants" : "Review Applicants"}
               </button>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                {position.isOpen ? (
-                  <>
-                    <Link
-                      to={`/hiring?listing=${position.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(event) => event.stopPropagation()}
-                      style={{
-                        background: "transparent",
-                        border: "1px solid #2a2a2a",
-                        color: "#555555",
-                        borderRadius: "8px",
-                        padding: "8px 18px",
-                        fontSize: "13px",
-                        textDecoration: "none",
-                        cursor: "pointer",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "#555555";
-                        e.currentTarget.style.color = "#aaaaaa";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = "#2a2a2a";
-                        e.currentTarget.style.color = "#555555";
-                      }}
-                    >
-                      View Public Posting
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleSharePosting(position.id);
-                      }}
-                      style={{
-                        background: "transparent",
-                        border: "1px solid #2a2a2a",
-                        color: "#555555",
-                        borderRadius: "8px",
-                        padding: "8px 18px",
-                        fontSize: "13px",
-                        cursor: "pointer",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = "#555555";
-                        e.currentTarget.style.color = "#aaaaaa";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = "#2a2a2a";
-                        e.currentTarget.style.color = "#555555";
-                      }}
-                    >
-                      {copiedPostingLinkId === position.id ? "Link copied" : "Share this posting"}
-                    </button>
-                  </>
-                ) : null}
+              <div style={{ position: "relative", flexShrink: 0 }}>
                 <button
                   type="button"
-                  onClick={() => void openEditModal(position)}
+                  aria-label="Position options"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenMenuId((prev) =>
+                      prev === position.id ? null : position.id,
+                    );
+                  }}
                   style={{
                     background: "transparent",
                     border: "1px solid #2a2a2a",
-                    color: "#555555",
-                    borderRadius: "8px",
-                    padding: "8px 18px",
-                    fontSize: "13px",
+                    color: "#747676",
                     cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#555555";
-                    e.currentTarget.style.color = "#aaaaaa";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "#2a2a2a";
-                    e.currentTarget.style.color = "#555555";
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "8px",
+                    padding: "8px",
                   }}
                 >
-                  Edit Position
+                  <MoreHorizontal size={18} />
                 </button>
-                {cardHovered ? (
-                  <div style={{ position: "relative" }}>
-                    <button
-                      type="button"
-                      aria-label="Position options"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setOpenMenuId((prev) =>
-                          prev === position.id ? null : position.id,
-                        );
-                      }}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: "#747676",
-                        cursor: "pointer",
-                        display: "flex",
-                        padding: "2px",
-                      }}
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
-                    {menuOpen ? (
-                      <div
+                {menuOpen ? (
+                  <div
+                    role="menu"
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: "100%",
+                      marginTop: "4px",
+                      background: "#151515",
+                      border: "1px solid #2a2a2a",
+                      borderRadius: "8px",
+                      minWidth: "180px",
+                      zIndex: 20,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {position.isOpen ? (
+                      <Link
+                        to={`/hiring?listing=${position.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenMenuId(null);
+                        }}
                         style={{
-                          position: "absolute",
-                          right: 0,
-                          top: "100%",
-                          marginTop: "4px",
-                          background: "#151515",
-                          border: "1px solid #2a2a2a",
-                          borderRadius: "8px",
-                          minWidth: "150px",
-                          zIndex: 20,
-                          overflow: "hidden",
+                          ...menuItemStyle,
+                          display: "block",
+                          textDecoration: "none",
                         }}
                       >
-                        {position.isOpen ? (
-                          <button
-                            type="button"
-                            onClick={() => void closePosition(position)}
-                            style={menuItemStyle}
-                          >
-                            Close Position
-                          </button>
-                        ) : null}
-                        {canDeleteHiring ? (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDeleteConfirmPosition(position);
-                            setDeletePositionError(null);
-                          }}
-                          style={{ ...menuItemStyle, color: "#E51937" }}
-                        >
-                          Delete
-                        </button>
-                        ) : null}
-                      </div>
+                        View Public Posting
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenMenuId(null);
+                        void openEditModal(position);
+                      }}
+                      style={menuItemStyle}
+                    >
+                      Edit Position
+                    </button>
+                    {position.isOpen ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenMenuId(null);
+                          setCloseConfirmPosition(position);
+                          setClosePositionError(null);
+                        }}
+                        style={menuItemStyle}
+                      >
+                        Close Position
+                      </button>
+                    ) : null}
+                    {canDeleteHiring ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenMenuId(null);
+                          setDeleteConfirmPosition(position);
+                          setDeletePositionError(null);
+                        }}
+                        style={{ ...menuItemStyle, color: "#E51937" }}
+                      >
+                        Delete Position
+                      </button>
                     ) : null}
                   </div>
                 ) : null}
@@ -2364,24 +2237,11 @@ export default function ClubRecruitingPage() {
                       >
                         View public posting
                       </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleSharePosting(selectedPosition.id)}
-                        style={{
-                          background: "transparent",
-                          border: "1px solid #2a2a2a",
-                          color: "#777777",
-                          borderRadius: "6px",
-                          padding: "6px 12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {copiedPostingLinkId === selectedPosition.id
-                          ? "Link copied"
-                          : "Share this posting"}
-                      </button>
+                      <CopyRoleLinkButton
+                        positionId={selectedPosition.id}
+                        copied={copiedPostingLinkId === selectedPosition.id}
+                        onCopy={handleSharePosting}
+                      />
                     </div>
                   ) : null}
 
@@ -2441,24 +2301,11 @@ export default function ClubRecruitingPage() {
                           >
                             View public posting
                           </Link>
-                          <button
-                            type="button"
-                            onClick={() => handleSharePosting(selectedPosition.id)}
-                            style={{
-                              background: "transparent",
-                              border: "1px solid #2a2a2a",
-                              color: "#777777",
-                              borderRadius: "6px",
-                              padding: "6px 12px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {copiedPostingLinkId === selectedPosition.id
-                              ? "Link copied"
-                              : "Share this posting"}
-                          </button>
+                          <CopyRoleLinkButton
+                            positionId={selectedPosition.id}
+                            copied={copiedPostingLinkId === selectedPosition.id}
+                            onCopy={handleSharePosting}
+                          />
                         </div>
                       ) : null}
                     </div>
@@ -2485,35 +2332,67 @@ export default function ClubRecruitingPage() {
                   <div
                     style={{
                       display: "flex",
-                      gap: "8px",
+                      gap: "10px",
                       marginBottom: "16px",
-                      flexWrap: "nowrap",
-                      overflowX: "auto",
+                      flexWrap: "wrap",
                     }}
                   >
-                    {APPLICANT_PIPELINE_FILTER_OPTIONS.map((option) => {
-                      const active = applicantStatusFilter === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setApplicantStatusFilter(option.value)}
-                          style={{
-                            background: active ? "#E51937" : "transparent",
-                            color: active ? "#ffffff" : "#777777",
-                            border: active ? "none" : "1px solid #333333",
-                            borderRadius: "20px",
-                            padding: "6px 16px",
-                            fontSize: "12px",
-                            fontWeight: active ? 600 : 400,
-                            cursor: "pointer",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
+                    <div style={{ flex: "1 1 160px", minWidth: "160px" }}>
+                      <label
+                        htmlFor="applicant-status-filter"
+                        style={{
+                          display: "block",
+                          fontSize: "11px",
+                          color: "#666666",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Applicant Status
+                      </label>
+                      <select
+                        id="applicant-status-filter"
+                        value={applicantStatusFilter}
+                        onChange={(e) =>
+                          setApplicantStatusFilter(
+                            e.target.value as ApplicantPipelineFilter,
+                          )
+                        }
+                        style={{ ...darkInputStyle, width: "100%", cursor: "pointer" }}
+                      >
+                        {APPLICANT_PIPELINE_FILTER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ flex: "1 1 140px", minWidth: "140px" }}>
+                      <label
+                        htmlFor="applicant-sort"
+                        style={{
+                          display: "block",
+                          fontSize: "11px",
+                          color: "#666666",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Sort
+                      </label>
+                      <select
+                        id="applicant-sort"
+                        value={applicantSort}
+                        onChange={(e) =>
+                          setApplicantSort(e.target.value as ApplicantSort)
+                        }
+                        style={{ ...darkInputStyle, width: "100%", cursor: "pointer" }}
+                      >
+                        {APPLICANT_SORT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   {filteredApplications.length === 0 ? (
@@ -2597,7 +2476,7 @@ export default function ClubRecruitingPage() {
                               </p>
                             </div>
                             <span style={subStatusPillStyle(app.subStatus)}>
-                              {subStatusLabel(app.subStatus)}
+                              {applicantStageDisplayLabel(app.subStatus)}
                             </span>
                             <div
                               style={{
@@ -2689,9 +2568,27 @@ export default function ClubRecruitingPage() {
             </div>
           </div>
         </>
-      ) : (
-        renderPositionsList()
-      )}
+      ) : clubId ? (
+        <ClubMemberHiringBrowse
+          clubId={clubId}
+          clubName={clubName}
+          clubLogoUrl={club?.logoUrl}
+          clubBannerUrl={club?.bannerUrl}
+          clubSlug={club?.slug}
+          clubDescription={
+            club?.longDescription ?? club?.shortDescription ?? club?.description
+          }
+          positions={positions}
+          myApplications={myApplications}
+          savedRoleIds={savedRoleIds}
+          user={user}
+          onToggleSave={(positionId) => void toggleSaveRole(positionId)}
+          onApplicationSubmitted={(positionId) => {
+            setMyApplications((prev) => ({ ...prev, [positionId]: true }));
+            void loadPositions();
+          }}
+        />
+      ) : null}
 
       {showPostModal ? (
         <div
@@ -2893,11 +2790,11 @@ export default function ClubRecruitingPage() {
             <label style={{ display: "block", fontSize: "12px", color: "#888888", marginBottom: "6px" }}>
               Deadline (optional)
             </label>
-            <input
+            <DateTimeField
               type="date"
               value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              style={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
+              onChange={setDeadline}
+              inputStyle={{ ...darkInputStyle, width: "100%", marginBottom: "16px" }}
             />
 
             <div style={{ marginBottom: "16px" }}>
@@ -2968,6 +2865,90 @@ export default function ClubRecruitingPage() {
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {closeConfirmPosition ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={modalOverlayStyle}
+          onClick={() => {
+            if (closingPositionId) return;
+            setCloseConfirmPosition(null);
+            setClosePositionError(null);
+          }}
+        >
+          <div
+            style={{
+              background: "#141414",
+              border: "1px solid #2a2a2a",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "440px",
+              width: "100%",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2
+              style={{
+                margin: "0 0 8px",
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#ffffff",
+              }}
+            >
+              Close this position?
+            </h2>
+            <p style={{ margin: "0 0 16px", fontSize: "14px", color: "#888888", lineHeight: 1.5 }}>
+              <strong style={{ color: "#cccccc" }}>{closeConfirmPosition.title}</strong> will stop
+              accepting new applications. You can still review existing applicants afterward.
+            </p>
+            {closePositionError ? (
+              <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#E51937" }}>
+                {closePositionError}
+              </p>
+            ) : null}
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                disabled={Boolean(closingPositionId)}
+                onClick={() => {
+                  setCloseConfirmPosition(null);
+                  setClosePositionError(null);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid #333333",
+                  color: "#cccccc",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  cursor: closingPositionId ? "default" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(closingPositionId)}
+                onClick={() => void closePosition(closeConfirmPosition)}
+                style={{
+                  background: "#E51937",
+                  border: "none",
+                  color: "#ffffff",
+                  borderRadius: "8px",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: closingPositionId ? "default" : "pointer",
+                  opacity: closingPositionId ? 0.7 : 1,
+                }}
+              >
+                {closingPositionId ? "Closing…" : "Close Position"}
               </button>
             </div>
           </div>
@@ -3059,19 +3040,83 @@ export default function ClubRecruitingPage() {
         </div>
       ) : null}
 
-      {viewRolePosition ? (
-        <MemberRoleDetailModal
-          position={viewRolePosition}
-          clubName={clubName}
-          hasApplied={Boolean(myApplications[viewRolePosition.id])}
-          saved={savedRoleIds.has(viewRolePosition.id)}
-          onClose={() => setViewRolePosition(null)}
-          onApply={() => {
-            setViewRolePosition(null);
-            setApplyPosition(viewRolePosition);
+      {viewRolePosition && clubId ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${viewRolePosition.title} details`}
+          onClick={() => setViewRolePosition(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.85)",
+            zIndex: 1100,
+            overflowY: "auto",
+            padding: "32px 24px",
+            boxSizing: "border-box",
           }}
-          onToggleSave={() => void toggleSaveRole(viewRolePosition.id)}
-        />
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "820px",
+              margin: "0 auto",
+              background: "#0f0f0f",
+              borderRadius: "12px",
+              overflow: "hidden",
+              position: "relative",
+              border: "1px solid #2a2a2a",
+            }}
+          >
+            <div style={{ padding: "16px 16px 0" }}>
+              <PublicDetailBackButton
+                label="Back to roles"
+                onBack={() => setViewRolePosition(null)}
+                style={{ marginBottom: 0 }}
+              />
+            </div>
+            <HiringDetailPanel
+              position={{
+                id: viewRolePosition.id,
+                clubId,
+                clubName,
+                clubLogoUrl: club?.logoUrl,
+                clubBannerUrl: club?.bannerUrl,
+                clubSlug: club?.slug,
+                clubDescription:
+                  club?.longDescription ??
+                  club?.shortDescription ??
+                  club?.description,
+                title: viewRolePosition.title,
+                description: viewRolePosition.description,
+                requirements: viewRolePosition.requirements,
+                positionType: viewRolePosition.positionType,
+                commitmentLevel: viewRolePosition.commitmentLevel,
+                weeklyHours: viewRolePosition.weeklyHours,
+                deadline: viewRolePosition.deadline,
+                createdAt: "",
+                applicantCount: 0,
+                questions: viewRolePosition.questions,
+                uploadFields: viewRolePosition.uploadFields,
+              }}
+              user={user}
+              alreadyApplied={Boolean(myApplications[viewRolePosition.id])}
+              saved={savedRoleIds.has(viewRolePosition.id)}
+              canSave={Boolean(user)}
+              onApply={() => {
+                setViewRolePosition(null);
+                setApplyPosition(viewRolePosition);
+              }}
+              onViewClub={() => {
+                if (club?.slug) {
+                  window.open(`/clubs/${club.slug}`, "_blank", "noopener,noreferrer");
+                }
+              }}
+              onToggleSave={() => void toggleSaveRole(viewRolePosition.id)}
+              viewClubProfilePlacement="under-heading"
+            />
+          </div>
+        </div>
       ) : null}
 
       {applicationReviewModalId &&
@@ -3135,7 +3180,13 @@ export default function ClubRecruitingPage() {
           }}
           clubName={clubName}
           onClose={() => setApplyPosition(null)}
-          onSubmitted={() => void loadPositions()}
+          onSubmitted={() => {
+            setMyApplications((prev) => ({
+              ...prev,
+              [applyPosition.id]: true,
+            }));
+            void loadPositions();
+          }}
         />
       ) : null}
 

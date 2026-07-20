@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import {
   BarChart2,
   Bookmark,
@@ -8,40 +8,31 @@ import {
   Image as ImageIcon,
   Lock,
   Pin,
-  Target,
   Users,
 } from "lucide-react";
 import { formatRelativeTime } from "../../../lib/formatRelativeTime";
 import { normalizeVisibility } from "../../../lib/contentVisibility";
-import {
-  fetchAnnouncementSeenList,
-  type AnnouncementSeenEntry,
-} from "../../../lib/postViews";
-import Spinner from "../../../components/ui/Spinner";
 import type { Post, Visibility } from "../../../types";
 
 const ACCENT_RED = "#E51937";
 const GOLD = "#FFC429";
-const CYAN = "#38BDF8";
 const CARD_BG = "#141414";
 const CARD_BORDER = "#2a2a2a";
 
 export type VisibilityFilter = "all" | Visibility;
-export type AnnouncementSort = "newest" | "oldest" | "most_liked" | "most_seen";
+export type AnnouncementSort = "newest" | "oldest" | "most_liked";
 
 export const VISIBILITY_FILTER_OPTIONS: { value: VisibilityFilter; label: string }[] = [
   { value: "all", label: "All Visibility" },
   { value: "public", label: "Public Only" },
   { value: "members_only", label: "Members Only" },
   { value: "executives_only", label: "Executives Only" },
-  { value: "selected", label: "Selected Only" },
 ];
 
 export const SORT_OPTIONS: { value: AnnouncementSort; label: string }[] = [
   { value: "newest", label: "Newest First" },
   { value: "oldest", label: "Oldest First" },
   { value: "most_liked", label: "Most Liked" },
-  { value: "most_seen", label: "Most Seen" },
 ];
 
 const dropdownButtonStyle: CSSProperties = {
@@ -166,7 +157,7 @@ export function AnnouncementVisibilityBadge({
     );
   }
 
-  if (level === "members_only") {
+  if (level === "members_only" || level === "selected") {
     return (
       <span
         style={{
@@ -187,27 +178,7 @@ export function AnnouncementVisibilityBadge({
     );
   }
 
-  if (level === "selected") {
-    return (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "5px",
-          fontSize: "11px",
-          color: CYAN,
-          border: `1px solid ${CYAN}`,
-          background: "rgba(56,189,248,0.1)",
-          borderRadius: "12px",
-          padding: "3px 8px",
-        }}
-      >
-        <Target size={12} aria-hidden />
-        Selected
-      </span>
-    );
-  }
-
+  // Legacy "selected" posts display as Members Only in the badge.
   return (
     <span
       style={{
@@ -333,9 +304,7 @@ export function AnnouncementCard({
   heartCount,
   heartActive,
   bookmarkActive,
-  seenCount,
   isPrivileged,
-  canViewEngagement,
   showMenu,
   menuOpen,
   isMemberRole,
@@ -346,7 +315,6 @@ export function AnnouncementCard({
   onToggleExpand,
   onHeartToggle,
   onBookmarkToggle,
-  onViewSeenList,
   onPin,
   onEdit,
   onDelete,
@@ -365,9 +333,7 @@ export function AnnouncementCard({
   heartCount: number;
   heartActive: boolean;
   bookmarkActive: boolean;
-  seenCount: number;
   isPrivileged: boolean;
-  canViewEngagement: boolean;
   showMenu: boolean;
   menuOpen: boolean;
   isMemberRole: boolean;
@@ -378,7 +344,6 @@ export function AnnouncementCard({
   onToggleExpand: () => void;
   onHeartToggle: () => void;
   onBookmarkToggle: () => void;
-  onViewSeenList: () => void;
   onPin: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -663,28 +628,7 @@ export function AnnouncementCard({
           </button>
         </div>
 
-        {canViewEngagement ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "12px", color: "#555555" }}>
-              Seen by {seenCount} members
-            </span>
-            <button
-              type="button"
-              onClick={onViewSeenList}
-              style={{
-                background: "transparent",
-                border: `1px solid ${CARD_BORDER}`,
-                color: "#777777",
-                borderRadius: "6px",
-                padding: "4px 10px",
-                fontSize: "11px",
-                cursor: "pointer",
-              }}
-            >
-              View Seen List
-            </button>
-          </div>
-        ) : null}
+
       </div>
     </article>
   );
@@ -712,149 +656,4 @@ function menuItemButtonStyle(destructive = false): CSSProperties {
     fontSize: "13px",
     cursor: "pointer",
   };
-}
-
-export function SeenListModal({
-  postId,
-  clubId,
-  postTitle,
-  onClose,
-}: {
-  postId: string;
-  clubId: string;
-  postTitle: string;
-  onClose: () => void;
-}) {
-  const [entries, setEntries] = useState<AnnouncementSeenEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSeenList() {
-      setLoading(true);
-      const rows = await fetchAnnouncementSeenList(postId, clubId);
-      if (!cancelled) {
-        setEntries(rows);
-        setLoading(false);
-      }
-    }
-
-    void loadSeenList();
-    return () => {
-      cancelled = true;
-    };
-  }, [postId, clubId]);
-
-  function formatViewedAt(iso: string): string {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "Unknown time";
-    return date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.65)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-        padding: "16px",
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "#1a1a1a",
-          border: `1px solid ${CARD_BORDER}`,
-          borderRadius: "12px",
-          padding: "24px",
-          maxWidth: "480px",
-          width: "100%",
-          maxHeight: "min(70vh, 520px)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff", margin: "0 0 8px" }}>
-          Seen List
-        </h3>
-        <p style={{ fontSize: "13px", color: "#777777", margin: "0 0 16px" }}>{postTitle}</p>
-
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <Spinner label="Loading seen list…" />
-          </div>
-        ) : entries.length === 0 ? (
-          <p style={{ fontSize: "14px", color: "#cccccc", margin: 0 }}>
-            No members have viewed this announcement yet.
-          </p>
-        ) : (
-          <div
-            style={{
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-              flex: 1,
-              minHeight: 0,
-            }}
-          >
-            {entries.map((entry) => (
-              <div
-                key={`${entry.userId}-${entry.viewedAt}`}
-                style={{
-                  borderTop: `1px solid ${CARD_BORDER}`,
-                  paddingTop: "10px",
-                }}
-              >
-                <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 600, color: "#ffffff" }}>
-                  {entry.name}
-                </p>
-                {entry.roleTitle ? (
-                  <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#999999" }}>
-                    {entry.roleTitle}
-                  </p>
-                ) : null}
-                <p style={{ margin: 0, fontSize: "12px", color: "#777777" }}>
-                  Viewed {formatViewedAt(entry.viewedAt)}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            marginTop: "20px",
-            width: "100%",
-            background: "transparent",
-            border: `1px solid ${CARD_BORDER}`,
-            color: "#cccccc",
-            borderRadius: "6px",
-            padding: "8px 16px",
-            fontSize: "13px",
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  );
 }

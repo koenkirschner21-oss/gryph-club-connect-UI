@@ -8,15 +8,20 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Briefcase,
-  BarChart2,
   Calendar,
-  CalendarClock,
   CheckSquare,
   ClipboardList,
-  Megaphone,
-  UserPlus,
 } from "lucide-react";
+import {
+  CommandCenterCreateMenu,
+  type CreateMenuAction,
+} from "../../components/commandCenter/CommandCenterCreateMenu";
+import { ClubHealthSnapshot } from "../../components/commandCenter/ClubHealthSnapshot";
+import { PendingActionsOverlay } from "../../components/commandCenter/PendingActionsOverlay";
+import {
+  sortPendingActions,
+  type PendingActionItem,
+} from "../../lib/commandCenterPending";
 import { useAuthContext } from "../../context/useAuthContext";
 import {
   isOpenAssigneeTask,
@@ -32,8 +37,12 @@ import {
   resolveClubSetupSettingsPath,
   shouldShowProfileSetupBanner,
 } from "../../lib/clubProfileCompletion";
-import { formatRelativeTime } from "../../lib/formatRelativeTime";
-import { formatTaskDate } from "../../lib/taskDueUrgency";
+import { formatTaskDate, isTaskInactiveForDueTracking } from "../../lib/taskDueUrgency";
+import {
+  HIRING_APPLICATION_UPDATED_EVENT,
+  type HiringApplicationUpdatedDetail,
+} from "../../lib/clubDataSyncEvents";
+import { isHiringApplicationPendingReview } from "../../lib/hiringPipelineUtils";
 import {
   executiveTaskUrgencyBadgeStyle,
   executiveTaskUrgencyLabel,
@@ -46,6 +55,7 @@ import {
   type EventRecurringMeta,
 } from "../../lib/eventRecurrence";
 import { supabase } from "../../lib/supabaseClient";
+import { getWorkspaceEventManagePath } from "../../lib/eventNavigation";
 import type { Club, ClubEvent, Post, RsvpCounts, Task, TaskStatus } from "../../types";
 import Spinner from "../../components/ui/Spinner";
 import { meetingNeedsRecap } from "./meetings/meetingDisplayHelpers";
@@ -154,24 +164,6 @@ function formatEventTime12h(timeStr: string): string {
   return t;
 }
 
-function formatEventDateLine(dateStr: string, timeStr?: string): string {
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())
-    ? new Date(`${dateStr.trim()}T12:00:00`)
-    : new Date(dateStr);
-  const dateLabel = Number.isNaN(d.getTime())
-    ? dateStr
-    : d.toLocaleDateString("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      });
-  const timeLabel =
-    timeStr && timeStr.trim() && timeStr.toUpperCase() !== "TBD"
-      ? formatEventTime12h(timeStr)
-      : null;
-  return timeLabel ? `${dateLabel} · ${timeLabel}` : dateLabel;
-}
-
 function isHiddenLocation(value: string | null | undefined): boolean {
   if (value == null) return true;
   const trimmed = value.trim();
@@ -208,30 +200,27 @@ function parseTaskDueDate(dateStr: string | undefined): Date | null {
   return Number.isNaN(due.getTime()) ? null : due;
 }
 
-type ActivityKind = "join" | "rsvp" | "announcement" | "task" | "application";
-
-type ActivityFeedItem = {
-  id: string;
-  kind: ActivityKind;
-  description: string;
-  timestamp: string;
-  icon: ReactNode;
-};
 
 interface HiringSnapshot {
   openRolesCount: number;
   pendingApplicationsCount: number;
   rolesWithZeroApplicants: number;
   topOpenRole: { id: string; title: string } | null;
+  pendingApplications: {
+    id: string;
+    listingId: string;
+    listingTitle: string;
+    createdAt: string;
+  }[];
   loading: boolean;
 }
 
-type PendingActionItem = {
-  id: string;
-  label: string;
-  actionLabel?: string;
-  onAction?: () => void;
-};
+interface ClubHealthState {
+  totalMembers: number;
+  newMembersThisMonth: number;
+  rsvpsThisMonth: number;
+  loading: boolean;
+}
 
 type UpcomingActivityRow =
   | {
@@ -305,33 +294,9 @@ function taskStatusPillStyle(status: TaskStatus): CSSProperties {
   };
 }
 
-function taskSourceLabel(task: Task, clubName: string): string {
-  if (task.linkedEventTitle?.trim()) return task.linkedEventTitle.trim();
-  if (task.linkedMeetingTitle?.trim()) return task.linkedMeetingTitle.trim();
-  if (task.linkedHiringTitle?.trim()) return task.linkedHiringTitle.trim();
-  return clubName;
-}
-
 function formatTaskDueLabel(task: Task): string {
   if (!task.dueDate?.trim()) return "No due date";
   return formatTaskDate(task.dueDate);
-}
-
-function sortTasksByUrgency(tasks: Task[]): Task[] {
-  return [...tasks].sort((left, right) => {
-    const leftUrgency = getExecutiveTaskUrgency(left.dueDate, left.status);
-    const rightUrgency = getExecutiveTaskUrgency(right.dueDate, right.status);
-    const rank = (value: ReturnType<typeof getExecutiveTaskUrgency>) => {
-      if (value === "overdue") return 0;
-      if (value === "due_today") return 1;
-      if (value === "due_this_week") return 2;
-      if (value === "upcoming") return 3;
-      return 4;
-    };
-    const urgencyDiff = rank(leftUrgency) - rank(rightUrgency);
-    if (urgencyDiff !== 0) return urgencyDiff;
-    return (left.dueDate ?? "").localeCompare(right.dueDate ?? "");
-  });
 }
 
 function ActivityTypeBadge({ label }: { label: "Event" | "Meeting" }) {
@@ -415,7 +380,7 @@ function CompactTaskOverviewRow({
             <span style={urgencyStyle}>{urgencyLabel}</span>
           ) : null}
         </div>
-        <p style={{ margin: 0, fontSize: "11px", color: "#777777", lineHeight: 1.35 }}>{meta}</p>
+        <p style={{ margin: 0, fontSize: "11px", color: "#a8a8a8", lineHeight: 1.35 }}>{meta}</p>
       </div>
       <span style={taskStatusPillStyle(task.status)}>
         {TASK_STATUS_LABELS[task.status] ?? task.status}
@@ -426,6 +391,7 @@ function CompactTaskOverviewRow({
 
 function TaskOverviewColumn({
   title,
+  count,
   emptyMessage,
   footerLabel,
   onFooterClick,
@@ -433,6 +399,7 @@ function TaskOverviewColumn({
   children,
 }: {
   title: string;
+  count: number;
   emptyMessage: string;
   footerLabel: string;
   onFooterClick: () => void;
@@ -454,15 +421,15 @@ function TaskOverviewColumn({
           margin: "0 0 10px",
           fontSize: "12px",
           fontWeight: 700,
-          color: "#cccccc",
+          color: "#d8d8d8",
           textTransform: "uppercase",
           letterSpacing: "0.06em",
         }}
       >
-        {title}
+        {title} · {count}
       </h3>
       {isEmpty ? (
-        <p style={{ margin: 0, fontSize: "12px", color: "#666666", lineHeight: 1.45 }}>
+        <p style={{ margin: 0, fontSize: "12px", color: "#888888", lineHeight: 1.45 }}>
           {emptyMessage}
         </p>
       ) : (
@@ -475,7 +442,7 @@ function TaskOverviewColumn({
           ...textLinkStyle,
           marginTop: "10px",
           fontSize: "12px",
-          color: "#aaaaaa",
+          color: "#c8c8c8",
         }}
       >
         {footerLabel} →
@@ -542,44 +509,22 @@ function UpcomingClubActivityRow({
             </p>
             <ActivityTypeBadge label="Event" />
           </div>
-          <p style={{ margin: 0, fontSize: "12px", color: "#777777", lineHeight: 1.35 }}>
+          <p style={{ margin: 0, fontSize: "12px", color: "#a8a8a8", lineHeight: 1.35 }}>
             {timeLabel} · {locationLabel}
           </p>
         </div>
-        <div
+        <button
+          type="button"
+          onClick={onManage}
           style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: "6px",
+            ...textLinkStyle,
+            fontSize: "12px",
+            color: "#c8c8c8",
             flexShrink: 0,
           }}
         >
-          <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: row.going > 0 ? GOLD : "#666666",
-              background: row.going > 0 ? "rgba(255, 196, 41, 0.1)" : "#111111",
-              border: `1px solid ${row.going > 0 ? "rgba(255, 196, 41, 0.25)" : CARD_BORDER}`,
-              borderRadius: "999px",
-              padding: "3px 8px",
-            }}
-          >
-            {row.going} going
-          </span>
-          <button
-            type="button"
-            onClick={onManage}
-            style={{
-              ...textLinkStyle,
-              fontSize: "12px",
-              color: "#aaaaaa",
-            }}
-          >
-            Manage →
-          </button>
-        </div>
+          Manage →
+        </button>
       </div>
     );
   }
@@ -625,44 +570,22 @@ function UpcomingClubActivityRow({
           </p>
           <ActivityTypeBadge label="Meeting" />
         </div>
-        <p style={{ margin: 0, fontSize: "12px", color: "#777777", lineHeight: 1.35 }}>
+        <p style={{ margin: 0, fontSize: "12px", color: "#a8a8a8", lineHeight: 1.35 }}>
           {row.timeLabel} · {row.locationLabel}
         </p>
       </div>
-      <div
+      <button
+        type="button"
+        onClick={onManage}
         style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-end",
-          gap: "6px",
+          ...textLinkStyle,
+          fontSize: "12px",
+          color: "#c8c8c8",
           flexShrink: 0,
         }}
       >
-        <span
-          style={{
-            fontSize: "11px",
-            fontWeight: 600,
-            color: "#888888",
-            background: "#111111",
-            border: `1px solid ${CARD_BORDER}`,
-            borderRadius: "999px",
-            padding: "3px 8px",
-          }}
-        >
-          Scheduled
-        </span>
-        <button
-          type="button"
-          onClick={onManage}
-          style={{
-            ...textLinkStyle,
-            fontSize: "12px",
-            color: "#aaaaaa",
-          }}
-        >
-          Manage →
-        </button>
-      </div>
+        Manage →
+      </button>
     </div>
   );
 }
@@ -779,7 +702,7 @@ function ProfileSetupBanner({
         </p>
       </div>
       <button type="button" style={noteActionButtonStyle} onClick={onComplete}>
-        Complete Setup
+        Complete Next Step
       </button>
     </div>
   );
@@ -867,7 +790,7 @@ function CommandCenterStatCard({
         {value}
       </p>
       {sublabel ? (
-        <p style={{ fontSize: "12px", color: "#555555", margin: 0, lineHeight: 1.35 }}>{sublabel}</p>
+        <p style={{ fontSize: "12px", color: "#9a9a9a", margin: 0, lineHeight: 1.35 }}>{sublabel}</p>
       ) : null}
       {actionLabel ? (
         <p
@@ -983,10 +906,10 @@ function ClubIdentityHeader({
             <span
               style={{
                 fontSize: "10px",
-                fontWeight: 600,
-                color: "#888888",
-                background: "#1f1f1f",
-                border: `1px solid ${CARD_BORDER}`,
+                fontWeight: 700,
+                color: "#d0d0d0",
+                background: "#242424",
+                border: `1px solid #3a3a3a`,
                 borderRadius: "999px",
                 padding: "2px 8px",
                 letterSpacing: "0.02em",
@@ -1161,10 +1084,11 @@ function HiringMetricLine({
 
 function needsAttentionButtonStyle(itemId: string): CSSProperties {
   if (
-    itemId === "join-requests" ||
-    itemId === "applications" ||
-    itemId === "overdue-tasks" ||
-    itemId.startsWith("review-")
+    itemId.startsWith("join-request-") ||
+    itemId.startsWith("application-") ||
+    itemId.startsWith("overdue-task-") ||
+    itemId.startsWith("review-") ||
+    itemId.startsWith("meeting-recap-")
   ) {
     return urgentOutlinedButtonStyle;
   }
@@ -1176,27 +1100,46 @@ function needsAttentionButtonStyle(itemId: string): CSSProperties {
 
 function PendingActionsSection({
   items,
+  totalCount,
   loading,
   sectionRef,
+  onOpenAll,
 }: {
   items: PendingActionItem[];
+  totalCount: number;
   loading: boolean;
   sectionRef?: React.RefObject<HTMLElement | null>;
+  onOpenAll: () => void;
 }) {
   return (
     <section ref={sectionRef} id="pending-actions" style={sectionCardStyle}>
-      <h2
+      <div
         style={{
-          ...sectionHeading,
-          marginBottom: "10px",
           display: "flex",
           alignItems: "center",
-          gap: "6px",
+          justifyContent: "space-between",
+          gap: "12px",
+          marginBottom: "10px",
         }}
       >
-        <span>Pending Actions</span>
-        <span style={{ color: "#666666", fontWeight: 600, fontSize: "13px" }}>· {items.length}</span>
-      </h2>
+        <h2
+          style={{
+            ...sectionHeading,
+            margin: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          <span>Pending Actions</span>
+          <span style={{ color: "#9a9a9a", fontWeight: 600, fontSize: "13px" }}>· {totalCount}</span>
+        </h2>
+        {totalCount > 0 ? (
+          <button type="button" style={{ ...textLinkStyle, color: "#c8c8c8" }} onClick={onOpenAll}>
+            View All Pending Actions →
+          </button>
+        ) : null}
+      </div>
       {loading ? (
         <div className="flex justify-center py-3">
           <Spinner label="Loading pending actions…" />
@@ -1210,7 +1153,7 @@ function PendingActionsSection({
             border: `1px solid ${CARD_BORDER}`,
           }}
         >
-          <p style={{ margin: 0, fontSize: "13px", color: "#666666" }}>
+          <p style={{ margin: 0, fontSize: "13px", color: "#888888" }}>
             Nothing needs attention right now.
           </p>
         </div>
@@ -1230,123 +1173,17 @@ function PendingActionsSection({
                 border: `1px solid ${CARD_BORDER}`,
               }}
             >
-              <p style={{ margin: 0, fontSize: "13px", color: "#cccccc", lineHeight: 1.4, flex: 1 }}>
+              <p style={{ margin: 0, fontSize: "13px", color: "#d8d8d8", lineHeight: 1.4, flex: 1 }}>
                 {item.label}
               </p>
-              {item.onAction && item.actionLabel ? (
-                <button
-                  type="button"
-                  style={{ ...needsAttentionButtonStyle(item.id), flexShrink: 0 }}
-                  onClick={item.onAction}
-                >
-                  {item.actionLabel}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                style={{ ...needsAttentionButtonStyle(item.id), flexShrink: 0 }}
+                onClick={item.onAction}
+              >
+                {item.actionLabel}
+              </button>
             </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function QuickActionTile({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        gap: "10px",
-        padding: "12px 14px",
-        minHeight: "84px",
-        background: hovered ? "#1f1f1f" : "#1a1a1a",
-        border: `1px solid ${hovered ? "#333333" : CARD_BORDER}`,
-        borderRadius: "8px",
-        color: "#cccccc",
-        cursor: "pointer",
-        textAlign: "left",
-        transition: "background 0.15s ease, border-color 0.15s ease",
-      }}
-    >
-      <span style={{ color: GOLD, display: "flex" }}>{icon}</span>
-      <span style={{ fontSize: "12px", fontWeight: 600, color: "#dddddd", lineHeight: 1.3 }}>
-        {label}
-      </span>
-    </button>
-  );
-}
-
-function RemindersQuickActionsCard({
-  reminderEvent,
-  isMobile,
-  quickActions,
-  onUseReminderTemplate,
-}: {
-  reminderEvent: { title: string; dateLine: string } | null;
-  isMobile: boolean;
-  quickActions: { id: string; icon: ReactNode; label: string; onClick: () => void }[];
-  onUseReminderTemplate: () => void;
-}) {
-  const gridColumns = isMobile
-    ? "repeat(2, minmax(0, 1fr))"
-    : `repeat(${Math.min(Math.max(quickActions.length, 1), 5)}, minmax(0, 1fr))`;
-
-  return (
-    <section style={sectionCardStyle}>
-      <h2 style={{ ...sectionHeading, marginBottom: "10px" }}>Reminders &amp; Quick Actions</h2>
-      {reminderEvent ? (
-        <div
-          style={{
-            background: "rgba(255, 196, 41, 0.08)",
-            border: `1px solid rgba(255, 196, 41, 0.28)`,
-            borderRadius: "8px",
-            padding: "10px 12px",
-            marginBottom: "10px",
-          }}
-        >
-          <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#cccccc", lineHeight: 1.45 }}>
-            <strong style={{ color: GOLD }}>{reminderEvent.title}</strong> is coming up on{" "}
-            {reminderEvent.dateLine}.
-          </p>
-          <button type="button" style={noteActionButtonStyle} onClick={onUseReminderTemplate}>
-            Use Reminder Template
-          </button>
-        </div>
-      ) : null}
-      {quickActions.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "12px", color: "#666666" }}>
-          No quick actions available for your role.
-        </p>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: gridColumns,
-            gap: "8px",
-          }}
-        >
-          {quickActions.map((action) => (
-            <QuickActionTile
-              key={action.id}
-              icon={action.icon}
-              label={action.label}
-              onClick={action.onClick}
-            />
           ))}
         </div>
       )}
@@ -1387,7 +1224,7 @@ export default function ClubCommandCenter({
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const memberAccess = useClubMemberAccess(clubId);
-  const { pendingMembers, loading: membersLoading } = useClubMembers(clubId);
+  const { members, pendingMembers, loading: membersLoading } = useClubMembers(clubId);
   const pendingActionsRef = useRef<HTMLElement | null>(null);
 
   const [hiringSnapshot, setHiringSnapshot] = useState<HiringSnapshot>({
@@ -1395,10 +1232,16 @@ export default function ClubCommandCenter({
     pendingApplicationsCount: 0,
     rolesWithZeroApplicants: 0,
     topOpenRole: null,
+    pendingApplications: [],
     loading: true,
   });
-  const [activityItems, setActivityItems] = useState<ActivityFeedItem[]>([]);
-  const [activityLoading, setActivityLoading] = useState(true);
+  const [clubHealth, setClubHealth] = useState<ClubHealthState>({
+    totalMembers: 0,
+    newMembersThisMonth: 0,
+    rsvpsThisMonth: 0,
+    loading: true,
+  });
+  const [pendingOverlayOpen, setPendingOverlayOpen] = useState(false);
   const [clubMeetings, setClubMeetings] = useState<ClubMeeting[]>([]);
   const [meetingsLoading, setMeetingsLoading] = useState(true);
 
@@ -1409,8 +1252,8 @@ export default function ClubCommandCenter({
   const tasksPath = `${basePath}/tasks`;
   const membersPath = `${basePath}/members`;
   const recruitingPath = `${basePath}/recruiting`;
+  const documentsPath = `${basePath}/documents`;
   const settingsPath = `${basePath}/settings`;
-  const analyticsPath = `${basePath}/analytics`;
   const setupSettingsPath = resolveClubSetupSettingsPath(settingsPath, club, {
     postsCount: posts.length,
     eventsCount,
@@ -1420,21 +1263,20 @@ export default function ClubCommandCenter({
     memberAccess.isPresident || memberAccess.can("manage_meetings");
   const canManageHiring =
     memberAccess.isPresident || memberAccess.can("manage_hiring");
-  const canViewAnalytics =
-    memberAccess.isPresident || memberAccess.can("view_analytics");
   const canCreateAnnouncement =
     memberAccess.isPresident || memberAccess.can("manage_announcements");
   const canCreateEvent =
     memberAccess.isPresident || memberAccess.can("manage_events");
   const canCreateTask =
     memberAccess.isPresident || memberAccess.can("manage_tasks");
-  const canInviteMembersQuickAction = memberAccess.canInviteMembers;
+  const canManageDocuments =
+    memberAccess.isPresident || memberAccess.can("manage_documents");
+  const canInviteMembers = memberAccess.canInviteMembers;
+  const isPresident = memberAccess.isPresident;
 
   const openSetupSettings = () => navigate(setupSettingsPath);
 
-  const scrollToPendingActions = () => {
-    pendingActionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const openPendingOverlay = () => setPendingOverlayOpen(true);
 
   const roleContextLabel = useMemo(() => {
     if (memberAccess.loading) return undefined;
@@ -1513,6 +1355,7 @@ export default function ClubCommandCenter({
           pendingApplicationsCount: 0,
           rolesWithZeroApplicants: 0,
           topOpenRole: null,
+          pendingApplications: [],
           loading: false,
         });
         return;
@@ -1535,6 +1378,7 @@ export default function ClubCommandCenter({
           pendingApplicationsCount: 0,
           rolesWithZeroApplicants: 0,
           topOpenRole: null,
+          pendingApplications: [],
           loading: false,
         });
         return;
@@ -1550,10 +1394,13 @@ export default function ClubCommandCenter({
       let rolesWithZeroApplicants = listingIds.length;
       let topOpenRole: { id: string; title: string } | null = null;
 
+      let pendingApplications: HiringSnapshot["pendingApplications"] = [];
+
       if (listingIds.length > 0) {
+        const listingTitleById = new Map(openListings.map((row) => [row.id, row.title]));
         const { data: applications, error: applicationsError } = await supabase
           .from("hiring_applications")
-          .select("listing_id, status")
+          .select("id, listing_id, status, sub_status, created_at")
           .in("listing_id", listingIds);
 
         if (cancelled) return;
@@ -1565,8 +1412,17 @@ export default function ClubCommandCenter({
           for (const application of applications ?? []) {
             const listingId = application.listing_id as string;
             countsByListing.set(listingId, (countsByListing.get(listingId) ?? 0) + 1);
-            if ((application.status as string) === "pending") {
+            const subStatus =
+              (application.sub_status as string | null) ??
+              ((application.status as string) === "pending" ? "submitted" : "reviewed");
+            if (isHiringApplicationPendingReview(subStatus)) {
               pendingApplicationsCount += 1;
+              pendingApplications.push({
+                id: application.id as string,
+                listingId,
+                listingTitle: listingTitleById.get(listingId) ?? "Open role",
+                createdAt: (application.created_at as string) ?? "",
+              });
             }
           }
           rolesWithZeroApplicants = listingIds.filter(
@@ -1602,180 +1458,90 @@ export default function ClubCommandCenter({
         pendingApplicationsCount,
         rolesWithZeroApplicants,
         topOpenRole,
+        pendingApplications,
         loading: false,
       });
     }
 
     void loadHiringSnapshot();
+
+    function onHiringUpdated(event: Event) {
+      const detail = (event as CustomEvent<HiringApplicationUpdatedDetail>).detail;
+      if (detail?.clubId && detail.clubId !== clubId) return;
+      void loadHiringSnapshot();
+    }
+
+    window.addEventListener(HIRING_APPLICATION_UPDATED_EVENT, onHiringUpdated);
+
     return () => {
       cancelled = true;
+      window.removeEventListener(HIRING_APPLICATION_UPDATED_EVENT, onHiringUpdated);
     };
   }, [clubId, canManageHiring]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadActivityFeed() {
-      setActivityLoading(true);
+    async function loadClubHealth() {
+      if (!isPresident) {
+        setClubHealth({
+          totalMembers: 0,
+          newMembersThisMonth: 0,
+          rsvpsThisMonth: 0,
+          loading: false,
+        });
+        return;
+      }
 
-      const [
-        membersRes,
-        clubEventsRes,
-        applicationsListingRes,
-      ] = await Promise.all([
-        supabase
-          .from("club_members")
-          .select(
-            `
-            created_at,
-            member_profile:profiles!club_members_user_profile_fkey ( full_name )
-          `,
-          )
-          .eq("club_id", clubId)
-          .eq("status", "active")
-          .order("created_at", { ascending: false })
-          .limit(5),
-        supabase.from("events").select("id, title").eq("club_id", clubId),
-        supabase
-          .from("hiring_listings")
-          .select("id, title")
-          .eq("club_id", clubId),
-      ]);
+      setClubHealth((prev) => ({ ...prev, loading: true }));
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const monthStartIso = monthStart.toISOString();
+
+      const { data: eventRows } = await supabase
+        .from("events")
+        .select("id")
+        .eq("club_id", clubId);
+      if (cancelled) return;
+
+      const eventIds = (eventRows ?? []).map((row) => row.id as string);
+      let rsvpsThisMonth = 0;
+      if (eventIds.length > 0) {
+        const { count, error } = await supabase
+          .from("event_rsvps")
+          .select("id", { count: "exact", head: true })
+          .in("event_id", eventIds)
+          .gte("created_at", monthStartIso);
+        if (error) {
+          console.error("Failed to load RSVP health metric:", error.message);
+        } else {
+          rsvpsThisMonth = count ?? 0;
+        }
+      }
 
       if (cancelled) return;
 
-      const eventTitleById = new Map(
-        (clubEventsRes.data ?? []).map((row) => [row.id as string, (row.title as string) ?? "Event"]),
-      );
-      const eventIds = Array.from(eventTitleById.keys());
+      const activeMembers = members.filter((member) => member.status === "active");
+      const newMembersThisMonth = activeMembers.filter((member) => {
+        const joined = new Date(member.joinedAt);
+        return !Number.isNaN(joined.getTime()) && joined.getTime() >= monthStart.getTime();
+      }).length;
 
-      const listingTitleById = new Map(
-        (applicationsListingRes.data ?? []).map((row) => [
-          row.id as string,
-          (row.title as string) ?? "Role",
-        ]),
-      );
-      const listingIds = Array.from(listingTitleById.keys());
-
-      const [rsvpsRes, applicationsRes] = await Promise.all([
-        eventIds.length
-          ? supabase
-              .from("event_rsvps")
-              .select("created_at, user_id, event_id")
-              .in("event_id", eventIds)
-              .order("created_at", { ascending: false })
-              .limit(5)
-          : Promise.resolve({ data: [], error: null }),
-        listingIds.length
-          ? supabase
-              .from("hiring_applications")
-              .select("created_at, applicant_id, listing_id")
-              .in("listing_id", listingIds)
-              .order("created_at", { ascending: false })
-              .limit(5)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-
-      if (cancelled) return;
-
-      const profileIds = new Set<string>();
-      for (const row of rsvpsRes.data ?? []) {
-        profileIds.add(row.user_id as string);
-      }
-      for (const row of applicationsRes.data ?? []) {
-        profileIds.add(row.applicant_id as string);
-      }
-
-      const profilesRes =
-        profileIds.size > 0
-          ? await supabase
-              .from("profiles")
-              .select("id, full_name")
-              .in("id", Array.from(profileIds))
-          : { data: [], error: null };
-
-      if (cancelled) return;
-
-      const profileNameById = new Map(
-        (profilesRes.data ?? []).map((row) => [
-          row.id as string,
-          ((row.full_name as string | null) ?? "Someone").trim(),
-        ]),
-      );
-
-      const feed: ActivityFeedItem[] = [];
-
-      for (const row of membersRes.data ?? []) {
-        const profileRaw = row.member_profile;
-        const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw;
-        const name = ((profile as { full_name?: string } | null)?.full_name ?? "Someone").trim();
-        feed.push({
-          id: `join-${row.created_at as string}-${name}`,
-          kind: "join",
-          description: `${name} joined the club`,
-          timestamp: row.created_at as string,
-          icon: <UserPlus size={14} color="#888888" aria-hidden />,
-        });
-      }
-
-      for (const row of rsvpsRes.data ?? []) {
-        const name = profileNameById.get(row.user_id as string) ?? "Someone";
-        const eventTitle = eventTitleById.get(row.event_id as string) ?? "an event";
-        feed.push({
-          id: `rsvp-${row.created_at as string}-${row.user_id as string}`,
-          kind: "rsvp",
-          description: `${name} RSVP'd to ${eventTitle}`,
-          timestamp: row.created_at as string,
-          icon: <Calendar size={14} color="#888888" aria-hidden />,
-        });
-      }
-
-      for (const post of posts.slice(0, 5)) {
-        feed.push({
-          id: `announcement-${post.id}`,
-          kind: "announcement",
-          description: `${post.authorName ?? "Someone"} posted an announcement`,
-          timestamp: post.createdAt,
-          icon: <Megaphone size={14} color="#888888" aria-hidden />,
-        });
-      }
-
-      for (const task of tasks.filter((item) => item.status === "done").slice(0, 5)) {
-        feed.push({
-          id: `task-${task.id}`,
-          kind: "task",
-          description: `Task completed: ${task.title}`,
-          timestamp: task.createdAt,
-          icon: <CheckSquare size={14} color="#888888" aria-hidden />,
-        });
-      }
-
-      for (const row of applicationsRes.data ?? []) {
-        const name = profileNameById.get(row.applicant_id as string) ?? "Someone";
-        const roleTitle = listingTitleById.get(row.listing_id as string) ?? "a role";
-        feed.push({
-          id: `application-${row.created_at as string}-${row.applicant_id as string}`,
-          kind: "application",
-          description: `${name} applied for ${roleTitle}`,
-          timestamp: row.created_at as string,
-          icon: <Briefcase size={14} color="#888888" aria-hidden />,
-        });
-      }
-
-      feed.sort(
-        (left, right) =>
-          new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime(),
-      );
-
-      setActivityItems(feed.slice(0, 5));
-      setActivityLoading(false);
+      setClubHealth({
+        totalMembers: activeMembers.length,
+        newMembersThisMonth,
+        rsvpsThisMonth,
+        loading: false,
+      });
     }
 
-    void loadActivityFeed();
+    void loadClubHealth();
     return () => {
       cancelled = true;
     };
-  }, [clubId, posts, tasks]);
+  }, [clubId, isPresident, members]);
 
   const today = useMemo(() => startOfDay(new Date()), []);
 
@@ -1864,9 +1630,6 @@ export default function ClubCommandCenter({
   const profileCompletion = setupProgress.percent;
   const profileMissingLabels = setupProgress.missingLabels;
 
-  const pendingJoinCount = pendingMembers.length;
-  const pendingApplicationCount = hiringSnapshot.pendingApplicationsCount;
-
   const needsReviewTasks = useMemo(() => {
     if (!user?.id) return [];
     return tasks.filter((task) => isTaskAwaitingReviewFromUser(task, user.id));
@@ -1913,6 +1676,7 @@ export default function ClubCommandCenter({
   const overdueTasks = useMemo(
     () =>
       openTasks.filter((task) => {
+        if (isTaskInactiveForDueTracking(task.status)) return false;
         const due = parseTaskDueDate(task.dueDate);
         return due != null && due.getTime() < today.getTime();
       }),
@@ -1922,30 +1686,15 @@ export default function ClubCommandCenter({
   const pendingActionsAll = useMemo(() => {
     const items: PendingActionItem[] = [];
 
-    if (memberAccess.canApproveMembers && pendingJoinCount > 0) {
+    for (const task of overdueTasks) {
       items.push({
-        id: "join-requests",
-        label: `${pendingJoinCount} pending join request${pendingJoinCount === 1 ? "" : "s"}`,
-        actionLabel: "Review",
-        onAction: () => navigate(`${membersPath}?tab=pending`),
-      });
-    }
-
-    if (canManageHiring && pendingApplicationCount > 0) {
-      items.push({
-        id: "applications",
-        label: `${pendingApplicationCount} pending application${pendingApplicationCount === 1 ? "" : "s"}`,
-        actionLabel: "Review",
-        onAction: () => navigate(`${recruitingPath}?tab=applications`),
-      });
-    }
-
-    if (overdueTasks.length > 0) {
-      items.push({
-        id: "overdue-tasks",
-        label: `${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"}`,
-        actionLabel: "View Tasks",
-        onAction: () => navigate(tasksPath),
+        id: `overdue-task-${task.id}`,
+        label: `Overdue task: ${task.title}`,
+        category: "tasks",
+        urgency: "overdue",
+        sortDate: task.dueDate ?? null,
+        actionLabel: "Open Task",
+        onAction: () => onOpenTask(task),
       });
     }
 
@@ -1953,18 +1702,56 @@ export default function ClubCommandCenter({
       items.push({
         id: `review-${task.id}`,
         label: `Task awaiting review: ${task.title}`,
+        category: "tasks",
+        urgency: "needs_review",
+        sortDate: task.dueDate ?? task.completedAt ?? task.createdAt,
         actionLabel: "Review Task",
         onAction: () => onOpenTask(task),
       });
     }
 
-    if (canManageMeetings && needsRecapMeetings.length > 0) {
+    for (const meeting of needsRecapMeetings) {
       items.push({
-        id: "meeting-recaps",
-        label: `${needsRecapMeetings.length} meeting${needsRecapMeetings.length === 1 ? "" : "s"} need recap`,
+        id: `meeting-recap-${meeting.id}`,
+        label: `Add recap: ${meeting.title}`,
+        category: "meetings",
+        urgency: "needs_review",
+        sortDate: meeting.date,
         actionLabel: "Add Recap",
-        onAction: () => navigate(meetingsPath),
+        onAction: () =>
+          navigate(`${meetingsPath}/${meeting.id}?focus=recap&tab=past`),
       });
+    }
+
+    for (const application of hiringSnapshot.pendingApplications) {
+      items.push({
+        id: `application-${application.id}`,
+        label: `Pending application for ${application.listingTitle}`,
+        category: "hiring",
+        urgency: "needs_review",
+        sortDate: application.createdAt,
+        actionLabel: "Review",
+        onAction: () =>
+          navigate(
+            `${recruitingPath}?listing=${application.listingId}&application=${application.id}`,
+          ),
+      });
+    }
+
+    if (memberAccess.canApproveMembers) {
+      for (const member of pendingMembers) {
+        const name = member.fullName?.trim() || member.email?.trim() || "Member";
+        items.push({
+          id: `join-request-${member.id}`,
+          label: `Join request: ${name}`,
+          category: "join_requests",
+          urgency: "needs_review",
+          sortDate: member.joinedAt,
+          actionLabel: "Review",
+          onAction: () =>
+            navigate(`${membersPath}?tab=pending&request=${member.id}`),
+        });
+      }
     }
 
     for (const event of previewUpcomingEvents) {
@@ -1976,37 +1763,37 @@ export default function ClubCommandCenter({
       if (daysUntil >= 0 && daysUntil <= 14 && going < 5) {
         items.push({
           id: `low-rsvp-${event.id}`,
-          label: `Low RSVPs for ${event.title} (${going} going)`,
+          label: `Low RSVPs for ${event.title}`,
+          category: "events",
+          urgency: "due_soon",
+          sortDate: event.occurrenceDate,
           actionLabel: "View RSVPs",
           onAction: () => navigate(`${eventsPath}?viewRsvps=${event.id}`),
         });
       }
     }
 
-    return items;
+    return sortPendingActions(items);
   }, [
     memberAccess.canApproveMembers,
-    canManageHiring,
-    pendingJoinCount,
-    pendingApplicationCount,
-    overdueTasks.length,
+    overdueTasks,
     needsReviewTasks,
-    canManageMeetings,
-    needsRecapMeetings.length,
+    needsRecapMeetings,
+    hiringSnapshot.pendingApplications,
+    pendingMembers,
     previewUpcomingEvents,
     eventRsvpCounts,
     today,
     navigate,
     membersPath,
     recruitingPath,
-    tasksPath,
     meetingsPath,
     eventsPath,
     onOpenTask,
   ]);
 
   const pendingActionsItems = useMemo(
-    () => pendingActionsAll.slice(0, 8),
+    () => pendingActionsAll.slice(0, 5),
     [pendingActionsAll],
   );
 
@@ -2017,35 +1804,38 @@ export default function ClubCommandCenter({
   const showProfileSetupBanner =
     memberAccess.canManageClubSettings && shouldShowProfileSetupBanner(club);
 
-  const upcomingReminderEvent = useMemo(() => {
-    const eventInThreeDays = upcomingOccurrences.find((event) => {
-      const eventDate = startOfDay(new Date(`${event.occurrenceDate}T12:00:00`));
-      const diffDays = Math.round(
-        (eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      return diffDays >= 0 && diffDays <= 3;
-    });
+  const myTasksOverviewPreview = useMemo(() => {
+    return [...myOpenAssignedTasks]
+      .sort((left, right) => {
+        const leftDue = parseTaskDueDate(left.dueDate);
+        const rightDue = parseTaskDueDate(right.dueDate);
+        const leftOverdue = leftDue != null && leftDue.getTime() < today.getTime();
+        const rightOverdue = rightDue != null && rightDue.getTime() < today.getTime();
+        if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+        const leftKey = left.dueDate?.trim() || "9999-12-31";
+        const rightKey = right.dueDate?.trim() || "9999-12-31";
+        return leftKey.localeCompare(rightKey);
+      })
+      .slice(0, 5);
+  }, [myOpenAssignedTasks, today]);
 
-    if (!eventInThreeDays) return null;
-
-    return {
-      title: eventInThreeDays.title,
-      dateLine: formatEventDateLine(eventInThreeDays.occurrenceDate, eventInThreeDays.time),
-    };
-  }, [upcomingOccurrences, today]);
-
-  const myTasksOverviewPreview = useMemo(
-    () => sortTasksByUrgency(myOpenAssignedTasks).slice(0, 3),
-    [myOpenAssignedTasks],
-  );
-
-  const delegatedTasksOverviewPreview = useMemo(
-    () =>
-      [...delegatedOpenTasks]
-        .sort((left, right) => (left.dueDate ?? "").localeCompare(right.dueDate ?? ""))
-        .slice(0, 3),
-    [delegatedOpenTasks],
-  );
+  const delegatedTasksOverviewPreview = useMemo(() => {
+    return [...delegatedOpenTasks]
+      .sort((left, right) => {
+        const leftReview = left.status === "pending_review" ? 0 : 1;
+        const rightReview = right.status === "pending_review" ? 0 : 1;
+        if (leftReview !== rightReview) return leftReview - rightReview;
+        const leftDue = parseTaskDueDate(left.dueDate);
+        const rightDue = parseTaskDueDate(right.dueDate);
+        const leftOverdue = leftDue != null && leftDue.getTime() < today.getTime();
+        const rightOverdue = rightDue != null && rightDue.getTime() < today.getTime();
+        if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+        const leftKey = left.dueDate?.trim() || "9999-12-31";
+        const rightKey = right.dueDate?.trim() || "9999-12-31";
+        return leftKey.localeCompare(rightKey);
+      })
+      .slice(0, 5);
+  }, [delegatedOpenTasks, today]);
 
   const upcomingActivityLoading = eventsLoading || meetingsLoading;
 
@@ -2071,82 +1861,216 @@ export default function ClubCommandCenter({
   ]);
 
   const hiringIsUrgent =
-    canManageHiring && hiringSnapshot.pendingApplicationsCount > 0;
+    isPresident && canManageHiring && hiringSnapshot.pendingApplicationsCount > 0;
 
-  const quickActions = useMemo(() => {
-    const actions: { id: string; icon: ReactNode; label: string; onClick: () => void }[] = [];
+  const createMenuActions = useMemo(() => {
+    const actions: CreateMenuAction[] = [];
 
     if (canCreateAnnouncement) {
       actions.push({
         id: "announcement",
-        icon: <Megaphone size={16} aria-hidden />,
-        label: "New Announcement",
+        label: "Announcement",
         onClick: () => navigate(`${announcementsPath}?openCreate=true`),
       });
     }
     if (canCreateEvent) {
       actions.push({
         id: "event",
-        icon: <Calendar size={16} aria-hidden />,
-        label: "Add Event",
+        label: "Event",
         onClick: () => navigate(`${eventsPath}?openCreate=true`),
       });
     }
     if (canCreateTask) {
       actions.push({
         id: "task",
-        icon: <CheckSquare size={16} aria-hidden />,
-        label: "Create Task",
+        label: "Task",
         onClick: () => navigate(`${tasksPath}?openCreate=true`),
       });
     }
     if (canManageMeetings) {
       actions.push({
         id: "meeting",
-        icon: <CalendarClock size={16} aria-hidden />,
-        label: "Schedule Meeting",
+        label: "Meeting",
         onClick: () => navigate(`${meetingsPath}/new`),
       });
     }
-    if (canInviteMembersQuickAction) {
+    if (canManageHiring) {
       actions.push({
-        id: "invite",
-        icon: <UserPlus size={16} aria-hidden />,
-        label: "Invite Members",
-        onClick: () => navigate(membersPath),
+        id: "hiring",
+        label: "Hiring Position",
+        onClick: () => navigate(`${recruitingPath}?openCreate=true`),
       });
     }
-    if (canViewAnalytics) {
+    if (canManageDocuments) {
       actions.push({
-        id: "analytics",
-        icon: <BarChart2 size={16} aria-hidden />,
-        label: "View Reports",
-        onClick: () => navigate(analyticsPath),
+        id: "upload_file",
+        label: isPresident ? "Upload Document" : "Upload File",
+        onClick: () => navigate(`${documentsPath}?openUpload=true`),
+      });
+      actions.push({
+        id: "add_resource",
+        label: "Add Resource Link",
+        onClick: () => navigate(`${documentsPath}?openAddLink=true`),
+      });
+    }
+    if (isPresident && canInviteMembers) {
+      actions.push({
+        id: "invite_members",
+        label: "Invite Members",
+        onClick: () => navigate(`${membersPath}?invite=members`),
+      });
+      actions.push({
+        id: "invite_executive",
+        label: "Invite Executive",
+        onClick: () => navigate(`${membersPath}?invite=executive`),
       });
     }
 
     return actions;
   }, [
-    analyticsPath,
     announcementsPath,
     canCreateAnnouncement,
     canCreateEvent,
     canCreateTask,
-    canInviteMembersQuickAction,
+    canInviteMembers,
+    canManageDocuments,
+    canManageHiring,
     canManageMeetings,
-    canViewAnalytics,
+    documentsPath,
     eventsPath,
+    isPresident,
     meetingsPath,
     membersPath,
     navigate,
+    recruitingPath,
     tasksPath,
+  ]);
+
+  const openHiringApplications = () => {
+    const pending = hiringSnapshot.pendingApplications;
+    if (pending.length === 1) {
+      navigate(
+        `${recruitingPath}?listing=${pending[0].listingId}&application=${pending[0].id}`,
+      );
+      return;
+    }
+    navigate(`${recruitingPath}?tab=applications`);
+  };
+
+  const clubHealthMetrics = useMemo(() => {
+    const nextMeeting = upcomingMeetings[0] ?? null;
+    const pending = hiringSnapshot.pendingApplications;
+    return [
+      {
+        id: "total-members",
+        label: "Total members",
+        value: clubHealth.totalMembers,
+        onClick: () => navigate(membersPath),
+      },
+      {
+        id: "new-members",
+        label: "New this month",
+        value: clubHealth.newMembersThisMonth,
+        onClick: () => navigate(`${membersPath}?filter=recent`),
+      },
+      {
+        id: "upcoming-events",
+        label: "Upcoming events",
+        value: eventsThisMonthCount,
+        onClick: () => navigate(`${eventsPath}?filter=upcoming`),
+      },
+      {
+        id: "rsvps",
+        label: "RSVPs this month",
+        value: clubHealth.rsvpsThisMonth,
+        onClick: () => navigate(eventsPath),
+      },
+      {
+        id: "open-roles",
+        label: "Open roles",
+        value: hiringSnapshot.openRolesCount,
+        onClick: () => navigate(`${recruitingPath}?filter=open`),
+      },
+      {
+        id: "pending-apps",
+        label: "Pending applicants",
+        value: hiringSnapshot.pendingApplicationsCount,
+        highlight: hiringSnapshot.pendingApplicationsCount > 0,
+        onClick: () => {
+          if (pending.length === 1) {
+            navigate(
+              `${recruitingPath}?listing=${pending[0].listingId}&application=${pending[0].id}`,
+            );
+            return;
+          }
+          navigate(`${recruitingPath}?tab=applications`);
+        },
+      },
+      {
+        id: "overdue-tasks",
+        label: "Overdue tasks",
+        value: overdueTasks.length,
+        highlight: overdueTasks.length > 0,
+        onClick: () => navigate(`${tasksPath}?filter=overdue`),
+      },
+      {
+        id: "next-meeting",
+        label: "Next meeting",
+        value: nextMeeting
+          ? `${nextMeeting.title.slice(0, 18)}${nextMeeting.title.length > 18 ? "…" : ""}`
+          : "None",
+        onClick: () =>
+          navigate(nextMeeting ? `${meetingsPath}/${nextMeeting.id}` : meetingsPath),
+      },
+    ];
+  }, [
+    clubHealth.newMembersThisMonth,
+    clubHealth.rsvpsThisMonth,
+    clubHealth.totalMembers,
+    eventsThisMonthCount,
+    eventsPath,
+    hiringSnapshot.openRolesCount,
+    hiringSnapshot.pendingApplications,
+    hiringSnapshot.pendingApplicationsCount,
+    meetingsPath,
+    membersPath,
+    navigate,
+    overdueTasks.length,
+    recruitingPath,
+    tasksPath,
+    upcomingMeetings,
   ]);
 
   const topStatCardCount = canCreateTask ? 4 : 3;
 
+  const formatTaskMeta = (task: Task, includeAssignee: boolean) => {
+    const parts = [
+      formatTaskDueLabel(task),
+      TASK_STATUS_LABELS[task.status] ?? task.status,
+      task.priority,
+    ];
+    if (includeAssignee) {
+      parts.push(task.assigneeName ?? "Unassigned");
+    }
+    return parts.join(" · ");
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <ClubIdentityHeader club={club} roleContextLabel={roleContextLabel} />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ClubIdentityHeader club={club} roleContextLabel={roleContextLabel} />
+        </div>
+        <CommandCenterCreateMenu actions={createMenuActions} />
+      </div>
 
       {showProfileSetupBanner ? (
         <ProfileSetupBanner
@@ -2177,14 +2101,14 @@ export default function ClubCommandCenter({
               value={pendingActionsCount}
               sublabel={
                 pendingActionsCount > 0
-                  ? `${pendingActionsCount} need${pendingActionsCount === 1 ? "s" : ""} review`
+                  ? `${pendingActionsCount} need${pendingActionsCount === 1 ? "s" : ""} attention`
                   : "All caught up"
               }
               actionLabel="Review"
               icon={<ClipboardList size={18} aria-hidden />}
               accentColor={ACCENT_RED}
               iconColor={ACCENT_RED}
-              onClick={scrollToPendingActions}
+              onClick={openPendingOverlay}
             />
             <CommandCenterStatCard
               label="Upcoming Activity"
@@ -2201,7 +2125,7 @@ export default function ClubCommandCenter({
               onClick={() => navigate(eventsPath)}
             />
             <CommandCenterStatCard
-              label="Tasks Assigned to Me"
+              label="My Tasks"
               value={myOpenAssignedTasks.length}
               sublabel={
                 myOverdueAssignedTasks.length > 0
@@ -2220,10 +2144,10 @@ export default function ClubCommandCenter({
             />
             {canCreateTask ? (
               <CommandCenterStatCard
-                label="Tasks I Assigned"
+                label="Assigned by Me"
                 value={delegatedOpenTasks.length}
                 sublabel={delegatedTasksSublabel}
-                actionLabel="Track Tasks"
+                actionLabel="View All Assigned Tasks"
                 icon={<CheckSquare size={18} aria-hidden />}
                 accentColor={
                   delegatedOverdueTasks.length > 0 ? ACCENT_RED : NEUTRAL_TOP_BORDER
@@ -2238,8 +2162,10 @@ export default function ClubCommandCenter({
 
       <PendingActionsSection
         items={pendingActionsItems}
+        totalCount={pendingActionsCount}
         loading={pendingActionsLoading}
         sectionRef={pendingActionsRef}
+        onOpenAll={openPendingOverlay}
       />
 
       <section style={sectionCardStyle}>
@@ -2249,7 +2175,7 @@ export default function ClubCommandCenter({
             <Spinner label="Loading upcoming activity…" />
           </div>
         ) : previewUpcomingActivity.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "13px", color: "#666666" }}>
+          <p style={{ margin: 0, fontSize: "13px", color: "#888888" }}>
             No upcoming club activity scheduled.
           </p>
         ) : (
@@ -2262,7 +2188,7 @@ export default function ClubCommandCenter({
                 onManage={() =>
                   navigate(
                     row.kind === "event"
-                      ? `${eventsPath}?manageEvent=${row.eventId}`
+                      ? getWorkspaceEventManagePath(clubId, row.eventId)
                       : `${meetingsPath}/${row.meetingId}`,
                   )
                 }
@@ -2290,7 +2216,8 @@ export default function ClubCommandCenter({
             }}
           >
             <TaskOverviewColumn
-              title="Tasks Assigned to Me"
+              title="My Tasks"
+              count={myOpenAssignedTasks.length}
               emptyMessage="No tasks assigned to you right now."
               footerLabel="View My Tasks"
               isEmpty={myTasksOverviewPreview.length === 0}
@@ -2300,16 +2227,17 @@ export default function ClubCommandCenter({
                 <CompactTaskOverviewRow
                   key={task.id}
                   task={task}
-                  meta={`${taskSourceLabel(task, club.name)} · ${formatTaskDueLabel(task)}`}
+                  meta={formatTaskMeta(task, false)}
                   onClick={() => onOpenTask(task)}
                 />
               ))}
             </TaskOverviewColumn>
             {canCreateTask ? (
               <TaskOverviewColumn
-                title="Tasks I Assigned"
+                title="Assigned by Me"
+                count={delegatedOpenTasks.length}
                 emptyMessage="You haven't assigned any tasks yet."
-                footerLabel="Track Tasks"
+                footerLabel="View All Assigned Tasks"
                 isEmpty={delegatedTasksOverviewPreview.length === 0}
                 onFooterClick={() => navigate(`${tasksPath}?tab=assigned_by_me`)}
               >
@@ -2317,7 +2245,7 @@ export default function ClubCommandCenter({
                   <CompactTaskOverviewRow
                     key={task.id}
                     task={task}
-                    meta={`${task.assigneeName ?? "Unassigned"} · ${formatTaskDueLabel(task)}`}
+                    meta={formatTaskMeta(task, true)}
                     onClick={() => onOpenTask(task)}
                   />
                 ))}
@@ -2327,7 +2255,7 @@ export default function ClubCommandCenter({
         )}
       </section>
 
-      {canManageHiring ? (
+      {isPresident && canManageHiring ? (
         <section
           style={{
             ...sectionCardStyle,
@@ -2372,18 +2300,28 @@ export default function ClubCommandCenter({
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: isMobile
-                      ? "repeat(3, minmax(0, 1fr))"
-                      : "repeat(3, minmax(0, 1fr))",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                     gap: "8px",
                     width: "100%",
                   }}
                 >
-                  <HiringMetricLine
-                    label="Pending Apps"
-                    value={hiringSnapshot.pendingApplicationsCount}
-                    highlight={hiringIsUrgent}
-                  />
+                  <button
+                    type="button"
+                    onClick={openHiringApplications}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <HiringMetricLine
+                      label="Pending Apps"
+                      value={hiringSnapshot.pendingApplicationsCount}
+                      highlight={hiringIsUrgent}
+                    />
+                  </button>
                   <HiringMetricLine
                     label="0 Applicants"
                     value={hiringSnapshot.rolesWithZeroApplicants}
@@ -2405,7 +2343,7 @@ export default function ClubCommandCenter({
                     style={{
                       margin: "0 0 6px",
                       fontSize: "10px",
-                      color: "#666666",
+                      color: "#9a9a9a",
                       textTransform: "uppercase",
                       letterSpacing: "0.06em",
                       fontWeight: 700,
@@ -2429,7 +2367,7 @@ export default function ClubCommandCenter({
                       style={
                         hiringIsUrgent ? urgentOutlinedButtonStyle : outlineButtonStyle
                       }
-                      onClick={() => navigate(`${recruitingPath}?tab=applications`)}
+                      onClick={openHiringApplications}
                     >
                       Review Applications
                     </button>
@@ -2458,94 +2396,19 @@ export default function ClubCommandCenter({
         </section>
       ) : null}
 
-      <RemindersQuickActionsCard
-        reminderEvent={upcomingReminderEvent}
-        isMobile={isMobile}
-        quickActions={quickActions}
-        onUseReminderTemplate={() => navigate(`${announcementsPath}?openTemplate=true`)}
-      />
+      {isPresident ? (
+        <ClubHealthSnapshot
+          metrics={clubHealthMetrics}
+          loading={clubHealth.loading || membersLoading || hiringSnapshot.loading || meetingsLoading}
+        />
+      ) : null}
 
-      <section
-        style={{
-          ...sectionCardStyle,
-          background: "#111111",
-          borderColor: "#1f1f1f",
-        }}
-      >
-        <h2
-          style={{
-            fontWeight: 600,
-            fontSize: "12px",
-            color: "#777777",
-            margin: "0 0 10px",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          Recent Club Activity
-        </h2>
-        {activityLoading ? (
-          <div className="flex justify-center py-3">
-            <Spinner label="Loading activity…" />
-          </div>
-        ) : activityItems.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "12px", color: "#555555" }}>No recent activity yet.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {activityItems.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "8px 0",
-                  borderBottom: "1px solid #1a1a1a",
-                }}
-              >
-                <div
-                  style={{
-                    width: "28px",
-                    height: "28px",
-                    borderRadius: "50%",
-                    background: "#1a1a1a",
-                    border: `1px solid ${CARD_BORDER}`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                    color: "#888888",
-                  }}
-                >
-                  {item.icon}
-                </div>
-                <p
-                  style={{
-                    margin: 0,
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: "13px",
-                    color: "#aaaaaa",
-                    lineHeight: 1.35,
-                  }}
-                >
-                  {item.description}
-                </p>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "#666666",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}
-                >
-                  {formatRelativeTime(item.timestamp)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <PendingActionsOverlay
+        open={pendingOverlayOpen}
+        items={pendingActionsAll}
+        loading={pendingActionsLoading}
+        onClose={() => setPendingOverlayOpen(false)}
+      />
     </div>
   );
 }

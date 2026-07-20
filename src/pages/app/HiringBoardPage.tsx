@@ -482,7 +482,7 @@ function ViewClubProfileLink({ onClick }: { onClick: () => void }) {
   );
 }
 
-function SaveRoleButton({
+export function SaveRoleButton({
   saved,
   onToggle,
   compact = false,
@@ -919,7 +919,7 @@ function HiringListingCard({
   );
 }
 
-function HiringDetailApplyButton({
+export function HiringDetailApplyButton({
   user,
   alreadyApplied,
   onApply,
@@ -989,6 +989,7 @@ function HiringDetailActionRow({
   onApply,
   onViewClub,
   onToggleSave,
+  showViewClubProfile = true,
 }: {
   position: BoardPosition;
   user: { id: string } | null;
@@ -998,6 +999,7 @@ function HiringDetailActionRow({
   onApply: () => void;
   onViewClub: () => void;
   onToggleSave: () => void;
+  showViewClubProfile?: boolean;
 }) {
   return (
     <div
@@ -1015,7 +1017,9 @@ function HiringDetailActionRow({
         onApply={onApply}
       />
       <SaveRoleButton saved={saved} disabled={!canSave} onToggle={onToggleSave} />
-      {position.clubSlug ? <ViewClubProfileLink onClick={onViewClub} /> : null}
+      {showViewClubProfile && position.clubSlug ? (
+        <ViewClubProfileLink onClick={onViewClub} />
+      ) : null}
     </div>
   );
 }
@@ -1213,7 +1217,7 @@ function HiringClubBannerFit({ bannerUrl }: { bannerUrl: string }) {
   );
 }
 
-function HiringDetailPanel({
+export function HiringDetailPanel({
   position,
   user,
   alreadyApplied,
@@ -1222,6 +1226,7 @@ function HiringDetailPanel({
   onApply,
   onViewClub,
   onToggleSave,
+  viewClubProfilePlacement = "actions",
 }: {
   position: BoardPosition;
   user: { id: string } | null;
@@ -1231,6 +1236,8 @@ function HiringDetailPanel({
   onApply: () => void;
   onViewClub: () => void;
   onToggleSave: () => void;
+  /** Prefer "under-heading" inside a club workspace (profile is secondary). */
+  viewClubProfilePlacement?: "actions" | "under-heading";
 }) {
   const deadline = position.deadline
     ? listingDeadlineDisplay(position.deadline)
@@ -1255,6 +1262,9 @@ function HiringDetailPanel({
             : "";
         })()
       : "";
+
+  const showViewClubUnderHeading =
+    viewClubProfilePlacement === "under-heading" && Boolean(position.clubSlug);
 
   return (
     <div>
@@ -1339,13 +1349,19 @@ function HiringDetailPanel({
 
         <div
           style={{
-            borderBottom: "1px solid #1e1e1e",
-            marginBottom: "8px",
-            paddingBottom: "20px",
+            borderBottom: showViewClubUnderHeading ? "none" : "1px solid #1e1e1e",
+            marginBottom: showViewClubUnderHeading ? "0" : "8px",
+            paddingBottom: showViewClubUnderHeading ? "8px" : "20px",
           }}
         >
           <DetailPositionTagsRow position={position} />
         </div>
+
+        {showViewClubUnderHeading ? (
+          <div style={{ marginBottom: "4px", paddingBottom: "16px", borderBottom: "1px solid #1e1e1e" }}>
+            <ViewClubProfileLink onClick={onViewClub} />
+          </div>
+        ) : null}
 
         <HiringDetailActionRow
           position={position}
@@ -1356,6 +1372,7 @@ function HiringDetailPanel({
           onApply={onApply}
           onViewClub={onViewClub}
           onToggleSave={onToggleSave}
+          showViewClubProfile={viewClubProfilePlacement === "actions"}
         />
 
         <DetailSectionHeading first>About this role</DetailSectionHeading>

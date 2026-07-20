@@ -4,7 +4,8 @@ import { useAuthContext } from "../../context/useAuthContext";
 import type { UseClubTasksReturn } from "../../hooks/useClubTasks";
 import { formatNameWithRoleTitle } from "../../lib/memberRoleTitle";
 import { formatTaskDate } from "../../lib/taskDueUrgency";
-import { resolveTaskCompletionStatus } from "../../lib/taskCompletion";
+import { resolveTaskCompletionStatus, shouldSubmitTaskForReview } from "../../lib/taskCompletion";
+import DateTimeField from "../ui/DateTimeField";
 import { getTaskStatusMenuItems, TASK_STATUS_LABELS } from "../../lib/taskStatusActions";
 import {
   EVENT_PLANNING_TASK_TITLES,
@@ -238,22 +239,22 @@ function EventPlanningTemplateModal({
                     </option>
                   ))}
               </select>
-              <input
+              <DateTimeField
                 type="date"
                 value={row.dueDate}
-                onChange={(e) =>
+                onChange={(value) =>
                   setRows((prev) =>
                     prev.map((item) =>
-                      item.id === row.id ? { ...item, dueDate: e.target.value } : item,
+                      item.id === row.id ? { ...item, dueDate: value } : item,
                     ),
                   )
                 }
-                style={{
+                inputStyle={{
                   background: "#0f0f0f",
                   border: "1px solid #2a2a2a",
                   borderRadius: "6px",
                   color: "#ffffff",
-                  padding: "8px 10px",
+                  padding: "8px 36px 8px 10px",
                   fontSize: "13px",
                 }}
               />
@@ -288,6 +289,7 @@ function EventPlanningTemplateModal({
 function PlanningTaskRow({
   task,
   eventTitle,
+  currentUserId,
   onOpen,
   onEdit,
   onDelete,
@@ -296,6 +298,7 @@ function PlanningTaskRow({
 }: {
   task: Task;
   eventTitle: string;
+  currentUserId?: string;
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -304,7 +307,9 @@ function PlanningTaskRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const isDone = task.status === "done";
-
+  const submitForReview = Boolean(
+    currentUserId && shouldSubmitTaskForReview(task, currentUserId),
+  );
   return (
     <li
       style={{
@@ -396,7 +401,7 @@ function PlanningTaskRow({
               {[
                 { label: "View Details", action: onOpen },
                 { label: "Edit", action: onEdit },
-                ...getTaskStatusMenuItems(task.status).map((item) => ({
+                ...getTaskStatusMenuItems(task.status, { submitForReview }).map((item) => ({
                   label: item.label,
                   action: () => onStatusChange(item.status),
                 })),
@@ -693,6 +698,7 @@ export default function EventPlanningTasksSection({
                     key={task.id}
                     task={task}
                     eventTitle={eventTitle}
+                    currentUserId={user?.id}
                     onOpen={() => setDetailTask(task)}
                     onEdit={() => startEdit(task)}
                     onDelete={() => void handleDelete(task.id)}

@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../context/useAuthContext";
 import { useClubContext } from "../context/useClubContext";
 import { supabase } from "../lib/supabaseClient";
@@ -12,6 +12,7 @@ import {
   resolveExploreClubClaimState,
   type ClaimRoleOption,
 } from "../lib/clubClaimUtils";
+import { resubmitClubClaimRequest } from "../lib/clubPresidentMembership";
 import {
   notifyClaimRequestSubmitted,
   resolveStudentDisplayName,
@@ -64,6 +65,9 @@ interface ClaimClubRow {
 
 export default function ClubClaimPage() {
   const { slug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
+  const editClaimId = searchParams.get("edit")?.trim() || null;
+  const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthContext();
   const { toggleSaveClub, isSaved } = useClubContext();
 
@@ -80,6 +84,8 @@ export default function ClubClaimPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeOwnerCount, setActiveOwnerCount] = useState(0);
   const [userPendingClaimId, setUserPendingClaimId] = useState<string | null>(null);
+  const [editingClaimId, setEditingClaimId] = useState<string | null>(null);
+  const [editLoadError, setEditLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) {
@@ -175,12 +181,67 @@ export default function ClubClaimPage() {
   }, [slug, user?.id]);
 
   useEffect(() => {
+    if (!user?.id || !editClaimId || !club?.id) {
+      setEditingClaimId(null);
+      setEditLoadError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from("club_claim_requests")
+        .select(
+          "id, status, role_in_club, message, proof_url, contact_email, submitted_by, club_id",
+        )
+        .eq("id", editClaimId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error || !data) {
+        setEditingClaimId(null);
+        setEditLoadError("This claim request could not be loaded for editing.");
+        return;
+      }
+
+      if (
+        (data.submitted_by as string) !== user.id ||
+        (data.club_id as string) !== club.id ||
+        (data.status as string) !== "more_info"
+      ) {
+        setEditingClaimId(null);
+        setEditLoadError("This claim request is not available to edit.");
+        return;
+      }
+
+      const role = data.role_in_club as string;
+      if (CLAIM_ROLE_OPTIONS.includes(role as ClaimRoleOption)) {
+        setRoleInClub(role as ClaimRoleOption);
+      }
+      setMessage((data.message as string | null) ?? "");
+      setProofUrl((data.proof_url as string | null) ?? "");
+      setContactEmail(
+        ((data.contact_email as string | null) ?? user.email ?? "").trim(),
+      );
+      setEditingClaimId(data.id as string);
+      setEditLoadError(null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.email, editClaimId, club?.id]);
+
+  useEffect(() => {
     if (!user?.email) return;
     setContactEmail((prev) => prev || user.email || "");
   }, [user?.email]);
 
   const saved = club ? isSaved(club.id) : false;
   const ineligibleRole = !canSubmitClubClaim(roleInClub);
+  const isEditing = Boolean(editingClaimId);
 
   function handleCopyInviteLink() {
     if (!club) return;
@@ -204,6 +265,42 @@ export default function ClubClaimPage() {
 
     setSubmitting(true);
     setSubmitError(null);
+
+    if (editingClaimId) {
+      const result = await resubmitClubClaimRequest(supabase, {
+        claimRequestId: editingClaimId,
+        roleInClub,
+        message: message.trim() || undefined,
+        proofUrl: proofUrl.trim() || undefined,
+        contactEmail: contactEmail.trim() || undefined,
+      });
+
+      if (!result.ok) {
+        setSubmitError("Failed to resubmit claim request. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+
+      const submitterName = resolveStudentDisplayName(
+        typeof user.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name
+          : null,
+        user.email,
+      );
+
+      await notifyClaimRequestSubmitted(supabase, {
+        clubId: club.id,
+        clubName: club.name,
+        clubSlug: club.slug,
+        submitterName,
+        submitterUserId: user.id,
+        claimRequestId: result.claimRequestId,
+      });
+
+      setSubmitting(false);
+      navigate(`/claim-status/${result.claimRequestId}`, { replace: true });
+      return;
+    }
 
     const { data: insertedClaim, error: insertError } = await supabase
       .from("club_claim_requests")
@@ -351,7 +448,28 @@ export default function ClubClaimPage() {
   );
   const pendingClaimId = userPendingClaimId;
 
-  if (claimState === "user_pending") {
+  if (editClaimId && editLoadError) {
+    return renderBlockedClaimState(
+      club.name,
+      editLoadError,
+      editClaimId
+        ? { label: "View Claim Status", to: `/claim-status/${editClaimId}` }
+        : undefined,
+    );
+  }
+
+  if (editClaimId && !isEditing) {
+    return (
+      <div
+        className="flex min-h-[60vh] items-center justify-center"
+        style={{ background: PAGE_BG }}
+      >
+        <Spinner label="Loading claim for edit…" />
+      </div>
+    );
+  }
+
+  if (!isEditing && claimState === "user_pending") {
     return renderBlockedClaimState(
       club.name,
       submitted
@@ -363,7 +481,7 @@ export default function ClubClaimPage() {
     );
   }
 
-  if (claimState === "pending") {
+  if (!isEditing && claimState === "pending") {
     return renderBlockedClaimState(
       club.name,
       "A claim request is pending review for this club. Check back later if you believe you should manage this club.",
@@ -371,7 +489,7 @@ export default function ClubClaimPage() {
     );
   }
 
-  if (claimState === "claimed" || !claimable) {
+  if (!isEditing && (claimState === "claimed" || !claimable)) {
     return renderBlockedClaimState(
       club.name,
       "This club has already been claimed and is managed by its executive team.",
@@ -398,10 +516,12 @@ export default function ClubClaimPage() {
             margin: "0 0 8px",
           }}
         >
-          Claim {club.name}
+          {isEditing ? `Update claim for ${club.name}` : `Claim ${club.name}`}
         </h1>
         <p style={{ fontSize: "14px", color: "#777777", margin: "0 0 24px" }}>
-          Submit a claim request if you are a president or executive who should manage this club.
+          {isEditing
+            ? "Update your submission based on the requested changes, then resubmit for review."
+            : "Submit a claim request if you are a president or executive who should manage this club."}
         </p>
 
         {!user ? (
@@ -543,7 +663,13 @@ export default function ClubClaimPage() {
                 cursor: submitting ? "wait" : "pointer",
               }}
             >
-              {submitting ? "Submitting…" : "Submit Claim Request"}
+              {submitting
+                ? isEditing
+                  ? "Resubmitting…"
+                  : "Submitting…"
+                : isEditing
+                  ? "Resubmit Claim"
+                  : "Submit Claim Request"}
             </button>
           </form>
         )}

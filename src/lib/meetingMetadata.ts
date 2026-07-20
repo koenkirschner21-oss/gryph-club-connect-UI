@@ -60,23 +60,65 @@ export function inferMeetingFormat(
   return "in_person";
 }
 
-export function parseAgendaItems(agenda: string | null): string[] {
+export interface AgendaItemDetail {
+  id: string;
+  title: string;
+  owner?: string;
+  estimate?: string;
+}
+
+function normalizeAgendaItem(raw: unknown, index: number): AgendaItemDetail | null {
+  if (typeof raw === "string") {
+    const title = raw.trim();
+    if (!title) return null;
+    return { id: `legacy-${index}`, title };
+  }
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    const title = typeof obj.title === "string" ? obj.title.trim() : "";
+    if (!title) return null;
+    return {
+      id: typeof obj.id === "string" && obj.id.trim() ? obj.id : `item-${index}`,
+      title,
+      owner: typeof obj.owner === "string" && obj.owner.trim() ? obj.owner.trim() : undefined,
+      estimate: typeof obj.estimate === "string" && obj.estimate.trim() ? obj.estimate.trim() : undefined,
+    };
+  }
+  return null;
+}
+
+/** Rich agenda items (title + optional owner/time estimate). Backward-compatible with legacy plain-string agendas. */
+export function parseAgendaItemDetails(agenda: string | null): AgendaItemDetail[] {
   if (!agenda?.trim()) return [];
   try {
     const parsed = JSON.parse(agenda) as unknown;
     if (Array.isArray(parsed)) {
       return parsed
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter(Boolean);
+        .map((item, index) => normalizeAgendaItem(item, index))
+        .filter((item): item is AgendaItemDetail => item !== null);
     }
   } catch {
     // fall through to legacy newline format
   }
   return agenda
     .split("\n")
-    .map((line) => line.replace(/^[-•*]\s*/, "").trim())
-    .filter(Boolean);
+    .map((line, index) => normalizeAgendaItem(line.replace(/^[-•*]\s*/, "").trim(), index))
+    .filter((item): item is AgendaItemDetail => item !== null);
+}
+
+export function serializeAgendaItemDetails(items: AgendaItemDetail[]): string | null {
+  const clean = items
+    .map((item) => ({
+      title: item.title.trim(),
+      owner: item.owner?.trim() || undefined,
+      estimate: item.estimate?.trim() || undefined,
+    }))
+    .filter((item) => item.title);
+  return clean.length > 0 ? JSON.stringify(clean) : null;
+}
+
+export function parseAgendaItems(agenda: string | null): string[] {
+  return parseAgendaItemDetails(agenda).map((item) => item.title);
 }
 
 export function serializeAgendaItems(items: string[]): string | null {

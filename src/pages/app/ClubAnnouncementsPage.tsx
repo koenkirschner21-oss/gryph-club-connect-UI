@@ -4,33 +4,21 @@ import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useAuthContext } from "../../context/useAuthContext";
 import { useClubContext } from "../../context/useClubContext";
 import { useClubMemberAccess } from "../../hooks/useClubMemberAccess";
-import { useClubMembers } from "../../hooks/useClubMembers";
 import { useClubPosts } from "../../hooks/useClubPosts";
 import { useIsMobile } from "../../hooks/useWindowWidth";
 import { uploadImage } from "../../lib/uploadImage";
 import { supabase } from "../../lib/supabaseClient";
 import { notifyReportSubmitted } from "../../lib/notifications";
 import Spinner from "../../components/ui/Spinner";
-import VisibilitySelector from "../../components/club/VisibilitySelector";
-import SelectedVisibilityPicker from "../../components/club/SelectedVisibilityPicker";
+import ContentVisibilityDropdown from "../../components/club/ContentVisibilityDropdown";
 import TemplatePickerModal from "../../components/club/TemplatePickerModal";
-import { filterByVisibility } from "../../lib/contentVisibility";
-import {
-  EMPTY_SELECTED_VISIBILITY,
-  hasSelectedVisibilityTargets,
-  selectedVisibilityPayload,
-} from "../../lib/selectedVisibility";
+import { filterByVisibility, toStandardVisibility } from "../../lib/contentVisibility";
 import { removeRealtimeChannel, uniqueRealtimeTopic } from "../../lib/realtimeChannels";
-import {
-  fetchPostViewCountsForClub,
-  recordAnnouncementView,
-} from "../../lib/postViews";
 import type { MemberRole, Post, Visibility } from "../../types";
 import {
   AnnouncementCard,
   AnnouncementSortDropdown,
   EngagementTipsSidebar,
-  SeenListModal,
   VisibilityFilterDropdown,
   type AnnouncementSort,
   type VisibilityFilter,
@@ -358,10 +346,8 @@ export default function ClubAnnouncementsPage() {
   const club = getClubById(clubId ?? "");
   const { posts, loading, createPost, updatePost, deletePost, refresh } = useClubPosts(clubId);
   const memberAccess = useClubMemberAccess(clubId);
-  const { members } = useClubMembers(clubId);
   const canManageAnnouncements =
     memberAccess.isPresident || memberAccess.can("manage_announcements");
-  const canViewEngagement = canManageAnnouncements;
 
   const [showForm, setShowForm] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -378,7 +364,6 @@ export default function ClubAnnouncementsPage() {
   const [menuOpenPostId, setMenuOpenPostId] = useState<string | null>(null);
   const [reactionCountsByPost, setReactionCountsByPost] = useState<Record<string, PostReactionState>>({});
   const [myReactionsByPost, setMyReactionsByPost] = useState<Record<string, PostReactionFlags>>({});
-  const [viewCountByPost, setViewCountByPost] = useState<Record<string, number>>({});
   const [reportPostId, setReportPostId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState<ReportReason | null>(null);
   const [reportDetails, setReportDetails] = useState("");
@@ -387,15 +372,11 @@ export default function ClubAnnouncementsPage() {
   const [announcementFilter, setAnnouncementFilter] =
     useState<AnnouncementFilter>("all");
   const [postVisibility, setPostVisibility] = useState<Visibility>("members_only");
-  const [selectedVisibilityTargets, setSelectedVisibilityTargets] = useState(
-    EMPTY_SELECTED_VISIBILITY,
-  );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
   const [sortBy, setSortBy] = useState<AnnouncementSort>("newest");
-  const [seenListPostId, setSeenListPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -445,7 +426,6 @@ export default function ClubAnnouncementsPage() {
       setPinnedById({});
       setReactionCountsByPost({});
       setMyReactionsByPost({});
-      setViewCountByPost({});
       return;
     }
 
@@ -493,11 +473,6 @@ export default function ClubAnnouncementsPage() {
         }
         setReactionCountsByPost(countsMap);
         setMyReactionsByPost(myMap);
-      }
-
-      if (clubId) {
-        const countMap = await fetchPostViewCountsForClub(postIds, clubId);
-        setViewCountByPost(countMap);
       }
 
       const profileById: Record<string, { name?: string; avatarUrl?: string }> = {};
@@ -555,28 +530,6 @@ export default function ClubAnnouncementsPage() {
     };
   }, [clubId, posts, reloadReactionMeta]);
 
-  const recordedViewsRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    recordedViewsRef.current.clear();
-  }, [user?.id]);
-
-  const markPostAsSeen = useCallback(
-    async (postId: string) => {
-      if (!user?.id || !clubId) return;
-      const recordKey = `${user.id}:${postId}`;
-      if (recordedViewsRef.current.has(recordKey)) return;
-      recordedViewsRef.current.add(recordKey);
-      const ok = await recordAnnouncementView(postId, user.id);
-      if (!ok) {
-        recordedViewsRef.current.delete(recordKey);
-        return;
-      }
-      const counts = await fetchPostViewCountsForClub([postId], clubId);
-      setViewCountByPost((prev) => ({ ...prev, ...counts }));
-    },
-    [user?.id, clubId],
-  );
 
   const isPrivileged = canManageAnnouncements;
   const isMemberRole =
@@ -652,12 +605,6 @@ export default function ClubAnnouncementsPage() {
         if (bLikes !== aLikes) return bLikes - aLikes;
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
-      if (sortBy === "most_seen") {
-        const aSeen = viewCountByPost[a.id] ?? 0;
-        const bSeen = viewCountByPost[b.id] ?? 0;
-        if (bSeen !== aSeen) return bSeen - aSeen;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     };
 
@@ -681,25 +628,14 @@ export default function ClubAnnouncementsPage() {
     memberAccess.accessLevel,
     memberAccess.role,
     reactionCountsByPost,
-    viewCountByPost,
   ]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    for (const post of displayPosts) {
-      const needsExpand = (post.content?.length ?? 0) > 300;
-      if (!needsExpand) {
-        void markPostAsSeen(post.id);
-      }
-    }
-  }, [displayPosts, markPostAsSeen, user?.id]);
 
   function resetForm() {
     setTitle("");
     setContent("");
     setLinkUrl("");
     setPostVisibility("members_only");
-    setSelectedVisibilityTargets(EMPTY_SELECTED_VISIBILITY);
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -714,7 +650,6 @@ export default function ClubAnnouncementsPage() {
     setContent("");
     setLinkUrl("");
     setPostVisibility("members_only");
-    setSelectedVisibilityTargets(EMPTY_SELECTED_VISIBILITY);
     setSelectedFile(null);
     setExistingAttachmentUrl(null);
     setExistingAttachmentType(null);
@@ -767,18 +702,31 @@ export default function ClubAnnouncementsPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, isPrivileged, loading, memberAccess.loading]);
 
+  useEffect(() => {
+    const postId = searchParams.get("post")?.trim();
+    if (!postId || loading || posts.length === 0) return;
+    const exists = posts.some((post) => post.id === postId);
+    if (!exists) return;
+
+    setExpanded((prev) => ({ ...prev, [postId]: true }));
+    window.requestAnimationFrame(() => {
+      document.getElementById(`announcement-${postId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("post");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, loading, posts]);
+
   function openEditForm(post: Post) {
     setEditingPostId(post.id);
     setTitle(post.title);
     setContent(post.content);
     setLinkUrl(post.linkUrl ?? "");
-    setPostVisibility(post.visibility ?? "members_only");
-    setSelectedVisibilityTargets(
-      selectedVisibilityPayload(
-        post.visibilityRoles ?? [],
-        post.visibilityUserIds ?? [],
-      ),
-    );
+    setPostVisibility(toStandardVisibility(post.visibility, "members_only"));
     setSelectedFile(null);
     setExistingAttachmentUrl(post.attachmentUrl ?? null);
     setExistingAttachmentType(post.attachmentType ?? null);
@@ -821,16 +769,6 @@ export default function ClubAnnouncementsPage() {
 
   async function handleSubmit() {
     if (!title.trim() || !content.trim() || !clubId) return;
-    if (
-      postVisibility === "selected" &&
-      !hasSelectedVisibilityTargets(selectedVisibilityTargets)
-    ) {
-      setFeedback({
-        type: "error",
-        text: "Choose at least one role or member for selected visibility.",
-      });
-      return;
-    }
     setSaving(true);
     setFeedback(null);
 
@@ -854,15 +792,9 @@ export default function ClubAnnouncementsPage() {
       attachmentUrl,
       attachmentType,
       linkUrl: linkUrl.trim() || null,
-      visibility: postVisibility,
-      visibilityRoles:
-        postVisibility === "selected"
-          ? selectedVisibilityTargets.visibilityRoles
-          : [],
-      visibilityUserIds:
-        postVisibility === "selected"
-          ? selectedVisibilityTargets.visibilityUserIds
-          : [],
+      visibility: toStandardVisibility(postVisibility, "members_only"),
+      visibilityRoles: [],
+      visibilityUserIds: [],
     };
 
     const isEditing = Boolean(editingPostId);
@@ -1098,7 +1030,7 @@ export default function ClubAnnouncementsPage() {
             />
             <ThemedField
               id="postContent"
-              label="Content"
+              label="Announcement"
               value={content}
               onChange={setContent}
               placeholder="Write your announcement…"
@@ -1112,21 +1044,9 @@ export default function ClubAnnouncementsPage() {
               onChange={setLinkUrl}
               placeholder="https://..."
             />
-            <VisibilitySelector
-              value={postVisibility}
-              onChange={setPostVisibility}
-            />
-            {postVisibility === "selected" ? (
-              <SelectedVisibilityPicker
-                members={members}
-                targets={selectedVisibilityTargets}
-                onChange={setSelectedVisibilityTargets}
-                disabled={saving}
-              />
-            ) : null}
             <div>
               <label htmlFor="postAttachment" style={labelStyle}>
-                Attach Image or File (optional)
+                Attachment (optional)
               </label>
               <input
                 ref={fileInputRef}
@@ -1147,6 +1067,11 @@ export default function ClubAnnouncementsPage() {
                 <span style={{ fontSize: "13px", color: "#888888" }}>{attachmentLabel}</span>
               </div>
             </div>
+            <ContentVisibilityDropdown
+              value={postVisibility}
+              onChange={setPostVisibility}
+              disabled={saving}
+            />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", paddingTop: "8px" }}>
               <button type="button" style={formCancelButtonStyle} onClick={resetForm} disabled={saving}>
                 Cancel
@@ -1155,31 +1080,12 @@ export default function ClubAnnouncementsPage() {
                 type="button"
                 style={{
                   ...submitButtonStyle,
-                  opacity:
-                    !title.trim() ||
-                    !content.trim() ||
-                    saving ||
-                    (postVisibility === "selected" &&
-                      !hasSelectedVisibilityTargets(selectedVisibilityTargets))
-                      ? 0.6
-                      : 1,
+                  opacity: !title.trim() || !content.trim() || saving ? 0.6 : 1,
                   cursor:
-                    !title.trim() ||
-                    !content.trim() ||
-                    saving ||
-                    (postVisibility === "selected" &&
-                      !hasSelectedVisibilityTargets(selectedVisibilityTargets))
-                      ? "not-allowed"
-                      : "pointer",
+                    !title.trim() || !content.trim() || saving ? "not-allowed" : "pointer",
                 }}
                 onClick={handleSubmit}
-                disabled={
-                  !title.trim() ||
-                  !content.trim() ||
-                  saving ||
-                  (postVisibility === "selected" &&
-                    !hasSelectedVisibilityTargets(selectedVisibilityTargets))
-                }
+                disabled={!title.trim() || !content.trim() || saving}
               >
                 {saving ? (editingPostId ? "Saving…" : "Posting…") : editingPostId ? "Save Changes" : "Post Announcement"}
               </button>
@@ -1220,14 +1126,6 @@ export default function ClubAnnouncementsPage() {
         </div>
       )}
 
-      {seenListPostId && canViewEngagement && clubId ? (
-        <SeenListModal
-          postId={seenListPostId}
-          clubId={clubId}
-          postTitle={posts.find((p) => p.id === seenListPostId)?.title ?? "Announcement"}
-          onClose={() => setSeenListPostId(null)}
-        />
-      ) : null}
 
       {reportPostId ? (
         <div
@@ -1387,6 +1285,7 @@ export default function ClubAnnouncementsPage() {
     const showMenu = isPrivileged || (isMemberRole && post.authorId !== user?.id);
 
     return (
+      <div id={`announcement-${post.id}`}>
       <AnnouncementCard
         key={post.id}
         post={post}
@@ -1400,9 +1299,7 @@ export default function ClubAnnouncementsPage() {
         heartCount={reactionCounts.heart ?? 0}
         heartActive={myReactions.heart}
         bookmarkActive={myReactions.bookmark}
-        seenCount={viewCountByPost[post.id] ?? 0}
         isPrivileged={isPrivileged}
-        canViewEngagement={canViewEngagement}
         showMenu={showMenu}
         menuOpen={menuOpenPostId === post.id}
         isMemberRole={isMemberRole}
@@ -1413,22 +1310,10 @@ export default function ClubAnnouncementsPage() {
           setMenuOpenPostId((prev) => (prev === post.id ? null : post.id))
         }
         onToggleExpand={() => {
-          const willExpand = !isExpanded;
-          setExpanded((prev) => ({ ...prev, [post.id]: willExpand }));
-          if (willExpand) {
-            void markPostAsSeen(post.id);
-          }
+          setExpanded((prev) => ({ ...prev, [post.id]: !isExpanded }));
         }}
         onHeartToggle={() => void handleReactionToggle(post.id, "heart")}
         onBookmarkToggle={() => void handleReactionToggle(post.id, "bookmark")}
-        onViewSeenList={() => {
-          setSeenListPostId(post.id);
-          if (clubId) {
-            void fetchPostViewCountsForClub([post.id], clubId).then((counts) => {
-              setViewCountByPost((prev) => ({ ...prev, ...counts }));
-            });
-          }
-        }}
         onPin={() => {
           setMenuOpenPostId(null);
           void handleTogglePin(post.id);
@@ -1453,6 +1338,7 @@ export default function ClubAnnouncementsPage() {
           ) : undefined
         }
       />
+      </div>
     );
   }
 }
